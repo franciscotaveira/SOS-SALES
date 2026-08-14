@@ -1,0 +1,55 @@
+services:
+  # WAHA Core — sandbox local para conectar exclusivamente um WhatsApp de teste.
+  # A porta fica restrita ao loopback; nunca exponha este container diretamente.
+  tx-waha:
+    # O digest reproduz a imagem que está estável na VPS. A tag pode ser
+    # sobrescrita por WAHA_IMAGE quando for necessário atualizar com revisão.
+    image: ${WAHA_IMAGE:-devlikeapro/waha@sha256:f3c33e8e70a78eb37af4f4e2eb655849d42d8ffdc4b8254f9de38069e906a146}
+    # WAHA Core não publica imagem ARM64; Docker Desktop a executa em emulação
+    # apenas neste sandbox de homologação local.
+    platform: linux/amd64
+    container_name: tx-commercial-waha
+    restart: unless-stopped
+    env_file:
+      - .env.waha.local
+    environment:
+      # Nome oficial da configuração WAHA. Mantemos WEBJS como padrão somente
+      # para preservar a sessão local já pareada; novas sessões de homologação
+      # devem definir WAHA_DEFAULT_ENGINE=GOWS no .env.waha.local.
+      WHATSAPP_DEFAULT_ENGINE: ${WAHA_DEFAULT_ENGINE:-WEBJS}
+      WAHA_DASHBOARD_ENABLED: "true"
+      WHATSAPP_SWAGGER_ENABLED: "true"
+      WAHA_LOG_FORMAT: JSON
+      TZ: America/Sao_Paulo
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - tx_waha_sessions:/app/.sessions
+      - tx_waha_media:/app/.media
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/health || wget -q --spider http://127.0.0.1:3000/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Redis 7 - Filas BullMQ e Pub/Sub Real-time
+  tx-redis:
+    image: redis:7-alpine
+    container_name: tx-commercial-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379" # Porta 6380 no host para não conflitar com outros projetos
+    volumes:
+      - tx_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  tx_waha_sessions:
+  tx_waha_media:
+  tx_redis_data:
