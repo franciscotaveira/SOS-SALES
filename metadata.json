@@ -1,0 +1,6 @@
+{
+  "name": "Sales OS - Operator Cockpit",
+  "description": "SOS Sales - Sistema operacional de continuidade comercial e gestão unificada de grupos WhatsApp com infraestrutura híbrida WABA e WAHA",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
