@@ -3,13 +3,25 @@ import { Journey, Workspace, Message, Channel, OperatorRole, OutcomeStatus, Comm
 import { SalesOsGateway } from '../../services/salesOsGateway';
 import { PriorityQueue } from './PriorityQueue';
 import { ConversationHeader } from './ConversationHeader';
-import { ContinuityLine } from './ContinuityLine';
+import { ContinuityRibbon } from './ContinuityRibbon';
 import { MessageTimeline } from './MessageTimeline';
-import { RecommendationCard } from './RecommendationCard';
 import { SupervisedComposer } from './SupervisedComposer';
 import { LiveDossier } from './LiveDossier';
 import { OutcomeModal } from './OutcomeModal';
-import { MessageSquareOff, ChevronLeft, ChevronRight, Layers, Flame, MessageSquare } from 'lucide-react';
+import {
+  MessageSquareOff,
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  Flame,
+  MessageSquare,
+  PanelRightClose,
+  PanelRightOpen,
+  Columns3,
+  Maximize2,
+  X,
+  Sparkles,
+} from 'lucide-react';
 
 interface CockpitViewProps {
   workspace: Workspace;
@@ -43,8 +55,66 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
   const [sendError, setSendError] = React.useState<string | null>(null);
   const [isOutcomeModalOpen, setIsOutcomeModalOpen] = React.useState(false);
 
+  // Persistent Dossier state & display mode ('docked' | 'drawer')
+  const [isDossierOpen, setIsDossierOpen] = React.useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('sos_cockpit_dossier_open');
+      if (saved !== null) return saved === 'true';
+      return window.innerWidth >= 1280;
+    } catch {
+      return true;
+    }
+  });
+
+  const [dossierMode, setDossierMode] = React.useState<'docked' | 'drawer'>(() => {
+    try {
+      const saved = localStorage.getItem('sos_cockpit_dossier_mode');
+      if (saved === 'docked' || saved === 'drawer') return saved;
+      return window.innerWidth >= 1280 ? 'docked' : 'drawer';
+    } catch {
+      return 'docked';
+    }
+  });
+
   // Mobile/Tablet sub-tab view mode: 'queue' | 'chat' | 'context'
   const [mobileView, setMobileView] = React.useState<'queue' | 'chat' | 'context'>('chat');
+
+  // Toggle dossier open state & persist
+  const toggleDossierOpen = () => {
+    setIsDossierOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('sos_cockpit_dossier_open', String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  // Toggle dossier mode ('docked' vs 'drawer') & persist
+  const toggleDossierMode = () => {
+    setDossierMode((prev) => {
+      const next = prev === 'docked' ? 'drawer' : 'docked';
+      try {
+        localStorage.setItem('sos_cockpit_dossier_mode', next);
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  // Close drawer on ESC key
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isDossierOpen && dossierMode === 'drawer') {
+        setIsDossierOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isDossierOpen, dossierMode]);
 
   // Selected Journey
   const currentJourney = React.useMemo(() => {
@@ -208,7 +278,7 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500">
         <MessageSquareOff className="w-12 h-12 text-slate-400 mb-3" />
-        <h2 className="text-base font-bold text-slate-800">Nenhuma conversa selecionada</h2>
+        <h2 className="text-base font-bold text-slate-800 font-heading">Nenhuma conversa selecionada</h2>
         <p className="text-xs text-slate-500 max-w-sm mt-1">
           Selecione uma conversa na fila de prioridades para iniciar o atendimento supervisionado.
         </p>
@@ -216,14 +286,20 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
     );
   }
 
+  // Determine whether docked dossier column should be active in the CSS Grid
+  const isDockedActive = isDossierOpen && dossierMode === 'docked';
+
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-hidden bg-slate-100 p-2 sm:p-3 gap-2 sm:gap-3">
-      {/* Mobile sub-tabs selector */}
+    <div
+      id="cockpit-view-container"
+      className="flex-1 min-h-0 h-full w-full flex flex-col overflow-hidden bg-[#F8FAFC] p-2 sm:p-2.5 gap-2 relative"
+    >
+      {/* Mobile sub-tabs selector (Queue -> Conversation -> Dossier) */}
       <div className="lg:hidden flex items-center bg-white p-1 rounded-xl border border-slate-200 shrink-0 text-xs font-bold shadow-2xs">
         <button
           onClick={() => setMobileView('queue')}
-          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1 ${
-            mobileView === 'queue' ? 'bg-blue-600 text-white' : 'text-slate-600'
+          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1 transition-colors ${
+            mobileView === 'queue' ? 'bg-[#00A884] text-white' : 'text-slate-600'
           }`}
         >
           <Flame className="w-3.5 h-3.5" />
@@ -231,31 +307,43 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
         </button>
         <button
           onClick={() => setMobileView('chat')}
-          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1 ${
-            mobileView === 'chat' ? 'bg-blue-600 text-white' : 'text-slate-600'
+          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1 transition-colors ${
+            mobileView === 'chat' ? 'bg-[#00A884] text-white' : 'text-slate-600'
           }`}
         >
           <MessageSquare className="w-3.5 h-3.5" />
           <span>Conversa</span>
         </button>
         <button
-          onClick={() => setMobileView('context')}
-          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1 ${
-            mobileView === 'context' ? 'bg-blue-600 text-white' : 'text-slate-600'
+          onClick={() => {
+            setMobileView('context');
+            setIsDossierOpen(true);
+          }}
+          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1 transition-colors ${
+            mobileView === 'context' ? 'bg-[#00A884] text-white' : 'text-slate-600'
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
-          <span>Contexto</span>
+          <span>Dossiê</span>
         </button>
       </div>
 
-      {/* Main 3-Column Layout: Desktop 24% - 50% - 26% */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-3 overflow-hidden">
-        {/* Column 1: Priority Queue (24% ~ 3 cols) */}
-        <div
-          className={`h-full overflow-hidden ${
-            mobileView === 'queue' ? 'block' : 'hidden lg:block'
-          } lg:col-span-3`}
+      {/* Main Responsive Cockpit CSS Grid Architecture */}
+      <div
+        id="cockpit-css-grid"
+        className={`flex-1 min-h-0 h-full w-full overflow-hidden ${
+          isDockedActive
+            ? 'lg:grid lg:grid-cols-[280px_minmax(0,1fr)_340px] xl:grid-cols-[300px_minmax(0,1fr)_380px] lg:gap-2.5'
+            : 'lg:grid lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] lg:gap-2.5'
+        }`}
+      >
+        {/* Pane 1: Priority Queue (CSS Grid Track 1) */}
+        <section
+          id="cockpit-queue-pane"
+          aria-label="Fila de Prioridades Comerciais"
+          className={`h-full min-h-0 min-w-0 overflow-hidden flex flex-col ${
+            mobileView === 'queue' ? 'flex' : 'hidden lg:flex'
+          }`}
         >
           <PriorityQueue
             journeys={journeys}
@@ -268,92 +356,164 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
             currentOperatorId={currentOperatorId}
             onViewAllConversations={onViewAllConversations}
           />
-        </div>
+        </section>
 
-        {/* Column 2: Live Conversation (50% ~ 6 cols) */}
-        <div
-          className={`h-full overflow-hidden flex flex-col cockpit-panel ${
-            mobileView === 'chat' ? 'block' : 'hidden lg:flex'
-          } lg:col-span-6`}
+        {/* Pane 2: Live Conversation Central Focus (CSS Grid Track 2: flexible minmax(0, 1fr) never squashed!) */}
+        <section
+          id="cockpit-conversation-pane"
+          aria-label="Janela Central de Atendimento WhatsApp"
+          className={`h-full min-h-0 min-w-0 overflow-hidden flex flex-col cockpit-panel ${
+            mobileView === 'chat' ? 'flex' : 'hidden lg:flex'
+          }`}
         >
-          {/* Header */}
-          <ConversationHeader
-            journey={currentJourney}
-            channel={currentChannel}
-            currentOperatorId={currentOperatorId}
-            currentOperatorName={currentOperatorName}
-            role={role}
-            onClaimHandoff={() => handleClaimHandoff(currentJourney.id)}
-            onReleaseHandoff={handleReleaseHandoff}
-            onOpenOutcomeModal={() => setIsOutcomeModalOpen(true)}
-            onStageChange={handleStageChange}
-            onScheduleFollowUp={handleScheduleFollowUp}
-          />
+          {/* Conversation Header with quick actions & Dossier toggle */}
+          <div className="relative shrink-0">
+            <ConversationHeader
+              journey={currentJourney}
+              channel={currentChannel}
+              currentOperatorId={currentOperatorId}
+              currentOperatorName={currentOperatorName}
+              role={role}
+              onClaimHandoff={() => handleClaimHandoff(currentJourney.id)}
+              onReleaseHandoff={handleReleaseHandoff}
+              onOpenOutcomeModal={() => setIsOutcomeModalOpen(true)}
+              onStageChange={handleStageChange}
+              onScheduleFollowUp={handleScheduleFollowUp}
+              isDossierOpen={isDossierOpen}
+              onToggleDossier={toggleDossierOpen}
+            />
+          </div>
+
+          {/* Signature Visual: Continuity Ribbon */}
+          <div className="shrink-0 px-2.5 pt-2 pb-1 bg-slate-50/40 border-b border-slate-100">
+            <ContinuityRibbon
+              acquisition={currentJourney.acquisition}
+              lastLeadMessage={currentJourney.lastLeadMessage}
+              recommendation={currentJourney.recommendation}
+              continuitySteps={currentJourney.continuitySteps}
+              onApplyRecommendation={() => {
+                if (currentJourney.recommendation) {
+                  handleApplyRecommendationDraft(currentJourney.recommendation.draftText);
+                }
+              }}
+            />
+          </div>
+
+          {/* AI Smart Funnel Auto-Advance Suggestion Banner */}
+          {(!currentJourney.stage || currentJourney.stage === 'new' || currentJourney.stage === 'contacted') && (
+            <div className="mx-2.5 mt-2 p-2.5 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between text-xs text-purple-900 shadow-2xs shrink-0">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+                <div>
+                  <span className="font-bold">IA Sugere Avanço de Funil:</span> O lead demonstrou interesse em agendamento ou proposta.
+                </div>
+              </div>
+              <button
+                onClick={() => handleStageChange('negotiation')}
+                className="px-3 py-1 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-lg text-xs shadow-xs transition-colors shrink-0"
+              >
+                Avançar para Negociação
+              </button>
+            </div>
+          )}
 
           {/* Scrollable Conversation Center */}
-          <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50/50">
-            {/* Signature Visual: Continuity Line */}
-            <div className="p-3 pb-0 shrink-0">
-              <ContinuityLine
-                acquisition={currentJourney.acquisition}
-                lastLeadMessage={currentJourney.lastLeadMessage}
-                recommendation={currentJourney.recommendation}
-                continuitySteps={currentJourney.continuitySteps}
-                onApplyRecommendation={() => {
-                  if (currentJourney.recommendation) {
-                    handleApplyRecommendationDraft(currentJourney.recommendation.draftText);
-                  }
-                }}
-              />
-            </div>
-
-            {/* Timeline */}
+          <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50/40 p-2.5">
             <MessageTimeline
               messages={messages}
               onRetryMessage={handleRetryMessage}
               isLoading={isLoadingMessages}
             />
-
-            {/* Recommendation with evidences */}
-            <RecommendationCard
-              recommendation={currentJourney.recommendation}
-              onApplyDraft={handleApplyRecommendationDraft}
-            />
           </div>
 
-          {/* Sticky Supervised Composer */}
-          <SupervisedComposer
-            journey={currentJourney}
-            channel={currentChannel}
-            role={role}
-            currentDraft={draftText}
-            onChangeDraft={handleDraftChange}
-            onSendMessage={handleSendMessage}
-            isSending={isSending}
-            sendError={sendError}
-            onClearError={() => setSendError(null)}
-          />
-        </div>
+          {/* Supervised Composer with integrated AI Copilot Recommendation Strip */}
+          <div className="shrink-0 border-t border-slate-200 bg-white">
+            <SupervisedComposer
+              journey={currentJourney}
+              channel={currentChannel}
+              role={role}
+              currentDraft={draftText}
+              onChangeDraft={handleDraftChange}
+              onSendMessage={handleSendMessage}
+              isSending={isSending}
+              sendError={sendError}
+              onClearError={() => setSendError(null)}
+              recommendation={currentJourney.recommendation}
+            />
+          </div>
+        </section>
 
-        {/* Column 3: Context & Decision (26% ~ 3 cols) */}
-        <div
-          className={`h-full overflow-hidden ${
-            mobileView === 'context' ? 'block' : 'hidden lg:block'
-          } lg:col-span-3`}
-        >
-          <LiveDossier
-            journey={currentJourney}
-            channel={currentChannel}
-            role={role}
-            currentOperatorId={currentOperatorId}
-            currentOperatorName={currentOperatorName}
-            onClaimHandoff={() => handleClaimHandoff(currentJourney.id)}
-            onReleaseHandoff={handleReleaseHandoff}
-            onToggleChannelPause={handleToggleChannelPause}
-            onOpenOutcomeModal={() => setIsOutcomeModalOpen(true)}
-          />
-        </div>
+        {/* Pane 3: Live Dossier - DOCKED MODE in CSS Grid Track 3 */}
+        {isDockedActive && (
+          <aside
+            id="cockpit-dossier-docked-pane"
+            aria-label="Dossiê Vivo de Decisão Comercial"
+            className="hidden lg:flex h-full min-h-0 min-w-0 overflow-hidden flex-col"
+          >
+            <LiveDossier
+              journey={currentJourney}
+              channel={currentChannel}
+              role={role}
+              currentOperatorId={currentOperatorId}
+              currentOperatorName={currentOperatorName}
+              onClaimHandoff={() => handleClaimHandoff(currentJourney.id)}
+              onReleaseHandoff={handleReleaseHandoff}
+              onToggleChannelPause={handleToggleChannelPause}
+              onOpenOutcomeModal={() => setIsOutcomeModalOpen(true)}
+              onUpdateJourney={onUpdateJourney}
+              onClose={() => setIsDossierOpen(false)}
+              displayMode="docked"
+              onToggleMode={toggleDossierMode}
+            />
+          </aside>
+        )}
       </div>
+
+      {/* Pane 3 (Alternate): Live Dossier - DRAWER / OVERLAY MODE (Floating Slide-over with Backdrop) */}
+      {isDossierOpen && (!isDockedActive || mobileView === 'context') && (
+        <div
+          id="cockpit-dossier-drawer-overlay"
+          className="fixed inset-0 z-50 flex justify-end"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Dossiê Vivo de Decisão do Lead"
+        >
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-2xs transition-opacity animate-in fade-in duration-150"
+            onClick={() => {
+              if (mobileView === 'context') {
+                setMobileView('chat');
+              }
+              setIsDossierOpen(false);
+            }}
+          />
+
+          {/* Slide-over Drawer Panel */}
+          <div className="relative w-full max-w-[420px] sm:w-[420px] bg-white h-full shadow-2xl z-10 animate-in slide-in-from-right duration-200 overflow-hidden flex flex-col border-l border-slate-200">
+            <LiveDossier
+              journey={currentJourney}
+              channel={currentChannel}
+              role={role}
+              currentOperatorId={currentOperatorId}
+              currentOperatorName={currentOperatorName}
+              onClaimHandoff={() => handleClaimHandoff(currentJourney.id)}
+              onReleaseHandoff={handleReleaseHandoff}
+              onToggleChannelPause={handleToggleChannelPause}
+              onOpenOutcomeModal={() => setIsOutcomeModalOpen(true)}
+              onUpdateJourney={onUpdateJourney}
+              onClose={() => {
+                if (mobileView === 'context') {
+                  setMobileView('chat');
+                }
+                setIsDossierOpen(false);
+              }}
+              displayMode="drawer"
+              onToggleMode={toggleDossierMode}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Outcome Modal */}
       <OutcomeModal

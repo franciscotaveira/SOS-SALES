@@ -1,5 +1,5 @@
 import React from 'react';
-import { Channel, Journey, OperatorRole } from '../../types/cockpit';
+import { Channel, Journey, OperatorRole, Recommendation, EvidenceReference } from '../../types/cockpit';
 import {
   Send,
   ShieldCheck,
@@ -11,9 +11,17 @@ import {
   Smile,
   Paperclip,
   Mic,
+  Flame,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
+  Eye,
+  X,
 } from 'lucide-react';
 import { validateCommercialPolicy } from '../../services/commercialGuardrailService';
 import { MacroShortcutMenu } from './MacroShortcutMenu';
+import { EvidenceModal } from './EvidenceModal';
 
 interface SupervisedComposerProps {
   journey: Journey;
@@ -25,6 +33,7 @@ interface SupervisedComposerProps {
   isSending: boolean;
   sendError?: string | null;
   onClearError: () => void;
+  recommendation?: Recommendation;
 }
 
 export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
@@ -37,6 +46,7 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
   isSending,
   sendError,
   onClearError,
+  recommendation,
 }) => {
   const isChannelPaused = channel?.health === 'paused';
   const isViewer = role === 'viewer';
@@ -49,6 +59,15 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
 
   const [isMacroMenuOpen, setIsMacroMenuOpen] = React.useState(false);
   const [macroFilter, setMacroFilter] = React.useState('');
+  const [isAiSuggestionDismissed, setIsAiSuggestionDismissed] = React.useState(false);
+  const [isAiDetailsExpanded, setIsAiDetailsExpanded] = React.useState(false);
+  const [evidenceModalOpen, setEvidenceModalOpen] = React.useState(false);
+
+  // Reset dismissed state when journey or recommendation changes
+  React.useEffect(() => {
+    setIsAiSuggestionDismissed(false);
+    setIsAiDetailsExpanded(false);
+  }, [journey.id, recommendation?.id]);
 
   const canSend =
     !isChannelPaused &&
@@ -111,6 +130,36 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
     textareaRef.current?.focus();
   };
 
+  const handleApplyAiSuggestion = () => {
+    if (recommendation?.draftText) {
+      onChangeDraft(recommendation.draftText);
+    } else if (recommendation?.suggestedAction) {
+      onChangeDraft(recommendation.suggestedAction);
+    }
+    textareaRef.current?.focus();
+  };
+
+  // SOS Destravar Venda: Generates the optimal commercial reactivation based on journey stage
+  const handleApplyNextBestAction = () => {
+    const leadName = journey.leadName.split(' ')[0] || 'amigo';
+    let suggestion = '';
+
+    if (journey.commercialStep === 'agendamento' || journey.commercialStep === 'orcamento') {
+      suggestion = `Oi ${leadName}! Tudo bem? Vi que você estava interessado(a) no nosso atendimento. Consegui segurar um horário exclusivo aqui na agenda para você amanhã às 14h30 ou 16h00. Qual fica melhor para você?`;
+    } else if (journey.commercialStep === 'fechamento') {
+      suggestion = `Oi ${leadName}! Passando para te avisar que já deixei suas condições especiais ativadas aqui. Posso te enviar a chave Pix para confirmarmos seu pedido agora e garantir o bônus?`;
+    } else if (journey.commercialStep === 'qualificacao') {
+      suggestion = `Olá ${leadName}, vi sua mensagem pelo anúncio! Para eu te passar o valor exato e personalizado, qual o modelo do seu veículo / serviço desejado?`;
+    } else {
+      suggestion = `Oi ${leadName}! Como posso te ajudar a concluir sua solicitação hoje? Estamos com a equipe pronta para te atender agora!`;
+    }
+
+    onChangeDraft(suggestion);
+    textareaRef.current?.focus();
+  };
+
+  const hasActiveAiSuggestion = !!recommendation && !isAiSuggestionDismissed && !isViewer && !isChannelPaused;
+
   return (
     <div
       id="supervised-composer-container"
@@ -124,6 +173,88 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
         onClose={() => setIsMacroMenuOpen(false)}
         filterQuery={macroFilter}
       />
+
+      {/* AI Copilot Integrated Suggestion Strip */}
+      {hasActiveAiSuggestion && recommendation && (
+        <div
+          id="composer-ai-copilot-strip"
+          className="mb-2 bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 border border-purple-200 rounded-xl p-2.5 shadow-2xs space-y-1.5 animate-in fade-in slide-in-from-bottom-2 duration-150"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="w-5 h-5 rounded-md bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                <Sparkles className="w-3 h-3" />
+              </div>
+              <span className="text-[11px] font-bold text-purple-950 truncate font-heading">
+                Copilot Comercial: {recommendation.suggestedAction}
+              </span>
+              <span className="text-[10px] bg-purple-200/80 text-purple-900 font-mono px-1.5 py-0.2 rounded font-bold shrink-0">
+                {Math.round(recommendation.confidence * 100)}% confiança
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => setEvidenceModalOpen(true)}
+                className="text-[10.5px] font-semibold text-purple-700 hover:text-purple-900 px-2 py-0.5 rounded hover:bg-purple-100/70 transition-colors flex items-center gap-1"
+                title="Ver evidências que justificam esta sugestão"
+              >
+                <Eye className="w-3 h-3" />
+                <span className="hidden sm:inline">Evidências</span>
+              </button>
+
+              <button
+                onClick={() => setIsAiDetailsExpanded(!isAiDetailsExpanded)}
+                className="text-[10.5px] font-semibold text-purple-700 hover:text-purple-900 p-0.5 rounded hover:bg-purple-100/70 transition-colors"
+                title={isAiDetailsExpanded ? 'Recolher detalhes' : 'Ver detalhes da tese'}
+              >
+                {isAiDetailsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+
+              <button
+                onClick={() => setIsAiSuggestionDismissed(true)}
+                className="text-slate-400 hover:text-slate-600 p-0.5 rounded transition-colors ml-1"
+                title="Dispensar sugestão"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Suggested Draft Preview + Apply Buttons */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-purple-200/70 text-xs">
+            <p className="text-[11.5px] text-purple-900 italic line-clamp-2 leading-relaxed">
+              "{recommendation.draftText || recommendation.suggestedAction}"
+            </p>
+
+            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+              <button
+                onClick={handleApplyAiSuggestion}
+                className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-purple-600 hover:bg-purple-700 text-white transition-colors flex items-center gap-1 shadow-2xs"
+              >
+                <span>Usar Sugestão</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* Expanded AI Thesis & Policy Details */}
+          {isAiDetailsExpanded && (
+            <div className="p-2 bg-white/90 border border-purple-200 rounded-lg text-[11px] space-y-1 text-slate-700 mt-1.5">
+              <div className="flex items-center justify-between text-purple-900 font-bold">
+                <span>Política Comercial Aplicada:</span>
+                <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                  {recommendation.policyStatus === 'compliant' ? '100% Conforme' : 'Atenção'}
+                </span>
+              </div>
+              <p className="text-slate-600 leading-snug">
+                {recommendation.explanation ||
+                  'A sugestão conduz o cliente diretamente para a confirmação de horário de agenda sem conceder descontos fora da tabela autorizada.'}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Guardrail Violation Alert */}
       {!guardrail.isValid && (
@@ -214,6 +345,16 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
           {/* Quick macro triggers & Helper chips */}
           {!isViewer && !isChannelPaused && (
             <div className="flex items-center gap-1.5 px-3 pb-1.5 overflow-x-auto">
+              {/* SOS Destravar Venda Button */}
+              <button
+                onClick={handleApplyNextBestAction}
+                className="text-[10.5px] bg-[#00a884] hover:bg-[#008069] text-white font-bold px-2.5 py-0.5 rounded-md shrink-0 transition-colors flex items-center gap-1 shadow-2xs"
+                title="Sugerir o próximo passo comercial para destravar esta venda"
+              >
+                <Flame className="w-3 h-3 text-amber-300" />
+                <span>SOS Destravar Venda</span>
+              </button>
+
               <button
                 onClick={() => {
                   setIsMacroMenuOpen(!isMacroMenuOpen);
@@ -222,31 +363,28 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
                 className="text-[10.5px] bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold px-2 py-0.5 rounded-md border border-emerald-200 shrink-0 transition-colors flex items-center gap-1"
               >
                 <Zap className="w-3 h-3 text-[#00a884]" />
-                <span>/ Atalhos Rápidos</span>
+                <span>/ Atalhos</span>
               </button>
+
               <button
                 onClick={() => handleInsertMacro('Temos vaga disponível hoje por volta das 14h30 ou 16h00!')}
                 className="text-[10.5px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 shrink-0 transition-colors"
               >
                 Vaga hoje
               </button>
+
               <button
                 onClick={() => handleInsertMacro('Segue nossa chave Pix oficial para confirmação do seu horário:')}
                 className="text-[10.5px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 shrink-0 transition-colors"
               >
                 Chave Pix
               </button>
+
               <button
                 onClick={() => handleInsertMacro('Já deixei seu horário pré-reservado aqui por 15 minutos para garantir!')}
                 className="text-[10.5px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 shrink-0 transition-colors"
               >
                 Hold 15min
-              </button>
-              <button
-                onClick={() => handleInsertMacro('Ficamos localizados na Rua Central, 450 com estacionamento gratuito.')}
-                className="text-[10.5px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 shrink-0 transition-colors"
-              >
-                Endereço
               </button>
             </div>
           )}
@@ -301,6 +439,24 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
           <span className="hidden sm:inline">Pressione Enter para enviar</span>
         </div>
       </div>
+
+      {/* Evidence Modal for AI Recommendation */}
+      {recommendation && (
+        <EvidenceModal
+          isOpen={evidenceModalOpen}
+          onClose={() => setEvidenceModalOpen(false)}
+          title={`Evidências da Ação: ${recommendation.suggestedAction}`}
+          subtitle={recommendation.draftText}
+          confidence={recommendation.policyStatus === 'compliant' ? 'CONFIRMED' : 'INFERRED'}
+          evidences={recommendation.evidences.map((e) => ({
+            id: e.id,
+            source: 'SYSTEM_INFERENCE' as const,
+            label: e.source,
+            excerpt: e.text,
+            occurredAt: e.timestamp,
+          }))}
+        />
+      )}
     </div>
   );
 };

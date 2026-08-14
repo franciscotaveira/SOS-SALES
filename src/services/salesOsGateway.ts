@@ -5,6 +5,7 @@ import {
   JourneyOutcome,
   SendMessagePayload,
   Channel,
+  CommercialStage,
 } from '../types/cockpit';
 import {
   mockWorkspaces,
@@ -42,23 +43,62 @@ export interface SalesOsGateway {
   saveDraft(journeyId: string, draftText: string): void;
   getDraft(journeyId: string): string;
   markOutcome(journeyId: string, outcome: Omit<JourneyOutcome, 'id' | 'closedAt'>): Promise<Journey>;
+  updateJourneyStage(
+    journeyId: string,
+    stage: CommercialStage,
+    options?: {
+      dealValueBrl?: number;
+      reason?: string;
+      operatorId?: string;
+      operatorName?: string;
+    }
+  ): Promise<Journey>;
+  updateJourney(updated: Journey): Promise<Journey>;
   toggleChannelPause(channelId: string, pausedBy: string, reason?: string): Promise<Channel>;
   getTrafficStats(workspaceId: string): Promise<TrafficProofStats>;
   simulateIncomingLeadMessage(journeyId: string, text: string): Promise<Message>;
+  resetJourneysToDefault(): Promise<void>;
 }
+
+const JOURNEYS_STORAGE_KEY = 'sales_os_journeys_v2';
 
 export class MockSalesOsGateway implements SalesOsGateway {
   private workspaces: Workspace[];
   private journeys: Map<string, Journey[]> = new Map();
   private messages: Map<string, Message[]> = new Map();
   private drafts: Map<string, string> = new Map();
-  public simulateNetworkDelayMs = 250;
+  public simulateNetworkDelayMs = 200;
   public shouldFailNextSend = false;
 
   constructor() {
     this.workspaces = JSON.parse(JSON.stringify(mockWorkspaces));
-    this.journeys.set('ws-escovaria', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
-    this.journeys.set('ws-peliculas', JSON.parse(JSON.stringify(mockJourneysTitanium)));
+
+    // Try loading persisted journeys from localStorage
+    let loadedFromStorage = false;
+    try {
+      const stored = localStorage.getItem(JOURNEYS_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object') {
+          Object.entries(parsed).forEach(([wsId, jList]) => {
+            this.journeys.set(wsId, jList as Journey[]);
+          });
+          loadedFromStorage = true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!loadedFromStorage || this.journeys.size === 0) {
+      this.journeys.set('ws-escovaria', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
+      this.journeys.set('ws-peliculas', JSON.parse(JSON.stringify(mockJourneysTitanium)));
+      this.journeys.set('ws-agencia', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
+      this.persistJourneys();
+    } else if (!this.journeys.has('ws-agencia')) {
+      this.journeys.set('ws-agencia', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
+      this.persistJourneys();
+    }
 
     Object.entries(mockMessagesByJourney).forEach(([jId, msgs]) => {
       this.messages.set(jId, JSON.parse(JSON.stringify(msgs)));
@@ -76,17 +116,36 @@ export class MockSalesOsGateway implements SalesOsGateway {
     }
   }
 
+  private persistJourneys() {
+    try {
+      const obj: Record<string, Journey[]> = {};
+      this.journeys.forEach((v, k) => {
+        obj[k] = v;
+      });
+      localStorage.setItem(JOURNEYS_STORAGE_KEY, JSON.stringify(obj));
+    } catch {
+      // ignore
+    }
+  }
+
   private async sleep(ms = this.simulateNetworkDelayMs) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async getWorkspaces(): Promise<Workspace[]> {
+  async resetJourneysToDefault(): Promise<void> {
     await this.sleep(100);
+    this.journeys.set('ws-escovaria', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
+    this.journeys.set('ws-peliculas', JSON.parse(JSON.stringify(mockJourneysTitanium)));
+    this.persistJourneys();
+  }
+
+  async getWorkspaces(): Promise<Workspace[]> {
+    await this.sleep(80);
     return JSON.parse(JSON.stringify(this.workspaces));
   }
 
   async getJourneys(workspaceId: string, search?: string): Promise<Journey[]> {
-    await this.sleep(150);
+    await this.sleep(120);
     const list = this.journeys.get(workspaceId) || [];
     if (!search || !search.trim()) {
       return JSON.parse(JSON.stringify(list));
@@ -103,7 +162,7 @@ export class MockSalesOsGateway implements SalesOsGateway {
   }
 
   async getJourneyById(journeyId: string): Promise<Journey | null> {
-    await this.sleep(80);
+    await this.sleep(60);
     for (const list of this.journeys.values()) {
       const match = list.find((j) => j.id === journeyId);
       if (match) return JSON.parse(JSON.stringify(match));
@@ -112,13 +171,13 @@ export class MockSalesOsGateway implements SalesOsGateway {
   }
 
   async getMessages(journeyId: string): Promise<Message[]> {
-    await this.sleep(100);
+    await this.sleep(80);
     const list = this.messages.get(journeyId) || [];
     return JSON.parse(JSON.stringify(list));
   }
 
   async claimHandoff(journeyId: string, operatorId: string, operatorName: string): Promise<Journey> {
-    await this.sleep(200);
+    await this.sleep(150);
     for (const [wsId, list] of this.journeys.entries()) {
       const index = list.findIndex((j) => j.id === journeyId);
       if (index !== -1) {
@@ -127,6 +186,7 @@ export class MockSalesOsGateway implements SalesOsGateway {
         list[index].assignedOperatorName = operatorName;
         list[index].unreadCount = 0;
         this.journeys.set(wsId, list);
+        this.persistJourneys();
         return JSON.parse(JSON.stringify(list[index]));
       }
     }
@@ -134,7 +194,7 @@ export class MockSalesOsGateway implements SalesOsGateway {
   }
 
   async releaseHandoff(journeyId: string): Promise<Journey> {
-    await this.sleep(200);
+    await this.sleep(150);
     for (const [wsId, list] of this.journeys.entries()) {
       const index = list.findIndex((j) => j.id === journeyId);
       if (index !== -1) {
@@ -142,10 +202,88 @@ export class MockSalesOsGateway implements SalesOsGateway {
         list[index].assignedOperatorId = undefined;
         list[index].assignedOperatorName = undefined;
         this.journeys.set(wsId, list);
+        this.persistJourneys();
         return JSON.parse(JSON.stringify(list[index]));
       }
     }
     throw new Error(`Journey ${journeyId} not found`);
+  }
+
+  async updateJourneyStage(
+    journeyId: string,
+    stage: CommercialStage,
+    options?: {
+      dealValueBrl?: number;
+      reason?: string;
+      operatorId?: string;
+      operatorName?: string;
+    }
+  ): Promise<Journey> {
+    await this.sleep(120);
+    for (const [wsId, list] of this.journeys.entries()) {
+      const index = list.findIndex((j) => j.id === journeyId);
+      if (index !== -1) {
+        const item = list[index];
+        item.stage = stage;
+        item.lastActivityAt = new Date().toISOString();
+
+        if (options?.dealValueBrl !== undefined) {
+          item.estimatedDealValueBrl = options.dealValueBrl;
+        }
+
+        if (stage === 'won') {
+          item.handoffStatus = 'resolved';
+          item.outcome = {
+            id: `out-${Date.now()}`,
+            journeyId: item.id,
+            status: 'won',
+            dealValueBrl: options?.dealValueBrl || item.estimatedDealValueBrl || (wsId === 'ws-escovaria' ? 149 : 850),
+            closedAt: new Date().toISOString(),
+            closedBy: options?.operatorName || 'Operador Comercial',
+            serviceOrProduct: item.knownFacts.find((f) => f.namespace === 'servico' || f.namespace === 'produto')?.value || 'Serviço Comercial',
+            reason: options?.reason || 'Fechamento concluído via WhatsApp',
+          };
+        } else if (stage === 'lost') {
+          item.handoffStatus = 'resolved';
+          item.outcome = {
+            id: `out-${Date.now()}`,
+            journeyId: item.id,
+            status: 'lost',
+            dealValueBrl: 0,
+            closedAt: new Date().toISOString(),
+            closedBy: options?.operatorName || 'Operador Comercial',
+            reason: options?.reason || 'Lead declinou proposta ou parou de responder',
+          };
+        } else {
+          // If moved back to an active stage, remove outcome
+          if (item.outcome) {
+            item.outcome = undefined;
+          }
+          if (item.handoffStatus === 'resolved') {
+            item.handoffStatus = 'in_progress';
+          }
+        }
+
+        this.journeys.set(wsId, list);
+        this.persistJourneys();
+        return JSON.parse(JSON.stringify(item));
+      }
+    }
+    throw new Error(`Journey ${journeyId} not found`);
+  }
+
+  async updateJourney(updated: Journey): Promise<Journey> {
+    await this.sleep(100);
+    for (const [wsId, list] of this.journeys.entries()) {
+      const index = list.findIndex((j) => j.id === updated.id);
+      if (index !== -1) {
+        list[index] = { ...updated, lastActivityAt: new Date().toISOString() };
+        this.journeys.set(wsId, list);
+        this.persistJourneys();
+        return JSON.parse(JSON.stringify(list[index]));
+      }
+    }
+    throw new Error(`Journey ${updated.id} not found`);
   }
 
   async sendMessage(payload: SendMessagePayload): Promise<Message> {
@@ -438,6 +576,39 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     });
     if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
     return res.json();
+  }
+
+  async updateJourneyStage(
+    journeyId: string,
+    stage: CommercialStage,
+    options?: {
+      dealValueBrl?: number;
+      reason?: string;
+      operatorId?: string;
+      operatorName?: string;
+    }
+  ): Promise<Journey> {
+    const res = await fetch(`${this.baseUrl}/journeys/${journeyId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage, ...options }),
+    });
+    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+    return res.json();
+  }
+
+  async updateJourney(updated: Journey): Promise<Journey> {
+    const res = await fetch(`${this.baseUrl}/journeys/${updated.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+    return res.json();
+  }
+
+  async resetJourneysToDefault(): Promise<void> {
+    await fetch(`${this.baseUrl}/reset`, { method: 'POST' });
   }
 
   async toggleChannelPause(channelId: string, pausedBy: string, reason?: string): Promise<Channel> {

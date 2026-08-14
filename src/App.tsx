@@ -13,8 +13,203 @@ import { CockpitView } from './components/cockpit/CockpitView';
 import { AllConversationsView } from './components/conversations/AllConversationsView';
 import { GroupsHubView } from './components/groups/GroupsHubView';
 import { TrafficProofView } from './components/results/TrafficProofView';
+import { ManagerDashboardView } from './components/dashboard/ManagerDashboardView';
 import { SettingsShell } from './components/settings/SettingsShell';
+import { CommercialKanbanView } from './components/kanban/CommercialKanbanView';
+import { SalesAiPlaybookView } from './components/intelligence/SalesAiPlaybookView';
+import { QaSimulatorView } from './components/intelligence/QaSimulatorView';
+import { CanaisView } from './components/channels/CanaisView';
 import { OfflineBanner } from './components/common/OfflineBanner';
+import { FeatureFlagProvider, useFeatureFlags } from './contexts/FeatureFlagContext';
+
+function AppContent({
+  workspaces,
+  currentWorkspace,
+  onSelectWorkspace,
+  journeys,
+  agencyGroups,
+  setAgencyGroups,
+  selectedJourneyId,
+  setSelectedJourneyId,
+  activeTab,
+  setActiveTab,
+  role,
+  setRole,
+  currentOperatorId,
+  currentOperatorName,
+  isOffline,
+  setIsOffline,
+  isNetworkErrorForced,
+  onSimulateIncomingLeadMessage,
+  onToggleForcedNetworkError,
+  handleUpdateJourney,
+}: {
+  workspaces: Workspace[];
+  currentWorkspace: Workspace;
+  onSelectWorkspace: (ws: Workspace) => void;
+  journeys: Journey[];
+  agencyGroups: WhatsAppGroup[];
+  setAgencyGroups: React.Dispatch<React.SetStateAction<WhatsAppGroup[]>>;
+  selectedJourneyId: string | undefined;
+  setSelectedJourneyId: (id: string) => void;
+  activeTab: NavigationTab;
+  setActiveTab: (tab: NavigationTab) => void;
+  role: OperatorRole;
+  setRole: (r: OperatorRole) => void;
+  currentOperatorId: string;
+  currentOperatorName: string;
+  isOffline: boolean;
+  setIsOffline: (off: boolean) => void;
+  isNetworkErrorForced: boolean;
+  onSimulateIncomingLeadMessage: () => void;
+  onToggleForcedNetworkError: () => void;
+  handleUpdateJourney: (j: Journey) => void;
+}) {
+  const { isFeatureEnabled } = useFeatureFlags();
+
+  const [intelligenceSubTab, setIntelligenceSubTab] = React.useState<any>('knowledge');
+  const [settingsSubTab, setSettingsSubTab] = React.useState<any>('ads_tracking');
+  const [groupSubTab, setGroupSubTab] = React.useState<any>('conversations');
+
+  // Safety fallback if active tab gets disabled via feature flag
+  React.useEffect(() => {
+    if (activeTab === 'grupos' && !isFeatureEnabled('agency_groups')) {
+      setActiveTab('agora');
+    }
+    if (activeTab === 'kanban' && !isFeatureEnabled('commercial_kanban')) {
+      setActiveTab('agora');
+    }
+    if (activeTab === 'resultados' && !isFeatureEnabled('traffic_proof')) {
+      setActiveTab('agora');
+    }
+  }, [activeTab, isFeatureEnabled, setActiveTab]);
+
+  const pendingCount = journeys.filter((j) => j.handoffStatus === 'pending_operator').length;
+  const pendingGroupsCount = agencyGroups.filter(
+    (g) => g.healthStatus === 'pending_action' || g.unreadCount > 0
+  ).length;
+
+  return (
+    <AppShell
+      workspaces={workspaces}
+      currentWorkspace={currentWorkspace}
+      onSelectWorkspace={onSelectWorkspace}
+      activeTab={activeTab}
+      onChangeTab={setActiveTab}
+      pendingPrioritiesCount={pendingCount}
+      pendingGroupsCount={pendingGroupsCount}
+      role={role}
+      onChangeRole={setRole}
+      onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
+      onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
+      isNetworkErrorForced={isNetworkErrorForced}
+      activeIntelligenceSubTab={intelligenceSubTab}
+      onChangeIntelligenceSubTab={setIntelligenceSubTab}
+      activeSettingsSubTab={settingsSubTab}
+      onChangeSettingsSubTab={setSettingsSubTab}
+      activeGroupSubTab={groupSubTab}
+      onChangeGroupSubTab={setGroupSubTab}
+    >
+      <OfflineBanner isOffline={isOffline} onReconnect={() => setIsOffline(false)} />
+
+      {activeTab === 'agora' && (
+        <CockpitView
+          workspace={currentWorkspace}
+          gateway={salesOsGateway}
+          journeys={journeys}
+          selectedJourneyId={selectedJourneyId}
+          onSelectJourney={(j) => setSelectedJourneyId(j.id)}
+          onUpdateJourney={handleUpdateJourney}
+          onViewAllConversations={() => setActiveTab('conversas')}
+          role={role}
+          currentOperatorId={currentOperatorId}
+          currentOperatorName={currentOperatorName}
+        />
+      )}
+
+      {activeTab === 'conversas' && (
+        <AllConversationsView
+          journeys={journeys}
+          channels={currentWorkspace.channels}
+          selectedJourneyId={selectedJourneyId}
+          onSelectJourney={(j) => setSelectedJourneyId(j.id)}
+          onGoToCockpit={(j) => {
+            setSelectedJourneyId(j.id);
+            setActiveTab('agora');
+          }}
+          onGoToKanban={() => setActiveTab('kanban')}
+          currentOperatorId={currentOperatorId}
+        />
+      )}
+
+      {activeTab === 'kanban' && isFeatureEnabled('commercial_kanban') && (
+        <CommercialKanbanView
+          journeys={journeys}
+          onSelectJourney={(j) => {
+            setSelectedJourneyId(j.id);
+          }}
+          onUpdateJourney={handleUpdateJourney}
+          onSwitchToCockpit={() => setActiveTab('agora')}
+          currentOperatorId={currentOperatorId}
+          role={role}
+        />
+      )}
+
+      {activeTab === 'grupos' && isFeatureEnabled('agency_groups') && (
+        <GroupsHubView
+          groups={agencyGroups}
+          onUpdateGroup={(updated) => {
+            setAgencyGroups((prev) =>
+              prev.map((g) => (g.id === updated.id ? updated : g))
+            );
+          }}
+          activeSubTab={groupSubTab}
+          onChangeSubTab={setGroupSubTab}
+        />
+      )}
+
+      {activeTab === 'analytics' && (
+        <ManagerDashboardView />
+      )}
+
+      {activeTab === 'resultados' && isFeatureEnabled('traffic_proof') && (
+        <TrafficProofView
+          workspace={currentWorkspace}
+          gateway={salesOsGateway}
+          journeys={journeys}
+        />
+      )}
+
+      {activeTab === 'playbook' && (
+        <SalesAiPlaybookView
+          currentWorkspace={currentWorkspace}
+          workspaces={workspaces}
+          onSelectWorkspace={onSelectWorkspace}
+          activeSubTab={intelligenceSubTab}
+          onChangeSubTab={setIntelligenceSubTab}
+        />
+      )}
+
+      {activeTab === 'simulador' && (
+        <QaSimulatorView
+          onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
+          onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
+          isNetworkErrorForced={isNetworkErrorForced}
+        />
+      )}
+
+
+
+      {activeTab === 'configuracoes' && (
+        <SettingsShell
+          workspace={currentWorkspace}
+          activeSubTab={settingsSubTab}
+          onChangeSubTab={setSettingsSubTab}
+        />
+      )}
+    </AppShell>
+  );
+}
 
 export default function App() {
   const [workspaces, setWorkspaces] = React.useState<Workspace[]>([]);
@@ -87,6 +282,10 @@ export default function App() {
     setJourneys((prev) =>
       prev.map((j) => (j.id === updated.id ? updated : j))
     );
+    // Persist to gateway storage
+    salesOsGateway.updateJourney(updated).catch((err) => {
+      console.error('Failed to persist journey to gateway:', err);
+    });
   };
 
   const handleSimulateIncomingLeadMessage = async () => {
@@ -110,11 +309,6 @@ export default function App() {
     setIsNetworkErrorForced(!isNetworkErrorForced);
   };
 
-  const pendingCount = journeys.filter((j) => j.handoffStatus === 'pending_operator').length;
-  const pendingGroupsCount = agencyGroups.filter(
-    (g) => g.healthStatus === 'pending_action' || g.unreadCount > 0
-  ).length;
-
   if (isLoading || !currentWorkspace) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">
@@ -129,73 +323,29 @@ export default function App() {
   }
 
   return (
-    <AppShell
-      workspaces={workspaces}
-      currentWorkspace={currentWorkspace}
-      onSelectWorkspace={handleSelectWorkspace}
-      activeTab={activeTab}
-      onChangeTab={setActiveTab}
-      pendingPrioritiesCount={pendingCount}
-      pendingGroupsCount={pendingGroupsCount}
-      role={role}
-      onChangeRole={setRole}
-      onSimulateIncomingLeadMessage={handleSimulateIncomingLeadMessage}
-      onSimulateNetworkErrorToggle={handleToggleForcedNetworkError}
-      isNetworkErrorForced={isNetworkErrorForced}
-    >
-      <OfflineBanner isOffline={isOffline} onReconnect={() => setIsOffline(false)} />
-
-      {activeTab === 'agora' && (
-        <CockpitView
-          workspace={currentWorkspace}
-          gateway={salesOsGateway}
-          journeys={journeys}
-          selectedJourneyId={selectedJourneyId}
-          onSelectJourney={(j) => setSelectedJourneyId(j.id)}
-          onUpdateJourney={handleUpdateJourney}
-          onViewAllConversations={() => setActiveTab('conversas')}
-          role={role}
-          currentOperatorId={currentOperatorId}
-          currentOperatorName={currentOperatorName}
-        />
-      )}
-
-      {activeTab === 'conversas' && (
-        <AllConversationsView
-          journeys={journeys}
-          channels={currentWorkspace.channels}
-          selectedJourneyId={selectedJourneyId}
-          onSelectJourney={(j) => setSelectedJourneyId(j.id)}
-          onGoToCockpit={(j) => {
-            setSelectedJourneyId(j.id);
-            setActiveTab('agora');
-          }}
-          currentOperatorId={currentOperatorId}
-        />
-      )}
-
-      {activeTab === 'grupos' && (
-        <GroupsHubView
-          groups={agencyGroups}
-          onUpdateGroup={(updated) => {
-            setAgencyGroups((prev) =>
-              prev.map((g) => (g.id === updated.id ? updated : g))
-            );
-          }}
-        />
-      )}
-
-      {activeTab === 'resultados' && (
-        <TrafficProofView
-          workspace={currentWorkspace}
-          gateway={salesOsGateway}
-          journeys={journeys}
-        />
-      )}
-
-      {activeTab === 'configuracoes' && (
-        <SettingsShell workspace={currentWorkspace} />
-      )}
-    </AppShell>
+    <FeatureFlagProvider workspace={currentWorkspace} role={role}>
+      <AppContent
+        workspaces={workspaces}
+        currentWorkspace={currentWorkspace}
+        onSelectWorkspace={handleSelectWorkspace}
+        journeys={journeys}
+        agencyGroups={agencyGroups}
+        setAgencyGroups={setAgencyGroups}
+        selectedJourneyId={selectedJourneyId}
+        setSelectedJourneyId={setSelectedJourneyId}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        role={role}
+        setRole={setRole}
+        currentOperatorId={currentOperatorId}
+        currentOperatorName={currentOperatorName}
+        isOffline={isOffline}
+        setIsOffline={setIsOffline}
+        isNetworkErrorForced={isNetworkErrorForced}
+        onSimulateIncomingLeadMessage={handleSimulateIncomingLeadMessage}
+        onToggleForcedNetworkError={handleToggleForcedNetworkError}
+        handleUpdateJourney={handleUpdateJourney}
+      />
+    </FeatureFlagProvider>
   );
 }

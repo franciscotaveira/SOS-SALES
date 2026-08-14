@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Message } from '../../types/cockpit';
-import { Check, CheckCheck, AlertTriangle, Bot, User, RotateCcw } from 'lucide-react';
+import { Check, CheckCheck, AlertTriangle, Bot, User, RotateCcw, Play, Pause, AudioLines, FileText, Sparkles } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: Message;
@@ -8,10 +8,14 @@ interface MessageBubbleProps {
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+
   const isLead = message.sender === 'lead';
   const isBot = message.sender === 'bot';
   const isOperator = message.sender === 'operator';
   const isFailed = message.status === 'failed';
+
+  const isAudio = message.mediaType === 'audio';
 
   return (
     <div
@@ -51,16 +55,69 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
         }`}
       >
         {/* Message Content */}
-        <div className="whitespace-pre-wrap break-words pr-2">
-          {message.text}
-        </div>
+        {isAudio ? (
+          <div className="flex flex-col gap-2 min-w-[220px]">
+            {/* Audio Player UI */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center shrink-0 hover:bg-slate-200 transition-colors"
+              >
+                {isPlaying ? <Pause className="w-5 h-5 text-slate-600" /> : <Play className="w-5 h-5 text-slate-600 ml-1" />}
+              </button>
+              <div className="flex-1 flex flex-col gap-1">
+                <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                  <div className={`h-full bg-slate-400 rounded-full transition-all duration-1000 ${isPlaying ? 'w-1/2' : 'w-0'}`} />
+                </div>
+                <div className="flex justify-between items-center text-[10px] text-slate-500 font-medium">
+                  <span>{isPlaying ? '0:15' : '0:00'}</span>
+                  <div className="flex items-center gap-1">
+                    <AudioLines className="w-3 h-3" />
+                    {message.audioDuration || '0:34'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Summary and Transcript */}
+            {(message.transcript || (message.audioSummary && message.audioSummary.length > 0)) && (
+              <div className="mt-1 border-t border-slate-100 pt-2 space-y-2">
+                {message.audioSummary && message.audioSummary.length > 0 && (
+                  <div className="bg-purple-50 rounded-lg p-2 text-xs border border-purple-100">
+                    <div className="flex items-center gap-1.5 font-bold text-purple-900 mb-1">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                      Resumo da IA:
+                    </div>
+                    <ul className="list-disc pl-4 space-y-0.5 text-purple-800 leading-tight">
+                      {message.audioSummary.map((point, idx) => (
+                        <li key={idx}>{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {message.transcript && (
+                  <div className="text-[11px] text-slate-500 italic bg-slate-50 p-2 rounded-lg border border-slate-100 leading-snug">
+                    <span className="font-bold flex items-center gap-1 mb-0.5 text-slate-600 not-italic">
+                      <FileText className="w-3 h-3" /> Transcrição:
+                    </span>
+                    "{message.transcript}"
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="whitespace-pre-wrap break-words pr-2">
+            {message.text}
+          </div>
+        )}
 
         {/* Integrated WhatsApp Timestamp & Checkmarks */}
         <div className="flex items-center justify-end gap-1 float-right ml-3 mt-0.5 select-none">
           <span className="text-[10.5px] text-[#667781] font-normal leading-none">
             {message.timestamp}
           </span>
-
           {!isLead && (
             <span className="inline-flex items-center leading-none">
               {message.status === 'sending' && (
@@ -81,7 +138,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
             </span>
           )}
         </div>
-
         <div className="clear-both" />
 
         {/* Failed Retry Option */}
@@ -103,4 +159,3 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
     </div>
   );
 };
-

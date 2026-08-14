@@ -1,4 +1,6 @@
-export type OperatorRole = 'operator' | 'viewer' | 'supervisor';
+import { FeatureFlagKey, WorkspaceTier } from './featureFlags';
+
+export type OperatorRole = 'owner' | 'supervisor' | 'operator' | 'viewer';
 
 export type HandoffStatus = 'pending_operator' | 'in_progress' | 'bot_handling' | 'resolved';
 
@@ -120,6 +122,9 @@ export interface Message {
   status: MessageStatus;
   mediaUrl?: string;
   mediaType?: 'image' | 'audio' | 'document';
+  transcript?: string;
+  audioSummary?: string[];
+  audioDuration?: string;
   isInternalNote?: boolean;
 }
 
@@ -141,8 +146,19 @@ export type CommercialStage =
   | 'contacted'
   | 'qualified'
   | 'proposal'
+  | 'negotiation'
   | 'won'
   | 'lost';
+
+export interface MemoryNote {
+  id: string;
+  category: 'preference' | 'budget' | 'decision_maker' | 'past_history' | 'objection' | 'personal';
+  content: string;
+  learnedAt: string;
+  source: 'ai_extracted' | 'operator_manual';
+  confidence: 'high' | 'medium';
+  isPinned?: boolean;
+}
 
 export interface MacroShortcut {
   id: string;
@@ -188,6 +204,7 @@ export interface Journey {
   
   // Pipeline & Commercial Stage
   stage?: CommercialStage;
+  estimatedDealValueBrl?: number;
   followUpSchedule?: FollowUpSchedule;
   
   // Handoff & SLA
@@ -206,9 +223,11 @@ export interface Journey {
   acquisition: AcquisitionContext;
   lastLeadMessage: string;
   lastActivityAt: string;
+  lastMessageDeliveryStatus?: MessageStatus;
   
-  // Facts & AI recommendation
+  // Facts, AI memory & AI recommendation
   knownFacts: KnownFact[];
+  memoryNotes?: MemoryNote[];
   dossier?: LiveDossierData;
   continuitySteps?: ContinuityStep[];
   recommendation?: Recommendation;
@@ -228,6 +247,8 @@ export interface Workspace {
   tagline: string;
   activeOperatorCount: number;
   channels: Channel[];
+  tier?: WorkspaceTier;
+  featureFlags?: Partial<Record<FeatureFlagKey, boolean>>;
 }
 
 export interface OperatorState {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Journey, Channel, OperatorRole, CommercialStage, FollowUpSchedule } from '../../types/cockpit';
-import { Phone, Clock, UserCheck, UserPlus, Award, BellRing, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Phone, Clock, UserCheck, UserPlus, Award, BellRing, CheckCircle2, ShieldCheck, Layers, PanelRightClose, PanelRightOpen, Sparkles } from 'lucide-react';
 import { CommercialStageSelector } from './CommercialStageSelector';
 import { SnoozeFollowUpModal } from './SnoozeFollowUpModal';
 
@@ -15,6 +15,8 @@ interface ConversationHeaderProps {
   onOpenOutcomeModal: () => void;
   onStageChange?: (newStage: CommercialStage) => void;
   onScheduleFollowUp?: (schedule: FollowUpSchedule) => void;
+  isDossierOpen?: boolean;
+  onToggleDossier?: () => void;
 }
 
 export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
@@ -28,6 +30,8 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
   onOpenOutcomeModal,
   onStageChange,
   onScheduleFollowUp,
+  isDossierOpen = false,
+  onToggleDossier,
 }) => {
   const [isSnoozeModalOpen, setIsSnoozeModalOpen] = React.useState(false);
   const isMine = journey.assignedOperatorId === currentOperatorId;
@@ -177,6 +181,28 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
                 </div>
               )}
             </>
+          )}
+
+          {/* Dossiê Vivo Drawer/Panel Toggle Button */}
+          {onToggleDossier && (
+            <button
+              id="header-toggle-dossier-btn"
+              onClick={onToggleDossier}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-2xs ${
+                isDossierOpen
+                  ? 'bg-indigo-100 text-indigo-900 border border-indigo-300 hover:bg-indigo-200/80'
+                  : 'bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50'
+              }`}
+              title={isDossierOpen ? 'Recolher Dossiê Vivo (Liberar espaço)' : 'Abrir Dossiê Vivo de Decisão'}
+            >
+              <Layers className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="hidden sm:inline">Dossiê</span>
+              {isDossierOpen ? (
+                <PanelRightClose className="w-3.5 h-3.5 text-indigo-600 hidden md:inline" />
+              ) : (
+                <PanelRightOpen className="w-3.5 h-3.5 text-indigo-600 hidden md:inline" />
+              )}
+            </button>
           )}
         </div>
       </div>

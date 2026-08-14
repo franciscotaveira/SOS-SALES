@@ -2,6 +2,32 @@
 
 @layer base {
   :root {
+    /* Brand & Typography Tokens */
+    --font-heading: 'Sora', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    /* Semantic Palette Tokens */
+    --sos-canvas: #F5F7FA;
+    --sos-surface: #FFFFFF;
+    --sos-ink: #101828;
+    --sos-muted: #667085;
+    --sos-action: #059669;
+    --sos-action-hover: #047857;
+    --sos-action-subtle: #ECFDF5;
+    --sos-operational: #2563EB;
+    --sos-operational-hover: #1D4ED8;
+    --sos-operational-subtle: #EFF6FF;
+    --sos-ai: #7C3AED;
+    --sos-ai-subtle: #F5F3FF;
+    --sos-warning: #D97706;
+    --sos-warning-subtle: #FFFBEB;
+    --sos-danger: #DC2626;
+    --sos-danger-subtle: #FEF2F2;
+    --sos-structural-dark: #0F172A;
+    --sos-border: #E2E8F0;
+    --sos-border-strong: #CBD5E1;
+
     /* WhatsApp Authentic Theme Tokens */
     --wa-primary: #00a884;
     --wa-primary-hover: #008069;
@@ -14,40 +40,29 @@
     --wa-chat-header: #f0f2f5;
     --wa-tick-blue: #53bdeb;
     --wa-tick-grey: #8696a0;
-    --wa-text-primary: #111b21;
-    --wa-text-secondary: #667781;
+    --wa-text-primary: #101828;
+    --wa-text-secondary: #667085;
     --wa-border: #e9edef;
-    
-    /* Sales OS Action Tokens */
-    --sales-action: #00a884;
-    --sales-action-hover: #008069;
-    --sales-action-subtle: #e7f8e8;
-    --sales-success: #10b981;
-    --sales-success-subtle: #ecfdf5;
-    --sales-ai: #7c3aed;
-    --sales-ai-subtle: #f5f3ff;
-    --sales-attention: #d97706;
-    --sales-attention-subtle: #fffbeb;
-    --sales-blocked: #dc2626;
-    --sales-blocked-subtle: #fef2f2;
-    --sales-ink: #111b21;
-    --sales-ink-muted: #667781;
-    --sales-surface: #f0f2f5;
-    --sales-surface-card: #ffffff;
-    --sales-border: #e2e8f0;
-    --sales-border-strong: #cbd5e1;
   }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: var(--wa-text-primary);
-    background-color: var(--sales-surface);
+    font-family: var(--font-body);
+    color: var(--sos-ink);
+    background-color: var(--sos-canvas);
     -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, .font-heading {
+    font-family: var(--font-heading);
+  }
+
+  code, kbd, samp, pre, .font-mono {
+    font-family: var(--font-mono);
   }
 
   /* Accessible focus states */
   *:focus-visible {
-    outline: 2px solid var(--wa-primary);
+    outline: 2px solid var(--sos-action);
     outline-offset: 2px;
   }
 }
@@ -67,17 +82,17 @@
   box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
 }
 
-/* Custom Cockpit Utilities */
+/* Custom Cockpit Bounded Panels */
 .cockpit-panel {
-  background-color: var(--sales-surface-card);
-  border: 1px solid var(--sales-border);
+  background-color: var(--sos-surface);
+  border: 1px solid var(--sos-border);
   border-radius: 0.85rem;
   box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
 }
 
 .cockpit-panel-header {
-  border-bottom: 1px solid var(--sales-border);
-  background-color: #f0f2f5;
+  border-bottom: 1px solid var(--sos-border);
+  background-color: #f8fafc;
   border-top-left-radius: 0.85rem;
   border-top-right-radius: 0.85rem;
 }

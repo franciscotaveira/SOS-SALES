@@ -1,5 +1,6 @@
 import React from 'react';
 import { WhatsAppGroup, WhatsAppEngineType, GroupCategory } from '../../types/groupsAndEngines';
+import { GroupMonitor } from './GroupMonitor';
 import {
   Users,
   Search,
@@ -20,31 +21,73 @@ import {
   Check,
   Smile,
   Paperclip,
+  Megaphone,
+  Play,
+  Pause,
+  Volume2,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  TrendingUp,
+  Activity,
 } from 'lucide-react';
 
 interface GroupsHubViewProps {
   groups: WhatsAppGroup[];
   onUpdateGroup?: (updated: WhatsAppGroup) => void;
+  activeSubTab?: 'conversations' | 'monitor' | 'broadcast';
+  onChangeSubTab?: (subTab: 'conversations' | 'monitor' | 'broadcast') => void;
 }
 
 export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
   groups: initialGroups,
   onUpdateGroup,
+  activeSubTab: externalActiveSubTab,
+  onChangeSubTab: externalOnChangeSubTab,
 }) => {
   const [groups, setGroups] = React.useState<WhatsAppGroup[]>(initialGroups);
+  const [internalSubTab, setInternalSubTab] = React.useState<'conversations' | 'monitor' | 'broadcast'>('conversations');
+  const activeSubTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalSubTab;
+  const setActiveSubTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalSubTab;
+
+  const [hubMode, setHubMode] = React.useState<'conversations' | 'monitor'>('conversations');
   const [selectedGroupId, setSelectedGroupId] = React.useState<string>(
     initialGroups[0]?.id || ''
   );
   const [search, setSearch] = React.useState('');
+  const [clientFilter, setClientFilter] = React.useState<string>('all');
   const [categoryFilter, setCategoryFilter] = React.useState<string>('all');
   const [engineFilter, setEngineFilter] = React.useState<string>('all');
   const [quickReplyText, setQuickReplyText] = React.useState('');
   const [activeTab, setActiveTab] = React.useState<'chat' | 'tasks' | 'settings'>('chat');
+  const [isDigestOpen, setIsDigestOpen] = React.useState(true);
+  const [isBroadcastModalOpen, setIsBroadcastModalOpen] = React.useState(false);
+  const [broadcastText, setBroadcastText] = React.useState('');
+  const [broadcastEngine, setBroadcastEngine] = React.useState<WhatsAppEngineType>('waha');
+  const [broadcastTarget, setBroadcastTarget] = React.useState<'all' | 'clients' | 'launches'>('clients');
+  const [broadcastSuccess, setBroadcastSuccess] = React.useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = React.useState(false);
+
+  React.useEffect(() => {
+    if (activeSubTab === 'conversations') {
+      setHubMode('conversations');
+      setIsBroadcastModalOpen(false);
+    } else if (activeSubTab === 'monitor') {
+      setHubMode('monitor');
+      setIsBroadcastModalOpen(false);
+    } else if (activeSubTab === 'broadcast') {
+      setIsBroadcastModalOpen(true);
+    }
+  }, [activeSubTab]);
 
   const selectedGroup = React.useMemo(
     () => groups.find((g) => g.id === selectedGroupId) || groups[0],
     [groups, selectedGroupId]
   );
+
+  const uniqueClients = React.useMemo(() => {
+    return ['all', ...Array.from(new Set(groups.map((g) => g.clientName)))];
+  }, [groups]);
 
   const filteredGroups = React.useMemo(() => {
     return groups.filter((g) => {
@@ -55,11 +98,12 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
         g.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()));
 
       if (!matchesSearch) return false;
+      if (clientFilter !== 'all' && g.clientName !== clientFilter) return false;
       if (categoryFilter !== 'all' && g.category !== categoryFilter) return false;
       if (engineFilter !== 'all' && g.engine !== engineFilter) return false;
       return true;
     });
-  }, [groups, search, categoryFilter, engineFilter]);
+  }, [groups, search, clientFilter, categoryFilter, engineFilter]);
 
   const pendingAttentionCount = groups.filter(
     (g) => g.healthStatus === 'pending_action' || g.unreadCount > 0
@@ -83,7 +127,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
             pendingTaskCount: Math.max(0, g.pendingTaskCount - 1),
           }
         : g
-      );
+    );
     setGroups(updated);
   };
 
@@ -117,9 +161,198 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     setGroups(updated);
   };
 
+  const handleExecuteBroadcast = () => {
+    if (!broadcastText.trim()) return;
+
+    const updated = groups.map((g) => {
+      const isTarget =
+        broadcastTarget === 'all' ||
+        (broadcastTarget === 'clients' && g.category === 'client_account') ||
+        (broadcastTarget === 'launches' && g.category === 'launch_squad');
+
+      if (isTarget) {
+        return {
+          ...g,
+          lastMessage: {
+            sender: 'Você (Comunicado Agência)',
+            text: broadcastText.trim(),
+            timestamp: 'Agora',
+            isClient: false,
+          },
+        };
+      }
+      return g;
+    });
+
+    setGroups(updated);
+    setBroadcastSuccess(true);
+    setTimeout(() => {
+      setBroadcastSuccess(false);
+      setIsBroadcastModalOpen(false);
+      setBroadcastText('');
+    }, 1200);
+  };
+
   return (
-    <div id="groups-hub-view" className="p-3 sm:p-5 max-w-7xl mx-auto space-y-4">
-      {/* Top Banner: Agency Command Center Overview */}
+    <div id="groups-hub-view" className="h-full overflow-y-auto w-full p-3 sm:p-5 max-w-7xl mx-auto space-y-4">
+      {/* Broadcast Modal */}
+      {isBroadcastModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-[#e7f8e8] text-[#00a884] flex items-center justify-center font-bold">
+                  <Megaphone className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-[#111b21]">
+                    Disparo de Comunicado em Lote para Grupos
+                  </h3>
+                  <p className="text-[11px] text-[#667781]">
+                    Envie avisos simultâneos para os grupos de clientes da agência
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsBroadcastModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Target Selector */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#111b21]">Destinatários & Segmentação Comportamental:</label>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <button
+                  onClick={() => setBroadcastTarget('clients')}
+                  className={`p-2 rounded-xl border text-center font-bold transition-all ${
+                    broadcastTarget === 'clients'
+                      ? 'bg-[#e7f8e8] border-[#00a884] text-[#00a884]'
+                      : 'bg-[#f0f2f5] border-transparent text-[#54656f]'
+                  }`}
+                >
+                  12 Clientes Ativos
+                </button>
+                <button
+                  onClick={() => setBroadcastTarget('launches')}
+                  className={`p-2 rounded-xl border text-center font-bold transition-all ${
+                    broadcastTarget === 'launches'
+                      ? 'bg-[#e7f8e8] border-[#00a884] text-[#00a884]'
+                      : 'bg-[#f0f2f5] border-transparent text-[#54656f]'
+                  }`}
+                >
+                  Squads Lançamento
+                </button>
+                <button
+                  onClick={() => setBroadcastTarget('all')}
+                  className={`p-2 rounded-xl border text-center font-bold transition-all ${
+                    broadcastTarget === 'all'
+                      ? 'bg-[#e7f8e8] border-[#00a884] text-[#00a884]'
+                      : 'bg-[#f0f2f5] border-transparent text-[#54656f]'
+                  }`}
+                >
+                  Todos os Grupos
+                </button>
+              </div>
+
+              {/* Engagement Segmentation Filter */}
+              <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                <div className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                  <span>Filtro de Engajamento Comportamental:</span>
+                  <span className="text-[10px] text-purple-700 font-mono">IA Scoring Ativo</span>
+                </div>
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" defaultChecked className="rounded accent-[#00a884]" />
+                    <span className="text-slate-700">Apenas Alta Atividade (&gt;80%)</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" defaultChecked className="rounded accent-[#00a884]" />
+                    <span className="text-slate-700">Excluir Grupos Silenciosos (&lt;3 dias)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Engine Route Selector */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#111b21]">Canal de Disparo:</label>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <button
+                  onClick={() => setBroadcastEngine('waha')}
+                  className={`p-2 rounded-xl border flex items-center justify-between font-bold transition-all ${
+                    broadcastEngine === 'waha'
+                      ? 'bg-blue-50 border-blue-500 text-blue-800'
+                      : 'bg-[#f0f2f5] border-transparent text-[#54656f]'
+                  }`}
+                >
+                  <span>🔵 WAHA Hub (Sem Custo HSM)</span>
+                  {broadcastEngine === 'waha' && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
+                </button>
+                <button
+                  onClick={() => setBroadcastEngine('waba')}
+                  className={`p-2 rounded-xl border flex items-center justify-between font-bold transition-all ${
+                    broadcastEngine === 'waba'
+                      ? 'bg-[#e7f8e8] border-[#00a884] text-[#00a884]'
+                      : 'bg-[#f0f2f5] border-transparent text-[#54656f]'
+                  }`}
+                >
+                  <span>🟢 WABA Oficial (Meta Cloud)</span>
+                  {broadcastEngine === 'waba' && <CheckCircle2 className="w-3.5 h-3.5 text-[#00a884]" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Broadcast Message Input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#111b21]">Texto do Comunicado:</label>
+              <textarea
+                value={broadcastText}
+                onChange={(e) => setBroadcastText(e.target.value)}
+                rows={3}
+                placeholder="Ex: Equipe, favor conferir o saldo de recarga no Meta Ads antes do feriado..."
+                className="w-full p-3 text-xs bg-[#f0f2f5] rounded-xl border-none outline-none focus:ring-1 focus:ring-[#00a884] text-[#111b21]"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#e2e8f0]">
+              <button
+                onClick={() => setIsBroadcastModalOpen(false)}
+                className="px-3 py-1.5 text-xs font-semibold text-[#54656f] hover:text-[#111b21]"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleExecuteBroadcast}
+                disabled={!broadcastText.trim()}
+                className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 ${
+                  broadcastSuccess
+                    ? 'bg-emerald-600 text-white'
+                    : broadcastText.trim()
+                    ? 'bg-[#00a884] hover:bg-[#008069] text-white shadow-xs'
+                    : 'bg-slate-300 text-white cursor-not-allowed'
+                }`}
+              >
+                {broadcastSuccess ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Disparado com Sucesso!</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Disparar para os Grupos</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top Header: Agency Command Center Overview */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[#e2e8f0]">
         <div>
           <div className="flex items-center gap-2">
@@ -135,26 +368,160 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
           </p>
         </div>
 
-        {/* Quick Agency Metrics */}
-        <div className="flex items-center gap-2">
+        {/* Quick Agency Metrics & Actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Sub-view Toggle */}
+          <div className="flex items-center gap-1 bg-[#f0f2f5] p-1 rounded-xl border border-[#e2e8f0]">
+            <button
+              onClick={() => {
+                setHubMode('conversations');
+                setActiveSubTab('conversations');
+              }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                hubMode === 'conversations' && !isBroadcastModalOpen
+                  ? 'bg-white text-[#00a884] shadow-2xs'
+                  : 'text-[#54656f] hover:text-[#111b21]'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Painel de Conversas</span>
+            </button>
+            <button
+              onClick={() => {
+                setHubMode('monitor');
+                setActiveSubTab('monitor');
+              }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                hubMode === 'monitor' && !isBroadcastModalOpen
+                  ? 'bg-white text-purple-700 shadow-2xs'
+                  : 'text-[#54656f] hover:text-purple-600'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
+              <span>Grupo Monitor (SLA & Métricas)</span>
+            </button>
+          </div>
+
+          <button
+            onClick={() => {
+              setIsBroadcastModalOpen(true);
+              setActiveSubTab('broadcast');
+            }}
+            className={`px-3 py-1.5 rounded-xl shadow-2xs text-xs flex items-center gap-1.5 font-bold transition-colors border ${
+              isBroadcastModalOpen
+                ? 'bg-emerald-600 text-white border-emerald-700'
+                : 'bg-white hover:bg-slate-50 border-[#e2e8f0] text-[#111b21]'
+            }`}
+          >
+            <Megaphone className="w-3.5 h-3.5 text-[#00a884]" />
+            <span>Aviso em Lote</span>
+          </button>
+
           <div className="bg-white border border-[#e2e8f0] px-3 py-1.5 rounded-xl shadow-2xs text-xs flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
             <span className="font-bold text-[#111b21]">
               {pendingAttentionCount} grupos
             </span>
-            <span className="text-[#667781]">precisam de resposta</span>
+            <span className="text-[#667781]">com pendência</span>
           </div>
 
           <div className="bg-[#f0f2f5] border border-[#e2e8f0] px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 text-[#54656f]">
             <Layers className="w-3.5 h-3.5 text-[#00a884]" />
-            <span>Multi-Engine Ativo</span>
+            <span>Híbrido WABA/WAHA</span>
           </div>
         </div>
       </div>
 
-      {/* Main 2-Column Split: Groups Navigation Sidebar & Selected Group Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        {/* Left Column: Group Search & List (4 cols) */}
+      {/* AI Daily Digest Banner (O que aconteceu nos 12 grupos hoje) */}
+      <div className="bg-gradient-to-r from-emerald-50/90 via-teal-50/80 to-white border border-emerald-200/90 rounded-2xl p-3.5 shadow-2xs">
+        <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsDigestOpen(!isDigestOpen)}>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-[#00a884] text-white flex items-center justify-center shadow-2xs">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-xs text-[#111b21] flex items-center gap-2">
+                <span>Resumo Inteligente SOS: O que aconteceu nos seus 12 grupos</span>
+                <span className="text-[10px] bg-white text-[#00a884] border border-[#00a884]/30 px-2 py-0.2 rounded-full font-bold">
+                  IA Copilot
+                </span>
+              </div>
+              <p className="text-[11px] text-[#54656f]">
+                3 demandas prioritárias extraídas das conversas dos clientes esta manhã.
+              </p>
+            </div>
+          </div>
+          <button className="text-[#54656f] hover:text-[#111b21] p-1">
+            {isDigestOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {isDigestOpen && (
+          <div className="mt-3 pt-3 border-t border-emerald-200/60 grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
+            <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between font-bold text-[#111b21] text-[11.5px]">
+                <span>🔥 Titanium Auto</span>
+                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-mono">Aumento Verba</span>
+              </div>
+              <p className="text-[11px] text-[#54656f] line-clamp-2">
+                Márcio aprovou aumento para R$ 150/dia no PPF Térmico. Subir novo vídeo.
+              </p>
+            </div>
+
+            <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between font-bold text-[#111b21] text-[11.5px]">
+                <span>⚖️ Advocacia Rocha</span>
+                <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded font-mono">Pausa Anúncio</span>
+              </div>
+              <p className="text-[11px] text-[#54656f] line-clamp-2">
+                Dr. Leonardo pediu pausa nos anúncios trabalhistas por excesso de audiências.
+              </p>
+            </div>
+
+            <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between font-bold text-[#111b21] text-[11.5px]">
+                <span>🏠 Prime Horizon</span>
+                <span className="text-[10px] text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded font-mono">Material Comercial</span>
+              </div>
+              <p className="text-[11px] text-[#54656f] line-clamp-2">
+                Camila solicitou link atualizado da tabela para os corretores atenderem no WhatsApp.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* View Conditional: Group Monitor or Standard 2-Column Split */}
+      {hubMode === 'monitor' ? (
+        <GroupMonitor
+          groups={groups}
+          onSelectGroup={(groupId) => {
+            setSelectedGroupId(groupId);
+            setHubMode('conversations');
+          }}
+          onQuickRespond={(groupId, message) => {
+            const updated = groups.map((g) =>
+              g.id === groupId
+                ? {
+                    ...g,
+                    unreadCount: 0,
+                    healthStatus: 'active' as const,
+                    lastMessage: {
+                      sender: 'Você (Gestor)',
+                      text: message,
+                      timestamp: 'Agora',
+                      isClient: false,
+                    },
+                  }
+                : g
+            );
+            setGroups(updated);
+          }}
+        />
+      ) : (
+        /* Main 2-Column Split: Groups Navigation Sidebar & Selected Group Workspace */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+        {/* Left Column: Group Search & List (5 cols) */}
         <div className="lg:col-span-5 space-y-3">
           {/* Search & Filter Bar */}
           <div className="bg-white p-2.5 rounded-xl border border-[#e2e8f0] shadow-2xs space-y-2">
@@ -167,6 +534,27 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                 placeholder="Buscar grupo, cliente ou tag..."
                 className="w-full pl-9 pr-3 py-1.5 text-xs text-[#111b21] bg-[#f0f2f5] rounded-lg border-none focus:ring-1 focus:ring-[#00a884] placeholder:text-[#8696a0]"
               />
+            </div>
+
+            {/* Client Account Filter */}
+            <div className="flex items-center gap-2 pt-0.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-[#54656f] shrink-0">
+                Cliente:
+              </label>
+              <select
+                value={clientFilter}
+                onChange={(e) => setClientFilter(e.target.value)}
+                className="w-full text-xs font-semibold bg-[#f0f2f5] text-[#111b21] border-none rounded-lg px-2.5 py-1 focus:ring-1 focus:ring-[#00a884]"
+              >
+                <option value="all">🏢 Todos os Clientes da Agência</option>
+                {uniqueClients
+                  .filter((c) => c !== 'all')
+                  .map((client) => (
+                    <option key={client} value={client}>
+                      🏢 {client}
+                    </option>
+                  ))}
+              </select>
             </div>
 
             {/* Filter pills */}
@@ -267,7 +655,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                               : 'bg-blue-100 text-blue-800 border border-blue-300'
                           }`}
                         >
-                          {grp.engine.toUpperCase()}
+                          {grp.engine ? grp.engine.toUpperCase() : 'WAHA'}
                         </span>
 
                         {grp.unreadCount > 0 && (
@@ -376,7 +764,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
               </div>
             </div>
 
-            {/* Sub-Tabs: Conversa Rápida | Demandas & Pauta | Inteligência de Tráfego */}
+            {/* Sub-Tabs */}
             <div className="flex items-center gap-4 px-4 py-2 border-b border-[#f0f2f5] bg-white text-xs font-semibold text-[#54656f]">
               <button
                 onClick={() => setActiveTab('chat')}
@@ -406,7 +794,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                     : 'border-transparent hover:text-[#111b21]'
                 }`}
               >
-                ⚙️ Roteamento de Engine ({selectedGroup.engine.toUpperCase()})
+                ⚙️ Roteamento de Engine ({selectedGroup.engine ? selectedGroup.engine.toUpperCase() : 'WAHA'})
               </button>
             </div>
 
@@ -436,6 +824,41 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* Simulated Voice Message Bubble from Client */}
+                  {selectedGroup.id === 'grp-01' && (
+                    <div className="flex flex-col items-start">
+                      <div className="bg-white text-[#111b21] max-w-[85%] p-2.5 rounded-lg wa-bubble-shadow text-[13px] space-y-1.5">
+                        <div className="text-[10.5px] font-bold text-[#00a884]">
+                          Renata (Sócia Bella) · Mensagem de Voz (0:28)
+                        </div>
+                        <div className="flex items-center gap-3 bg-[#f0f2f5] p-2 rounded-xl">
+                          <button
+                            onClick={() => setIsPlayingAudio(!isPlayingAudio)}
+                            className="w-8 h-8 rounded-full bg-[#00a884] text-white flex items-center justify-center shrink-0 shadow-2xs"
+                          >
+                            {isPlayingAudio ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                          </button>
+                          {/* Audio Waveform visualization */}
+                          <div className="flex-1 flex items-center gap-0.5 h-6">
+                            {[12, 24, 18, 32, 14, 28, 40, 20, 16, 30, 36, 22, 14, 26, 18, 10].map((h, idx) => (
+                              <span
+                                key={idx}
+                                style={{ height: `${h}px` }}
+                                className={`w-1 rounded-full transition-all ${
+                                  isPlayingAudio ? 'bg-[#00a884] animate-pulse' : 'bg-slate-300'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-[11px] font-mono text-[#667781]">0:28</span>
+                        </div>
+                        <div className="text-[10.5px] text-[#667781] bg-amber-50 p-1.5 rounded border border-amber-200/60">
+                          🤖 <b>Transcrição IA:</b> <i>"Oi equipe, conseguimos dar um foco no sábado para os atendimentos de noiva? Valeu!"</i>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Operational Notes Badge */}
                   {selectedGroup.notes && (
@@ -627,6 +1050,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
           </div>
         )}
       </div>
-    </div>
-  );
+    )}
+  </div>
+);
 };

@@ -51,7 +51,7 @@ export const PriorityQueue: React.FC<PriorityQueueProps> = ({
   const criticalCount = journeys.filter((j) => j.slaStatus === 'critical').length;
 
   return (
-    <div id="priority-queue-panel" className="cockpit-panel flex flex-col h-full overflow-hidden">
+    <div id="priority-queue-panel" className="cockpit-panel flex flex-col h-full max-h-full min-h-0 overflow-hidden">
       {/* Panel Header */}
       <div className="cockpit-panel-header px-4 py-3 shrink-0 flex items-center justify-between">
         <div>
@@ -94,7 +94,7 @@ export const PriorityQueue: React.FC<PriorityQueueProps> = ({
       </div>
 
       {/* List content */}
-      <div className="p-3 overflow-y-auto flex-1 space-y-2.5">
+      <div className="p-3 overflow-y-auto flex-1 min-h-0 space-y-2.5">
         {isLoading ? (
           <div className="text-center py-12 px-4 space-y-2">
             <Loader2 className="w-6 h-6 text-blue-600 animate-spin mx-auto" />

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Journey, Channel, OperatorRole } from '../../types/cockpit';
-import { Search, Filter, Phone, Clock, User, CheckCircle2, AlertCircle, MessageSquare } from 'lucide-react';
+import { Search, Filter, Phone, Clock, User, CheckCircle2, AlertCircle, MessageSquare, Columns3 } from 'lucide-react';
 
 interface AllConversationsViewProps {
   journeys: Journey[];
@@ -8,6 +8,7 @@ interface AllConversationsViewProps {
   selectedJourneyId?: string;
   onSelectJourney: (journey: Journey) => void;
   onGoToCockpit: (journey: Journey) => void;
+  onGoToKanban?: () => void;
   currentOperatorId: string;
 }
 
@@ -17,6 +18,7 @@ export const AllConversationsView: React.FC<AllConversationsViewProps> = ({
   selectedJourneyId,
   onSelectJourney,
   onGoToCockpit,
+  onGoToKanban,
   currentOperatorId,
 }) => {
   const [search, setSearch] = React.useState('');
@@ -39,7 +41,7 @@ export const AllConversationsView: React.FC<AllConversationsViewProps> = ({
   }, [journeys, search, statusFilter, currentOperatorId]);
 
   return (
-    <div id="all-conversations-view" className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
+    <div id="all-conversations-view" className="h-full overflow-y-auto w-full p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
       {/* Header with Search and Filter */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200">
         <div>
@@ -47,7 +49,20 @@ export const AllConversationsView: React.FC<AllConversationsViewProps> = ({
           <p className="text-xs text-slate-500">Histórico completo de atendimentos e jornadas</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Visualizar como Kanban Button */}
+          {onGoToKanban && (
+            <button
+              id="view-as-kanban-btn"
+              onClick={onGoToKanban}
+              className="px-3 py-1.5 bg-[#e7f8e8] hover:bg-[#d1fae5] text-[#00a884] border border-[#a7f3d0] rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+              title="Alternar para visualização de funil Kanban"
+            >
+              <Columns3 className="w-3.5 h-3.5" />
+              <span>Visualizar como Kanban</span>
+            </button>
+          )}
+
           {/* Search bar */}
           <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />

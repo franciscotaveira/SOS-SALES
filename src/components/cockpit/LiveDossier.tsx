@@ -4,6 +4,7 @@ import { KnownFactItem } from './KnownFactItem';
 import { ChannelStatus } from './ChannelStatus';
 import { HandoffControls } from './HandoffControls';
 import { EvidenceModal } from './EvidenceModal';
+import { MemoryNotesPanel } from './MemoryNotesPanel';
 import {
   Globe,
   Tag,
@@ -18,6 +19,12 @@ import {
   Award,
   Layers,
   Sparkles,
+  Brain,
+  Minimize2,
+  Maximize2,
+  X,
+  PanelRightClose,
+  Columns3,
 } from 'lucide-react';
 
 interface LiveDossierProps {
@@ -30,6 +37,10 @@ interface LiveDossierProps {
   onReleaseHandoff: () => void;
   onToggleChannelPause: (channelId: string) => void;
   onOpenOutcomeModal: () => void;
+  onUpdateJourney?: (updated: Journey) => void;
+  onClose?: () => void;
+  displayMode?: 'docked' | 'drawer';
+  onToggleMode?: () => void;
 }
 
 export const LiveDossier: React.FC<LiveDossierProps> = ({
@@ -42,6 +53,10 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
   onReleaseHandoff,
   onToggleChannelPause,
   onOpenOutcomeModal,
+  onUpdateJourney,
+  onClose,
+  displayMode = 'docked',
+  onToggleMode,
 }) => {
   const { acquisition, knownFacts, outcome, dossier } = journey;
   const isCTWA = acquisition.source === 'ctwa';
@@ -131,25 +146,54 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
   const displayedConfirmed = showAllConfirmed ? confirmedFactsList : confirmedFactsList.slice(0, 5);
 
   return (
-    <div id="live-dossier-panel" className="cockpit-panel flex flex-col h-full overflow-hidden">
+    <div id="live-dossier-panel" className="cockpit-panel flex flex-col h-full max-h-full min-h-0 overflow-hidden">
       {/* Panel Header */}
-      <div className="cockpit-panel-header px-4 py-3 shrink-0 flex items-center justify-between">
+      <div className="cockpit-panel-header px-4 py-3 shrink-0 flex items-center justify-between border-b border-[#e2e8f0] bg-white">
         <div>
           <div className="flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-indigo-600" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 font-heading">
               Dossiê Vivo de Decisão
             </h2>
           </div>
           <p className="text-[11px] text-slate-500">5 blocos de continuidade comercial</p>
         </div>
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-          Sales OS Live
-        </span>
+
+        <div className="flex items-center gap-1.5">
+          <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            Sales OS Live
+          </span>
+
+          {onToggleMode && (
+            <button
+              onClick={onToggleMode}
+              className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              title={displayMode === 'docked' ? 'Destacar como Gaveta Flutuante' : 'Fixar no Painel Grid'}
+              aria-label={displayMode === 'docked' ? 'Destacar como Gaveta Flutuante' : 'Fixar no Painel Grid'}
+            >
+              {displayMode === 'docked' ? (
+                <Maximize2 className="w-3.5 h-3.5" />
+              ) : (
+                <Columns3 className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
+
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              title="Fechar / Recolher Dossiê"
+              aria-label="Fechar Dossiê"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Scrollable Dossier Content */}
-      <div className="p-3.5 overflow-y-auto flex-1 space-y-3.5">
+      <div className="p-3.5 overflow-y-auto flex-1 min-h-0 space-y-3.5">
         {/* Outcome Banner (if closed) */}
         {outcome && (
           <div
@@ -185,7 +229,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
         )}
 
         {/* Origem e Atribuição Meta CTWA */}
-        <div className="p-3 bg-slate-50/80 border border-slate-200/90 rounded-xl text-xs space-y-2">
+        <div className="p-3 bg-slate-50 border border-slate-200/90 rounded-xl text-xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px] text-slate-700">
               <Globe className="w-3.5 h-3.5 text-blue-600" />
@@ -218,6 +262,68 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
               </div>
             </div>
           )}
+        </div>
+
+        {/* Sales AI Memory Notes */}
+        <MemoryNotesPanel journey={journey} onUpdateJourney={onUpdateJourney} />
+
+        {/* Intelligent Omissions & Missing Notes Checklist (Never forget to ask or note) */}
+        <div className="bg-amber-50/70 border border-amber-200/90 rounded-xl p-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-xs text-amber-900 flex items-center gap-1.5 font-heading">
+              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+              Checklist de Omissões & Notas Faltantes
+            </span>
+            <span className="text-[10px] font-mono bg-amber-200/80 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+              IA Guard
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-800 leading-snug">
+            Verificação em tempo real de dados essenciais que o operador pode ter esquecido de solicitar:
+          </p>
+
+          <div className="space-y-1.5 text-xs">
+            {/* Checklist Item 1: Budget */}
+            <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-amber-200/60 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${journey.estimatedDealValueBrl ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'}`} />
+                <span className="font-medium text-slate-800">
+                  {journey.estimatedDealValueBrl ? `Orçamento Estimado: R$ ${journey.estimatedDealValueBrl.toFixed(2)}` : 'Orçamento / Faixa de Preço não confirmada'}
+                </span>
+              </div>
+              {!journey.estimatedDealValueBrl && (
+                <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                  Recomendado
+                </span>
+              )}
+            </div>
+
+            {/* Checklist Item 2: Follow-up / Reminder */}
+            <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-amber-200/60 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${journey.followUpSchedule ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                <span className="font-medium text-slate-800">
+                  {journey.followUpSchedule ? `Alarme: ${journey.followUpSchedule.label}` : 'Nenhum Follow-up / Retorno agendado'}
+                </span>
+              </div>
+              {!journey.followUpSchedule && (
+                <span className="text-[10px] font-bold text-rose-800 bg-rose-100 px-1.5 py-0.5 rounded">
+                  Essencial
+                </span>
+              )}
+            </div>
+
+            {/* Checklist Item 3: Decision Maker */}
+            <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-amber-200/60 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="font-medium text-slate-800">Decisor Principal Identificado</span>
+              </div>
+              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">
+                OK
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* ========================================================================= */}
