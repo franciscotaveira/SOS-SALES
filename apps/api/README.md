@@ -105,12 +105,13 @@ Ele lê `.env.waha.local` sem expor valores no terminal. Novas instalações dev
 definir `WAHA_API_KEY` e `WAHA_WEBHOOK_SECRET`; o nome local legado
 `SALES_OS_WEBHOOK_SECRET` continua aceito apenas para compatibilidade.
 
-O padrão que está comprovado na VPS é o motor **GOWS**, com volume persistente,
-logs JSON e webhook interno assinado. Para não derrubar uma sessão WEBJS já
-pareada, este sandbox mantém WEBJS como padrão. Para uma nova sessão de
-homologação, defina `WAHA_DEFAULT_ENGINE=GOWS` em `.env.waha.local`, reinicie
-somente `sos-waha` e pareie o novo nome de sessão por QR. Não migre uma sessão
-já conectada sem uma janela de teste: a autenticação do motor pode exigir novo
+O motor de produção ainda precisa de homologação em uma sessão SOS isolada.
+O sandbox mantém WEBJS como padrão exclusivamente para compatibilidade local.
+Para uma nova sessão de homologação, defina `WAHA_DEFAULT_ENGINE=GOWS` em
+`.env.waha.local`, reinicie somente `sos-waha` e pareie o novo nome de sessão
+por QR. Antes de habilitar qualquer envio, comprove a correlação idempotente e
+a reconciliação após timeout no motor escolhido. Não migre uma sessão já
+conectada sem uma janela de teste: a autenticação do motor pode exigir novo
 pareamento.
 
 Eventos de grupo, status, saída própria e identificadores `@lid` sem telefone
