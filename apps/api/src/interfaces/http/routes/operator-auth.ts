@@ -5,10 +5,12 @@ import { CockpitReadGateway } from '../../../application/ports/cockpit-read-gate
 import { HandoffOperationsGateway } from '../../../application/ports/handoff-operations-gateway.js';
 import { JourneyOperationsGateway } from '../../../application/ports/journey-operations-gateway.js';
 import { CommercialOutcomeGateway } from '../../../application/ports/commercial-outcome-gateway.js';
+import { OutboundDispatchGateway } from '../../../application/ports/outbound-dispatch-gateway.js';
 import { cockpitReadRoutes } from './cockpit-read.js';
 import { handoffOperationRoutes } from './handoff-operations.js';
 import { journeyOperationRoutes } from './journey-operations.js';
 import { commercialOutcomeRoutes } from './commercial-outcomes.js';
+import { outboundDispatchRoutes } from './outbound-dispatches.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -23,6 +25,7 @@ export interface OperatorAuthRouteDependencies {
   handoffOperationsGateway?: HandoffOperationsGateway;
   journeyOperationsGateway?: JourneyOperationsGateway;
   commercialOutcomeGateway?: CommercialOutcomeGateway;
+  outboundDispatchGateway?: OutboundDispatchGateway;
 }
 
 function readBearerToken(authorization: string | undefined): string | null {
@@ -109,5 +112,8 @@ export async function operatorAuthRoutes(
   });
   app.register(commercialOutcomeRoutes, {
     commercialOutcomeGateway: dependencies.commercialOutcomeGateway,
+  });
+  app.register(outboundDispatchRoutes, {
+    outboundDispatchGateway: dependencies.outboundDispatchGateway,
   });
 }
