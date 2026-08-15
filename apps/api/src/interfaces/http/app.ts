@@ -15,6 +15,7 @@ import { JourneyOperationsGateway } from '../../application/ports/journey-operat
 import { CommercialOutcomeGateway } from '../../application/ports/commercial-outcome-gateway.js';
 import { OutboundDispatchGateway } from '../../application/ports/outbound-dispatch-gateway.js';
 import { TrafficProofGateway } from '../../application/ports/traffic-proof-gateway.js';
+import { KnownFactOperationsGateway } from '../../application/ports/known-fact-operations-gateway.js';
 import { wahaWebhookRoutes } from './routes/webhooks/waha.js';
 import { operatorAuthRoutes } from './routes/operator-auth.js';
 
@@ -65,6 +66,8 @@ export interface AppDependencies {
   outboundDispatchGateway?: OutboundDispatchGateway;
   /** Authenticated, RLS-scoped attribution and imported-spend read model. */
   trafficProofGateway?: TrafficProofGateway;
+  /** Authenticated, RLS-scoped append-only human known-fact commands. */
+  knownFactOperationsGateway?: KnownFactOperationsGateway;
   logger?: boolean | Record<string, unknown>;
   rateLimit?: RateLimitOptions | false;
   /**
@@ -161,6 +164,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     commercialOutcomeGateway: dependencies.commercialOutcomeGateway,
     outboundDispatchGateway: dependencies.outboundDispatchGateway,
     trafficProofGateway: dependencies.trafficProofGateway,
+    knownFactOperationsGateway: dependencies.knownFactOperationsGateway,
   });
 
   /**

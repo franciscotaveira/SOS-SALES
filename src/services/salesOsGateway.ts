@@ -175,6 +175,34 @@ export interface ApiCockpitView {
   } | null;
 }
 
+/**
+ * Authenticated acquisition-cohort evidence returned by the Traffic Proof API.
+ * `spendMinor` and `roas` deliberately remain nullable: a missing media import
+ * is not the same thing as zero spend or zero return.
+ */
+export interface ApiTrafficProofCampaign {
+  source: string;
+  campaignId: string | null;
+  campaignName: string | null;
+  acquiredLeads: number;
+  wonOutcomes: number;
+  lostOutcomes: number;
+  revenueMinor: number;
+  spendMinor: number | null;
+  roas: number | null;
+  currency: 'BRL';
+}
+
+export interface ApiTrafficProofReport {
+  data: ApiTrafficProofCampaign[];
+  meta: {
+    from: string;
+    to: string;
+    limit: number;
+    basis: 'acquisition_cohort';
+  };
+}
+
 export interface TrafficProofStats {
   workspaceId: string;
   totalLeadsAttributed: number;
@@ -719,6 +747,20 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     return (await this.request<ApiEnvelope<ApiCockpitView>>(
       `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/cockpit?${params}`,
     )).data;
+  }
+
+  async getTrafficProof(
+    workspaceId: string,
+    options: { from: string; to: string; limit?: number },
+  ): Promise<ApiTrafficProofReport> {
+    const params = new URLSearchParams({
+      from: options.from,
+      to: options.to,
+      limit: String(this.bounded(options.limit ?? 50, 1, 100)),
+    });
+    return this.request<ApiTrafficProofReport>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/traffic-proof?${params}`,
+    );
   }
 
   async getWorkspaces(): Promise<Workspace[]> {

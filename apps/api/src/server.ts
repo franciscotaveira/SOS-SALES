@@ -25,6 +25,7 @@ import { JourneyOperationsGateway } from './application/ports/journey-operations
 import { CommercialOutcomeGateway } from './application/ports/commercial-outcome-gateway.js';
 import { OutboundDispatchGateway } from './application/ports/outbound-dispatch-gateway.js';
 import { TrafficProofGateway } from './application/ports/traffic-proof-gateway.js';
+import { KnownFactOperationsGateway } from './application/ports/known-fact-operations-gateway.js';
 import { CompositeDependencyHealthProvider } from './infrastructure/health/composite-dependency-health-provider.js';
 import { createProductionRuntimeFromEnvironment } from './infrastructure/runtime/production-runtime.js';
 import { Redis } from 'ioredis';
@@ -49,6 +50,7 @@ export interface RuntimeDependencies {
   commercialOutcomeGateway?: CommercialOutcomeGateway;
   outboundDispatchGateway?: OutboundDispatchGateway;
   trafficProofGateway?: TrafficProofGateway;
+  knownFactOperationsGateway?: KnownFactOperationsGateway;
   trustProxy?: TrustProxyOption;
   logger?: boolean | Record<string, unknown>;
   /** Releases runtime-owned resources after HTTP and worker shutdown. */
@@ -107,6 +109,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     { PostgresCommercialOutcomeGateway },
     { PostgresOutboundDispatchGateway },
     { PostgresTrafficProofGateway },
+    { PostgresKnownFactOperationsGateway },
     { dbPool },
   ] = await Promise.all([
     import('./infrastructure/security/environment-webhook-secret-provider.js'),
@@ -123,6 +126,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     import('./infrastructure/database/postgres-commercial-outcome-gateway.js'),
     import('./infrastructure/database/postgres-outbound-dispatch-gateway.js'),
     import('./infrastructure/database/postgres-traffic-proof-gateway.js'),
+    import('./infrastructure/database/postgres-known-fact-operations-gateway.js'),
     import('./infrastructure/database/pool.js'),
   ]);
 
@@ -158,6 +162,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
   const commercialOutcomeGateway = authenticator ? new PostgresCommercialOutcomeGateway(dbPool) : undefined;
   const outboundDispatchGateway = authenticator ? new PostgresOutboundDispatchGateway(dbPool) : undefined;
   const trafficProofGateway = authenticator ? new PostgresTrafficProofGateway(dbPool) : undefined;
+  const knownFactOperationsGateway = authenticator ? new PostgresKnownFactOperationsGateway(dbPool) : undefined;
 
   return {
     secretProvider: new EnvironmentWebhookSecretProvider(),
@@ -173,6 +178,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     commercialOutcomeGateway,
     outboundDispatchGateway,
     trafficProofGateway,
+    knownFactOperationsGateway,
     trustProxy: false,
     logger: {
       transport: {
@@ -245,6 +251,7 @@ async function startComposedServer(
     commercialOutcomeGateway: runtime.commercialOutcomeGateway,
     outboundDispatchGateway: runtime.outboundDispatchGateway,
     trafficProofGateway: runtime.trafficProofGateway,
+    knownFactOperationsGateway: runtime.knownFactOperationsGateway,
     logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? true : { level: 'info' }),
     trustProxy: runtime.trustProxy ?? false,
   });

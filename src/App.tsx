@@ -22,6 +22,7 @@ const CockpitView = React.lazy(() => import('./components/cockpit/CockpitView').
 const AllConversationsView = React.lazy(() => import('./components/conversations/AllConversationsView').then(({ AllConversationsView }) => ({ default: AllConversationsView })));
 const GroupsHubView = React.lazy(() => import('./components/groups/GroupsHubView').then(({ GroupsHubView }) => ({ default: GroupsHubView })));
 const TrafficProofView = React.lazy(() => import('./components/results/TrafficProofView').then(({ TrafficProofView }) => ({ default: TrafficProofView })));
+const LiveTrafficProofView = React.lazy(() => import('./components/results/LiveTrafficProofView').then(({ LiveTrafficProofView }) => ({ default: LiveTrafficProofView })));
 const ManagerDashboardView = React.lazy(() => import('./components/dashboard/ManagerDashboardView').then(({ ManagerDashboardView }) => ({ default: ManagerDashboardView })));
 const SettingsShell = React.lazy(() => import('./components/settings/SettingsShell').then(({ SettingsShell }) => ({ default: SettingsShell })));
 const CommercialKanbanView = React.lazy(() => import('./components/kanban/CommercialKanbanView').then(({ CommercialKanbanView }) => ({ default: CommercialKanbanView })));
@@ -219,7 +220,7 @@ function AppContent({
       )}
 
       {activeTab === 'resultados' && isFeatureEnabled('traffic_proof') && (
-        isAuthenticatedApiMode ? <ApiModeUnavailable title="Prova de resultado está sendo conectada" detail="A API de atribuição e receita está em construção. Até ela retornar gasto importado e receita real por campanha, ROAS e investimento não serão exibidos como fatos." /> : (
+        isAuthenticatedApiMode && salesOsGateway instanceof HttpSalesOsGateway ? <LiveTrafficProofView workspaceId={currentWorkspace.id} workspaceName={currentWorkspace.name} gateway={salesOsGateway} /> : (
           <TrafficProofView
             workspace={currentWorkspace}
             gateway={salesOsGateway}
