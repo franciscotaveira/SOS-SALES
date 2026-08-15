@@ -10,6 +10,7 @@ import { DependencyHealthProvider } from '../../application/ports/dependency-hea
 import { OperatorAuthenticator } from '../../application/ports/operator-authenticator.js';
 import { WorkspaceDirectory } from '../../application/ports/workspace-directory.js';
 import { CockpitReadGateway } from '../../application/ports/cockpit-read-gateway.js';
+import { HandoffOperationsGateway } from '../../application/ports/handoff-operations-gateway.js';
 import { wahaWebhookRoutes } from './routes/webhooks/waha.js';
 import { operatorAuthRoutes } from './routes/operator-auth.js';
 
@@ -50,6 +51,8 @@ export interface AppDependencies {
   workspaceDirectory?: WorkspaceDirectory;
   /** Authenticated, RLS-scoped operator cockpit read model. */
   cockpitReadGateway?: CockpitReadGateway;
+  /** Authenticated, RLS-scoped handoff state-machine mutations. */
+  handoffOperationsGateway?: HandoffOperationsGateway;
   logger?: boolean | Record<string, unknown>;
   rateLimit?: RateLimitOptions | false;
   /**
@@ -141,6 +144,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
     cockpitReadGateway: dependencies.cockpitReadGateway,
+    handoffOperationsGateway: dependencies.handoffOperationsGateway,
   });
 
   /**

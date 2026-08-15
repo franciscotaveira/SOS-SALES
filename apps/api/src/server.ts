@@ -20,6 +20,7 @@ import { DependencyHealthProvider } from './application/ports/dependency-health-
 import { OperatorAuthenticator } from './application/ports/operator-authenticator.js';
 import { WorkspaceDirectory } from './application/ports/workspace-directory.js';
 import { CockpitReadGateway } from './application/ports/cockpit-read-gateway.js';
+import { HandoffOperationsGateway } from './application/ports/handoff-operations-gateway.js';
 import { CompositeDependencyHealthProvider } from './infrastructure/health/composite-dependency-health-provider.js';
 import { Redis } from 'ioredis';
 
@@ -38,6 +39,7 @@ export interface RuntimeDependencies {
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
   cockpitReadGateway?: CockpitReadGateway;
+  handoffOperationsGateway?: HandoffOperationsGateway;
   trustProxy?: TrustProxyOption;
   logger?: boolean | Record<string, unknown>;
   /** Releases runtime-owned resources after HTTP and worker shutdown. */
@@ -91,6 +93,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     { SupabaseJwtAuthenticator },
     { PostgresWorkspaceDirectory },
     { PostgresCockpitReadGateway },
+    { PostgresHandoffOperationsGateway },
     { dbPool },
   ] = await Promise.all([
     import('./infrastructure/security/environment-webhook-secret-provider.js'),
@@ -102,6 +105,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     import('./infrastructure/security/supabase-jwt-authenticator.js'),
     import('./infrastructure/database/postgres-workspace-directory.js'),
     import('./infrastructure/database/postgres-cockpit-read-gateway.js'),
+    import('./infrastructure/database/postgres-handoff-operations-gateway.js'),
     import('./infrastructure/database/pool.js'),
   ]);
 
@@ -132,6 +136,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     : undefined;
   const workspaceDirectory = authenticator ? new PostgresWorkspaceDirectory(dbPool) : undefined;
   const cockpitReadGateway = authenticator ? new PostgresCockpitReadGateway(dbPool) : undefined;
+  const handoffOperationsGateway = authenticator ? new PostgresHandoffOperationsGateway(dbPool) : undefined;
 
   return {
     secretProvider: new EnvironmentWebhookSecretProvider(),
@@ -142,6 +147,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     authenticator,
     workspaceDirectory,
     cockpitReadGateway,
+    handoffOperationsGateway,
     trustProxy: false,
     logger: {
       transport: {

@@ -2,7 +2,9 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { OperatorAuthenticator, AuthenticatedActor } from '../../../application/ports/operator-authenticator.js';
 import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
 import { CockpitReadGateway } from '../../../application/ports/cockpit-read-gateway.js';
+import { HandoffOperationsGateway } from '../../../application/ports/handoff-operations-gateway.js';
 import { cockpitReadRoutes } from './cockpit-read.js';
+import { handoffOperationRoutes } from './handoff-operations.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -14,6 +16,7 @@ export interface OperatorAuthRouteDependencies {
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
   cockpitReadGateway?: CockpitReadGateway;
+  handoffOperationsGateway?: HandoffOperationsGateway;
 }
 
 function readBearerToken(authorization: string | undefined): string | null {
@@ -91,5 +94,8 @@ export async function operatorAuthRoutes(
   // cockpit route. No route is allowed to select an actor from request input.
   app.register(cockpitReadRoutes, {
     cockpitReadGateway: dependencies.cockpitReadGateway,
+  });
+  app.register(handoffOperationRoutes, {
+    handoffOperationsGateway: dependencies.handoffOperationsGateway,
   });
 }
