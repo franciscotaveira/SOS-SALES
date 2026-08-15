@@ -9,10 +9,15 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "web:install": "bun install --frozen-lockfile",
+    "web:check": "bun run lint",
+    "web:build": "bun run build",
     "api:install": "npm --prefix apps/api ci",
     "api:build": "npm --prefix apps/api run build",
     "api:check": "npm --prefix apps/api run check",
-    "check:web": "bun run lint && bun run build"
+    "check:web": "bun run web:check && bun run web:build",
+    "check:api": "npm run api:check && npm run api:build",
+    "check": "npm run check:web && npm run check:api"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
