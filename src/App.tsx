@@ -9,21 +9,24 @@ import { WhatsAppGroup } from './types/groupsAndEngines';
 import { mockAgencyGroups } from './data/groupFixtures';
 import { HttpSalesOsGateway, salesOsGateway } from './services/salesOsGateway';
 import { AppShell, NavigationTab } from './components/layout/AppShell';
-import { CockpitView } from './components/cockpit/CockpitView';
 import { LiveCockpitView } from './components/cockpit/LiveCockpitView';
-import { AllConversationsView } from './components/conversations/AllConversationsView';
-import { GroupsHubView } from './components/groups/GroupsHubView';
-import { TrafficProofView } from './components/results/TrafficProofView';
-import { ManagerDashboardView } from './components/dashboard/ManagerDashboardView';
-import { SettingsShell } from './components/settings/SettingsShell';
-import { CommercialKanbanView } from './components/kanban/CommercialKanbanView';
-import { SalesAiPlaybookView } from './components/intelligence/SalesAiPlaybookView';
-import { QaSimulatorView } from './components/intelligence/QaSimulatorView';
-import { CanaisView } from './components/channels/CanaisView';
 import { OfflineBanner } from './components/common/OfflineBanner';
 import { FeatureFlagProvider, useFeatureFlags } from './contexts/FeatureFlagContext';
 import { salesOsRuntimeConfig } from './config/runtime';
 import { SupabaseAuthProvider, useSupabaseAuth } from './services/supabaseAuth';
+
+// Demo-only surfaces are intentionally loaded on demand. In API mode they are
+// blocked altogether, keeping the operator's initial cockpit fast and avoiding
+// downloading simulated features that must never be mistaken for live data.
+const CockpitView = React.lazy(() => import('./components/cockpit/CockpitView').then(({ CockpitView }) => ({ default: CockpitView })));
+const AllConversationsView = React.lazy(() => import('./components/conversations/AllConversationsView').then(({ AllConversationsView }) => ({ default: AllConversationsView })));
+const GroupsHubView = React.lazy(() => import('./components/groups/GroupsHubView').then(({ GroupsHubView }) => ({ default: GroupsHubView })));
+const TrafficProofView = React.lazy(() => import('./components/results/TrafficProofView').then(({ TrafficProofView }) => ({ default: TrafficProofView })));
+const ManagerDashboardView = React.lazy(() => import('./components/dashboard/ManagerDashboardView').then(({ ManagerDashboardView }) => ({ default: ManagerDashboardView })));
+const SettingsShell = React.lazy(() => import('./components/settings/SettingsShell').then(({ SettingsShell }) => ({ default: SettingsShell })));
+const CommercialKanbanView = React.lazy(() => import('./components/kanban/CommercialKanbanView').then(({ CommercialKanbanView }) => ({ default: CommercialKanbanView })));
+const SalesAiPlaybookView = React.lazy(() => import('./components/intelligence/SalesAiPlaybookView').then(({ SalesAiPlaybookView }) => ({ default: SalesAiPlaybookView })));
+const QaSimulatorView = React.lazy(() => import('./components/intelligence/QaSimulatorView').then(({ QaSimulatorView }) => ({ default: QaSimulatorView })));
 
 function ApiModeUnavailable({ title, detail }: { title: string; detail: string }) {
   return (
@@ -131,6 +134,14 @@ function AppContent({
       onChangeGroupSubTab={setGroupSubTab}
     >
       <OfflineBanner isOffline={isOffline} onReconnect={() => setIsOffline(false)} />
+
+      <React.Suspense fallback={(
+        <main className="mx-auto max-w-3xl px-4 py-8 lg:px-6">
+          <section className="rounded-2xl border-2 border-blue-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+            Carregando esta área…
+          </section>
+        </main>
+      )}>
 
       {activeTab === 'agora' && (
         isAuthenticatedApiMode && salesOsGateway instanceof HttpSalesOsGateway ? (
@@ -250,6 +261,7 @@ function AppContent({
           />
         )
       )}
+      </React.Suspense>
     </AppShell>
   );
 }
