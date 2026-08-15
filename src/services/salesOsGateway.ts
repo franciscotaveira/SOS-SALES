@@ -13,6 +13,8 @@ import {
   mockJourneysTitanium,
   mockMessagesByJourney,
 } from '../data/fixtures';
+import { salesOsRuntimeConfig } from '../config/runtime';
+import { getSupabaseAccessToken } from './supabaseAuth';
 
 export type AccessTokenProvider = () => Promise<string | null> | string | null;
 
@@ -743,5 +745,13 @@ export class HttpSalesOsGateway implements SalesOsGateway {
   }
 }
 
-// Singleton export of current active gateway
-export const salesOsGateway = new MockSalesOsGateway();
+/**
+ * Select the transport once at module startup. API mode never falls back to
+ * local fixtures: an absent/expired Supabase session becomes an explicit 401.
+ */
+export const salesOsGateway: SalesOsGateway = salesOsRuntimeConfig.mode === 'api'
+  ? new HttpSalesOsGateway({
+    baseUrl: salesOsRuntimeConfig.apiUrl!,
+    accessTokenProvider: getSupabaseAccessToken,
+  })
+  : new MockSalesOsGateway();
