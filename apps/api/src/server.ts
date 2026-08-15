@@ -92,7 +92,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     import('./infrastructure/database/pool.js'),
   ]);
 
-  const redis = new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6380', {
+  const redis = new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6381', {
     lazyConnect: true,
     connectTimeout: 5_000,
     maxRetriesPerRequest: 0,
@@ -166,7 +166,7 @@ async function startComposedServer(
   worker: WahaInboundWorker,
   options: StartServerOptions
 ): Promise<ServerInstance> {
-  const port = options.port ?? Number(process.env.PORT || 3334);
+  const port = options.port ?? Number(process.env.PORT || 4334);
   const host = options.host ?? process.env.HOST ?? '0.0.0.0';
   const app = buildApp({
     secretProvider: runtime.secretProvider,

@@ -13,7 +13,7 @@ dotenv.config({ path: '.env.waha.local', override: false });
 if (!process.env.WAHA_WEBHOOK_SECRET && process.env.SALES_OS_WEBHOOK_SECRET) {
   process.env.WAHA_WEBHOOK_SECRET = process.env.SALES_OS_WEBHOOK_SECRET;
 }
-process.env.WAHA_BASE_URL ??= 'http://127.0.0.1:3001';
+process.env.WAHA_BASE_URL ??= 'http://127.0.0.1:3002';
 
 if (!process.env.WAHA_API_KEY || !process.env.WAHA_WEBHOOK_SECRET) {
   console.error(

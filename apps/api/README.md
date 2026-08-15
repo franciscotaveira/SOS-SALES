@@ -1,4 +1,4 @@
-# Sales OS (TX Commercial Core)
+# SOS Sales API
 
 > **Sistema Operacional de Continuidade Comercial e Navegação de Vendas**  
 > *MCT LTDA — Chapecó, BR*
@@ -10,16 +10,16 @@
 1. **A Venda como Continuidade Cognitiva:** O atendimento não deve reiniciar a jornada do lead com aberturas genéricas. Ele deve honrar o gancho do anúncio que gerou o clique.
 2. **Fato não é Inferência; Inferência não é Decisão:** Fatos são auditáveis e imutáveis. Inferências carregam confiança e evidência. Decisões passam por políticas de segurança.
 3. **Projeção Materializada:** O `ConversationDecisionContext` é uma visão calculada do estado da jornada a partir de eventos, nunca um estado sobrescrito às cegas.
-4. **Isolamento Absoluto:** Zero acoplamento com legado de ERP, módulos de hotel ou bancos de dados compartilhados. Supabase dedicado (PostgreSQL 17 na porta `54332`) e filas próprias (Redis 7 na porta `6380`).
+4. **Isolamento Absoluto:** Zero acoplamento com legado de ERP, módulos de hotel ou bancos de dados compartilhados. Supabase dedicado (PostgreSQL 17 na porta `55432`) e filas próprias (Redis 7 na porta `6381`).
 
 ---
 
 ## 🏗️ Estrutura do Repositório (Clean Architecture / DDD)
 
 ```text
-new-sales-os/
-├── docker-compose.yml          # Redis 7 dedicado (porta 6380)
-├── supabase/                   # Supabase Local (PostgreSQL 54332, API 54331, Studio 54333)
+SOS-SALES/apps/api/
+├── docker-compose.yml          # Redis 7 dedicado (porta 6381)
+├── supabase/                   # Supabase Local (PostgreSQL 55432, API 55431, Studio 55433)
 │   ├── config.toml
 │   ├── migrations/             # Schema SQL v2 com RLS e triggers de imutabilidade
 │   └── seed.sql                # Seed determinístico para testes e pilotos
@@ -54,7 +54,7 @@ new-sales-os/
 
 ```bash
 # 1. Entrar na pasta raiz
-cd /Users/franciscotaveira.ads/Projetos/new-sales-os
+cd /Users/franciscotaveira.ads/Projetos/SOS-SALES/apps/api
 
 # 2. Configurar o ambiente
 cp .env.example .env
@@ -62,7 +62,7 @@ cp .env.example .env
 # 3. Instalar as dependências
 npm install
 
-# 4. Subir a infraestrutura isolada (Supabase DB 54332 + Redis 6380)
+# 4. Subir a infraestrutura isolada (Supabase DB 55432 + Redis 6381)
 npm run infra:up
 
 # 5. Executar a suíte de testes de integridade e RLS
@@ -81,7 +81,7 @@ O WAHA não é iniciado por `infra:up`: ele precisa de um arquivo local ignorado
 npm run waha:up
 ```
 
-- Dashboard: `http://localhost:3001/dashboard/`
+- Dashboard: `http://localhost:3002/dashboard/`
 - A porta é restrita a `127.0.0.1`; não há exposição pública.
 - As credenciais locais ficam em `.env.waha.local`; troque-as antes de criar qualquer túnel HTTPS.
 - Para parar sem apagar a sessão: `npm run waha:down`.
@@ -100,7 +100,7 @@ O padrão que está comprovado na VPS é o motor **GOWS**, com volume persistent
 logs JSON e webhook interno assinado. Para não derrubar uma sessão WEBJS já
 pareada, este sandbox mantém WEBJS como padrão. Para uma nova sessão de
 homologação, defina `WAHA_DEFAULT_ENGINE=GOWS` em `.env.waha.local`, reinicie
-somente `tx-waha` e pareie o novo nome de sessão por QR. Não migre uma sessão
+somente `sos-waha` e pareie o novo nome de sessão por QR. Não migre uma sessão
 já conectada sem uma janela de teste: a autenticação do motor pode exigir novo
 pareamento.
 

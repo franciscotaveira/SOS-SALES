@@ -18,7 +18,7 @@
      documentação ou configuração de deploy.
 
 3. **Isolamento de Dados e Portas**:
-   - Todo banco de dados deve utilizar as portas dedicadas configuradas no `supabase/config.toml` (Postgres `54332`, Kong `54331`, Studio `54333`).
+   - Todo banco de dados deve utilizar as portas dedicadas configuradas no `supabase/config.toml` (Postgres `55432`, Kong `55431`, Studio `55433`).
    - NUNCA conectar em instâncias de banco ou Redis de outros projetos (`deskcomm-crm`, `war-room`, etc.).
 
 4. **Preservação de Segredos**:

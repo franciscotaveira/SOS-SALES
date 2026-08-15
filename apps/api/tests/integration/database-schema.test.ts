@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { dbPool, checkDatabaseHealth, query } from '../../src/infrastructure/database/pool.js';
 
-describe('TX Commercial Core — Database Schema V2 & Invariants', () => {
+describe('SOS Sales — Database Schema & Invariants', () => {
   beforeAll(async () => {
     const healthy = await checkDatabaseHealth();
     expect(healthy).toBe(true);
@@ -11,7 +11,37 @@ describe('TX Commercial Core — Database Schema V2 & Invariants', () => {
     await dbPool.end();
   });
 
-  it('should have all 20 domain and security tables created in public schema', async () => {
+  const expectedTables = [
+    'workspaces',
+    'workspace_memberships',
+    'channel_connections',
+    'channel_connection_secrets',
+    'workspace_operation_controls',
+    'channel_operation_controls',
+    'operation_control_events',
+    'contacts',
+    'commercial_journeys',
+    'inbound_channel_events',
+    'conversation_messages',
+    'conversation_message_events',
+    'acquisition_contexts',
+    'known_facts',
+    'decision_events',
+    'decision_states',
+    'recommended_actions',
+    'executed_actions',
+    'handoff_cases',
+    'handoff_case_events',
+    'commercial_outcomes',
+    'compliance_redaction_events',
+    'projection_checkpoints',
+    'outbox_events',
+    'pipeline_stage_events',
+    'workspace_sla_policies',
+    'follow_up_tasks',
+  ];
+
+  it('should have all 27 domain, control and cockpit tables created in public schema', async () => {
     const res = await query<{ table_name: string }>(`
       SELECT table_name 
       FROM information_schema.tables 
@@ -21,35 +51,12 @@ describe('TX Commercial Core — Database Schema V2 & Invariants', () => {
 
     const tables = res.rows.map((r) => r.table_name);
 
-    const expected20Tables = [
-      'workspaces',
-      'workspace_memberships',
-      'channel_connections',
-      'channel_connection_secrets',
-      'contacts',
-      'commercial_journeys',
-      'inbound_channel_events',
-      'conversation_messages',
-      'conversation_message_events',
-      'acquisition_contexts',
-      'known_facts',
-      'decision_events',
-      'decision_states',
-      'recommended_actions',
-      'executed_actions',
-      'handoff_cases',
-      'commercial_outcomes',
-      'compliance_redaction_events',
-      'projection_checkpoints',
-      'outbox_events',
-    ];
-
-    for (const table of expected20Tables) {
+    for (const table of expectedTables) {
       expect(tables, `Table ${table} must exist`).toContain(table);
     }
   });
 
-  it('should have RLS enabled on all 20 domain and security tables', async () => {
+  it('should have RLS enabled on all 27 domain, control and cockpit tables', async () => {
     const res = await query<{ tablename: string; rowsecurity: boolean }>(`
       SELECT tablename, rowsecurity
       FROM pg_tables
@@ -58,30 +65,7 @@ describe('TX Commercial Core — Database Schema V2 & Invariants', () => {
 
     const rlsMap = new Map(res.rows.map((r) => [r.tablename, r.rowsecurity]));
 
-    const expected20Tables = [
-      'workspaces',
-      'workspace_memberships',
-      'channel_connections',
-      'channel_connection_secrets',
-      'contacts',
-      'commercial_journeys',
-      'inbound_channel_events',
-      'conversation_messages',
-      'conversation_message_events',
-      'acquisition_contexts',
-      'known_facts',
-      'decision_events',
-      'decision_states',
-      'recommended_actions',
-      'executed_actions',
-      'handoff_cases',
-      'commercial_outcomes',
-      'compliance_redaction_events',
-      'projection_checkpoints',
-      'outbox_events',
-    ];
-
-    for (const table of expected20Tables) {
+    for (const table of expectedTables) {
       expect(rlsMap.get(table), `Table ${table} must have RLS enabled`).toBe(true);
     }
   });

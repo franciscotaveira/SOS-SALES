@@ -5,7 +5,7 @@ dotenv.config();
 
 const connectionString =
   process.env.DATABASE_URL ||
-  'postgresql://postgres:postgres@localhost:54332/postgres';
+  'postgresql://postgres:postgres@localhost:55432/postgres';
 
 export const dbPool = new Pool({
   connectionString,

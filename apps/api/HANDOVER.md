@@ -60,13 +60,13 @@ O projeto foi configurado com **isolamento absoluto** de outros projetos existen
 
 * **Runtime:** Node.js (ESM) + TypeScript + Fastify + Zod
 * **Banco de Dados:** Supabase local (PostgreSQL 17) configurado no `supabase/config.toml`
-  * **Porta do PostgreSQL:** `54332`
-  * **Porta da API Kong:** `54331`
-  * **Porta do Supabase Studio (Web UI):** `54333`
-  * **Porta de Inbucket (Emails):** `54334`
-* **Filas & Cache:** Redis 7 dedicado rodando na porta `6380` (`docker-compose.yml`)
+  * **Porta do PostgreSQL:** `55432`
+  * **Porta da API Kong:** `55431`
+  * **Porta do Supabase Studio (Web UI):** `55433`
+  * **Porta de Inbucket (Emails):** `55434`
+* **Filas & Cache:** Redis 7 dedicado rodando na porta `6381` (`docker-compose.yml`)
 * **Provedor de IA:** OpenRouter com abstração própria de timeouts e fallback
-* **Porta da Aplicação Fastify:** `3334`
+* **Porta da Aplicação Fastify:** `4334`
 
 ---
 

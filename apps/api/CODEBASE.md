@@ -42,13 +42,13 @@ Para evitar colisões com outros projetos da máquina:
 
 | Serviço | Porta no Host | Descrição |
 |---|---|---|
-| **Kong API Gateway** | `54331` | Supabase API REST & Realtime |
-| **PostgreSQL (Supabase DB)** | `54332` | Banco transacional e de eventos |
-| **Supabase Studio** | `54333` | Painel web administrativo do banco |
-| **Inbucket (Email)** | `54334` | Servidor local de captura de emails |
-| **Postgres Shadow DB** | `54330` | Shadow DB para diffs de migração |
-| **Redis 7** | `6380` | Filas BullMQ e PubSub |
-| **Fastify App** | `3334` | API da aplicação |
+| **Kong API Gateway** | `55431` | Supabase API REST & Realtime |
+| **PostgreSQL (Supabase DB)** | `55432` | Banco transacional e de eventos |
+| **Supabase Studio** | `55433` | Painel web administrativo do banco |
+| **Inbucket (Email)** | `55434` | Servidor local de captura de emails |
+| **Postgres Shadow DB** | `55430` | Shadow DB para diffs de migração |
+| **Redis 7** | `6381` | Filas BullMQ e PubSub |
+| **Fastify App** | `4334` | API da aplicação |
 
 ---
 
@@ -69,7 +69,7 @@ Para evitar colisões com outros projetos da máquina:
 
 ## 4. Comandos de Operação & Testes
 ```bash
-npm run infra:up    # Inicia Supabase DB (54332) + Redis (6380)
+npm run infra:up    # Inicia Supabase DB (55432) + Redis (6381)
 npm run db:reset    # Aplica migrations e seed limpo
 npm run check       # Executa TypeScript tsc + Suíte completa Vitest
 npm test            # Executa a suíte Vitest de integração, segurança e concorrência

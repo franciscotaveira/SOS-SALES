@@ -87,8 +87,8 @@ Correções nas tabelas já geradas:
 
 **Supabase local via Docker é o único PostgreSQL do projeto.** O `docker-compose.yml` não deve subir um PostgreSQL paralelo.
 
-- `npx supabase start` / `stop` gerencia banco, Auth, API, Studio e Realtime usando o `supabase/config.toml` nas portas isoladas 54330–54334.
-- Docker Compose mantém somente Redis dedicado na 6380, com healthcheck e volume nomeado.
+- `npx supabase start` / `stop` gerencia banco, Auth, API, Studio e Realtime usando o `supabase/config.toml` nas portas isoladas 55430–55434.
+- Docker Compose mantém somente Redis dedicado na 6381, com healthcheck e volume nomeado.
 - `supabase/migrations` é a única fonte do esquema; seed é demonstrativo e nunca contém PII real.
 - Scripts obrigatórios: `infra:up`, `infra:down`, `db:reset`, `test:unit`, `test:integration`, `test:coverage`, `check`.
 

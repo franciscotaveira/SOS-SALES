@@ -10,8 +10,8 @@ Objetivo: entregar um piloto local seguro de **continuidade comercial no WhatsAp
 
 - Supabase local, Redis e WAHA estão em Docker; o reset do Docker foi recuperado via migrations + seed.
 - `npm run check` e `npm run build` passaram localmente com **130 testes** após a migration P0.4A; reexecute antes de alterar ou declarar qualquer conclusão.
-- WAHA local está em `127.0.0.1:3001`, sessão `sales-os-test` criada e aguardando QR. Ela está deliberadamente **sem webhook** até existir um contrato de assinatura WAHA real compatível com o receptor.
-- Sales OS local está em `:3334`, com `/health` e `/ready` (database/redis/worker) verdes.
+- WAHA local deve usar `127.0.0.1:3002` e uma sessão de teste própria. A antiga sessão não é parte desta entrega; o QR/webhook só será homologado após contrato de assinatura real.
+- SOS Sales API local usa `:4334`; `/health` e `/ready` só são consideradas verdes após validar database, Redis e worker reais.
 - Existem modificações locais não commitadas, inclusive P0.3B/P0.4A/docs. Preserve-as; comece com `git status`, `git diff --check`, `npm run check`, `npm run build`.
 - Não há remote Git configurado. Não declare backup remoto como feito.
 
