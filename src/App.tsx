@@ -25,6 +25,21 @@ import { FeatureFlagProvider, useFeatureFlags } from './contexts/FeatureFlagCont
 import { salesOsRuntimeConfig } from './config/runtime';
 import { SupabaseAuthProvider, useSupabaseAuth } from './services/supabaseAuth';
 
+function ApiModeUnavailable({ title, detail }: { title: string; detail: string }) {
+  return (
+    <main className="mx-auto max-w-3xl px-4 py-8 lg:px-6">
+      <section className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-6 shadow-sm">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-amber-800">Integração em andamento</p>
+        <h1 className="mt-2 text-2xl font-bold text-slate-950">{title}</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-700">{detail}</p>
+        <p className="mt-4 rounded-xl border-2 border-amber-200 bg-white px-4 py-3 text-sm text-slate-600">
+          Esta área não exibirá dados de demonstração, métricas simuladas ou controles locais enquanto seu contrato autenticado não estiver disponível.
+        </p>
+      </section>
+    </main>
+  );
+}
+
 function AppContent({
   workspaces,
   currentWorkspace,
@@ -142,84 +157,98 @@ function AppContent({
       )}
 
       {activeTab === 'conversas' && (
-        <AllConversationsView
-          journeys={journeys}
-          channels={currentWorkspace.channels}
-          selectedJourneyId={selectedJourneyId}
-          onSelectJourney={(j) => setSelectedJourneyId(j.id)}
-          onGoToCockpit={(j) => {
-            setSelectedJourneyId(j.id);
-            setActiveTab('agora');
-          }}
-          onGoToKanban={() => setActiveTab('kanban')}
-          currentOperatorId={currentOperatorId}
-        />
+        isAuthenticatedApiMode ? <ApiModeUnavailable title="Histórico completo em integração" detail="A fila e as mensagens reais já estão no Cockpit ao vivo. A tela de histórico com busca, filtros e paginação será liberada quando houver uma projeção autenticada equivalente." /> : (
+          <AllConversationsView
+            journeys={journeys}
+            channels={currentWorkspace.channels}
+            selectedJourneyId={selectedJourneyId}
+            onSelectJourney={(j) => setSelectedJourneyId(j.id)}
+            onGoToCockpit={(j) => {
+              setSelectedJourneyId(j.id);
+              setActiveTab('agora');
+            }}
+            onGoToKanban={() => setActiveTab('kanban')}
+            currentOperatorId={currentOperatorId}
+          />
+        )
       )}
 
       {activeTab === 'kanban' && isFeatureEnabled('commercial_kanban') && (
-        <CommercialKanbanView
-          journeys={journeys}
-          onSelectJourney={(j) => {
-            setSelectedJourneyId(j.id);
-          }}
-          onUpdateJourney={handleUpdateJourney}
-          onSwitchToCockpit={() => setActiveTab('agora')}
-          currentOperatorId={currentOperatorId}
-          role={role}
-        />
+        isAuthenticatedApiMode ? <ApiModeUnavailable title="Funil autenticado em integração" detail="Movimentação de estágio existe no backend, mas este quadro ainda precisa da projeção autenticada para não inventar SLA, valor, responsável ou resultado." /> : (
+          <CommercialKanbanView
+            journeys={journeys}
+            onSelectJourney={(j) => {
+              setSelectedJourneyId(j.id);
+            }}
+            onUpdateJourney={handleUpdateJourney}
+            onSwitchToCockpit={() => setActiveTab('agora')}
+            currentOperatorId={currentOperatorId}
+            role={role}
+          />
+        )
       )}
 
       {activeTab === 'grupos' && isFeatureEnabled('agency_groups') && (
-        <GroupsHubView
-          groups={agencyGroups}
-          onUpdateGroup={(updated) => {
-            setAgencyGroups((prev) =>
-              prev.map((g) => (g.id === updated.id ? updated : g))
-            );
-          }}
-          activeSubTab={groupSubTab}
-          onChangeSubTab={setGroupSubTab}
-        />
+        isAuthenticatedApiMode ? <ApiModeUnavailable title="Hub de grupos ainda não está conectado" detail="Não há leitura autenticada de grupos nem uma sessão WAHA homologada para esta área. Por isso, dados e ping simulados foram bloqueados no modo de operação real." /> : (
+          <GroupsHubView
+            groups={agencyGroups}
+            onUpdateGroup={(updated) => {
+              setAgencyGroups((prev) =>
+                prev.map((g) => (g.id === updated.id ? updated : g))
+              );
+            }}
+            activeSubTab={groupSubTab}
+            onChangeSubTab={setGroupSubTab}
+          />
+        )
       )}
 
       {activeTab === 'analytics' && (
-        <ManagerDashboardView />
+        isAuthenticatedApiMode ? <ApiModeUnavailable title="Analytics real será liberado com a leitura de métricas" detail="O dashboard atual é uma demonstração. Métricas de aquisição, SLA e receita só aparecerão quando forem calculadas pelo backend a partir de eventos e resultados persistidos." /> : <ManagerDashboardView />
       )}
 
       {activeTab === 'resultados' && isFeatureEnabled('traffic_proof') && (
-        <TrafficProofView
-          workspace={currentWorkspace}
-          gateway={salesOsGateway}
-          journeys={journeys}
-        />
+        isAuthenticatedApiMode ? <ApiModeUnavailable title="Prova de resultado está sendo conectada" detail="A API de atribuição e receita está em construção. Até ela retornar gasto importado e receita real por campanha, ROAS e investimento não serão exibidos como fatos." /> : (
+          <TrafficProofView
+            workspace={currentWorkspace}
+            gateway={salesOsGateway}
+            journeys={journeys}
+          />
+        )
       )}
 
       {activeTab === 'playbook' && (
-        <SalesAiPlaybookView
-          currentWorkspace={currentWorkspace}
-          workspaces={workspaces}
-          onSelectWorkspace={onSelectWorkspace}
-          activeSubTab={intelligenceSubTab}
-          onChangeSubTab={setIntelligenceSubTab}
-        />
+        isAuthenticatedApiMode ? <ApiModeUnavailable title="Playbook supervisionado em integração" detail="As recomendações reais aparecem no Cockpit. Configurações, guardrails e simuladores deste painel serão conectados apenas quando forem aplicados e auditados pelo servidor." /> : (
+          <SalesAiPlaybookView
+            currentWorkspace={currentWorkspace}
+            workspaces={workspaces}
+            onSelectWorkspace={onSelectWorkspace}
+            activeSubTab={intelligenceSubTab}
+            onChangeSubTab={setIntelligenceSubTab}
+          />
+        )
       )}
 
       {activeTab === 'simulador' && (
-        <QaSimulatorView
-          onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
-          onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
-          isNetworkErrorForced={isNetworkErrorForced}
-        />
+        isAuthenticatedApiMode ? <ApiModeUnavailable title="Simulador indisponível na operação real" detail="Geração de leads e falhas simuladas são permitidas apenas em demonstração. A operação autenticada não modifica dados comerciais com ações de QA." /> : (
+          <QaSimulatorView
+            onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
+            onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
+            isNetworkErrorForced={isNetworkErrorForced}
+          />
+        )
       )}
 
 
 
       {activeTab === 'configuracoes' && (
-        <SettingsShell
-          workspace={currentWorkspace}
-          activeSubTab={settingsSubTab}
-          onChangeSubTab={setSettingsSubTab}
-        />
+        isAuthenticatedApiMode ? <ApiModeUnavailable title="Configurações de canal em integração" detail="A configuração de sessão, saúde, failover e políticas não pode ser simulada. Ela será liberada somente com controles owner-only e status reais do provedor." /> : (
+          <SettingsShell
+            workspace={currentWorkspace}
+            activeSubTab={settingsSubTab}
+            onChangeSubTab={setSettingsSubTab}
+          />
+        )
       )}
     </AppShell>
   );
