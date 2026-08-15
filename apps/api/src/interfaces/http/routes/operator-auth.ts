@@ -1,6 +1,8 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { OperatorAuthenticator, AuthenticatedActor } from '../../../application/ports/operator-authenticator.js';
 import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
+import { CockpitReadGateway } from '../../../application/ports/cockpit-read-gateway.js';
+import { cockpitReadRoutes } from './cockpit-read.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -11,6 +13,7 @@ declare module 'fastify' {
 export interface OperatorAuthRouteDependencies {
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
+  cockpitReadGateway?: CockpitReadGateway;
 }
 
 function readBearerToken(authorization: string | undefined): string | null {
@@ -82,5 +85,11 @@ export async function operatorAuthRoutes(
         message: 'Workspace directory is unavailable',
       });
     }
+  });
+
+  // Nested in this plugin so the verified JWT boundary is inherited by every
+  // cockpit route. No route is allowed to select an actor from request input.
+  app.register(cockpitReadRoutes, {
+    cockpitReadGateway: dependencies.cockpitReadGateway,
   });
 }
