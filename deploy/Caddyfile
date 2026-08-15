@@ -1,0 +1,57 @@
+{
+    email admin@mct.com.br
+    admin off
+}
+
+# SOS Sales — Production Reverse Proxy
+{$DOMAIN:localhost} {
+    # Compression
+    encode zstd gzip
+
+    # Global Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+
+    # API v1 and Healthchecks
+    handle /api/* {
+        reverse_proxy sos-sales-api:4334 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # WAHA Inbound Webhook Endpoint
+    handle /webhooks/waha* {
+        reverse_proxy sos-sales-api:4334 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Health & Readiness Endpoints
+    handle /health* {
+        reverse_proxy sos-sales-api:4334
+    }
+
+    handle /ready* {
+        reverse_proxy sos-sales-api:4334
+    }
+
+    # Frontend SPA
+    handle {
+        reverse_proxy sos-sales-web:80 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+}
