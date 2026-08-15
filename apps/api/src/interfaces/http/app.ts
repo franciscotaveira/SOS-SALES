@@ -7,7 +7,10 @@ import { WebhookSecretProvider } from '../../application/ports/webhook-secret-pr
 import { ChannelWebhookAdapter } from '../../application/ports/channel-webhook-adapter.js';
 import { InboundIngestionGateway } from '../../application/ports/inbound-ingestion-gateway.js';
 import { DependencyHealthProvider } from '../../application/ports/dependency-health-provider.js';
+import { OperatorAuthenticator } from '../../application/ports/operator-authenticator.js';
+import { WorkspaceDirectory } from '../../application/ports/workspace-directory.js';
 import { wahaWebhookRoutes } from './routes/webhooks/waha.js';
+import { operatorAuthRoutes } from './routes/operator-auth.js';
 
 export interface RateLimitOptions {
   max?: number;
@@ -37,6 +40,13 @@ export interface AppDependencies {
   ingestionGateway: InboundIngestionGateway;
   /** Optional: injected for /ready checks. If omitted, /ready always returns degraded. */
   healthProvider?: DependencyHealthProvider;
+  /**
+   * Server-side Supabase JWT verifier. When absent, operator routes fail
+   * closed with 401; no local/user header fallback is permitted.
+   */
+  authenticator?: OperatorAuthenticator;
+  /** Read-only workspace membership source for authenticated operator routes. */
+  workspaceDirectory?: WorkspaceDirectory;
   logger?: boolean | Record<string, unknown>;
   rateLimit?: RateLimitOptions | false;
   /**
@@ -119,6 +129,14 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     secretProvider,
     wahaAdapter,
     ingestionGateway,
+  });
+
+  // Operator API: an isolated auth scope that accepts only verifier-derived
+  // actors. It is deliberately separate from unauthenticated webhook routes.
+  app.register(operatorAuthRoutes, {
+    prefix: '/api/v1',
+    authenticator: dependencies.authenticator,
+    workspaceDirectory: dependencies.workspaceDirectory,
   });
 
   /**
