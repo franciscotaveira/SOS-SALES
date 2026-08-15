@@ -3,8 +3,10 @@ import { OperatorAuthenticator, AuthenticatedActor } from '../../../application/
 import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
 import { CockpitReadGateway } from '../../../application/ports/cockpit-read-gateway.js';
 import { HandoffOperationsGateway } from '../../../application/ports/handoff-operations-gateway.js';
+import { JourneyOperationsGateway } from '../../../application/ports/journey-operations-gateway.js';
 import { cockpitReadRoutes } from './cockpit-read.js';
 import { handoffOperationRoutes } from './handoff-operations.js';
+import { journeyOperationRoutes } from './journey-operations.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -17,6 +19,7 @@ export interface OperatorAuthRouteDependencies {
   workspaceDirectory?: WorkspaceDirectory;
   cockpitReadGateway?: CockpitReadGateway;
   handoffOperationsGateway?: HandoffOperationsGateway;
+  journeyOperationsGateway?: JourneyOperationsGateway;
 }
 
 function readBearerToken(authorization: string | undefined): string | null {
@@ -97,5 +100,8 @@ export async function operatorAuthRoutes(
   });
   app.register(handoffOperationRoutes, {
     handoffOperationsGateway: dependencies.handoffOperationsGateway,
+  });
+  app.register(journeyOperationRoutes, {
+    journeyOperationsGateway: dependencies.journeyOperationsGateway,
   });
 }
