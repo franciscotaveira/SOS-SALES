@@ -72,6 +72,15 @@ npm run check
 npm run dev
 ```
 
+### Autenticação do operador (Supabase JWT)
+
+As rotas `GET /api/v1/me` e `GET /api/v1/workspaces` aceitam somente um
+access token Supabase válido no header `Authorization: Bearer <jwt>`. Configure
+`SUPABASE_JWT_ISSUER` e `SUPABASE_JWKS_URL` juntos. Sem ambos, as rotas ficam
+fechadas com `401`; a API não usa `SUPABASE_SERVICE_ROLE_KEY` para operações de
+operador. A consulta de workspaces executa sob `ROLE authenticated` e o claim
+`sub` validado, para que as políticas RLS continuem sendo a fronteira de tenant.
+
 ### Sandbox WAHA local (opcional)
 
 O WAHA não é iniciado por `infra:up`: ele precisa de um arquivo local ignorado pelo Git

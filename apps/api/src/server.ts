@@ -17,6 +17,8 @@ import { InboundIngestionGateway } from './application/ports/inbound-ingestion-g
 import { OutboxProcessingGateway } from './application/ports/outbox-processing-gateway.js';
 import { LidIdentityResolver } from './application/ports/lid-identity-resolver.js';
 import { DependencyHealthProvider } from './application/ports/dependency-health-provider.js';
+import { OperatorAuthenticator } from './application/ports/operator-authenticator.js';
+import { WorkspaceDirectory } from './application/ports/workspace-directory.js';
 import { CompositeDependencyHealthProvider } from './infrastructure/health/composite-dependency-health-provider.js';
 import { Redis } from 'ioredis';
 
@@ -31,6 +33,9 @@ export interface RuntimeDependencies {
   lidIdentityResolver?: LidIdentityResolver;
   /** Created after the worker exists so readiness can always include it. */
   createHealthProvider: (worker: WahaInboundWorker) => DependencyHealthProvider;
+  /** Optional only while operator API remains fail-closed (401) during bootstrap. */
+  authenticator?: OperatorAuthenticator;
+  workspaceDirectory?: WorkspaceDirectory;
   trustProxy?: TrustProxyOption;
   logger?: boolean | Record<string, unknown>;
   /** Releases runtime-owned resources after HTTP and worker shutdown. */
@@ -81,6 +86,8 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     { PostgresDependencyHealthProvider },
     { RedisDependencyHealthProvider },
     { WahaLidIdentityResolver },
+    { SupabaseJwtAuthenticator },
+    { PostgresWorkspaceDirectory },
     { dbPool },
   ] = await Promise.all([
     import('./infrastructure/security/environment-webhook-secret-provider.js'),
@@ -89,6 +96,8 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     import('./infrastructure/database/postgres-dependency-health-provider.js'),
     import('./infrastructure/health/redis-dependency-health-provider.js'),
     import('./infrastructure/channels/waha/waha-lid-identity-resolver.js'),
+    import('./infrastructure/security/supabase-jwt-authenticator.js'),
+    import('./infrastructure/database/postgres-workspace-directory.js'),
     import('./infrastructure/database/pool.js'),
   ]);
 
@@ -105,6 +114,19 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
   const lidIdentityResolver = wahaBaseUrl && wahaApiKey
     ? new WahaLidIdentityResolver({ baseUrl: wahaBaseUrl, apiKey: wahaApiKey })
     : undefined;
+  const jwtIssuer = process.env.SUPABASE_JWT_ISSUER?.trim();
+  const jwksUrl = process.env.SUPABASE_JWKS_URL?.trim();
+  if (Boolean(jwtIssuer) !== Boolean(jwksUrl)) {
+    throw new Error('SUPABASE_JWT_ISSUER and SUPABASE_JWKS_URL must be configured together');
+  }
+  const authenticator = jwtIssuer && jwksUrl
+    ? new SupabaseJwtAuthenticator({
+      issuer: jwtIssuer,
+      jwksUrl,
+      audience: process.env.SUPABASE_JWT_AUDIENCE?.trim() || 'authenticated',
+    })
+    : undefined;
+  const workspaceDirectory = authenticator ? new PostgresWorkspaceDirectory(dbPool) : undefined;
 
   return {
     secretProvider: new EnvironmentWebhookSecretProvider(),
@@ -112,6 +134,8 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     ingestionGateway: new PostgresInboundIngestionGateway(),
     outboxGateway: new PostgresOutboxProcessingGateway(),
     lidIdentityResolver,
+    authenticator,
+    workspaceDirectory,
     trustProxy: false,
     logger: {
       transport: {
@@ -173,6 +197,8 @@ async function startComposedServer(
     wahaAdapter: runtime.wahaAdapter,
     ingestionGateway: runtime.ingestionGateway,
     healthProvider: runtime.createHealthProvider(worker),
+    authenticator: runtime.authenticator,
+    workspaceDirectory: runtime.workspaceDirectory,
     logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? true : { level: 'info' }),
     trustProxy: runtime.trustProxy ?? false,
   });
