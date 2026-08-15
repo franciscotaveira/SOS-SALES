@@ -21,6 +21,7 @@ import { QaSimulatorView } from './components/intelligence/QaSimulatorView';
 import { CanaisView } from './components/channels/CanaisView';
 import { OfflineBanner } from './components/common/OfflineBanner';
 import { FeatureFlagProvider, useFeatureFlags } from './contexts/FeatureFlagContext';
+import { salesOsRuntimeConfig } from './config/runtime';
 
 function AppContent({
   workspaces,
@@ -224,6 +225,9 @@ export default function App() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isOffline, setIsOffline] = React.useState(!navigator.onLine);
   const [isNetworkErrorForced, setIsNetworkErrorForced] = React.useState(false);
+  const runtimeConfigurationError = salesOsRuntimeConfig.mode === 'unconfigured'
+    ? salesOsRuntimeConfig.reason ?? 'A configuração de operação do SOS Sales está incompleta.'
+    : null;
 
   // Online / Offline listener
   React.useEffect(() => {
@@ -239,6 +243,11 @@ export default function App() {
 
   // Initial load of workspaces and journeys
   React.useEffect(() => {
+    if (runtimeConfigurationError) {
+      setIsLoading(false);
+      return;
+    }
+
     let isMounted = true;
     salesOsGateway.getWorkspaces().then((wsList) => {
       if (!isMounted) return;
@@ -261,7 +270,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [runtimeConfigurationError]);
 
   // When switching workspace
   const handleSelectWorkspace = async (ws: Workspace) => {
@@ -309,6 +318,24 @@ export default function App() {
     setIsNetworkErrorForced(!isNetworkErrorForced);
   };
 
+  if (runtimeConfigurationError) {
+    return (
+      <main className="min-h-screen bg-slate-950 px-6 flex items-center justify-center text-slate-100">
+        <section className="max-w-xl rounded-2xl border-2 border-amber-500/70 bg-slate-900 p-7 shadow-2xl">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">Configuração necessária</p>
+          <h1 className="mt-2 text-2xl font-bold">O SOS Sales não exibirá dados de demonstração em produção.</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-300">{runtimeConfigurationError}</p>
+          <div className="mt-5 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 font-mono text-xs text-slate-200">
+            VITE_SOS_API_URL=https://api.seudominio.com/api/v1
+          </div>
+          <p className="mt-3 text-xs leading-5 text-slate-400">
+            Para uma demonstração local, use VITE_DEMO_MODE=true. Nunca use esse modo em produção.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   if (isLoading || !currentWorkspace) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">
@@ -323,29 +350,36 @@ export default function App() {
   }
 
   return (
-    <FeatureFlagProvider workspace={currentWorkspace} role={role}>
-      <AppContent
-        workspaces={workspaces}
-        currentWorkspace={currentWorkspace}
-        onSelectWorkspace={handleSelectWorkspace}
-        journeys={journeys}
-        agencyGroups={agencyGroups}
-        setAgencyGroups={setAgencyGroups}
-        selectedJourneyId={selectedJourneyId}
-        setSelectedJourneyId={setSelectedJourneyId}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        role={role}
-        setRole={setRole}
-        currentOperatorId={currentOperatorId}
-        currentOperatorName={currentOperatorName}
-        isOffline={isOffline}
-        setIsOffline={setIsOffline}
-        isNetworkErrorForced={isNetworkErrorForced}
-        onSimulateIncomingLeadMessage={handleSimulateIncomingLeadMessage}
-        onToggleForcedNetworkError={handleToggleForcedNetworkError}
-        handleUpdateJourney={handleUpdateJourney}
-      />
-    </FeatureFlagProvider>
+    <>
+      {salesOsRuntimeConfig.mode === 'demo' && (
+        <div className="bg-amber-500 px-4 py-2 text-center text-xs font-bold text-slate-950">
+          Modo demonstração: dados locais não representam operação comercial real.
+        </div>
+      )}
+      <FeatureFlagProvider workspace={currentWorkspace} role={role}>
+        <AppContent
+          workspaces={workspaces}
+          currentWorkspace={currentWorkspace}
+          onSelectWorkspace={handleSelectWorkspace}
+          journeys={journeys}
+          agencyGroups={agencyGroups}
+          setAgencyGroups={setAgencyGroups}
+          selectedJourneyId={selectedJourneyId}
+          setSelectedJourneyId={setSelectedJourneyId}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          role={role}
+          setRole={setRole}
+          currentOperatorId={currentOperatorId}
+          currentOperatorName={currentOperatorName}
+          isOffline={isOffline}
+          setIsOffline={setIsOffline}
+          isNetworkErrorForced={isNetworkErrorForced}
+          onSimulateIncomingLeadMessage={handleSimulateIncomingLeadMessage}
+          onToggleForcedNetworkError={handleToggleForcedNetworkError}
+          handleUpdateJourney={handleUpdateJourney}
+        />
+      </FeatureFlagProvider>
+    </>
   );
 }

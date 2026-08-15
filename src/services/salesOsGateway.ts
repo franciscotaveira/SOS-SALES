@@ -14,6 +14,80 @@ import {
   mockMessagesByJourney,
 } from '../data/fixtures';
 
+export type AccessTokenProvider = () => Promise<string | null> | string | null;
+
+export class SalesOsTransportError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+  ) {
+    super(message);
+    this.name = 'SalesOsTransportError';
+  }
+}
+
+export class SalesOsOperationUnavailableError extends Error {
+  constructor(operation: string) {
+    super(`${operation} ainda não está disponível na API autenticada do SOS Sales.`);
+    this.name = 'SalesOsOperationUnavailableError';
+  }
+}
+
+interface ApiEnvelope<T> {
+  data: T;
+  meta?: { nextCursor?: string | null };
+}
+
+export interface ApiOperator {
+  id: string;
+  email?: string;
+}
+
+export interface ApiWorkspace {
+  id: string;
+  name: string;
+  slug: string;
+  role: 'owner' | 'operator' | 'viewer';
+}
+
+export interface ApiPriority {
+  journeyId: string;
+  contactId: string;
+  contactName: string | null;
+  contactPhone: string | null;
+  pipelineStage: string | null;
+  handoffCaseId: string | null;
+  handoffStatus: string | null;
+  assignedToUserId: string | null;
+  lastMessageText: string | null;
+  lastMessageAt: string | null;
+  followUpDueAt: string | null;
+  slaDeadline: string | null;
+  slaState: 'OK' | 'DUE' | 'OVERDUE';
+  priorityReason: string;
+  unreadCount: number;
+}
+
+export interface ApiJourney {
+  id: string;
+  contactId: string;
+  contactName: string | null;
+  contactPhone: string | null;
+  status: 'OPEN' | 'WON' | 'LOST' | 'ABANDONED';
+  pipelineStage: string | null;
+  primaryServiceOrProduct: string | null;
+  startedAt: string;
+  updatedAt: string;
+}
+
+export interface ApiMessage {
+  id: string;
+  direction: 'inbound' | 'outbound';
+  senderType: 'customer' | 'ai' | 'operator' | 'system';
+  textContent: string | null;
+  sentAt: string;
+}
+
 export interface TrafficProofStats {
   workspaceId: string;
   totalLeadsAttributed: number;
@@ -496,68 +570,101 @@ export class MockSalesOsGateway implements SalesOsGateway {
 }
 
 /**
- * HttpSalesOsGateway Stub
- * Pronta para quando os endpoints REST/RPC do Supabase / Backend estiverem disponíveis.
+ * Authenticated transport for the API contracts that exist today.
+ *
+ * The current operator cockpit prototype expects a richer `Journey` projection
+ * than the safe read API exposes. For that reason this class also exposes the
+ * raw, contract-shaped `list*` methods below. Do not select this gateway for
+ * the existing fixture-shaped cockpit until its read-model adapter is complete.
  */
 export class HttpSalesOsGateway implements SalesOsGateway {
-  private baseUrl: string;
+  private readonly baseUrl: string;
+  private readonly accessTokenProvider: AccessTokenProvider;
 
-  constructor(baseUrl = '/api/v1') {
-    this.baseUrl = baseUrl;
+  constructor(options: { baseUrl: string; accessTokenProvider: AccessTokenProvider }) {
+    this.baseUrl = options.baseUrl.replace(/\/$/, '');
+    this.accessTokenProvider = options.accessTokenProvider;
+  }
+
+  async getCurrentOperator(): Promise<ApiOperator> {
+    return this.request<ApiOperator>('/me');
+  }
+
+  async listWorkspaces(): Promise<ApiWorkspace[]> {
+    return (await this.request<ApiEnvelope<ApiWorkspace[]>>('/workspaces')).data;
+  }
+
+  async listPriorities(workspaceId: string, limit = 5): Promise<ApiPriority[]> {
+    const params = new URLSearchParams({ limit: String(this.bounded(limit, 1, 50)) });
+    return (await this.request<ApiEnvelope<ApiPriority[]>>(`/workspaces/${encodeURIComponent(workspaceId)}/priorities?${params}`)).data;
+  }
+
+  async listJourneys(
+    workspaceId: string,
+    options: { limit?: number; cursor?: string | null } = {},
+  ): Promise<{ data: ApiJourney[]; nextCursor: string | null }> {
+    const params = new URLSearchParams({ limit: String(this.bounded(options.limit ?? 20, 1, 50)) });
+    if (options.cursor) params.set('cursor', options.cursor);
+    const response = await this.request<ApiEnvelope<ApiJourney[]>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys?${params}`,
+    );
+    return { data: response.data, nextCursor: response.meta?.nextCursor ?? null };
+  }
+
+  async listMessages(
+    journeyId: string,
+    options: { limit?: number; cursor?: string | null } = {},
+  ): Promise<{ data: ApiMessage[]; nextCursor: string | null }> {
+    const params = new URLSearchParams({ limit: String(this.bounded(options.limit ?? 50, 1, 100)) });
+    if (options.cursor) params.set('cursor', options.cursor);
+    const response = await this.request<ApiEnvelope<ApiMessage[]>>(
+      `/journeys/${encodeURIComponent(journeyId)}/messages?${params}`,
+    );
+    return { data: response.data, nextCursor: response.meta?.nextCursor ?? null };
   }
 
   async getWorkspaces(): Promise<Workspace[]> {
-    const res = await fetch(`${this.baseUrl}/workspaces`);
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+    const workspaces = await this.listWorkspaces();
+    // These shell-only values are not commercial facts; the API does not yet
+    // expose workspace profile/channels. Keep the adapter honest and do not
+    // pull them from local fixtures in authenticated mode.
+    return workspaces.map((workspace) => ({
+      id: workspace.id,
+      name: workspace.name,
+      slug: workspace.slug,
+      businessType: 'general_services',
+      tagline: 'Dados autenticados do SOS Sales',
+      activeOperatorCount: 0,
+      channels: [],
+    }));
   }
 
-  async getJourneys(workspaceId: string, search?: string): Promise<Journey[]> {
-    const url = new URL(`${this.baseUrl}/workspaces/${workspaceId}/journeys`, window.location.origin);
-    if (search) url.searchParams.set('q', search);
-    const res = await fetch(url.toString());
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+  async getJourneys(_workspaceId: string, _search?: string): Promise<Journey[]> {
+    throw new SalesOsOperationUnavailableError(
+      'A projeção rica de jornadas para o cockpit',
+    );
   }
 
-  async getJourneyById(journeyId: string): Promise<Journey | null> {
-    const res = await fetch(`${this.baseUrl}/journeys/${journeyId}`);
-    if (!res.ok) return null;
-    return res.json();
+  async getJourneyById(_journeyId: string): Promise<Journey | null> {
+    throw new SalesOsOperationUnavailableError('O detalhe da jornada');
   }
 
-  async getMessages(journeyId: string): Promise<Message[]> {
-    const res = await fetch(`${this.baseUrl}/journeys/${journeyId}/messages`);
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+  async getMessages(_journeyId: string): Promise<Message[]> {
+    throw new SalesOsOperationUnavailableError(
+      'A projeção visual de mensagens do cockpit',
+    );
   }
 
-  async claimHandoff(journeyId: string, operatorId: string, operatorName: string): Promise<Journey> {
-    const res = await fetch(`${this.baseUrl}/journeys/${journeyId}/claim`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operatorId, operatorName }),
-    });
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+  async claimHandoff(_journeyId: string, _operatorId: string, _operatorName: string): Promise<Journey> {
+    throw new SalesOsOperationUnavailableError('Assumir handoff');
   }
 
-  async releaseHandoff(journeyId: string): Promise<Journey> {
-    const res = await fetch(`${this.baseUrl}/journeys/${journeyId}/release`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+  async releaseHandoff(_journeyId: string): Promise<Journey> {
+    throw new SalesOsOperationUnavailableError('Liberar handoff');
   }
 
-  async sendMessage(payload: SendMessagePayload): Promise<Message> {
-    const res = await fetch(`${this.baseUrl}/journeys/${payload.journeyId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+  async sendMessage(_payload: SendMessagePayload): Promise<Message> {
+    throw new SalesOsOperationUnavailableError('Enviar mensagens');
   }
 
   saveDraft(journeyId: string, draftText: string): void {
@@ -568,67 +675,71 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     return localStorage.getItem(`draft_${journeyId}`) || '';
   }
 
-  async markOutcome(journeyId: string, outcome: Omit<JourneyOutcome, 'id' | 'closedAt'>): Promise<Journey> {
-    const res = await fetch(`${this.baseUrl}/journeys/${journeyId}/outcome`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(outcome),
-    });
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+  async markOutcome(_journeyId: string, _outcome: Omit<JourneyOutcome, 'id' | 'closedAt'>): Promise<Journey> {
+    throw new SalesOsOperationUnavailableError('Registrar resultado comercial');
   }
 
   async updateJourneyStage(
-    journeyId: string,
-    stage: CommercialStage,
-    options?: {
+    _journeyId: string,
+    _stage: CommercialStage,
+    _options?: {
       dealValueBrl?: number;
       reason?: string;
       operatorId?: string;
       operatorName?: string;
     }
   ): Promise<Journey> {
-    const res = await fetch(`${this.baseUrl}/journeys/${journeyId}/stage`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stage, ...options }),
-    });
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+    throw new SalesOsOperationUnavailableError('Alterar estágio comercial');
   }
 
-  async updateJourney(updated: Journey): Promise<Journey> {
-    const res = await fetch(`${this.baseUrl}/journeys/${updated.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
-    });
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+  async updateJourney(_updated: Journey): Promise<Journey> {
+    throw new SalesOsOperationUnavailableError('Atualizar jornada');
   }
 
   async resetJourneysToDefault(): Promise<void> {
-    await fetch(`${this.baseUrl}/reset`, { method: 'POST' });
+    throw new SalesOsOperationUnavailableError('Resetar jornadas');
   }
 
-  async toggleChannelPause(channelId: string, pausedBy: string, reason?: string): Promise<Channel> {
-    const res = await fetch(`${this.baseUrl}/channels/${channelId}/toggle-pause`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pausedBy, reason }),
-    });
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+  async toggleChannelPause(_channelId: string, _pausedBy: string, _reason?: string): Promise<Channel> {
+    throw new SalesOsOperationUnavailableError('Pausar canal');
   }
 
-  async getTrafficStats(workspaceId: string): Promise<TrafficProofStats> {
-    const res = await fetch(`${this.baseUrl}/workspaces/${workspaceId}/traffic-proof`);
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-    return res.json();
+  async getTrafficStats(_workspaceId: string): Promise<TrafficProofStats> {
+    throw new SalesOsOperationUnavailableError('Prova de resultado comercial');
   }
 
   async simulateIncomingLeadMessage(journeyId: string, text: string): Promise<Message> {
     throw new Error('Simulation only available in Mock gateway');
+  }
+
+  private bounded(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, Math.floor(value)));
+  }
+
+  private async request<T>(path: string): Promise<T> {
+    const token = await this.accessTokenProvider();
+    if (!token) {
+      throw new SalesOsTransportError('A sessão autenticada ainda não foi conectada ao transporte do SOS Sales.', 401);
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      throw new SalesOsTransportError('Não foi possível alcançar a API do SOS Sales.');
+    }
+
+    if (!response.ok) {
+      throw new SalesOsTransportError(`A API do SOS Sales retornou ${response.status}.`, response.status);
+    }
+
+    try {
+      return await response.json() as T;
+    } catch {
+      throw new SalesOsTransportError('A API do SOS Sales retornou uma resposta inválida.');
+    }
   }
 }
 
