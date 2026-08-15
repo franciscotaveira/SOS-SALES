@@ -90,6 +90,91 @@ export interface ApiMessage {
   sentAt: string;
 }
 
+/**
+ * The authenticated detail projection intentionally mirrors the API read
+ * model. Keep it separate from the richer fixture-only `Journey` type: fields
+ * that do not exist in the database must remain visibly unavailable instead
+ * of being inferred by the browser.
+ */
+export interface ApiCockpitView {
+  journey: {
+    id: string;
+    contactId: string;
+    status: ApiJourney['status'];
+    pipelineStage: string | null;
+    primaryServiceOrProduct: string | null;
+    totalRevenueMinor: number;
+    currency: string;
+    startedAt: string;
+    closedAt: string | null;
+    updatedAt: string;
+    contact: { id: string; name: string | null; phone: string };
+    channel: { id: string; provider: string; phoneNumber: string; name: string; status: string } | null;
+  };
+  acquisitionContexts: Array<{
+    id: string;
+    source: string;
+    campaignId: string | null;
+    campaignName: string | null;
+    adSetId: string | null;
+    adId: string | null;
+    creativeCode: string | null;
+    offerHook: string | null;
+    entryMessage: string | null;
+    confidence: string;
+    occurredAt: string;
+  }>;
+  messages: ApiMessage[];
+  knownFacts: Array<{
+    id: string;
+    key: string;
+    value: unknown;
+    source: string;
+    confidence: number;
+    confirmedByCustomer: boolean;
+    observedAt: string;
+  }>;
+  decisionState: {
+    currentStage: string;
+    stageConfidence: number;
+    primaryFriction: string | null;
+    secondaryFrictions: unknown;
+    frictionEvidence: string | null;
+    frictionConfidence: number;
+    frictionResolved: boolean;
+    updatedAt: string;
+  } | null;
+  recommendation: {
+    id: string;
+    suggestedAction: string;
+    suggestedDraftText: string | null;
+    microCommitmentGoal: string;
+    confidence: number;
+    policyStatus: string;
+    policyReason: string | null;
+    createdAt: string;
+  } | null;
+  handoff: {
+    id: string;
+    status: string;
+    assignedToUserId: string | null;
+    briefing: unknown;
+    triggerReason: string;
+    openedAt: string;
+    acceptedAt: string | null;
+    resolvedAt: string | null;
+  } | null;
+  outcome: {
+    id: string;
+    result: string;
+    finalRevenueMinor: number | null;
+    currency: string;
+    closedReason: string | null;
+    capiStatus: string;
+    occurredAt: string;
+  } | null;
+}
+
 export interface TrafficProofStats {
   workspaceId: string;
   totalLeadsAttributed: number;
@@ -625,6 +710,17 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     return { data: response.data, nextCursor: response.meta?.nextCursor ?? null };
   }
 
+  async getCockpit(
+    workspaceId: string,
+    journeyId: string,
+    messageLimit = 50,
+  ): Promise<ApiCockpitView> {
+    const params = new URLSearchParams({ messageLimit: String(this.bounded(messageLimit, 1, 50)) });
+    return (await this.request<ApiEnvelope<ApiCockpitView>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/cockpit?${params}`,
+    )).data;
+  }
+
   async getWorkspaces(): Promise<Workspace[]> {
     const workspaces = await this.listWorkspaces();
     // These shell-only values are not commercial facts; the API does not yet
@@ -669,12 +765,14 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     throw new SalesOsOperationUnavailableError('Enviar mensagens');
   }
 
-  saveDraft(journeyId: string, draftText: string): void {
-    localStorage.setItem(`draft_${journeyId}`, draftText);
+  saveDraft(_journeyId: string, _draftText: string): void {
+    // Drafts are commercial records. API mode must not create an untracked
+    // browser-side copy until the authenticated draft contract exists.
+    throw new SalesOsOperationUnavailableError('Salvar rascunho autenticado');
   }
 
-  getDraft(journeyId: string): string {
-    return localStorage.getItem(`draft_${journeyId}`) || '';
+  getDraft(_journeyId: string): string {
+    return '';
   }
 
   async markOutcome(_journeyId: string, _outcome: Omit<JourneyOutcome, 'id' | 'closedAt'>): Promise<Journey> {

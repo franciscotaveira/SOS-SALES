@@ -7,9 +7,10 @@ import React from 'react';
 import { Workspace, Journey, OperatorRole } from './types/cockpit';
 import { WhatsAppGroup } from './types/groupsAndEngines';
 import { mockAgencyGroups } from './data/groupFixtures';
-import { salesOsGateway } from './services/salesOsGateway';
+import { HttpSalesOsGateway, salesOsGateway } from './services/salesOsGateway';
 import { AppShell, NavigationTab } from './components/layout/AppShell';
 import { CockpitView } from './components/cockpit/CockpitView';
+import { LiveCockpitView } from './components/cockpit/LiveCockpitView';
 import { AllConversationsView } from './components/conversations/AllConversationsView';
 import { GroupsHubView } from './components/groups/GroupsHubView';
 import { TrafficProofView } from './components/results/TrafficProofView';
@@ -45,6 +46,7 @@ function AppContent({
   onSimulateIncomingLeadMessage,
   onToggleForcedNetworkError,
   handleUpdateJourney,
+  isAuthenticatedApiMode,
 }: {
   workspaces: Workspace[];
   currentWorkspace: Workspace;
@@ -66,6 +68,7 @@ function AppContent({
   onSimulateIncomingLeadMessage: () => void;
   onToggleForcedNetworkError: () => void;
   handleUpdateJourney: (j: Journey) => void;
+  isAuthenticatedApiMode: boolean;
 }) {
   const { isFeatureEnabled } = useFeatureFlags();
 
@@ -115,18 +118,27 @@ function AppContent({
       <OfflineBanner isOffline={isOffline} onReconnect={() => setIsOffline(false)} />
 
       {activeTab === 'agora' && (
-        <CockpitView
-          workspace={currentWorkspace}
-          gateway={salesOsGateway}
-          journeys={journeys}
-          selectedJourneyId={selectedJourneyId}
-          onSelectJourney={(j) => setSelectedJourneyId(j.id)}
-          onUpdateJourney={handleUpdateJourney}
-          onViewAllConversations={() => setActiveTab('conversas')}
-          role={role}
-          currentOperatorId={currentOperatorId}
-          currentOperatorName={currentOperatorName}
-        />
+        isAuthenticatedApiMode && salesOsGateway instanceof HttpSalesOsGateway ? (
+          <LiveCockpitView
+            workspaceId={currentWorkspace.id}
+            selectedJourneyId={selectedJourneyId}
+            onSelectedJourneyChange={setSelectedJourneyId}
+            gateway={salesOsGateway}
+          />
+        ) : (
+          <CockpitView
+            workspace={currentWorkspace}
+            gateway={salesOsGateway}
+            journeys={journeys}
+            selectedJourneyId={selectedJourneyId}
+            onSelectJourney={(j) => setSelectedJourneyId(j.id)}
+            onUpdateJourney={handleUpdateJourney}
+            onViewAllConversations={() => setActiveTab('conversas')}
+            role={role}
+            currentOperatorId={currentOperatorId}
+            currentOperatorName={currentOperatorName}
+          />
+        )
       )}
 
       {activeTab === 'conversas' && (
@@ -217,7 +229,12 @@ function OperationalApp() {
   const [workspaces, setWorkspaces] = React.useState<Workspace[]>([]);
   const [currentWorkspace, setCurrentWorkspace] = React.useState<Workspace | null>(null);
   const [journeys, setJourneys] = React.useState<Journey[]>([]);
-  const [agencyGroups, setAgencyGroups] = React.useState<WhatsAppGroup[]>(mockAgencyGroups);
+  // API mode never initializes commercial records from fixture data. Group
+  // operations will receive their own authenticated read model in a later
+  // slice; until then they are visibly empty rather than simulated.
+  const [agencyGroups, setAgencyGroups] = React.useState<WhatsAppGroup[]>(() => (
+    salesOsRuntimeConfig.mode === 'api' ? [] : mockAgencyGroups
+  ));
   const [selectedJourneyId, setSelectedJourneyId] = React.useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = React.useState<NavigationTab>('agora');
   const [role, setRole] = React.useState<OperatorRole>('operator');
@@ -264,10 +281,19 @@ function OperationalApp() {
           return;
         }
 
-        const jList = await salesOsGateway.getJourneys(defaultWs.id);
-        if (!isMounted) return;
-        setJourneys(jList);
-        if (jList.length > 0) setSelectedJourneyId(jList[0].id);
+        if (salesOsGateway instanceof HttpSalesOsGateway) {
+          const page = await salesOsGateway.listJourneys(defaultWs.id, { limit: 20 });
+          if (!isMounted) return;
+          // `Journey` is a fixture-shaped type. Do not map authenticated
+          // records into it with invented SLA, recommendation or outcome data.
+          setJourneys([]);
+          if (page.data.length > 0) setSelectedJourneyId(page.data[0].id);
+        } else {
+          const jList = await salesOsGateway.getJourneys(defaultWs.id);
+          if (!isMounted) return;
+          setJourneys(jList);
+          if (jList.length > 0) setSelectedJourneyId(jList[0].id);
+        }
       } catch (error) {
         if (!isMounted) return;
         setOperationalError(error instanceof Error ? error.message : 'Não foi possível carregar a operação autenticada.');
@@ -286,10 +312,16 @@ function OperationalApp() {
     setCurrentWorkspace(ws);
     setIsLoading(true);
     try {
-      const list = await salesOsGateway.getJourneys(ws.id);
-      setJourneys(list);
-      if (list.length > 0) {
-        setSelectedJourneyId(list[0].id);
+      if (salesOsGateway instanceof HttpSalesOsGateway) {
+        const page = await salesOsGateway.listJourneys(ws.id, { limit: 20 });
+        setJourneys([]);
+        setSelectedJourneyId(page.data[0]?.id);
+      } else {
+        const list = await salesOsGateway.getJourneys(ws.id);
+        setJourneys(list);
+        if (list.length > 0) {
+          setSelectedJourneyId(list[0].id);
+        }
       }
     } finally {
       setIsLoading(false);
@@ -403,6 +435,7 @@ function OperationalApp() {
           onSimulateIncomingLeadMessage={handleSimulateIncomingLeadMessage}
           onToggleForcedNetworkError={handleToggleForcedNetworkError}
           handleUpdateJourney={handleUpdateJourney}
+          isAuthenticatedApiMode={salesOsRuntimeConfig.mode === 'api'}
         />
       </FeatureFlagProvider>
     </>
