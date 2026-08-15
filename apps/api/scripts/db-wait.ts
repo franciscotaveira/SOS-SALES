@@ -2,19 +2,20 @@ import { dbPool } from '../src/infrastructure/database/pool.js';
 
 async function waitForDatabase(timeoutMs = 30000, intervalMs = 500): Promise<boolean> {
   const startTime = Date.now();
-  console.log('⏳ Waiting for PostgreSQL schema and P0.3A migrations to become ready...');
+  console.log('⏳ Waiting for PostgreSQL schema and current application migrations to become ready...');
 
   while (Date.now() - startTime < timeoutMs) {
     let client: import('pg').PoolClient | null = null;
     try {
       client = await dbPool.connect();
-      const res = await client.query<{ ws: string | null; rpc: string | null }>(`
+      const res = await client.query<{ ws: string | null; rpc: string | null; trafficProof: string | null }>(`
         SELECT
           to_regclass('public.workspaces')::text AS ws,
-          to_regprocedure('public.ingest_channel_event(uuid,text,text,jsonb)')::text AS rpc
+          to_regprocedure('public.ingest_channel_event(uuid,text,text,jsonb)')::text AS rpc,
+          to_regclass('public.campaign_spend_daily_facts')::text AS "trafficProof"
       `);
 
-      if (res.rows[0]?.ws && res.rows[0]?.rpc) {
+      if (res.rows[0]?.ws && res.rows[0]?.rpc && res.rows[0]?.trafficProof) {
         console.log(`✅ Database is ready and migrations are verified (${Date.now() - startTime}ms)`);
         return true;
       }

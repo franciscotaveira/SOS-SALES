@@ -14,6 +14,7 @@ import { HandoffOperationsGateway } from '../../application/ports/handoff-operat
 import { JourneyOperationsGateway } from '../../application/ports/journey-operations-gateway.js';
 import { CommercialOutcomeGateway } from '../../application/ports/commercial-outcome-gateway.js';
 import { OutboundDispatchGateway } from '../../application/ports/outbound-dispatch-gateway.js';
+import { TrafficProofGateway } from '../../application/ports/traffic-proof-gateway.js';
 import { wahaWebhookRoutes } from './routes/webhooks/waha.js';
 import { operatorAuthRoutes } from './routes/operator-auth.js';
 
@@ -62,6 +63,8 @@ export interface AppDependencies {
   commercialOutcomeGateway?: CommercialOutcomeGateway;
   /** Authenticated, RLS-scoped supervised outbound draft lifecycle. */
   outboundDispatchGateway?: OutboundDispatchGateway;
+  /** Authenticated, RLS-scoped attribution and imported-spend read model. */
+  trafficProofGateway?: TrafficProofGateway;
   logger?: boolean | Record<string, unknown>;
   rateLimit?: RateLimitOptions | false;
   /**
@@ -157,6 +160,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     journeyOperationsGateway: dependencies.journeyOperationsGateway,
     commercialOutcomeGateway: dependencies.commercialOutcomeGateway,
     outboundDispatchGateway: dependencies.outboundDispatchGateway,
+    trafficProofGateway: dependencies.trafficProofGateway,
   });
 
   /**
