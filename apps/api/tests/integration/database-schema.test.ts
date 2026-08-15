@@ -39,9 +39,11 @@ describe('SOS Sales — Database Schema & Invariants', () => {
     'pipeline_stage_events',
     'workspace_sla_policies',
     'follow_up_tasks',
+    'outbound_dispatches',
+    'outbound_dispatch_events',
   ];
 
-  it('should have all 27 domain, control and cockpit tables created in public schema', async () => {
+  it('should have all 29 domain, control and cockpit tables created in public schema', async () => {
     const res = await query<{ table_name: string }>(`
       SELECT table_name 
       FROM information_schema.tables 
@@ -56,7 +58,7 @@ describe('SOS Sales — Database Schema & Invariants', () => {
     }
   });
 
-  it('should have RLS enabled on all 27 domain, control and cockpit tables', async () => {
+  it('should have RLS enabled on all 29 domain, control and cockpit tables', async () => {
     const res = await query<{ tablename: string; rowsecurity: boolean }>(`
       SELECT tablename, rowsecurity
       FROM pg_tables
