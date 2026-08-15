@@ -18,3 +18,4 @@ supabase/.branches/
 *.pem
 *.key
 *.cert
+.gstack/
