@@ -34,6 +34,23 @@ function buildGateway(): CockpitReadGateway {
         nextCursor: null,
       };
     },
+    getJourneyCockpit: async (_verifiedActor, workspaceId, journeyId, messageLimit) => {
+      if (workspaceId !== workspaceA || journeyId !== journeyA) return null;
+      return {
+        journey: {
+          id: journeyA, contactId: '92000000-0000-4000-8000-000000000001', status: 'OPEN',
+          pipelineStage: 'NEW', primaryServiceOrProduct: null, totalRevenueMinor: 0,
+          currency: 'BRL', startedAt: '2026-08-14T10:00:00.000Z', closedAt: null,
+          updatedAt: '2026-08-14T11:00:00.000Z',
+          contact: { id: '92000000-0000-4000-8000-000000000001', name: 'Ana', phone: '+5511999999999' },
+          channel: null,
+        },
+        acquisitionContexts: [],
+        messages: messageLimit > 0 ? [{ id: '93000000-0000-4000-8000-000000000001', direction: 'inbound', senderType: 'customer', textContent: 'Oi', sentAt: '2026-08-14T11:00:00.000Z' }] : [],
+        knownFacts: [{ id: '94000000-0000-4000-8000-000000000001', key: 'profile.name', value: 'Ana', source: 'customer_explicit_text', confidence: 1, confirmedByCustomer: true, observedAt: '2026-08-14T11:00:00.000Z' }],
+        decisionState: null, recommendation: null, handoff: null, outcome: null,
+      };
+    },
   };
 }
 
@@ -95,6 +112,39 @@ describe('Cockpit read API — authenticated and bounded', () => {
       data: [{ id: '93000000-0000-4000-8000-000000000001', direction: 'inbound', senderType: 'customer', textContent: 'Oi', sentAt: '2026-08-14T11:00:00.000Z' }],
       meta: { nextCursor: null },
     });
+    await server.close();
+  });
+
+  it('READ-05: returns a bounded fact-only cockpit projection and keeps missing/cross-tenant journeys indistinguishable', async () => {
+    const server = app();
+    const allowed = await server.inject({ method: 'GET', url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyA}/cockpit?messageLimit=50`, headers });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({
+      data: {
+        journey: { id: journeyA, contact: { name: 'Ana' }, channel: null },
+        knownFacts: [{ key: 'profile.name', source: 'customer_explicit_text', confidence: 1 }],
+        acquisitionContexts: [], decisionState: null, recommendation: null, handoff: null, outcome: null,
+      },
+    });
+    expect(JSON.stringify(allowed.json())).not.toContain('rawPayload');
+    expect(JSON.stringify(allowed.json())).not.toContain('providerMessageId');
+
+    const crossTenant = await server.inject({ method: 'GET', url: `/api/v1/workspaces/${workspaceB}/journeys/${journeyA}/cockpit`, headers });
+    const absent = await server.inject({ method: 'GET', url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyB}/cockpit`, headers });
+    for (const response of [crossTenant, absent]) {
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Requested resource was not found' });
+    }
+    await server.close();
+  });
+
+  it('READ-06: rejects unauthenticated and invalid composed-read parameters before the gateway', async () => {
+    const server = app();
+    const unauthenticated = await server.inject({ method: 'GET', url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyA}/cockpit` });
+    const invalidLimit = await server.inject({ method: 'GET', url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyA}/cockpit?messageLimit=51`, headers });
+    expect(unauthenticated.statusCode).toBe(401);
+    expect(invalidLimit.statusCode).toBe(400);
+    expect(invalidLimit.json()).toEqual({ statusCode: 400, error: 'Bad Request', message: 'Invalid request parameters' });
     await server.close();
   });
 });

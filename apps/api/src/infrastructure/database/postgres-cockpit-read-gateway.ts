@@ -4,6 +4,7 @@ import {
   CockpitMessage,
   CockpitPriority,
   CockpitReadGateway,
+  CockpitJourneyView,
   CursorPage,
 } from '../../application/ports/cockpit-read-gateway.js';
 import { AuthenticatedActor } from '../../application/ports/operator-authenticator.js';
@@ -52,6 +53,26 @@ interface MessageRow extends QueryResultRow {
   sender_type: CockpitMessage['senderType'];
   text_content: string | null;
   sent_at: Date;
+}
+
+interface JourneyDetailRow extends QueryResultRow {
+  id: string;
+  contact_id: string;
+  status: CockpitJourney['status'];
+  pipeline_stage: string | null;
+  primary_service_or_product: string | null;
+  total_revenue_minor: string | number;
+  currency: string;
+  started_at: Date;
+  closed_at: Date | null;
+  updated_at: Date;
+  contact_name: string | null;
+  contact_phone: string;
+  channel_id: string | null;
+  channel_provider: string | null;
+  channel_phone_number: string | null;
+  channel_name: string | null;
+  channel_status: string | null;
 }
 
 function asIso(value: Date | string | null): string | null {
@@ -158,6 +179,175 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
         LIMIT $4
       `, [journeyId, cursor?.at ?? null, cursor?.id ?? null, options.limit + 1]);
       return this.messagePage(result.rows, options.limit);
+    });
+  }
+
+  async getJourneyCockpit(
+    actor: AuthenticatedActor,
+    workspaceId: string,
+    journeyId: string,
+    messageLimit: number,
+  ): Promise<CockpitJourneyView | null> {
+    return this.withActor(actor, async (client) => {
+      // Resolve by both IDs inside the actor-scoped transaction. This keeps a
+      // cross-workspace journey indistinguishable from a missing journey.
+      const journeyResult = await client.query<JourneyDetailRow>(`
+        SELECT j.id, j.contact_id, j.status, j.pipeline_stage,
+               j.primary_service_or_product, j.total_revenue_minor, j.currency,
+               j.started_at, j.closed_at, j.updated_at,
+               c.name AS contact_name, c.phone AS contact_phone,
+               cc.id AS channel_id, cc.provider AS channel_provider,
+               cc.phone_number AS channel_phone_number, cc.name AS channel_name,
+               cc.status AS channel_status
+        FROM public.commercial_journeys j
+        JOIN public.contacts c
+          ON c.workspace_id = j.workspace_id AND c.id = j.contact_id
+        LEFT JOIN public.channel_connections cc
+          ON cc.workspace_id = j.workspace_id AND cc.id = j.channel_connection_id
+        WHERE j.workspace_id = $1 AND j.id = $2
+      `, [workspaceId, journeyId]);
+      const row = journeyResult.rows[0];
+      if (!row) return null;
+
+      // A pg client supports one active query at a time. Keep these reads
+      // sequential inside the same RLS transaction so no query races the
+      // connection protocol or accidentally escapes the actor identity.
+      const acquisitions = await client.query(`
+          SELECT id, source, campaign_id, campaign_name, ad_set_id, ad_id,
+                 creative_code, offer_hook, entry_message, confidence, occurred_at
+          FROM public.acquisition_contexts
+          WHERE workspace_id = $1 AND journey_id = $2
+          ORDER BY occurred_at ASC, id ASC
+        `, [workspaceId, journeyId]);
+      const recentMessages = await client.query<MessageRow>(`
+          SELECT id, direction, sender_type, text_content, sent_at
+          FROM public.conversation_messages
+          WHERE workspace_id = $1 AND journey_id = $2
+          ORDER BY sent_at DESC, id DESC
+          LIMIT $3
+        `, [workspaceId, journeyId, messageLimit]);
+      const facts = await client.query(`
+          SELECT id, key, value, source, confidence, confirmed_by_customer, observed_at
+          FROM public.known_facts
+          WHERE workspace_id = $1 AND journey_id = $2 AND superseded_by IS NULL
+          ORDER BY observed_at ASC, id ASC
+        `, [workspaceId, journeyId]);
+      const states = await client.query(`
+          SELECT current_stage, stage_confidence, primary_friction,
+                 secondary_frictions, friction_evidence, friction_confidence,
+                 friction_resolved, updated_at
+          FROM public.decision_states
+          WHERE workspace_id = $1 AND journey_id = $2
+        `, [workspaceId, journeyId]);
+      const recommendations = await client.query(`
+          SELECT id, suggested_action, suggested_draft_text, micro_commitment_goal,
+                 confidence, policy_status, policy_reason, created_at
+          FROM public.recommended_actions
+          WHERE workspace_id = $1 AND journey_id = $2
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1
+        `, [workspaceId, journeyId]);
+      const handoffs = await client.query(`
+          SELECT id, status, assigned_to_user_id, briefing, trigger_reason,
+                 opened_at, accepted_at, resolved_at
+          FROM public.handoff_cases
+          WHERE workspace_id = $1 AND journey_id = $2
+            AND status IN ('PENDING', 'ACCEPTED', 'RETURNED_TO_AI')
+          ORDER BY opened_at DESC, id DESC
+          LIMIT 1
+        `, [workspaceId, journeyId]);
+      const outcomes = await client.query(`
+          SELECT id, result, final_revenue_minor, currency, closed_reason,
+                 capi_status, occurred_at
+          FROM public.commercial_outcomes
+          WHERE workspace_id = $1 AND journey_id = $2
+          LIMIT 1
+        `, [workspaceId, journeyId]);
+
+      const state = states.rows[0] as Record<string, unknown> | undefined;
+      const recommendation = recommendations.rows[0] as Record<string, unknown> | undefined;
+      const handoff = handoffs.rows[0] as Record<string, unknown> | undefined;
+      const outcome = outcomes.rows[0] as Record<string, unknown> | undefined;
+
+      return {
+        journey: {
+          id: row.id,
+          contactId: row.contact_id,
+          status: row.status,
+          pipelineStage: row.pipeline_stage,
+          primaryServiceOrProduct: row.primary_service_or_product,
+          totalRevenueMinor: Number(row.total_revenue_minor),
+          currency: row.currency,
+          startedAt: new Date(row.started_at).toISOString(),
+          closedAt: asIso(row.closed_at),
+          updatedAt: new Date(row.updated_at).toISOString(),
+          contact: { id: row.contact_id, name: row.contact_name, phone: row.contact_phone },
+          channel: row.channel_id && row.channel_provider && row.channel_phone_number && row.channel_name && row.channel_status
+            ? {
+                id: row.channel_id,
+                provider: row.channel_provider,
+                phoneNumber: row.channel_phone_number,
+                name: row.channel_name,
+                status: row.channel_status,
+              }
+            : null,
+        },
+        acquisitionContexts: acquisitions.rows.map((item) => ({
+          id: String(item.id), source: String(item.source),
+          campaignId: item.campaign_id as string | null,
+          campaignName: item.campaign_name as string | null,
+          adSetId: item.ad_set_id as string | null,
+          adId: item.ad_id as string | null,
+          creativeCode: item.creative_code as string | null,
+          offerHook: item.offer_hook as string | null,
+          entryMessage: item.entry_message as string | null,
+          confidence: String(item.confidence),
+          occurredAt: new Date(item.occurred_at as Date).toISOString(),
+        })),
+        // Query is DESC for a bounded "latest N" read; reverse only for the
+        // user-facing chronological conversation order.
+        messages: recentMessages.rows.reverse().map((message) => ({
+          id: message.id, direction: message.direction, senderType: message.sender_type,
+          textContent: message.text_content, sentAt: new Date(message.sent_at).toISOString(),
+        })),
+        knownFacts: facts.rows.map((fact) => ({
+          id: String(fact.id), key: String(fact.key), value: fact.value,
+          source: String(fact.source), confidence: Number(fact.confidence),
+          confirmedByCustomer: Boolean(fact.confirmed_by_customer),
+          observedAt: new Date(fact.observed_at as Date).toISOString(),
+        })),
+        decisionState: state ? {
+          currentStage: String(state.current_stage), stageConfidence: Number(state.stage_confidence),
+          primaryFriction: state.primary_friction as string | null,
+          secondaryFrictions: state.secondary_frictions,
+          frictionEvidence: state.friction_evidence as string | null,
+          frictionConfidence: Number(state.friction_confidence),
+          frictionResolved: Boolean(state.friction_resolved),
+          updatedAt: new Date(state.updated_at as Date).toISOString(),
+        } : null,
+        recommendation: recommendation ? {
+          id: String(recommendation.id), suggestedAction: String(recommendation.suggested_action),
+          suggestedDraftText: recommendation.suggested_draft_text as string | null,
+          microCommitmentGoal: String(recommendation.micro_commitment_goal),
+          confidence: Number(recommendation.confidence), policyStatus: String(recommendation.policy_status),
+          policyReason: recommendation.policy_reason as string | null,
+          createdAt: new Date(recommendation.created_at as Date).toISOString(),
+        } : null,
+        handoff: handoff ? {
+          id: String(handoff.id), status: String(handoff.status),
+          assignedToUserId: handoff.assigned_to_user_id as string | null,
+          briefing: handoff.briefing, triggerReason: String(handoff.trigger_reason),
+          openedAt: new Date(handoff.opened_at as Date).toISOString(),
+          acceptedAt: asIso(handoff.accepted_at as Date | null),
+          resolvedAt: asIso(handoff.resolved_at as Date | null),
+        } : null,
+        outcome: outcome ? {
+          id: String(outcome.id), result: String(outcome.result),
+          finalRevenueMinor: outcome.final_revenue_minor === null ? null : Number(outcome.final_revenue_minor),
+          currency: String(outcome.currency), closedReason: outcome.closed_reason as string | null,
+          capiStatus: String(outcome.capi_status), occurredAt: new Date(outcome.occurred_at as Date).toISOString(),
+        } : null,
+      };
     });
   }
 

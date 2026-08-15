@@ -66,4 +66,18 @@ describe('PostgresCockpitReadGateway — RLS-scoped cockpit reads', () => {
     expect(journeys).toBeNull();
     expect(messages).toBeNull();
   });
+
+  it('COCKPIT-DB-04: composes only normalized commercial facts and never exposes raw/provider payloads', async () => {
+    const cockpit = await gateway.getJourneyCockpit(owner, seededWorkspace, seededJourney, 50);
+    expect(cockpit).not.toBeNull();
+    expect(cockpit?.journey).toMatchObject({ id: seededJourney, contact: { name: 'Juliana Rossi' } });
+    expect(cockpit?.acquisitionContexts[0]).toMatchObject({ source: 'meta_ads', confidence: 'HIGH_CTWA' });
+    expect(cockpit?.knownFacts[0]).toMatchObject({ source: expect.any(String), confidence: expect.any(Number) });
+    expect(cockpit?.messages[0]).not.toHaveProperty('providerMessageId');
+    expect(JSON.stringify(cockpit)).not.toContain('raw_payload');
+    expect(JSON.stringify(cockpit)).not.toContain('click_ids');
+
+    const crossTenant = await gateway.getJourneyCockpit(outsider, seededWorkspace, seededJourney, 50);
+    expect(crossTenant).toBeNull();
+  });
 });

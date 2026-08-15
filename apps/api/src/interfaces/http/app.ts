@@ -185,10 +185,12 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     config: { rateLimit: false },
   }, async (_req, reply) => {
     if (!healthProvider) {
-      // No health provider configured — report degraded rather than silently passing
+      // No health provider configured — report degraded rather than silently
+      // passing. Deliberately do not expose configuration details to an
+      // unauthenticated endpoint.
       return reply.status(503).send({
         status: 'degraded',
-        reason: 'No health provider configured',
+        dependencies: REQUIRED_READINESS_DEPENDENCIES.map((name) => ({ name, status: 'degraded' })),
         timestamp: new Date().toISOString(),
       });
     }
@@ -199,14 +201,21 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     } catch {
       return reply.status(503).send({
         status: 'degraded',
-        reason: 'Dependency health check unavailable',
+        dependencies: REQUIRED_READINESS_DEPENDENCIES.map((name) => ({ name, status: 'degraded' })),
         timestamp: new Date().toISOString(),
       });
     }
-    const byName = new Map(statuses.map((status) => [status.name, status]));
+
+    // A Map would silently accept duplicates by keeping the last status. That
+    // can turn a broken health adapter into a false positive. Readiness is
+    // fail-closed: each mandatory dependency must be reported exactly once and
+    // that single probe must be healthy.
     const dependencies = REQUIRED_READINESS_DEPENDENCIES.map((name) => ({
       name,
-      status: byName.get(name)?.healthy ? 'ok' : 'degraded',
+      status: statuses.filter((status) => status.name === name).length === 1
+        && statuses.find((status) => status.name === name)?.healthy === true
+        ? 'ok'
+        : 'degraded',
     }));
     const allHealthy = dependencies.every((dependency) => dependency.status === 'ok');
 

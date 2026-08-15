@@ -7,6 +7,7 @@ import { PostgresDependencyHealthProvider } from '../../src/infrastructure/datab
 import { EnvironmentWebhookSecretProvider } from '../../src/infrastructure/security/environment-webhook-secret-provider.js';
 import { WahaWebhookAdapter } from '../../src/infrastructure/channels/waha/waha-webhook-adapter.js';
 import { WahaInboundWorker } from '../../src/infrastructure/workers/waha-inbound-worker.js';
+import { createProductionRuntimeFromEnvironment } from '../../src/infrastructure/runtime/production-runtime.js';
 import { OutboxProcessingGateway } from '../../src/application/ports/outbox-processing-gateway.js';
 import { DependencyHealthProvider } from '../../src/application/ports/dependency-health-provider.js';
 import { ReferencedWebhookSecretProvider } from '../../src/infrastructure/security/referenced-webhook-secret-provider.js';
@@ -60,11 +61,51 @@ describe('TX Commercial Core — P0.3B Production Runtime Contracts & Separation
   // 1. PRODUCTION BOOTSTRAP GUARDS & FAIL-EARLY VALIDATIONS
   // ============================================================================
   describe('Production Environment Guards', () => {
-    it('RUN-01: startServer() fails early with a sanitized message when production adapters are absent', async () => {
+    it('RUN-01: official production bootstrap fails early when no server-only runtime factory is configured', async () => {
       process.env.NODE_ENV = 'production';
       await expect(startServer()).rejects.toThrow(
-        /Production startup blocked: explicit server-only runtime adapters are required/i
+        /Production startup blocked: SOS_SALES_RUNTIME_FACTORY is required/i
       );
+    });
+
+    it('RUN-01A: production factory rejects relative, unloadable and invalid server-only configuration', async () => {
+      await expect(createProductionRuntimeFromEnvironment({
+        SOS_SALES_RUNTIME_FACTORY: 'runtime.mjs',
+      })).rejects.toThrow(/must be an absolute file path/i);
+
+      await expect(createProductionRuntimeFromEnvironment({
+        SOS_SALES_RUNTIME_FACTORY: '/opt/sos/missing-runtime.mjs',
+      }, async () => { throw new Error('module not found at /private/path'); })).rejects.toThrow(
+        /configured runtime factory could not be loaded/i
+      );
+
+      await expect(createProductionRuntimeFromEnvironment({
+        SOS_SALES_RUNTIME_FACTORY: '/opt/sos/invalid-runtime.mjs',
+      }, async () => ({ default: {} }))).rejects.toThrow(/configured runtime factory is invalid/i);
+    });
+
+    it('RUN-01B: server-only factory composes a fake runtime whose lifecycle starts and stops cleanly', async () => {
+      const close = vi.fn().mockResolvedValue(undefined);
+      const composedRuntime = await createProductionRuntimeFromEnvironment({
+        SOS_SALES_RUNTIME_FACTORY: '/opt/sos/runtime-factory.mjs',
+      }, async (moduleUrl) => {
+        expect(moduleUrl).toBe('file:///opt/sos/runtime-factory.mjs');
+        return {
+          createProductionRuntime: () => ({ ...makeProductionRuntime(), close }),
+        };
+      });
+
+      process.env.NODE_ENV = 'production';
+      const instance = await startServer({
+        runtime: composedRuntime,
+        host: '127.0.0.1',
+        port: 0,
+        installSignalHandlers: false,
+      });
+
+      expect(instance.worker.isHealthy()).toBe(true);
+      await instance.stop();
+      expect(close).toHaveBeenCalledOnce();
     });
 
     it('RUN-02: production starts only with explicit server-only ports, without local adapters', async () => {
@@ -283,7 +324,12 @@ describe('TX Commercial Core — P0.3B Production Runtime Contracts & Separation
       expect(response.statusCode).toBe(503);
       const json = JSON.parse(response.payload);
       expect(json.status).toBe('degraded');
-      expect(json.reason).toMatch(/No health provider configured/i);
+      expect(json.dependencies).toEqual([
+        { name: 'database', status: 'degraded' },
+        { name: 'redis', status: 'degraded' },
+        { name: 'worker', status: 'degraded' },
+      ]);
+      expect(json.reason).toBeUndefined();
 
       await app.close();
     });
@@ -300,8 +346,36 @@ describe('TX Commercial Core — P0.3B Production Runtime Contracts & Separation
 
       const response = await app.inject({ method: 'GET', url: '/ready' });
       expect(response.statusCode).toBe(503);
-      expect(response.payload).toContain('Dependency health check unavailable');
+      expect(response.payload).not.toContain('Dependency health check unavailable');
       expect(response.payload).not.toContain('postgres://');
+      await app.close();
+    });
+
+    it('HLT-06A: GET /ready returns 503 when a mandatory dependency is reported more than once', async () => {
+      const app = buildApp({
+        secretProvider: new EnvironmentWebhookSecretProvider(),
+        wahaAdapter: new WahaWebhookAdapter(),
+        ingestionGateway: new PostgresInboundIngestionGateway(),
+        healthProvider: {
+          checkAll: async () => [
+            { name: 'database', healthy: true },
+            { name: 'redis', healthy: true },
+            { name: 'redis', healthy: true, reason: 'redis://do-not-leak' },
+            { name: 'worker', healthy: true },
+          ],
+        },
+        logger: false,
+      });
+      await app.ready();
+
+      const response = await app.inject({ method: 'GET', url: '/ready' });
+      expect(response.statusCode).toBe(503);
+      expect(JSON.parse(response.payload).dependencies).toEqual([
+        { name: 'database', status: 'ok' },
+        { name: 'redis', status: 'degraded' },
+        { name: 'worker', status: 'ok' },
+      ]);
+      expect(response.payload).not.toContain('do-not-leak');
       await app.close();
     });
 

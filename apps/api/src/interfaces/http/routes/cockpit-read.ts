@@ -15,6 +15,9 @@ const messageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().min(1).max(512).nullable().optional().transform((value) => value ?? null),
 });
+const cockpitQuery = z.object({
+  messageLimit: z.coerce.number().int().min(1).max(50).default(50),
+});
 
 function validationError(reply: FastifyReply): FastifyReply {
   return reply.code(400).send({
@@ -115,6 +118,28 @@ export async function cockpitReadRoutes(
       };
     } catch {
       // Cursor/database details are intentionally never exposed to operators.
+      return unavailable(reply);
+    }
+  });
+
+  app.get('/workspaces/:workspaceId/journeys/:journeyId/cockpit', async (request, reply) => {
+    const actor = actorOrUnauthorized(request, reply);
+    if (!actor) return reply;
+    const params = z.object({ workspaceId: uuid, journeyId: uuid }).safeParse(request.params);
+    const query = cockpitQuery.safeParse(request.query);
+    if (!params.success || !query.success) return validationError(reply);
+    if (!dependencies.cockpitReadGateway) return unavailable(reply);
+    try {
+      const data = await dependencies.cockpitReadGateway.getJourneyCockpit(
+        actor,
+        params.data.workspaceId,
+        params.data.journeyId,
+        query.data.messageLimit,
+      );
+      return data === null ? notFound(reply) : { data };
+    } catch {
+      // Internal SQL and projection failures must not disclose tenant or
+      // provider details to a browser operator.
       return unavailable(reply);
     }
   });

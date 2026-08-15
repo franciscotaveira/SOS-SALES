@@ -25,6 +25,7 @@ import { JourneyOperationsGateway } from './application/ports/journey-operations
 import { CommercialOutcomeGateway } from './application/ports/commercial-outcome-gateway.js';
 import { OutboundDispatchGateway } from './application/ports/outbound-dispatch-gateway.js';
 import { CompositeDependencyHealthProvider } from './infrastructure/health/composite-dependency-health-provider.js';
+import { createProductionRuntimeFromEnvironment } from './infrastructure/runtime/production-runtime.js';
 import { Redis } from 'ioredis';
 
 dotenv.config();
@@ -65,7 +66,7 @@ export interface ServerInstance {
   stop: () => Promise<void>;
 }
 
-function assertProductionRuntime(runtime: RuntimeDependencies | undefined): asserts runtime is RuntimeDependencies {
+export function assertProductionRuntime(runtime: RuntimeDependencies | undefined): asserts runtime is RuntimeDependencies {
   if (!runtime) {
     throw new Error(
       'Production startup blocked: explicit server-only runtime adapters are required.'
@@ -190,8 +191,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
   let runtime: RuntimeDependencies;
 
   if (isProduction) {
-    assertProductionRuntime(options.runtime);
-    runtime = options.runtime;
+    // The normal binary composes its dependencies from the deployment-owned
+    // server-only runtime factory. Tests may inject an explicit runtime, but
+    // production has no path to the local development pool or env fixture.
+    runtime = options.runtime ?? await createProductionRuntimeFromEnvironment();
+    assertProductionRuntime(runtime);
   } else if (options.runtime) {
     runtime = options.runtime;
   } else {
