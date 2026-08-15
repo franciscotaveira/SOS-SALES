@@ -12,6 +12,7 @@ import { WorkspaceDirectory } from '../../application/ports/workspace-directory.
 import { CockpitReadGateway } from '../../application/ports/cockpit-read-gateway.js';
 import { HandoffOperationsGateway } from '../../application/ports/handoff-operations-gateway.js';
 import { JourneyOperationsGateway } from '../../application/ports/journey-operations-gateway.js';
+import { CommercialOutcomeGateway } from '../../application/ports/commercial-outcome-gateway.js';
 import { wahaWebhookRoutes } from './routes/webhooks/waha.js';
 import { operatorAuthRoutes } from './routes/operator-auth.js';
 
@@ -56,6 +57,8 @@ export interface AppDependencies {
   handoffOperationsGateway?: HandoffOperationsGateway;
   /** Authenticated, RLS-scoped journey stage and follow-up mutations. */
   journeyOperationsGateway?: JourneyOperationsGateway;
+  /** Authenticated, RLS-scoped immutable commercial outcome mutation. */
+  commercialOutcomeGateway?: CommercialOutcomeGateway;
   logger?: boolean | Record<string, unknown>;
   rateLimit?: RateLimitOptions | false;
   /**
@@ -149,6 +152,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     cockpitReadGateway: dependencies.cockpitReadGateway,
     handoffOperationsGateway: dependencies.handoffOperationsGateway,
     journeyOperationsGateway: dependencies.journeyOperationsGateway,
+    commercialOutcomeGateway: dependencies.commercialOutcomeGateway,
   });
 
   /**

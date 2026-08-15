@@ -4,9 +4,11 @@ import { WorkspaceDirectory } from '../../../application/ports/workspace-directo
 import { CockpitReadGateway } from '../../../application/ports/cockpit-read-gateway.js';
 import { HandoffOperationsGateway } from '../../../application/ports/handoff-operations-gateway.js';
 import { JourneyOperationsGateway } from '../../../application/ports/journey-operations-gateway.js';
+import { CommercialOutcomeGateway } from '../../../application/ports/commercial-outcome-gateway.js';
 import { cockpitReadRoutes } from './cockpit-read.js';
 import { handoffOperationRoutes } from './handoff-operations.js';
 import { journeyOperationRoutes } from './journey-operations.js';
+import { commercialOutcomeRoutes } from './commercial-outcomes.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -20,6 +22,7 @@ export interface OperatorAuthRouteDependencies {
   cockpitReadGateway?: CockpitReadGateway;
   handoffOperationsGateway?: HandoffOperationsGateway;
   journeyOperationsGateway?: JourneyOperationsGateway;
+  commercialOutcomeGateway?: CommercialOutcomeGateway;
 }
 
 function readBearerToken(authorization: string | undefined): string | null {
@@ -103,5 +106,8 @@ export async function operatorAuthRoutes(
   });
   app.register(journeyOperationRoutes, {
     journeyOperationsGateway: dependencies.journeyOperationsGateway,
+  });
+  app.register(commercialOutcomeRoutes, {
+    commercialOutcomeGateway: dependencies.commercialOutcomeGateway,
   });
 }
