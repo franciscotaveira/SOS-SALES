@@ -763,6 +763,196 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     );
   }
 
+  async acceptHandoff(
+    workspaceId: string,
+    handoffCaseId: string,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ handoffCaseId: string; status: string; acceptedAt: string }> {
+    const response = await this.request<ApiEnvelope<{ handoffCaseId: string; status: string; acceptedAt: string }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/handoffs/${encodeURIComponent(handoffCaseId)}/accept`,
+      { method: 'POST', headers: { 'idempotency-key': idempotencyKey } },
+    );
+    return response.data;
+  }
+
+  async resolveHandoff(
+    workspaceId: string,
+    handoffCaseId: string,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ handoffCaseId: string; status: string; resolvedAt: string }> {
+    const response = await this.request<ApiEnvelope<{ handoffCaseId: string; status: string; resolvedAt: string }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/handoffs/${encodeURIComponent(handoffCaseId)}/resolve`,
+      { method: 'POST', headers: { 'idempotency-key': idempotencyKey } },
+    );
+    return response.data;
+  }
+
+  async returnHandoffToAi(
+    workspaceId: string,
+    handoffCaseId: string,
+    reason: string,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ handoffCaseId: string; status: string }> {
+    const response = await this.request<ApiEnvelope<{ handoffCaseId: string; status: string }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/handoffs/${encodeURIComponent(handoffCaseId)}/return-to-ai`,
+      {
+        method: 'POST',
+        headers: { 'idempotency-key': idempotencyKey },
+        body: { reason },
+      },
+    );
+    return response.data;
+  }
+
+  async setJourneyStage(
+    workspaceId: string,
+    journeyId: string,
+    stage: string,
+    reason?: string,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ journeyId: string; stage: string }> {
+    const response = await this.request<ApiEnvelope<{ journeyId: string; stage: string }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/stage`,
+      {
+        method: 'PATCH',
+        headers: { 'idempotency-key': idempotencyKey },
+        body: { stage, ...(reason ? { reason } : {}) },
+      },
+    );
+    return response.data;
+  }
+
+  async createFollowUp(
+    workspaceId: string,
+    journeyId: string,
+    dueAt: string,
+    reason: string,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ followUpId: string; journeyId: string; dueAt: string }> {
+    const response = await this.request<ApiEnvelope<{ followUpId: string; journeyId: string; dueAt: string }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/follow-ups`,
+      {
+        method: 'POST',
+        headers: { 'idempotency-key': idempotencyKey },
+        body: { dueAt, reason },
+      },
+    );
+    return response.data;
+  }
+
+  async recordCommercialOutcome(
+    workspaceId: string,
+    journeyId: string,
+    outcome: { result: 'WON' | 'LOST' | 'ABANDONED'; revenueMinor: number; reason?: string },
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ outcomeId: string; journeyId: string; result: string; revenueMinor: number }> {
+    const response = await this.request<ApiEnvelope<{ outcomeId: string; journeyId: string; result: string; revenueMinor: number }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/outcomes`,
+      {
+        method: 'POST',
+        headers: { 'idempotency-key': idempotencyKey },
+        body: {
+          result: outcome.result,
+          revenueMinor: outcome.revenueMinor,
+          currency: 'BRL',
+          ...(outcome.reason ? { reason: outcome.reason } : {}),
+        },
+      },
+    );
+    return response.data;
+  }
+
+  async recordKnownFact(
+    workspaceId: string,
+    journeyId: string,
+    fact: {
+      key: string;
+      value: unknown;
+      confidence: number;
+      confirmedByCustomer: boolean;
+      evidenceMessageId?: string;
+      supersedesFactId?: string;
+    },
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ factId: string; journeyId: string; key: string }> {
+    const response = await this.request<ApiEnvelope<{ factId: string; journeyId: string; key: string }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/facts`,
+      {
+        method: 'POST',
+        headers: { 'idempotency-key': idempotencyKey },
+        body: {
+          key: fact.key,
+          value: fact.value,
+          confidence: fact.confidence,
+          confirmedByCustomer: fact.confirmedByCustomer,
+          ...(fact.evidenceMessageId ? { evidenceMessageId: fact.evidenceMessageId } : {}),
+          ...(fact.supersedesFactId ? { supersedesFactId: fact.supersedesFactId } : {}),
+        },
+      },
+    );
+    return response.data;
+  }
+
+  async createOutboundDraft(
+    workspaceId: string,
+    journeyId: string,
+    textContent: string,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ dispatchId: string; journeyId: string; textContent: string; state: string }> {
+    const response = await this.request<ApiEnvelope<{ dispatchId: string; journeyId: string; textContent: string; state: string }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/outbound-drafts`,
+      {
+        method: 'POST',
+        headers: { 'idempotency-key': idempotencyKey },
+        body: { textContent },
+      },
+    );
+    return response.data;
+  }
+
+  async approveOutboundDispatch(
+    workspaceId: string,
+    dispatchId: string,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ dispatchId: string; state: string }> {
+    const response = await this.request<ApiEnvelope<{ dispatchId: string; state: string }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/outbound-dispatches/${encodeURIComponent(dispatchId)}/approve`,
+      {
+        method: 'POST',
+        headers: { 'idempotency-key': idempotencyKey },
+        body: {},
+      },
+    );
+    return response.data;
+  }
+
+  async cancelOutboundDispatch(
+    workspaceId: string,
+    dispatchId: string,
+    reason: string,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ dispatchId: string; state: string }> {
+    const response = await this.request<ApiEnvelope<{ dispatchId: string; state: string }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/outbound-dispatches/${encodeURIComponent(dispatchId)}/cancel`,
+      {
+        method: 'POST',
+        headers: { 'idempotency-key': idempotencyKey },
+        body: { reason },
+      },
+    );
+    return response.data;
+  }
+
+  async getOutboundDispatch(
+    workspaceId: string,
+    dispatchId: string,
+  ): Promise<{ dispatchId: string; state: string; textContent: string }> {
+    const response = await this.request<ApiEnvelope<{ dispatchId: string; state: string; textContent: string }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/outbound-dispatches/${encodeURIComponent(dispatchId)}`,
+    );
+    return response.data;
+  }
+
   async getWorkspaces(): Promise<Workspace[]> {
     const workspaces = await this.listWorkspaces();
     // These shell-only values are not commercial facts; the API does not yet
@@ -858,23 +1048,47 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     return Math.min(max, Math.max(min, Math.floor(value)));
   }
 
-  private async request<T>(path: string): Promise<T> {
+  private async request<T>(
+    path: string,
+    options: {
+      method?: string;
+      body?: unknown;
+      headers?: Record<string, string>;
+    } = {},
+  ): Promise<T> {
     const token = await this.accessTokenProvider();
     if (!token) {
       throw new SalesOsTransportError('A sessão autenticada ainda não foi conectada ao transporte do SOS Sales.', 401);
     }
 
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      ...options.headers,
+    };
+    if (options.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
+
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}${path}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        method: options.method ?? 'GET',
+        headers,
+        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       });
     } catch {
       throw new SalesOsTransportError('Não foi possível alcançar a API do SOS Sales.');
     }
 
     if (!response.ok) {
-      throw new SalesOsTransportError(`A API do SOS Sales retornou ${response.status}.`, response.status);
+      let message = `A API do SOS Sales retornou ${response.status}.`;
+      try {
+        const errorJson = await response.json() as { message?: string };
+        if (errorJson?.message) message = errorJson.message;
+      } catch {
+        // ignore
+      }
+      throw new SalesOsTransportError(message, response.status);
     }
 
     try {

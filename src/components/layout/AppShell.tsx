@@ -2,6 +2,7 @@ import React from 'react';
 import { Workspace, OperatorRole } from '../../types/cockpit';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { useFeatureFlags } from '../../contexts/FeatureFlagContext';
+import { salesOsRuntimeConfig } from '../../config/runtime';
 import {
   Flame,
   MessageSquare,
@@ -231,7 +232,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           id: 'simulador',
           label: 'Simulador',
           icon: Zap,
-          visible: showQaSimulator || isAdmin,
+          visible: salesOsRuntimeConfig.mode !== 'api' && (showQaSimulator || isAdmin),
         },
       ],
     },
@@ -509,14 +510,22 @@ export const AppShell: React.FC<AppShellProps> = ({
             </div>
           )}
 
-          {/* User Profile & Role Switcher */}
+          {/* User Profile & Role Indicator */}
           <div className="relative">
             <button
-              onClick={() => setRoleMenuOpen(!roleMenuOpen)}
+              onClick={() => {
+                if (salesOsRuntimeConfig.mode !== 'api') {
+                  setRoleMenuOpen(!roleMenuOpen);
+                }
+              }}
               className={`w-full flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:ring-2 focus-visible:ring-[#00A884] ${
                 collapsed ? 'justify-center' : ''
-              }`}
-              title="Alternar Papel de Acesso"
+              } ${salesOsRuntimeConfig.mode === 'api' ? 'cursor-default' : ''}`}
+              title={
+                salesOsRuntimeConfig.mode === 'api'
+                  ? 'Papel governado pela sessão autenticada do Supabase'
+                  : 'Alternar Papel de Acesso (Modo Demo)'
+              }
             >
               <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs">
                 {role === 'owner' ? 'OW' : role === 'admin' ? 'AD' : 'OP'}
@@ -537,11 +546,11 @@ export const AppShell: React.FC<AppShellProps> = ({
               )}
             </button>
 
-            {/* Role Switcher Popover */}
-            {roleMenuOpen && (
+            {/* Role Switcher Popover (Demo Mode Only) */}
+            {roleMenuOpen && salesOsRuntimeConfig.mode !== 'api' && (
               <div className="absolute bottom-full left-0 mb-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-50 text-xs space-y-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
                 <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-heading">
-                  Papel no Workspace
+                  Papel no Workspace (Demo)
                 </div>
 
                 <button
