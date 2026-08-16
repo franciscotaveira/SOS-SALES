@@ -11,6 +11,8 @@ import dotenv from 'dotenv';
 import { buildApp, TrustProxyOption } from './interfaces/http/app.js';
 import { WahaWebhookAdapter } from './infrastructure/channels/waha/waha-webhook-adapter.js';
 import { WahaInboundWorker } from './infrastructure/workers/waha-inbound-worker.js';
+import { WahaOutboundWorker } from './infrastructure/workers/waha-outbound-worker.js';
+import { WahaOutboundAdapter } from './infrastructure/channels/waha/waha-outbound-adapter.js';
 import { WebhookSecretProvider } from './application/ports/webhook-secret-provider.js';
 import { ChannelWebhookAdapter } from './application/ports/channel-webhook-adapter.js';
 import { InboundIngestionGateway } from './application/ports/inbound-ingestion-gateway.js';
@@ -276,10 +278,24 @@ async function startComposedServer(
   });
 
   worker.start();
+
+  let outboundWorker: WahaOutboundWorker | undefined;
+  if (runtime.outboundDispatchGateway) {
+    const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim() || 'http://sos-sales-waha:3000';
+    const wahaApiKey = process.env.WAHA_API_KEY?.trim() || 'mct_sos_waha_master_2026';
+    const outboundAdapter = new WahaOutboundAdapter({ endpoint: wahaBaseUrl, apiKey: wahaApiKey });
+    outboundWorker = new WahaOutboundWorker({
+      dispatchGateway: runtime.outboundDispatchGateway,
+      outboundAdapter,
+    });
+    outboundWorker.start();
+  }
+
   try {
     await app.listen({ port, host });
   } catch (error) {
     await worker.stop();
+    await outboundWorker?.stop();
     await runtime.close?.();
     throw error;
   }
@@ -289,6 +305,7 @@ async function startComposedServer(
     if (stopped) return;
     stopped = true;
     await worker.stop();
+    await outboundWorker?.stop();
     await app.close();
     await runtime.close?.();
   };
