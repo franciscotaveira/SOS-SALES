@@ -121,7 +121,7 @@ function QueueCard({
   const title = item.contactName || item.contactPhone || "Contato sem nome";
   const secondary = hasPriority
     ? item.lastMessageText || item.priorityReason
-    : item.primaryServiceOrProduct || "Sem produto ou serviço registrado";
+    : item.primaryServiceOrProduct || "Interessada em Serviços / Atendimento";
   const time = hasPriority ? item.lastMessageAt : item.updatedAt;
   const urgent = hasPriority && item.slaState === "OVERDUE";
 
@@ -742,23 +742,23 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           <div className="border-b border-slate-100 bg-slate-50/70 flex items-center justify-between px-3.5 py-2.5 shrink-0">
             <div>
               <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading uppercase tracking-wider">
-                <Sparkles size={14} className="text-indigo-600" /> Dossiê Vivo
+                <Sparkles size={14} className="text-indigo-600" /> Histórico do Cliente
               </p>
-              <p className="text-[10.5px] text-slate-500">fatos e decisões com proveniência</p>
+              <p className="text-[10.5px] text-slate-500">Preferências, dados e anotações</p>
             </div>
             {view && (
               <button
                 type="button"
                 onClick={() => setFactModalOpen(true)}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs"
-                title="Registrar fato conhecido"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer"
+                title="Registrar informação do cliente"
               >
-                <Plus size={13} /> Fato
+                <Plus size={13} /> Info
               </button>
             )}
           </div>
           <div className="space-y-3 p-3 overflow-y-auto flex-1 min-h-0">
-            {!view && availability("Sem dossiê selecionado", "O dossiê aparece apenas para uma jornada acessível.")}
+            {!view && availability("Sem cliente selecionado", "O histórico aparece ao selecionar uma conversa.")}
             {view && (
               <LiveDossier
                 view={view}
@@ -1059,13 +1059,13 @@ function LiveJourneyBody({
 
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-blue-300 truncate">
-              1. Origem: {acquisition?.campaignName || acquisition?.source || "Direto / Meta Ads"}
+              1. Origem: {acquisition?.campaignName || acquisition?.source || "Anúncio WhatsApp"}
             </span>
             <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-amber-300 truncate">
-              2. Estado: {decisionState?.currentStage || "Em atendimento"}
+              2. Situação: {decisionState?.currentStage || "Em Atendimento"}
             </span>
             <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-purple-300 truncate">
-              3. Ação: {recommendation?.suggestedAction || "Supervisionar conversa"}
+              3. Próximo Passo: {recommendation?.suggestedAction || "Responder Cliente"}
             </span>
           </div>
 
@@ -1310,21 +1310,21 @@ function LiveDossier({
 
   return (
     <div className="space-y-3">
-      {/* 1. Origem Meta Ads & Atribuição de Entrada (CTWA) */}
+      {/* 1. Origem do Contato */}
       <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 shadow-2xs">
         <div className="flex items-center justify-between">
           <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-950 font-heading">
-            <Globe size={13} className="text-emerald-700" /> Origem Meta Ads (CTWA)
+            <Globe size={13} className="text-emerald-700" /> Origem do Contato
           </p>
           <span className="rounded-full bg-emerald-200/90 px-2 py-0.5 font-mono text-[9.5px] font-bold text-emerald-900">
-            {primaryAcquisition ? 'CTWA Ativo' : 'Direto / Orgânico'}
+            {primaryAcquisition ? 'Anúncio WhatsApp' : 'Contato Direto'}
           </span>
         </div>
         <div className="mt-2 space-y-1.5 text-xs">
           <div className="flex items-center justify-between text-slate-700">
             <span className="text-[11px] text-slate-500">Campanha:</span>
-            <span className="font-semibold text-slate-900 truncate max-w-[170px]" title={primaryAcquisition?.campaignName || 'Campanha Principal Meta'}>
-              {primaryAcquisition?.campaignName || 'Campanha Principal Meta'}
+            <span className="font-semibold text-slate-900 truncate max-w-[170px]" title={primaryAcquisition?.campaignName || 'Campanha Principal'}>
+              {primaryAcquisition?.campaignName || 'Campanha Principal'}
             </span>
           </div>
           {primaryAcquisition?.offerHook && (
@@ -1346,31 +1346,31 @@ function LiveDossier({
       {/* 2. Jornada Comercial & Receita */}
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
         <div className="flex items-center justify-between">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-heading">Jornada Comercial</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-heading">Serviço Solicitado</p>
           <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 uppercase">
-            {journey.pipelineStage || 'LEAD'}
+            {journey.pipelineStage || 'NOVO'}
           </span>
         </div>
         <p className="mt-1 text-sm font-bold text-slate-900">
-          {journey.primaryServiceOrProduct || "Produto/serviço não registrado"}
+          {journey.primaryServiceOrProduct || "Interesse Geral / Em Atendimento"}
         </p>
         <dl className="mt-2 space-y-1 text-xs text-slate-600 border-t border-slate-100 pt-2">
           <div className="flex justify-between gap-2">
-            <dt className="text-slate-500">Iniciada</dt>
+            <dt className="text-slate-500">Iniciado em</dt>
             <dd className="font-medium text-slate-800">{formatDate(journey.startedAt)}</dd>
           </div>
           <div className="flex justify-between gap-2">
-            <dt className="text-slate-500">Receita registrada</dt>
+            <dt className="text-slate-500">Valor / Receita</dt>
             <dd className="font-mono font-bold text-emerald-700">{formatMoney(journey.totalRevenueMinor, journey.currency)}</dd>
           </div>
         </dl>
       </section>
 
-      {/* 3. Fatos Conhecidos & Prova com Proveniência */}
+      {/* 3. Informações Conhecidas */}
       <section className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-3 py-2">
           <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading">
-            <Sparkles size={13} className="text-indigo-600" /> Fatos Conhecidos ({knownFacts.length})
+            <Sparkles size={13} className="text-indigo-600" /> Informações Conhecidas ({knownFacts.length})
           </p>
           <button
             type="button"
@@ -1383,8 +1383,8 @@ function LiveDossier({
         <div className="max-h-[220px] space-y-2 overflow-y-auto p-3">
           {knownFacts.length === 0 ? (
             availability(
-              "Sem fatos extraídos",
-              "Nenhum fato com proveniência foi registrado para esta jornada."
+              "Sem observações ainda",
+              "Nenhuma preferência ou dado adicional registrado para este cliente."
             )
           ) : (
             knownFacts.map((fact) => (
@@ -1405,11 +1405,11 @@ function LiveDossier({
         </div>
       </section>
 
-      {/* 4. Memória Tática & Notas Rápidas */}
+      {/* 4. Anotações do Atendente */}
       <section className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-3 py-2">
           <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading">
-            <Brain size={13} className="text-purple-600" /> Memória Tática ({operatorNotes.length})
+            <Brain size={13} className="text-purple-600" /> Anotações do Atendente ({operatorNotes.length})
           </p>
           <button
             type="button"
@@ -1419,76 +1419,70 @@ function LiveDossier({
             {isAddingNote ? 'Cancelar' : '+ Nova Nota'}
           </button>
         </div>
-        <div className="p-3 space-y-2">
+        <div className="space-y-2 p-3">
           {isAddingNote && (
-            <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-2.5 space-y-2">
-              <div className="flex gap-1.5">
-                {['Preferência', 'Orçamento', 'Decisor', 'Objeção'].map((tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => setNewNoteTag(tag)}
-                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold transition ${
-                      newNoteTag === tag
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-white text-purple-800 border border-purple-200'
-                    }`}
-                  >
-                    {tag}
-                  </button>
-                ))}
+            <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-2.5 space-y-2 animate-in fade-in">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-purple-900">Tag:</span>
+                <select
+                  value={newNoteTag}
+                  onChange={(e) => setNewNoteTag(e.target.value)}
+                  className="rounded border border-purple-200 bg-white px-2 py-0.5 text-[10px] font-bold text-purple-900"
+                >
+                  <option value="Preferência">Preferência</option>
+                  <option value="Orçamento">Orçamento</option>
+                  <option value="Restrição">Restrição</option>
+                  <option value="Urgência">Urgência</option>
+                </select>
               </div>
-              <input
-                type="text"
+              <textarea
                 value={newNoteText}
                 onChange={(e) => setNewNoteText(e.target.value)}
-                placeholder="Ex: Não ligar antes das 14h, prefere WhatsApp..."
-                className="w-full rounded border border-purple-200 bg-white p-1.5 text-xs text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-purple-500"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAddNote();
-                }}
+                placeholder="Escreva uma anotação sobre este cliente..."
+                rows={2}
+                className="w-full rounded-lg border border-purple-200 bg-white p-2 text-xs text-slate-900 outline-none focus:ring-1 focus:ring-purple-500"
               />
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-1.5">
                 <button
                   type="button"
                   onClick={handleAddNote}
-                  className="rounded bg-purple-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-purple-700 transition"
+                  className="rounded-lg bg-purple-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-purple-700 shadow-2xs"
                 >
                   Salvar Nota
                 </button>
               </div>
             </div>
           )}
-          {operatorNotes.map((note) => (
-            <div key={note.id} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2 text-xs">
+          {operatorNotes.map((n) => (
+            <div key={n.id} className="rounded-lg border border-slate-100 bg-slate-50/70 p-2 text-xs space-y-0.5">
               <div className="flex items-center justify-between">
-                <span className="rounded bg-purple-100 px-1.5 py-0.2 text-[9.5px] font-bold text-purple-800">
-                  {note.tag}
+                <span className="rounded bg-purple-100 px-1.5 py-0.2 font-bold text-[9.5px] text-purple-800">
+                  {n.tag}
                 </span>
-                <span className="text-[10px] text-slate-400 font-mono">{note.time}</span>
+                <span className="text-[10px] text-slate-400 font-mono">{n.time}</span>
               </div>
-              <p className="mt-1 text-[11.5px] text-slate-800 font-medium">{note.text}</p>
+              <p className="text-slate-800 text-[11px] font-medium leading-snug">{n.text}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* 5. Fricção Atual & Diagnóstico */}
-      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+      {/* 5. Dúvidas & Objeções */}
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs space-y-1.5">
         <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading">
-          <AlertTriangle size={13} className="text-amber-600" /> Fricção Comercial
+          <AlertTriangle size={13} className="text-amber-500" /> Dúvidas & Objeções
         </p>
         {decisionState ? (
           <>
-            <p className="mt-2 text-xs font-bold text-slate-800">
-              {decisionState.primaryFriction || "Nenhuma fricção primária"}
+            <p className="mt-1 text-xs font-bold text-slate-800">
+              {decisionState.primaryFriction || "Nenhuma objeção primária"}
             </p>
-            <p className="mt-1 text-xs leading-5 text-slate-600">
-              {decisionState.frictionEvidence || "Evidência não registrada"}
+            <p className="mt-0.5 text-xs leading-5 text-slate-600">
+              {decisionState.frictionEvidence || "Sem objeção ativa identificada."}
             </p>
           </>
         ) : (
-          <p className="mt-1.5 text-xs text-slate-500">Nenhuma objeção crítica detectada na conversa.</p>
+          <p className="text-xs text-slate-500">Nenhuma objeção ou dúvida pendente.</p>
         )}
       </section>
 
