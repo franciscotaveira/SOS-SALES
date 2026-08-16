@@ -54,11 +54,25 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   const activeTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalActiveTab;
   const setActiveTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalActiveTab;
 
-  // Client Bundle state scoped strictly to the selected client workspace
-  const [bundleMap, setBundleMap] = React.useState<Record<string, ClientIntelligenceBundle>>({
-    ...clientIntelligenceMap,
-    [currentWorkspace.id]: mockSosSalesIntelligence,
+  const STORAGE_KEY = 'sos_sales_intelligence_bundles';
+  const [bundleMap, setBundleMap] = React.useState<Record<string, ClientIntelligenceBundle>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return {
+      ...clientIntelligenceMap,
+      [currentWorkspace.id]: mockSosSalesIntelligence,
+    };
   });
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(bundleMap));
+    } catch {}
+  }, [bundleMap]);
 
   const currentBundle = React.useMemo(() => {
     return bundleMap[currentWorkspace.id] || {
