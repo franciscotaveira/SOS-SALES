@@ -174,7 +174,7 @@ export class CapiDispatchWorker {
         email: string | null;
       }>(
         `SELECT
-           (cc.config->>'meta_capi_pixel_id') as pixel_id,
+           COALESCE(cc.public_config->>'meta_capi_pixel_id', cc.public_config->>'pixelId', '') as pixel_id,
            c.phone,
            c.email
          FROM public.commercial_journeys j

@@ -44,14 +44,27 @@ export const wabaWebhookPlugin: FastifyPluginAsync = async (app: FastifyInstance
         const statuses = value?.statuses || [];
         for (const statusObj of statuses) {
           const wabaMessageId = statusObj.id;
-          const status = statusObj.status; // sent, delivered, read, failed
-          // Status update in DB
+          const statusStr = String(statusObj.status || '').toUpperCase();
+          const validStatuses = ['SENT', 'DELIVERED', 'READ', 'FAILED', 'REVOKED'];
+          const status = validStatuses.includes(statusStr) ? statusStr : 'DELIVERED';
           try {
             await dbPool.query(
-              `UPDATE public.conversation_messages 
-               SET payload = jsonb_set(COALESCE(payload, '{}'::jsonb), '{wabaStatus}', $1)
-               WHERE external_event_id = $2 OR (payload->>'wabaMessageId') = $2`,
-              [JSON.stringify(status), wabaMessageId]
+              `INSERT INTO public.conversation_message_events (
+                 id, workspace_id, channel_connection_id, message_id,
+                 provider_event_id, status, provider_timestamp, raw_payload, created_at
+               )
+               SELECT gen_random_uuid(), m.workspace_id, m.channel_connection_id, m.id,
+                      $1, $2, NOW(), $3, NOW()
+               FROM public.conversation_messages m
+               WHERE m.provider_message_id = $4
+               LIMIT 1
+               ON CONFLICT (channel_connection_id, provider_event_id) DO NOTHING`,
+              [
+                `waba_status_${wabaMessageId}_${status}_${Date.now()}`,
+                status,
+                JSON.stringify(statusObj),
+                wabaMessageId,
+              ]
             );
           } catch (err) {
             // Ignore status update errors
