@@ -40,6 +40,45 @@ import { WorkspaceInitModal } from './components/workspace/WorkspaceInitModal';
 import { OnboardingSetupAssistantModal } from './components/assistant/OnboardingSetupAssistantModal';
 import { Bot, Sparkles } from 'lucide-react';
 
+class TabErrorBoundary extends React.Component<
+  { children: React.ReactNode; tabName: string },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode; tabName: string }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error(`Error in tab ${this.props.tabName}:`, error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 text-center bg-white rounded-2xl border border-rose-200 max-w-xl mx-auto my-8 space-y-3 shadow-xs">
+          <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+            <Bot className="w-6 h-6 text-rose-600" />
+          </div>
+          <h2 className="text-base font-bold text-slate-900">Falha ao renderizar {this.props.tabName}</h2>
+          <p className="text-xs text-slate-500 leading-relaxed">{this.state.error?.message || 'Ocorreu um erro inesperado ao carregar este módulo.'}</p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all"
+          >
+            Recarregar Módulo
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function ApiModeUnavailable({ title, detail }: { title: string; detail: string }) {
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 lg:px-6">
@@ -77,6 +116,8 @@ function AppContent({
   onToggleForcedNetworkError,
   handleUpdateJourney,
   isAuthenticatedApiMode,
+  userEmail,
+  onSignOut,
 }: {
   workspaces: Workspace[];
   currentWorkspace: Workspace;
@@ -99,6 +140,8 @@ function AppContent({
   onToggleForcedNetworkError: () => void;
   handleUpdateJourney: (j: Journey) => void;
   isAuthenticatedApiMode: boolean;
+  userEmail?: string;
+  onSignOut?: () => void;
 }) {
   const { isFeatureEnabled } = useFeatureFlags();
 
@@ -148,6 +191,8 @@ function AppContent({
       onChangeGroupSubTab={setGroupSubTab}
       activeResultsSubTab={resultsSubTab}
       onChangeResultsSubTab={setResultsSubTab}
+      userEmail={userEmail}
+      onSignOut={onSignOut}
     >
       <OfflineBanner isOffline={isOffline} onReconnect={() => setIsOffline(false)} />
 
@@ -264,16 +309,19 @@ function AppContent({
       )}
 
       {activeTab === 'grupos' && isFeatureEnabled('agency_groups') && (
-        <GroupsHubView
-          groups={agencyGroups}
-          onUpdateGroup={(updated) => {
-            setAgencyGroups((prev) =>
-              prev.map((g) => (g.id === updated.id ? updated : g))
-            );
-          }}
-          activeSubTab={groupSubTab}
-          onChangeSubTab={setGroupSubTab}
-        />
+        <TabErrorBoundary tabName="Hub de Grupos">
+          <GroupsHubView
+            groups={agencyGroups}
+            workspaceId={currentWorkspace.id}
+            onUpdateGroup={(updated) => {
+              setAgencyGroups((prev) =>
+                prev.map((g) => (g.id === updated.id ? updated : g))
+              );
+            }}
+            activeSubTab={groupSubTab}
+            onChangeSubTab={setGroupSubTab}
+          />
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'resultados' && isFeatureEnabled('traffic_proof') && (
@@ -339,7 +387,7 @@ function AppContent({
           currentWorkspace={currentWorkspace}
           isOpen={isAssistantOpen}
           onClose={() => setIsAssistantOpen(false)}
-          onNavigateToTab={(tab) => {
+      onNavigateToTab={(tab) => {
             setActiveTab(tab);
             setIsAssistantOpen(false);
           }}
@@ -348,7 +396,13 @@ function AppContent({
     );
   }
 
-function OperationalApp() {
+function OperationalApp({
+  userEmail,
+  onSignOut,
+}: {
+  userEmail?: string;
+  onSignOut?: () => void;
+} = {}) {
   const [workspaces, setWorkspaces] = React.useState<Workspace[]>([]);
   const [currentWorkspace, setCurrentWorkspace] = React.useState<Workspace | null>(null);
   const [journeys, setJourneys] = React.useState<Journey[]>([]);
@@ -359,7 +413,37 @@ function OperationalApp() {
     salesOsRuntimeConfig.mode === 'api' ? [] : mockAgencyGroups
   ));
   const [selectedJourneyId, setSelectedJourneyId] = React.useState<string | undefined>(undefined);
-  const [activeTab, setActiveTab] = React.useState<NavigationTab>('agora');
+  const [activeTab, setActiveTab] = React.useState<NavigationTab>(() => {
+    try {
+      const saved = localStorage.getItem('sos_active_tab') as NavigationTab;
+      const validTabs: NavigationTab[] = [
+        'agora',
+        'kanban',
+        'conversas',
+        'grupos',
+        'agenda',
+        'notas',
+        'resultados',
+        'inteligencia',
+        'configuracoes',
+      ];
+      if (saved && validTabs.includes(saved)) {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return 'agora';
+  });
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('sos_active_tab', activeTab);
+    } catch {
+      // ignore
+    }
+  }, [activeTab]);
+
   const [role, setRole] = React.useState<OperatorRole>('operator');
   const [currentOperatorId] = React.useState('op-01');
   const [currentOperatorName] = React.useState('Você (Gestor)');
@@ -396,7 +480,18 @@ function OperationalApp() {
         const wsList = await salesOsGateway.getWorkspaces();
         if (!isMounted) return;
         setWorkspaces(wsList);
-        const defaultWs = wsList[0];
+
+        let targetWs: Workspace | undefined;
+        try {
+          const savedWsId = localStorage.getItem('sos_selected_workspace_id');
+          if (savedWsId) {
+            targetWs = wsList.find((w) => w.id === savedWsId);
+          }
+        } catch {
+          // ignore
+        }
+
+        const defaultWs = targetWs || wsList[0];
         setCurrentWorkspace(defaultWs ?? null);
 
         if (!defaultWs) {
@@ -432,6 +527,11 @@ function OperationalApp() {
 
   // When switching workspace
   const handleSelectWorkspace = async (ws: Workspace) => {
+    try {
+      localStorage.setItem('sos_selected_workspace_id', ws.id);
+    } catch {
+      // ignore
+    }
     setCurrentWorkspace(ws);
     setIsLoading(true);
     try {
@@ -582,6 +682,8 @@ function OperationalApp() {
           onToggleForcedNetworkError={handleToggleForcedNetworkError}
           handleUpdateJourney={handleUpdateJourney}
           isAuthenticatedApiMode={salesOsRuntimeConfig.mode === 'api'}
+          userEmail={userEmail}
+          onSignOut={onSignOut}
         />
       </FeatureFlagProvider>
     </>
@@ -687,13 +789,10 @@ function AuthenticatedApp() {
   }
 
   return (
-    <>
-      <div className="fixed right-3 top-3 z-50 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs text-slate-200 shadow-lg">
-        <span className="max-w-48 truncate">{auth.user?.email}</span>
-        <button onClick={() => void auth.signOut()} className="rounded border border-slate-600 px-2 py-1 hover:bg-slate-800">Sair</button>
-      </div>
-      <OperationalApp />
-    </>
+    <OperationalApp
+      userEmail={auth.user?.email}
+      onSignOut={() => void auth.signOut()}
+    />
   );
 }
 

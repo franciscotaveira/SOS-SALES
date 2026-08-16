@@ -35,27 +35,28 @@ export const GroupMonitor: React.FC<GroupMonitorProps> = ({
   const [quickReplyTextMap, setQuickReplyTextMap] = React.useState<Record<string, string>>({});
   const [activeReplyGroupId, setActiveReplyGroupId] = React.useState<string | null>(null);
 
-  // Derive metrics for the 12 groups
+  // Derive metrics for the groups
   const totalMessagesToday = React.useMemo(() => {
-    return groups.reduce((acc, g) => acc + (g.unreadCount * 3 + (g.pinned ? 25 : 12)), 140);
+    return (groups || []).reduce((acc, g) => acc + ((g?.unreadCount || 0) * 3 + (g?.pinned ? 25 : 12)), 140);
   }, [groups]);
 
   const criticalGroups = React.useMemo(() => {
-    return groups.filter(
-      (g) => g.healthStatus === 'pending_action' && g.unreadCount >= 2
+    return (groups || []).filter(
+      (g) => g && g.healthStatus === 'pending_action' && (g.unreadCount || 0) >= 2
     );
   }, [groups]);
 
   const pendingGroups = React.useMemo(() => {
-    return groups.filter((g) => g.unreadCount > 0 || g.pendingTaskCount > 0);
+    return (groups || []).filter((g) => g && ((g.unreadCount || 0) > 0 || (g.pendingTaskCount || 0) > 0));
   }, [groups]);
 
   const mentionGroups = React.useMemo(() => {
-    return groups.filter(
+    return (groups || []).filter(
       (g) =>
-        g.lastMessage.text.includes('@') ||
-        g.lastMessage.isClient ||
-        g.tags.includes('urgente')
+        g &&
+        (Boolean(g.lastMessage?.text?.includes('@')) ||
+          Boolean(g.lastMessage?.isClient) ||
+          (g.tags || []).includes('urgente'))
     );
   }, [groups]);
 
@@ -69,11 +70,11 @@ export const GroupMonitor: React.FC<GroupMonitorProps> = ({
       case 'mentions':
         return mentionGroups;
       case 'healthy':
-        return groups.filter(
-          (g) => g.healthStatus === 'active' && g.unreadCount === 0
+        return (groups || []).filter(
+          (g) => g && g.healthStatus === 'active' && (g.unreadCount || 0) === 0
         );
       default:
-        return groups;
+        return groups || [];
     }
   }, [groups, urgencyFilter, criticalGroups, pendingGroups, mentionGroups]);
 
@@ -264,14 +265,14 @@ export const GroupMonitor: React.FC<GroupMonitorProps> = ({
               <div className="bg-white p-2 rounded-lg border border-slate-200 text-xs space-y-1">
                 <div className="flex items-center justify-between text-[10.5px]">
                   <span className="font-bold text-[#111b21] truncate max-w-[120px]">
-                    {group.lastMessage.sender}
+                    {group.lastMessage?.sender || 'Participante'}
                   </span>
                   <span className="text-[#667781] font-mono text-[10px]">
-                    {group.lastMessage.timestamp}
+                    {group.lastMessage?.timestamp || 'Hoje'}
                   </span>
                 </div>
                 <p className="text-[11px] text-[#54656f] line-clamp-2 leading-snug">
-                  "{group.lastMessage.text}"
+                  "{group.lastMessage?.text || 'Mensagem do grupo'}"
                 </p>
               </div>
 

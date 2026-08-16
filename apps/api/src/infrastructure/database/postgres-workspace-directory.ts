@@ -32,9 +32,9 @@ export class PostgresWorkspaceDirectory implements WorkspaceDirectory {
         FROM public.workspaces w
         INNER JOIN public.workspace_memberships wm
           ON wm.workspace_id = w.id
-        WHERE wm.user_id = auth.uid()
+        WHERE wm.user_id = $1::uuid
         ORDER BY w.name ASC, w.id ASC
-      `);
+      `, [actor.userId]);
 
       await client.query('COMMIT');
       return result.rows;

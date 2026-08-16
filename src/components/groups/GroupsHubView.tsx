@@ -36,6 +36,7 @@ import { LiveWallboardView } from '../monitoring/LiveWallboardView';
 
 interface GroupsHubViewProps {
   groups: WhatsAppGroup[];
+  workspaceId?: string;
   onUpdateGroup?: (updated: WhatsAppGroup) => void;
   activeSubTab?: 'conversations' | 'monitor' | 'broadcast' | 'wallboard';
   onChangeSubTab?: (subTab: 'conversations' | 'monitor' | 'broadcast' | 'wallboard') => void;
@@ -43,6 +44,7 @@ interface GroupsHubViewProps {
 
 export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
   groups: initialGroups,
+  workspaceId,
   onUpdateGroup,
   activeSubTab: externalActiveSubTab,
   onChangeSubTab: externalOnChangeSubTab,
@@ -56,6 +58,23 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
   const [selectedGroupId, setSelectedGroupId] = React.useState<string>(
     initialGroups[0]?.id || ''
   );
+
+  // Fetch live WhatsApp groups from API
+  React.useEffect(() => {
+    const wsId = workspaceId || '11111111-1111-1111-1111-111111111111';
+    fetch(`/api/v1/workspaces/${wsId}/groups`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.groups) && data.groups.length > 0) {
+          setGroups(data.groups);
+          if (!selectedGroupId || selectedGroupId === initialGroups[0]?.id) {
+            setSelectedGroupId(data.groups[0].id);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [workspaceId]);
+
   const [search, setSearch] = React.useState('');
   const [clientFilter, setClientFilter] = React.useState<string>('all');
   const [categoryFilter, setCategoryFilter] = React.useState<string>('all');
@@ -86,21 +105,29 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
   }, [activeSubTab]);
 
   const selectedGroup = React.useMemo(
-    () => groups.find((g) => g.id === selectedGroupId) || groups[0],
+    () => groups.find((g) => g.id === selectedGroupId) || groups[0] || null,
     [groups, selectedGroupId]
   );
 
   const uniqueClients = React.useMemo(() => {
-    return ['all', ...Array.from(new Set(groups.map((g) => g.clientName)))];
+    return ['all', ...Array.from(new Set((groups || []).map((g) => g?.clientName).filter(Boolean)))];
   }, [groups]);
 
   const filteredGroups = React.useMemo(() => {
-    return groups.filter((g) => {
+    return (groups || []).filter((g) => {
+      if (!g) return false;
+      const gName = (g.name || '').toLowerCase();
+      const gClient = (g.clientName || '').toLowerCase();
+      const gLastText = (typeof g.lastMessage === 'string' ? g.lastMessage : (g.lastMessage?.text || '')).toLowerCase();
+      const gTags = Array.isArray(g.tags) ? g.tags : [];
+      const q = (search || '').toLowerCase();
+
       const matchesSearch =
-        g.name.toLowerCase().includes(search.toLowerCase()) ||
-        g.clientName.toLowerCase().includes(search.toLowerCase()) ||
-        g.lastMessage.text.toLowerCase().includes(search.toLowerCase()) ||
-        g.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()));
+        !q ||
+        gName.includes(q) ||
+        gClient.includes(q) ||
+        gLastText.includes(q) ||
+        gTags.some((t) => (t || '').toLowerCase().includes(q));
 
       if (!matchesSearch) return false;
       if (clientFilter !== 'all' && g.clientName !== clientFilter) return false;
@@ -110,8 +137,8 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     });
   }, [groups, search, clientFilter, categoryFilter, engineFilter]);
 
-  const pendingAttentionCount = groups.filter(
-    (g) => g.healthStatus === 'pending_action' || g.unreadCount > 0
+  const pendingAttentionCount = (groups || []).filter(
+    (g) => g && (g.healthStatus === 'pending_action' || (g.unreadCount || 0) > 0)
   ).length;
 
   const handleTogglePin = (groupId: string, e: React.MouseEvent) => {
@@ -136,8 +163,11 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     setGroups(updated);
   };
 
-  const handleSendGroupMessage = () => {
+  const handleSendGroupMessage = async () => {
     if (!quickReplyText.trim() || !selectedGroup) return;
+
+    const messageToSend = quickReplyText.trim();
+    setQuickReplyText('');
 
     const updated = groups.map((g) =>
       g.id === selectedGroup.id
@@ -147,7 +177,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
             healthStatus: 'active' as const,
             lastMessage: {
               sender: 'Você (Gestor)',
-              text: quickReplyText.trim(),
+              text: messageToSend,
               timestamp: 'Agora',
               isClient: false,
             },
@@ -155,7 +185,17 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
         : g
     );
     setGroups(updated);
-    setQuickReplyText('');
+
+    try {
+      const wsId = workspaceId || '11111111-1111-1111-1111-111111111111';
+      await fetch(`/api/v1/workspaces/${wsId}/groups/${encodeURIComponent(selectedGroup.id)}/send-message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: messageToSend }),
+      });
+    } catch {
+      // ignore
+    }
   };
 
   const handleSwitchEngine = (newEngine: WhatsAppEngineType) => {
@@ -365,7 +405,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
               Hub de Grupos de WhatsApp
             </h1>
             <span className="bg-[#e7f8e8] text-[#00a884] font-bold text-xs px-2.5 py-0.5 rounded-full border border-[#00a884]/30">
-              12 Clientes Ativos
+              {groups.length} Grupos Ativos
             </span>
           </div>
           <p className="text-xs text-[#54656f] mt-0.5">
@@ -416,13 +456,15 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
 
           <div className="bg-white border border-[#e2e8f0] px-3 py-1.5 rounded-xl shadow-2xs text-xs flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-            <span className="font-bold text-[#111b21]">7 grupos</span>
+            <span className="font-bold text-[#111b21]">
+              {groups.filter((g) => (g.unreadCount || 0) > 0 || g.healthStatus === 'pending_action').length} grupos
+            </span>
             <span className="text-[#54656f]">pendentes</span>
           </div>
         </div>
       </div>
 
-      {/* AI Daily Digest Banner (O que aconteceu nos 12 grupos hoje) */}
+      {/* AI Daily Digest Banner (O que aconteceu nos grupos hoje) */}
       <div className="bg-gradient-to-r from-emerald-50/90 via-teal-50/80 to-white border border-emerald-200/90 rounded-2xl p-3.5 shadow-2xs">
         <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsDigestOpen(!isDigestOpen)}>
           <div className="flex items-center gap-2">
@@ -431,13 +473,15 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
             </div>
             <div>
               <div className="font-bold text-xs text-[#111b21] flex items-center gap-2">
-                <span>Resumo Inteligente SOS: O que aconteceu nos seus 12 grupos</span>
+                <span>Resumo Inteligente SOS: Monitoramento de {groups.length} grupos</span>
                 <span className="text-[10px] bg-white text-[#00a884] border border-[#00a884]/30 px-2 py-0.2 rounded-full font-bold">
                   IA Copilot
                 </span>
               </div>
               <p className="text-[11px] text-[#54656f]">
-                3 demandas prioritárias extraídas das conversas dos clientes esta manhã.
+                {groups.length > 0
+                  ? `${groups.filter(g => (g.unreadCount || 0) > 0 || g.healthStatus === 'pending_action').length} grupos com mensagens ou pendências recentes.`
+                  : "Nenhum grupo ativo no momento."}
               </p>
             </div>
           </div>
@@ -446,37 +490,29 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
           </button>
         </div>
 
-        {isDigestOpen && (
+        {isDigestOpen && groups.length > 0 && (
           <div className="mt-3 pt-3 border-t border-emerald-200/60 grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
-            <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between font-bold text-[#111b21] text-[11.5px]">
-                <span>🔥 Titanium Auto</span>
-                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-mono">Aumento Verba</span>
+            {groups.slice(0, 3).map((grp) => (
+              <div
+                key={grp.id}
+                onClick={() => setSelectedGroupId(grp.id)}
+                className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-1 shadow-2xs cursor-pointer hover:border-emerald-400 transition"
+              >
+                <div className="flex items-center justify-between font-bold text-[#111b21] text-[11.5px]">
+                  <span className="truncate max-w-[170px]">{grp.name}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                      (grp.unreadCount || 0) > 0 ? 'bg-amber-100 text-amber-800 font-bold' : 'bg-emerald-50 text-emerald-700'
+                    }`}
+                  >
+                    {(grp.unreadCount || 0) > 0 ? `${grp.unreadCount} novas` : 'Ativo'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#54656f] line-clamp-2">
+                  {grp.lastMessage?.text ? `${grp.lastMessage.sender}: ${grp.lastMessage.text}` : 'Grupo sincronizado e monitorado via WAHA/WABA.'}
+                </p>
               </div>
-              <p className="text-[11px] text-[#54656f] line-clamp-2">
-                Márcio aprovou aumento para R$ 150/dia no PPF Térmico. Subir novo vídeo.
-              </p>
-            </div>
-
-            <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between font-bold text-[#111b21] text-[11.5px]">
-                <span>⚖️ Advocacia Rocha</span>
-                <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded font-mono">Pausa Anúncio</span>
-              </div>
-              <p className="text-[11px] text-[#54656f] line-clamp-2">
-                Dr. Leonardo pediu pausa nos anúncios trabalhistas por excesso de audiências.
-              </p>
-            </div>
-
-            <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between font-bold text-[#111b21] text-[11.5px]">
-                <span>🏠 Prime Horizon</span>
-                <span className="text-[10px] text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded font-mono">Material Comercial</span>
-              </div>
-              <p className="text-[11px] text-[#54656f] line-clamp-2">
-                Camila solicitou link atualizado da tabela para os corretores atenderem no WhatsApp.
-              </p>
-            </div>
+            ))}
           </div>
         )}
       </div>
@@ -668,16 +704,16 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                     {/* Last message snippet */}
                     <div className="text-[11.5px] text-[#54656f] line-clamp-1 mt-1 font-normal">
                       <span className="font-semibold text-[#111b21]">
-                        {grp.lastMessage.sender}:
+                        {grp.lastMessage?.sender || 'Participante'}:
                       </span>{' '}
-                      {grp.lastMessage.text}
+                      {grp.lastMessage?.text || 'Mensagem do grupo'}
                     </div>
 
                     {/* Footer: Tags & Milestone */}
                     <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-[#f0f2f5] text-[10px]">
                       <div className="flex items-center gap-1 text-[#8696a0] truncate max-w-[200px]">
                         <Clock className="w-3 h-3" />
-                        <span>{grp.lastMessage.timestamp}</span>
+                        <span>{grp.lastMessage?.timestamp || 'Hoje'}</span>
                         {grp.nextMilestone && (
                           <span className="truncate text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded font-medium">
                             🎯 {grp.nextMilestone}
@@ -815,11 +851,11 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                   <div className="flex flex-col items-start">
                     <div className="bg-white text-[#111b21] max-w-[85%] px-3.5 py-2 rounded-lg wa-bubble-shadow text-[13px]">
                       <div className="text-[10.5px] font-bold text-[#00a884] mb-0.5">
-                        {selectedGroup.lastMessage.sender}
+                        {selectedGroup.lastMessage?.sender || 'Participante'}
                       </div>
-                      <p className="whitespace-pre-wrap">{selectedGroup.lastMessage.text}</p>
+                      <p className="whitespace-pre-wrap">{selectedGroup.lastMessage?.text || 'Grupo WhatsApp ativo'}</p>
                       <div className="text-[10px] text-[#667781] text-right mt-1">
-                        {selectedGroup.lastMessage.timestamp}
+                        {selectedGroup.lastMessage?.timestamp || 'Hoje'}
                       </div>
                     </div>
                   </div>

@@ -232,7 +232,7 @@ const MicroGroupCard = memo(({
       <div className="p-3 flex-1 flex flex-col justify-end space-y-2 overflow-hidden text-xs">
         <div className="flex flex-col items-start">
           <div className="flex items-center gap-1 mb-0.5 text-[9.5px] text-slate-400">
-            {group.lastMessage.sender} · {group.lastMessage.timestamp}
+            {group.lastMessage?.sender || 'Participante'} · {group.lastMessage?.timestamp || 'Hoje'}
           </div>
           <div
             className={`px-2.5 py-1.5 rounded-xl text-[11px] leading-snug max-w-[95%] line-clamp-2 ${
@@ -241,7 +241,7 @@ const MicroGroupCard = memo(({
                 : 'bg-slate-100 text-slate-900 rounded-tl-none'
             }`}
           >
-            {group.lastMessage.text}
+            {group.lastMessage?.text || 'Mensagem do grupo'}
           </div>
         </div>
 

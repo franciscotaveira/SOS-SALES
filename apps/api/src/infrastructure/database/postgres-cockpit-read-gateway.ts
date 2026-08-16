@@ -209,65 +209,90 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
       const row = journeyResult.rows[0];
       if (!row) return null;
 
-      // A pg client supports one active query at a time. Keep these reads
-      // sequential inside the same RLS transaction so no query races the
-      // connection protocol or accidentally escapes the actor identity.
-      const acquisitions = await client.query(`
-          SELECT id, source, campaign_id, campaign_name, ad_set_id, ad_id,
-                 creative_code, offer_hook, entry_message, confidence, occurred_at
-          FROM public.acquisition_contexts
-          WHERE workspace_id = $1 AND journey_id = $2
-          ORDER BY occurred_at ASC, id ASC
-        `, [workspaceId, journeyId]);
-      const recentMessages = await client.query<MessageRow>(`
-          SELECT id, direction, sender_type, text_content, sent_at
-          FROM public.conversation_messages
-          WHERE workspace_id = $1 AND journey_id = $2
-          ORDER BY sent_at DESC, id DESC
-          LIMIT $3
-        `, [workspaceId, journeyId, messageLimit]);
-      const facts = await client.query(`
-          SELECT id, key, value, source, confidence, confirmed_by_customer, observed_at
-          FROM public.known_facts
-          WHERE workspace_id = $1 AND journey_id = $2 AND superseded_by IS NULL
-          ORDER BY observed_at ASC, id ASC
-        `, [workspaceId, journeyId]);
-      const states = await client.query(`
-          SELECT current_stage, stage_confidence, primary_friction,
-                 secondary_frictions, friction_evidence, friction_confidence,
-                 friction_resolved, updated_at
-          FROM public.decision_states
-          WHERE workspace_id = $1 AND journey_id = $2
-        `, [workspaceId, journeyId]);
-      const recommendations = await client.query(`
-          SELECT id, suggested_action, suggested_draft_text, micro_commitment_goal,
-                 confidence, policy_status, policy_reason, created_at
-          FROM public.recommended_actions
-          WHERE workspace_id = $1 AND journey_id = $2
-          ORDER BY created_at DESC, id DESC
-          LIMIT 1
-        `, [workspaceId, journeyId]);
-      const handoffs = await client.query(`
-          SELECT id, status, assigned_to_user_id, briefing, trigger_reason,
-                 opened_at, accepted_at, resolved_at
-          FROM public.handoff_cases
-          WHERE workspace_id = $1 AND journey_id = $2
-            AND status IN ('PENDING', 'ACCEPTED', 'RETURNED_TO_AI')
-          ORDER BY opened_at DESC, id DESC
-          LIMIT 1
-        `, [workspaceId, journeyId]);
-      const outcomes = await client.query(`
-          SELECT id, result, final_revenue_minor, currency, closed_reason,
-                 capi_status, occurred_at
-          FROM public.commercial_outcomes
-          WHERE workspace_id = $1 AND journey_id = $2
-          LIMIT 1
-        `, [workspaceId, journeyId]);
+      // Execute all journey related sub-entities in a single consolidated query
+      // to eliminate multi-roundtrip network latency across remote database pooler.
+      const compositeResult = await client.query(`
+        SELECT
+          (
+            SELECT COALESCE(json_agg(a ORDER BY a.occurred_at ASC, a.id ASC), '[]'::json)
+            FROM (
+              SELECT id, source, campaign_id, campaign_name, ad_set_id, ad_id,
+                     creative_code, offer_hook, entry_message, confidence, occurred_at
+              FROM public.acquisition_contexts
+              WHERE workspace_id = $1 AND journey_id = $2
+            ) a
+          ) AS acquisitions,
+          (
+            SELECT COALESCE(json_agg(m), '[]'::json)
+            FROM (
+              SELECT id, direction, sender_type, text_content, sent_at
+              FROM public.conversation_messages
+              WHERE workspace_id = $1 AND journey_id = $2
+              ORDER BY sent_at DESC, id DESC
+              LIMIT $3
+            ) m
+          ) AS messages,
+          (
+            SELECT COALESCE(json_agg(f ORDER BY f.observed_at ASC, f.id ASC), '[]'::json)
+            FROM (
+              SELECT id, key, value, source, confidence, confirmed_by_customer, observed_at
+              FROM public.known_facts
+              WHERE workspace_id = $1 AND journey_id = $2 AND superseded_by IS NULL
+            ) f
+          ) AS facts,
+          (
+            SELECT row_to_json(s)
+            FROM (
+              SELECT current_stage, stage_confidence, primary_friction,
+                     secondary_frictions, friction_evidence, friction_confidence,
+                     friction_resolved, updated_at
+              FROM public.decision_states
+              WHERE workspace_id = $1 AND journey_id = $2
+            ) s
+          ) AS state,
+          (
+            SELECT row_to_json(r)
+            FROM (
+              SELECT id, suggested_action, suggested_draft_text, micro_commitment_goal,
+                     confidence, policy_status, policy_reason, created_at
+              FROM public.recommended_actions
+              WHERE workspace_id = $1 AND journey_id = $2
+              ORDER BY created_at DESC, id DESC
+              LIMIT 1
+            ) r
+          ) AS recommendation,
+          (
+            SELECT row_to_json(h)
+            FROM (
+              SELECT id, status, assigned_to_user_id, briefing, trigger_reason,
+                     opened_at, accepted_at, resolved_at
+              FROM public.handoff_cases
+              WHERE workspace_id = $1 AND journey_id = $2
+                AND status IN ('PENDING', 'ACCEPTED', 'RETURNED_TO_AI')
+              ORDER BY opened_at DESC, id DESC
+              LIMIT 1
+            ) h
+          ) AS handoff,
+          (
+            SELECT row_to_json(o)
+            FROM (
+              SELECT id, result, final_revenue_minor, currency, closed_reason,
+                     capi_status, occurred_at
+              FROM public.commercial_outcomes
+              WHERE workspace_id = $1 AND journey_id = $2
+              LIMIT 1
+            ) o
+          ) AS outcome;
+      `, [workspaceId, journeyId, messageLimit]);
 
-      const state = states.rows[0] as Record<string, unknown> | undefined;
-      const recommendation = recommendations.rows[0] as Record<string, unknown> | undefined;
-      const handoff = handoffs.rows[0] as Record<string, unknown> | undefined;
-      const outcome = outcomes.rows[0] as Record<string, unknown> | undefined;
+      const comp = compositeResult.rows[0] || {};
+      const acquisitionsList = Array.isArray(comp.acquisitions) ? comp.acquisitions : [];
+      const messagesList = Array.isArray(comp.messages) ? comp.messages : [];
+      const factsList = Array.isArray(comp.facts) ? comp.facts : [];
+      const state = comp.state as Record<string, unknown> | null;
+      const recommendation = comp.recommendation as Record<string, unknown> | null;
+      const handoff = comp.handoff as Record<string, unknown> | null;
+      const outcome = comp.outcome as Record<string, unknown> | null;
 
       return {
         journey: {
@@ -292,7 +317,7 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
               }
             : null,
         },
-        acquisitionContexts: acquisitions.rows.map((item) => ({
+        acquisitionContexts: acquisitionsList.map((item: any) => ({
           id: String(item.id), source: String(item.source),
           campaignId: item.campaign_id as string | null,
           campaignName: item.campaign_name as string | null,
@@ -306,11 +331,11 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
         })),
         // Query is DESC for a bounded "latest N" read; reverse only for the
         // user-facing chronological conversation order.
-        messages: recentMessages.rows.reverse().map((message) => ({
+        messages: messagesList.reverse().map((message: any) => ({
           id: message.id, direction: message.direction, senderType: message.sender_type,
           textContent: message.text_content, sentAt: new Date(message.sent_at).toISOString(),
         })),
-        knownFacts: facts.rows.map((fact) => ({
+        knownFacts: factsList.map((fact: any) => ({
           id: String(fact.id), key: String(fact.key), value: fact.value,
           source: String(fact.source), confidence: Number(fact.confidence),
           confirmedByCustomer: Boolean(fact.confirmed_by_customer),

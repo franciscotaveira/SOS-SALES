@@ -65,11 +65,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
   // Form State for new appointment
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadPhone, setNewLeadPhone] = useState('');
-  const [newServiceName, setNewServiceName] = useState('Escova Modelada Express');
-  const [newServiceValue, setNewServiceValue] = useState(59);
-  const [newScheduledAt, setNewScheduledAt] = useState('2026-08-15T15:00');
+  const [newServiceName, setNewServiceName] = useState('Consulta / Atendimento Comercial');
+  const [newServiceValue, setNewServiceValue] = useState(150);
+  const [newScheduledAt, setNewScheduledAt] = useState(() => {
+    const nextHour = new Date(Date.now() + 3600000);
+    return nextHour.toISOString().slice(0, 16);
+  });
   const [newDuration, setNewDuration] = useState(45);
-  const [newLocation, setNewLocation] = useState('Unidade Jardins - Cadeira 02');
+  const [newLocation, setNewLocation] = useState('Atendimento Online / Presencial');
   const [newNotes, setNewNotes] = useState('');
 
   React.useEffect(() => {

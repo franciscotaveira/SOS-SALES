@@ -34,7 +34,9 @@ export const LiveTrafficProofView: React.FC<LiveTrafficProofViewProps> = ({ work
     else setLoadState({ state: 'loading' });
 
     try {
-      const response = await gateway.getTrafficProofMetrics(workspaceId, { from: fromDate, to: toDate });
+      const fn = (gateway as any).getTrafficProofMetrics?.bind(gateway) || (gateway as any).getTrafficProof?.bind(gateway);
+      if (!fn) throw new Error('Método de Traffic Proof não implementado no Gateway.');
+      const response = await fn(workspaceId, { from: fromDate, to: toDate });
       setLoadState({ state: 'ready', value: response });
     } catch (err) {
       setLoadState({

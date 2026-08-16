@@ -232,9 +232,11 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     selectedJourneyRef.current = selectedJourneyId;
   }, [selectedJourneyId]);
 
-  const loadQueue = React.useCallback(async () => {
-    setPriorities({ state: "loading" });
-    setJourneys({ state: "loading" });
+  const loadQueue = React.useCallback(async (silent = false) => {
+    if (!silent) {
+      setPriorities({ state: "loading" });
+      setJourneys({ state: "loading" });
+    }
     try {
       const [priorityData, journeyPage] = await Promise.all([
         gateway.listPriorities(workspaceId, 5),
@@ -245,14 +247,16 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       const firstId = priorityData[0]?.journeyId || journeyPage.data[0]?.id;
       if (!selectedJourneyRef.current && firstId) onSelectedJourneyChange(firstId);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Não foi possível carregar a fila autenticada.";
-      setPriorities({ state: "error", message });
-      setJourneys({ state: "error", message });
+      if (!silent) {
+        const message = error instanceof Error ? error.message : "Não foi possível carregar a fila autenticada.";
+        setPriorities({ state: "error", message });
+        setJourneys({ state: "error", message });
+      }
     }
   }, [gateway, onSelectedJourneyChange, workspaceId]);
 
   React.useEffect(() => {
-    void loadQueue();
+    void loadQueue(false);
   }, [loadQueue]);
 
   React.useEffect(() => {
@@ -261,7 +265,9 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       return;
     }
     let active = true;
-    setCockpit({ state: "loading" });
+    // Only show full loading spinner if cockpit is not already ready for this journey
+    setCockpit((prev) => (prev.state === "ready" && prev.value.journey.id === selectedJourneyId ? prev : { state: "loading" }));
+    
     gateway
       .getCockpit(workspaceId, selectedJourneyId)
       .then((data) => {
@@ -280,21 +286,23 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     };
   }, [gateway, selectedJourneyId, workspaceId]);
 
-  const refresh = React.useCallback(async () => {
-    setRefreshing(true);
-    await loadQueue();
+  const refresh = React.useCallback(async (silent = true) => {
+    if (!silent) setRefreshing(true);
+    await loadQueue(silent);
     if (selectedJourneyId) {
-      setCockpit({ state: "loading" });
       try {
-        setCockpit({ state: "ready", value: await gateway.getCockpit(workspaceId, selectedJourneyId) });
+        const data = await gateway.getCockpit(workspaceId, selectedJourneyId);
+        setCockpit({ state: "ready", value: data });
       } catch (error) {
-        setCockpit({
-          state: "error",
-          message: error instanceof Error ? error.message : "Não foi possível atualizar a jornada.",
-        });
+        if (!silent) {
+          setCockpit({
+            state: "error",
+            message: error instanceof Error ? error.message : "Não foi possível atualizar a jornada.",
+          });
+        }
       }
     }
-    setRefreshing(false);
+    if (!silent) setRefreshing(false);
   }, [gateway, loadQueue, selectedJourneyId, workspaceId]);
 
   // Live Realtime Subscriptions via Supabase WebSockets
@@ -313,7 +321,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           filter: `workspace_id=eq.${workspaceId}`,
         },
         () => {
-          void refresh();
+          void refresh(true);
         }
       )
       .on(
@@ -325,7 +333,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           filter: `workspace_id=eq.${workspaceId}`,
         },
         () => {
-          void refresh();
+          void refresh(true);
         }
       )
       .subscribe();
@@ -334,6 +342,15 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       void client.removeChannel(channel);
     };
   }, [workspaceId, refresh]);
+
+  // Active Realtime Fallback Polling (silent every 5s when page is active)
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void refresh(true);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [refresh]);
 
   const showNotification = (type: "success" | "error", message: string) => {
     setFeedback({ type, message });
@@ -454,15 +471,37 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
+  const [queueTab, setQueueTab] = React.useState<'all' | 'priorities'>('all');
+  const [queueSearch, setQueueSearch] = React.useState('');
+
   const handleCreateOutboundDraft = async (text: string) => {
     if (!selectedJourneyId) return;
     setActionInProgress(true);
     try {
-      await gateway.createOutboundDraft(workspaceId, selectedJourneyId, text);
-      showNotification("success", "Rascunho de mensagem outbound supervisionado criado.");
-      await refresh();
+      // Optimistic update so message shows instantly in UI
+      if (cockpit.state === "ready") {
+        const optimisticMsg: ApiMessage = {
+          id: `temp-${Date.now()}`,
+          direction: 'outbound',
+          senderType: 'operator',
+          textContent: text,
+          sentAt: new Date().toISOString(),
+        };
+        setCockpit({
+          state: 'ready',
+          value: {
+            ...cockpit.value,
+            messages: [...cockpit.value.messages, optimisticMsg],
+          },
+        });
+      }
+
+      await gateway.sendDirectMessage(workspaceId, selectedJourneyId, text);
+      showNotification("success", "Mensagem enviada com sucesso ao cliente!");
+      await refresh(true);
     } catch (err) {
-      showNotification("error", err instanceof Error ? err.message : "Erro ao criar rascunho.");
+      showNotification("error", err instanceof Error ? err.message : "Erro ao enviar mensagem.");
+      await refresh(true);
     } finally {
       setActionInProgress(false);
     }
@@ -519,21 +558,40 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
-  const queue = priorities.state === "ready" ? priorities.value : journeys.state === "ready" ? journeys.value : [];
+  const prioritiesList = priorities.state === "ready" ? priorities.value : [];
+  const journeysList = journeys.state === "ready" ? journeys.value : [];
+
+  const rawQueue = queueTab === 'priorities' && prioritiesList.length > 0
+    ? prioritiesList
+    : journeysList.length > 0
+      ? journeysList
+      : prioritiesList;
+
+  const queue = React.useMemo(() => {
+    const q = (queueSearch || '').toLowerCase().trim();
+    if (!q) return rawQueue;
+    return rawQueue.filter((item) => {
+      const name = (item.contactName || '').toLowerCase();
+      const phone = (item.contactPhone || '').toLowerCase();
+      const text = ('lastMessageText' in item ? (item.lastMessageText || '') : (item.primaryServiceOrProduct || '')).toLowerCase();
+      return name.includes(q) || phone.includes(q) || text.includes(q);
+    });
+  }, [rawQueue, queueSearch]);
+
   const view = cockpit.state === "ready" ? cockpit.value : null;
 
   return (
-    <main className="mx-auto max-w-[1720px] px-4 py-5 lg:px-6">
+    <div className="flex-1 min-h-0 h-full flex flex-col p-3 sm:p-4 overflow-hidden">
       {feedback && (
         <div
-          className={`mb-4 flex items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 text-sm font-semibold shadow-sm ${
+          className={`mb-3 flex items-center justify-between gap-3 rounded-xl border-2 px-4 py-2 text-xs font-semibold shadow-2xs shrink-0 ${
             feedback.type === "success"
               ? "border-emerald-300 bg-emerald-50 text-emerald-900"
               : "border-rose-300 bg-rose-50 text-rose-900"
           }`}
         >
           <div className="flex items-center gap-2">
-            {feedback.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+            {feedback.type === "success" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
             <span>{feedback.message}</span>
           </div>
           <button
@@ -541,23 +599,23 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             onClick={() => setFeedback(null)}
             className="rounded p-1 text-slate-500 hover:bg-black/5"
           >
-            <X size={16} />
+            <X size={14} />
           </button>
         </div>
       )}
 
-      <section className="mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 shadow-xs">
+      <section className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 shadow-2xs shrink-0">
         <div>
           <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
             Operação Autenticada
           </p>
-          <h1 className="mt-0.5 text-xl font-bold tracking-tight text-slate-950 font-heading">Cockpit ao Vivo</h1>
-          <p className="text-xs text-slate-500">
-            Fila, conversa e contexto vindos do Supabase. Mutações reais com auditoria, JWT e RLS.
+          <h1 className="mt-0.5 text-lg font-bold tracking-tight text-slate-950 font-heading">Cockpit ao Vivo</h1>
+          <p className="text-[11px] text-slate-500">
+            Fila de contatos reais sincronizados do WhatsApp com envio direto, auditoria e SLAs.
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => void handleClearHistory()}
@@ -565,37 +623,68 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-200 disabled:opacity-60 transition shadow-2xs cursor-pointer"
             title="Apaga todas as conversas e leads sincronizados deste workspace"
           >
-            <Trash2 size={14} /> Limpar Histórico do Workspace
+            <Trash2 size={13} /> Limpar Histórico
           </button>
           <button
             type="button"
-            onClick={() => void refresh()}
+            onClick={() => void refresh(false)}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-emerald-600 text-white px-3.5 py-1.5 text-xs font-bold disabled:opacity-60 transition shadow-2xs cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-emerald-600 text-white px-3 py-1.5 text-xs font-bold disabled:opacity-60 transition shadow-2xs cursor-pointer"
           >
-            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} /> Atualizar dados
+            <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} /> Atualizar dados
           </button>
         </div>
       </section>
 
-      <div className="grid min-h-[660px] gap-4 xl:grid-cols-[310px_minmax(0,1fr)_340px]">
-        {/* Priority Queue Sidebar */}
-        <aside className="bg-white border border-slate-200 rounded-2xl shadow-xs flex min-h-0 flex-col overflow-hidden">
-          <div className="border-b border-slate-100 bg-slate-50/70 flex items-center justify-between px-4 py-3">
-            <div>
-              <p className="text-xs font-bold text-slate-900 font-heading uppercase tracking-wider">Fila Priorizada</p>
-              <p className="text-[11px] text-slate-500">até 5 itens com contexto real</p>
+      <div className="grid flex-1 min-h-0 gap-3 grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_320px] overflow-hidden">
+        {/* Priority / All Conversations Sidebar */}
+        <aside className="bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col h-full min-h-0 overflow-hidden">
+          <div className="border-b border-slate-100 bg-slate-50/70 p-2.5 space-y-2 shrink-0">
+            {/* Tab switchers */}
+            <div className="grid grid-cols-2 gap-1 bg-slate-200/70 p-0.5 rounded-xl text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setQueueTab('all')}
+                className={`py-1 rounded-lg transition-all ${
+                  queueTab === 'all'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                💬 Todas ({journeysList.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQueueTab('priorities')}
+                className={`py-1 rounded-lg transition-all ${
+                  queueTab === 'priorities'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                🔥 Prioridades ({prioritiesList.length})
+              </button>
             </div>
-            <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-bold text-slate-700">{queue.length}</span>
+
+            {/* Search Input */}
+            <input
+              type="text"
+              value={queueSearch}
+              onChange={(e) => setQueueSearch(e.target.value)}
+              placeholder="Buscar contato ou mensagem..."
+              className="w-full text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00a884]"
+            />
           </div>
-          <div className="space-y-2 overflow-y-auto p-3 flex-1">
-            {priorities.state === "loading" || journeys.state === "loading" ? (
-              <p className="px-2 py-5 text-sm text-slate-500">Carregando fila…</p>
+
+          <div className="space-y-2 overflow-y-auto p-2.5 flex-1 min-h-0">
+            {priorities.state === "loading" && journeys.state === "loading" ? (
+              <p className="px-2 py-5 text-sm text-slate-500 text-center">Carregando contatos…</p>
             ) : null}
-            {priorities.state === "error" ? availability("Fila indisponível", priorities.message) : null}
-            {priorities.state === "empty" && journeys.state === "empty"
-              ? availability("Zero jornadas", "Nenhuma jornada autorizada foi encontrada neste workspace.")
-              : null}
+            {queue.length === 0 && (
+              <div className="p-6 text-center text-xs text-slate-400">
+                Nenhum contato encontrado com o filtro atual.
+              </div>
+            )}
             {queue.map((item) => (
               <div key={"journeyId" in item ? item.journeyId : item.id}>
                 <QueueCard
@@ -609,10 +698,10 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         </aside>
 
         {/* Central Conversation and Actions */}
-        <section className="bg-white border border-slate-200 rounded-2xl shadow-xs min-w-0 overflow-hidden flex flex-col">
+        <section className="bg-white border border-slate-200 rounded-2xl shadow-xs min-w-0 flex flex-col h-full min-h-0 overflow-hidden">
           {cockpit.state === "loading" && (
-            <div className="flex h-full min-h-[560px] items-center justify-center text-sm text-slate-500">
-              Carregando jornada autenticada…
+            <div className="flex h-full min-h-[400px] items-center justify-center text-sm text-slate-500">
+              Carregando contexto da conversa…
             </div>
           )}
           {cockpit.state === "error" && (
@@ -620,7 +709,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           )}
           {cockpit.state === "empty" && (
             <div className="m-4">
-              {availability("Selecione uma jornada", "Escolha um item da fila para abrir seu contexto comercial.")}
+              {availability("Selecione uma conversa", "Escolha um contato na lista ao lado para abrir o atendimento.")}
             </div>
           )}
           {view && (
@@ -642,13 +731,13 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         </section>
 
         {/* Right Dossier Sidebar */}
-        <aside className="bg-white border border-slate-200 rounded-2xl shadow-xs min-w-0 overflow-hidden flex flex-col">
-          <div className="border-b border-slate-100 bg-slate-50/70 flex items-center justify-between px-4 py-3">
+        <aside className="bg-white border border-slate-200 rounded-2xl shadow-xs min-w-0 hidden xl:flex flex-col h-full min-h-0 overflow-hidden">
+          <div className="border-b border-slate-100 bg-slate-50/70 flex items-center justify-between px-3.5 py-2.5 shrink-0">
             <div>
               <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading uppercase tracking-wider">
                 <Sparkles size={14} className="text-indigo-600" /> Dossiê Vivo
               </p>
-              <p className="text-[11px] text-slate-500">fatos e decisões com proveniência</p>
+              <p className="text-[10.5px] text-slate-500">fatos e decisões com proveniência</p>
             </div>
             {view && (
               <button
@@ -661,7 +750,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               </button>
             )}
           </div>
-          <div className="space-y-3 p-3 overflow-y-auto flex-1">
+          <div className="space-y-3 p-3 overflow-y-auto flex-1 min-h-0">
             {!view && availability("Sem dossiê selecionado", "O dossiê aparece apenas para uma jornada acessível.")}
             {view && <LiveDossier view={view} onOpenFactModal={() => setFactModalOpen(true)} />}
           </div>
@@ -718,7 +807,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           inProgress={actionInProgress}
         />
       )}
-    </main>
+    </div>
   );
 };
 
@@ -768,8 +857,13 @@ function LiveJourneyBody({
     (f) => f.key === "ad.referral" || f.key === "meta_ctwa_ad" || f.source === "ad_payload"
   );
 
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   return (
-    <>
+    <div className="flex flex-col flex-1 min-h-0 h-full overflow-hidden">
       {/* Header & Stage Controller */}
       {/* Compact 1-Row Header */}
       <header className="border-b border-slate-200 bg-slate-50 px-4 py-2.5 shrink-0">
@@ -875,7 +969,7 @@ function LiveJourneyBody({
         </div>
       </header>
 
-      <div className="flex flex-col flex-1 min-h-0 p-3 gap-2">
+      <div className="flex flex-col flex-1 min-h-0 p-3 gap-2 overflow-hidden">
         {/* Sleek 1-Line Continuity Strip */}
         <section className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1 text-white shadow-xs shrink-0 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar text-xs">
           <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 shrink-0">
@@ -903,36 +997,39 @@ function LiveJourneyBody({
         </section>
 
         {/* Normalized Messages Stream (Flexible & Spacious) */}
-        <section className="flex-1 min-h-[240px] rounded-xl border border-slate-200 bg-[#efeae2] p-3 overflow-y-auto">
+        <section className="flex-1 min-h-0 rounded-xl border border-slate-200 bg-[#efeae2] p-3 overflow-y-auto whatsapp-chat-wallpaper">
           {messages.length === 0 ? (
-            availability(
-              "Nenhuma mensagem disponível",
-              "Ainda não há mensagens normalizadas acessíveis para esta jornada."
-            )
+            <div className="h-full flex items-center justify-center p-6 text-center text-xs text-slate-500">
+              Ainda não há mensagens registradas nesta conversa. Envie uma mensagem pelo campo abaixo para iniciar o contato com o cliente via WhatsApp.
+            </div>
           ) : (
             <div className="space-y-2.5">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`max-w-[85%] rounded-xl border px-3 py-2 shadow-xs ${
-                    message.direction === "outbound"
-                      ? "ml-auto border-emerald-200 bg-emerald-50 text-slate-900"
-                      : "border-slate-200 bg-white text-slate-900"
-                  }`}
-                >
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {message.textContent && message.textContent.trim()
-                      ? message.textContent
-                      : "📎 Mídia / Mensagem WhatsApp"}
-                  </p>
-                  <p className="mt-1 text-right text-[10px] text-slate-500 font-mono flex items-center justify-end gap-1">
-                    <span>{message.senderType} · {formatDate(message.sentAt)}</span>
-                    {message.direction === "outbound" && (
-                      <span className="text-blue-500 font-bold" title="Status WhatsApp">✓✓</span>
-                    )}
-                  </p>
-                </div>
-              ))}
+              {messages.map((message) => {
+                const isOut = message.direction === "outbound";
+                return (
+                  <div
+                    key={message.id}
+                    className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed shadow-2xs ${
+                      isOut
+                        ? "ml-auto bg-[#d9fdd3] text-[#111b21] rounded-tr-xs border border-[#c4f8bb]"
+                        : "mr-auto bg-white text-[#111b21] rounded-tl-xs border border-slate-200/80"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">
+                      {message.textContent && message.textContent.trim()
+                        ? message.textContent
+                        : "📎 [Mídia / Anexo WhatsApp]"}
+                    </p>
+                    <div className="mt-1 text-right text-[10px] text-slate-500 font-mono flex items-center justify-end gap-1">
+                      <span>{formatDate(message.sentAt)}</span>
+                      {isOut && (
+                        <span className="text-[#53bdeb] font-bold text-xs" title="Entregue">✓✓</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </section>
@@ -1034,7 +1131,7 @@ function LiveJourneyBody({
           </div>
         </section>
       </div>
-    </>
+    </div>
   );
 }
 

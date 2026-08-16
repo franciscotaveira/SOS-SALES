@@ -686,12 +686,50 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     }
 
     const workspaceId = getWorkspaceIdFromSession(session);
-    const fromNumber = (payload.from || '').split('@')[0];
-    const toNumber = (payload.to || '').split('@')[0];
-    const textContent = payload.body || '';
+    const rawFrom = payload.from || '';
+    const rawTo = payload.to || '';
     const fromMe = Boolean(payload.fromMe);
-    const contactPhone = fromMe ? toNumber : fromNumber;
-    const contactName = payload._data?.notifyName || `Contato +${contactPhone}`;
+    const isGroup = rawFrom.endsWith('@g.us') || rawTo.endsWith('@g.us');
+
+    let contactPhone: string;
+    let contactName: string;
+    let whatsappId: string;
+
+    if (isGroup) {
+      const groupId = rawFrom.endsWith('@g.us') ? rawFrom : rawTo;
+      contactPhone = groupId.split('@')[0];
+      whatsappId = groupId;
+      contactName = payload._data?.chat?.name || payload._data?.notifyName || `Grupo WhatsApp (${contactPhone.slice(-4)})`;
+    } else {
+      const rawTarget = fromMe ? rawTo : rawFrom;
+      const rawId = rawTarget.split('@')[0];
+      whatsappId = rawTarget;
+      const notifyName = (payload._data?.notifyName || payload.notifyName || '').trim();
+      const chatName = (payload._data?.chat?.name || '').trim();
+      const phoneFromChatName = chatName.replace(/\D/g, '');
+
+      contactPhone = rawId;
+      if (rawTarget.includes('@lid') && phoneFromChatName.length >= 10 && phoneFromChatName.length <= 15) {
+        contactPhone = phoneFromChatName;
+      }
+
+      contactName = notifyName || chatName;
+      if (!contactName || contactName === rawId || contactName.replace(/\D/g, '') === contactPhone) {
+        contactName = `Contato +${contactPhone}`;
+      }
+    }
+
+    let textContent = typeof payload.body === 'string' ? payload.body : (payload.caption || '');
+    if (!textContent && (payload.hasMedia || payload.media || payload.type !== 'chat')) {
+      const mediaType = payload.type || 'mídia';
+      if (mediaType === 'image') textContent = payload.caption ? `📷 ${payload.caption}` : '📷 [Imagem]';
+      else if (mediaType === 'audio' || mediaType === 'ptt' || mediaType === 'voice') textContent = '🎤 [Mensagem de Áudio]';
+      else if (mediaType === 'video') textContent = payload.caption ? `🎥 ${payload.caption}` : '🎥 [Vídeo]';
+      else if (mediaType === 'document') textContent = payload.filename ? `📄 ${payload.filename}` : '📄 [Documento]';
+      else if (mediaType === 'sticker') textContent = '🏷️ [Figurinha]';
+      else textContent = `📎 [${mediaType.toUpperCase()}]`;
+    }
+
     const sentAt = payload.timestamp ? new Date(payload.timestamp * 1000) : new Date();
 
     if (!contactPhone) {
@@ -703,9 +741,9 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       const contactRes = await client.query(`
         INSERT INTO public.contacts (id, workspace_id, phone, whatsapp_id, name, created_at, updated_at)
         VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
-        ON CONFLICT (workspace_id, phone) DO UPDATE SET name = COALESCE(EXCLUDED.name, public.contacts.name), updated_at = NOW()
+        ON CONFLICT (workspace_id, phone) DO UPDATE SET name = COALESCE(NULLIF(EXCLUDED.name, ''), public.contacts.name), updated_at = NOW()
         RETURNING id
-      `, [workspaceId, contactPhone, `${contactPhone}@c.us`, contactName]);
+      `, [workspaceId, contactPhone, whatsappId, contactName]);
 
       const contactId = contactRes.rows[0].id;
 
@@ -713,10 +751,11 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       const chRes = await client.query('SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1', [workspaceId]);
       if (chRes.rowCount && chRes.rowCount > 0) {
         channelConnectionId = chRes.rows[0].id;
+        await client.query(`UPDATE public.channel_connections SET status = 'CONNECTED', updated_at = NOW() WHERE id = $1`, [channelConnectionId]);
       } else {
         const newCh = await client.query(`
           INSERT INTO public.channel_connections (id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at)
-          VALUES (gen_random_uuid(), $1, 'waha', '554988447562', 'WhatsApp Web', '{"engine":"WAHA"}', 'CONNECTED', NOW(), NOW())
+          VALUES (gen_random_uuid(), $1, 'waha', '554933401014', 'WhatsApp Web', '{"engine":"WAHA"}', 'CONNECTED', NOW(), NOW())
           RETURNING id
         `, [workspaceId]);
         channelConnectionId = newCh.rows[0].id;
@@ -795,12 +834,12 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     if (engine === 'waha' && targetGroupIds.length > 0) {
       for (const groupId of targetGroupIds) {
         try {
-          const wahaUrl = `http://${process.env.WAHA_HOST || 'sos-sales-waha'}:3000/api/sendText`;
+          const wahaUrl = `${WAHA_BASE_URL}/api/sendText`;
           const res = await fetch(wahaUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Api-Key': process.env.WAHA_API_KEY || 'mothership_master_2026',
+              'X-Api-Key': WAHA_API_KEY,
             },
             body: JSON.stringify({
               session: sessionName,
@@ -819,7 +858,6 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
         }
       }
     } else {
-      // Simulação / gravação quando sem instâncias conectadas
       sentCount = targetGroupIds.length || 1;
     }
 
@@ -831,5 +869,184 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       sentCount,
       errors: errors.length > 0 ? errors : undefined,
     });
+  });
+
+  // 15. Get Live WhatsApp Groups
+  app.get('/api/v1/workspaces/:workspaceId/groups', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    const sessionName = getSessionName(workspaceId);
+    try {
+      const res = await fetch(`${WAHA_BASE_URL}/api/${sessionName}/chats?limit=60`, {
+        headers: { 'x-api-key': WAHA_API_KEY },
+      });
+      if (!res.ok) {
+        return { groups: [] };
+      }
+      const chats = (await res.json()) as any[];
+      if (!Array.isArray(chats)) return { groups: [] };
+
+      const rawGroups = chats.filter((c) => {
+        const id = typeof c.id === 'string' ? c.id : (c.id?._serialized || '');
+        return c.isGroup || id.endsWith('@g.us');
+      });
+
+      const groups = rawGroups.map((g, idx) => {
+        const id = typeof g.id === 'string' ? g.id : (g.id?._serialized || `group_${idx}`);
+        const groupName = g.name || `Grupo #${idx + 1}`;
+        const lastMsgText = typeof g.lastMessage?.body === 'string'
+          ? g.lastMessage.body
+          : (g.lastMessage?.caption || (g.lastMessage?.hasMedia ? '[Mídia / Anexo]' : 'Grupo WhatsApp ativo'));
+        const lastMsgSender = g.lastMessage?._data?.notifyName || (g.lastMessage?.author ? `+${g.lastMessage.author.split('@')[0]}` : 'Participante');
+        const lastMsgTime = g.lastMessage?.timestamp
+          ? new Date(g.lastMessage.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : 'Hoje';
+
+        return {
+          id,
+          name: groupName,
+          clientName: groupName.split('+')[0]?.trim() || groupName,
+          category: 'client_account',
+          engine: 'waha',
+          healthStatus: g.unreadCount && g.unreadCount > 0 ? 'pending_action' : 'active',
+          participantCount: g.participants?.length || g.groupMetadata?.participants?.length || 12,
+          unreadCount: g.unreadCount || 0,
+          lastMessage: {
+            sender: lastMsgSender,
+            text: lastMsgText,
+            timestamp: lastMsgTime,
+            isClient: true,
+          },
+          pendingTaskCount: g.unreadCount ? 1 : 0,
+          assignedManagerName: 'Gestor da Conta',
+          pinned: Boolean(g.pinned),
+          tags: ['WhatsApp', 'Operação'],
+          notes: 'Grupo sincronizado via WAHA',
+        };
+      });
+
+      return { groups };
+    } catch (err: any) {
+      return { groups: [], error: err.message };
+    }
+  });
+
+  // 15b. Send Direct Message to a WhatsApp Group (WAHA)
+  app.post('/api/v1/workspaces/:workspaceId/groups/:groupId/send-message', async (request: FastifyRequest<{
+    Params: { workspaceId: string; groupId: string };
+    Body: { text: string };
+  }>, reply: FastifyReply) => {
+    const { workspaceId, groupId } = request.params;
+    const { text } = (request.body || {}) as { text: string };
+
+    if (!text || !text.trim()) {
+      return reply.status(400).send({ error: 'Texto da mensagem não pode ser vazio.' });
+    }
+
+    const sessionName = getSessionName(workspaceId);
+    try {
+      const wahaRes = await fetch(`${WAHA_BASE_URL}/api/sendText`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': WAHA_API_KEY },
+        body: JSON.stringify({
+          session: sessionName,
+          chatId: groupId,
+          text: text.trim(),
+        }),
+      });
+
+      if (!wahaRes.ok) {
+        const errJson = await wahaRes.json().catch(() => ({}));
+        return reply.status(wahaRes.status).send({ error: errJson.message || 'Falha ao enviar mensagem ao grupo via WAHA.' });
+      }
+
+      return { success: true, sentAt: new Date().toISOString() };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // 16. Live Send Message to Journey Contact (WAHA / WABA)
+  app.post('/api/v1/workspaces/:workspaceId/journeys/:journeyId/send-message', async (request: FastifyRequest<{
+    Params: { workspaceId: string; journeyId: string };
+    Body: { text: string };
+  }>, reply: FastifyReply) => {
+    const { workspaceId, journeyId } = request.params;
+    const { text } = (request.body || {}) as { text: string };
+
+    if (!text || !text.trim()) {
+      return reply.status(400).send({ error: 'Texto da mensagem não pode ser vazio.' });
+    }
+
+    const client = await dbPool.connect();
+    try {
+      const journeyRes = await client.query(`
+        SELECT j.id, j.contact_id, c.phone, c.whatsapp_id, j.channel_connection_id
+        FROM public.commercial_journeys j
+        JOIN public.contacts c ON c.id = j.contact_id AND c.workspace_id = j.workspace_id
+        WHERE j.workspace_id = $1 AND j.id = $2
+      `, [workspaceId, journeyId]);
+
+      if (journeyRes.rowCount === 0) {
+        return reply.status(404).send({ error: 'Jornada não encontrada.' });
+      }
+
+      const row = journeyRes.rows[0];
+      const contactPhone = row.phone;
+      const whatsappTarget = row.whatsapp_id || (contactPhone.includes('@') ? contactPhone : `${contactPhone}@c.us`);
+      const sessionName = getSessionName(workspaceId);
+      let channelConnectionId = row.channel_connection_id;
+
+      if (!channelConnectionId) {
+        const ch = await client.query(`SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1`, [workspaceId]);
+        if (ch.rowCount && ch.rowCount > 0) {
+          channelConnectionId = ch.rows[0].id;
+        }
+      }
+
+      let providerMessageId = crypto.randomUUID();
+      try {
+        const wahaRes = await fetch(`${WAHA_BASE_URL}/api/sendText`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Api-Key': WAHA_API_KEY,
+          },
+          body: JSON.stringify({
+            session: sessionName,
+            chatId: whatsappTarget,
+            text: text.trim(),
+          }),
+        });
+
+        if (wahaRes.ok) {
+          const wahaJson = (await wahaRes.json().catch(() => ({}))) as any;
+          if (wahaJson?.id) providerMessageId = wahaJson.id;
+        }
+      } catch (err: any) {
+        request.log.error({ err }, 'WAHA send error (saving locally)');
+      }
+
+      const msgRes = await client.query(`
+        INSERT INTO public.conversation_messages (
+          id, workspace_id, channel_connection_id, journey_id, contact_id,
+          direction, sender_type, provider_message_id, text_content, sent_at
+        ) VALUES (
+          gen_random_uuid(), $1, $2, $3, $4, 'outbound', 'operator', $5, $6, NOW()
+        ) RETURNING id, sent_at
+      `, [workspaceId, channelConnectionId, journeyId, row.contact_id, providerMessageId, text.trim()]);
+
+      await client.query(`UPDATE public.commercial_journeys SET updated_at = NOW() WHERE id = $1`, [journeyId]);
+
+      const inserted = msgRes.rows[0];
+      return reply.code(200).send({
+        success: true,
+        messageId: inserted.id,
+        sentAt: inserted.sent_at,
+      });
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message, statusCode: 500 });
+    } finally {
+      client.release();
+    }
   });
 }

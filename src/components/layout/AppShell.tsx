@@ -65,6 +65,8 @@ interface AppShellProps {
   onChangeGroupSubTab?: (subTab: string) => void;
   activeResultsSubTab?: 'analytics' | 'traffic_proof';
   onChangeResultsSubTab?: (subTab: 'analytics' | 'traffic_proof') => void;
+  userEmail?: string;
+  onSignOut?: () => void;
   children: React.ReactNode;
 }
 
@@ -86,11 +88,13 @@ export const AppShell: React.FC<AppShellProps> = ({
   onChangeGroupSubTab,
   activeResultsSubTab = 'analytics',
   onChangeResultsSubTab,
+  userEmail,
+  onSignOut,
   children,
 }) => {
   const { isFeatureEnabled } = useFeatureFlags();
 
-  // Persistent sidebar state saved in localStorage
+  // Persistent sidebar state saved in localStorage (default to false = expanded)
   const [isCollapsed, setIsCollapsed] = React.useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('sos_sidebar_collapsed');
@@ -347,7 +351,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                         onClick={() => handleNavClick(item.id)}
                         aria-current={isActive ? 'page' : undefined}
                         title={collapsed ? item.label : undefined}
-                        className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors group relative focus-visible:ring-2 focus-visible:ring-[#00A884] ${
+                        className={`w-full flex items-center gap-3 py-2 rounded-lg text-xs font-semibold transition-colors group relative focus-visible:ring-2 focus-visible:ring-[#00A884] ${
+                          collapsed ? 'justify-center px-0' : 'px-2.5'
+                        } ${
                           isActive
                             ? 'bg-[#00A884] text-white shadow-xs'
                             : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
@@ -829,6 +835,29 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <span className="capitalize">{role === 'owner' ? 'Owner' : role === 'admin' ? 'Supervisor' : 'Operador'}</span>
               </button>
             </div>
+
+            {/* Authenticated User Email & Clean SignOut */}
+            {userEmail && (
+              <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+                <span
+                  className="text-xs text-slate-600 font-medium max-w-[170px] truncate hidden md:inline"
+                  title={userEmail}
+                >
+                  {userEmail}
+                </span>
+                {onSignOut && (
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 transition-colors cursor-pointer"
+                    title="Encerrar sessão com segurança"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Sair</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </header>
 

@@ -36,8 +36,7 @@ export class WahaSyncService {
         headers: { 'x-api-key': WAHA_API_KEY },
       });
       const sessions = (await meRes.json()) as Array<{ name: string; status: string; me?: any }>;
-      const session = sessions.find((s) => s.name === sessionName);
-      const phoneNumber = session?.me?.id ? session.me.id.split('@')[0] : '554988447562';
+      const phoneNumber = session?.me?.id ? session.me.id.split('@')[0] : (session?.name || '554933401014');
       const channelName = session?.me?.pushName ? `WhatsApp (${session.me.pushName})` : `WhatsApp (${sessionName})`;
 
       let channelConnectionId: string;
@@ -84,8 +83,19 @@ export class WahaSyncService {
 
       for (const chat of validChats) {
         const chatId = extractChatId(chat);
-        const rawPhone = chatId.split('@')[0];
-        const contactName = chat.name || (chat.pushname ? chat.pushname : `Contato +${rawPhone}`);
+        const rawId = chatId.split('@')[0];
+        const chatName = (chat.name || chat.pushname || '').trim();
+        const phoneFromChatName = chatName.replace(/\D/g, '');
+
+        let rawPhone = rawId;
+        if (chatId.includes('@lid') && phoneFromChatName.length >= 10 && phoneFromChatName.length <= 15) {
+          rawPhone = phoneFromChatName;
+        }
+
+        let contactName = chatName;
+        if (!contactName || contactName.replace(/\D/g, '') === rawPhone) {
+          contactName = `Contato +${rawPhone}`;
+        }
 
         // Upsert contact
         const contactRes = await client.query(`
@@ -94,7 +104,7 @@ export class WahaSyncService {
           ) VALUES (
             gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW()
           )
-          ON CONFLICT (workspace_id, phone) DO UPDATE SET name = COALESCE(EXCLUDED.name, public.contacts.name), updated_at = NOW()
+          ON CONFLICT (workspace_id, phone) DO UPDATE SET name = COALESCE(NULLIF(EXCLUDED.name, ''), public.contacts.name), updated_at = NOW()
           RETURNING id
         `, [workspaceId, rawPhone, chatId, contactName]);
 
@@ -124,7 +134,7 @@ export class WahaSyncService {
 
         // Fetch recent messages for this chat
         try {
-          const msgsRes = await fetch(`${WAHA_BASE_URL}/api/${sessionName}/chats/${encodeURIComponent(chatId)}/messages?limit=15`, {
+          const msgsRes = await fetch(`${WAHA_BASE_URL}/api/${sessionName}/chats/${encodeURIComponent(chatId)}/messages?limit=25`, {
             headers: { 'x-api-key': WAHA_API_KEY },
           });
 
@@ -132,7 +142,16 @@ export class WahaSyncService {
             const msgs = (await msgsRes.json()) as any[];
             if (Array.isArray(msgs)) {
               for (const msg of msgs) {
-                const bodyText = typeof msg.body === 'string' ? msg.body : (msg.caption || '');
+                let bodyText = typeof msg.body === 'string' ? msg.body : (msg.caption || '');
+                if (!bodyText && (msg.hasMedia || msg.type !== 'chat')) {
+                  const mediaType = msg.type || 'mídia';
+                  if (mediaType === 'image') bodyText = msg.caption ? `📷 ${msg.caption}` : '📷 [Imagem]';
+                  else if (mediaType === 'audio' || mediaType === 'ptt' || mediaType === 'voice') bodyText = '🎤 [Mensagem de Áudio]';
+                  else if (mediaType === 'video') bodyText = msg.caption ? `🎥 ${msg.caption}` : '🎥 [Vídeo]';
+                  else if (mediaType === 'document') bodyText = msg.filename ? `📄 ${msg.filename}` : '📄 [Documento]';
+                  else if (mediaType === 'sticker') bodyText = '🏷️ [Figurinha]';
+                  else bodyText = `📎 [${mediaType.toUpperCase()}]`;
+                }
                 const msgId = extractMessageId(msg);
                 const sentAt = msg.timestamp ? new Date(msg.timestamp * 1000) : new Date();
                 const direction = msg.fromMe ? 'outbound' : 'inbound';

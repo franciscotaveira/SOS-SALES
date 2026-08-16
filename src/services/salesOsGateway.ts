@@ -916,6 +916,13 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     );
   }
 
+  async getTrafficProofMetrics(
+    workspaceId: string,
+    options: { from: string; to: string; limit?: number },
+  ): Promise<any> {
+    return this.getTrafficProof(workspaceId, options);
+  }
+
   async listAppointments(
     workspaceId: string,
     filters?: { status?: AppointmentStatus; leadPhone?: string },
@@ -1175,6 +1182,23 @@ export class HttpSalesOsGateway implements SalesOsGateway {
       },
     );
     return response.data;
+  }
+
+  async sendDirectMessage(
+    workspaceId: string,
+    journeyId: string,
+    text: string,
+  ): Promise<{ success: boolean; messageId: string; sentAt: string }> {
+    const response = await fetch(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/send-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Falha ao enviar mensagem pelo canal WhatsApp.');
+    }
+    return response.json();
   }
 
   async createOutboundDraft(

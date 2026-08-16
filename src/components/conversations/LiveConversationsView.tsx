@@ -93,18 +93,24 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
     const st = stage?.toUpperCase();
     switch (st) {
       case 'NEW':
+      case 'LEAD':
         return { label: 'Novo Lead', bg: 'bg-blue-50 text-blue-700 border border-blue-200' };
       case 'CONTACTED':
         return { label: 'Em Contato', bg: 'bg-indigo-50 text-indigo-700 border border-indigo-200' };
       case 'QUALIFIED':
+      case 'QUALIFICADO':
         return { label: 'Qualificado', bg: 'bg-purple-50 text-purple-700 border border-purple-200' };
       case 'PROPOSAL':
+      case 'PROPOSTA':
         return { label: 'Proposta', bg: 'bg-amber-50 text-amber-700 border border-amber-200' };
       case 'NEGOTIATION':
+      case 'NEGOCIACAO':
         return { label: 'Negociação', bg: 'bg-violet-50 text-violet-700 border border-violet-200' };
       case 'WON':
+      case 'GANHO':
         return { label: 'Fechado Ganho', bg: 'bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold' };
       case 'LOST':
+      case 'PERDIDO':
         return { label: 'Perdido', bg: 'bg-rose-50 text-rose-700 border border-rose-200' };
       default:
         return { label: stage || 'Aberto', bg: 'bg-slate-100 text-slate-700 border border-slate-200' };

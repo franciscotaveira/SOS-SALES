@@ -29,7 +29,7 @@ interface KanbanColumn {
 
 const COLUMNS: KanbanColumn[] = [
   {
-    id: 'new',
+    id: 'LEAD',
     title: '1. Novos Leads',
     subtitle: 'Sem contato inicial',
     badgeBg: 'bg-blue-100',
@@ -37,38 +37,50 @@ const COLUMNS: KanbanColumn[] = [
     headerBorder: 'border-blue-200',
   },
   {
-    id: 'contacted',
-    title: '2. Em Contato',
-    subtitle: 'Interação iniciada',
-    badgeBg: 'bg-indigo-100',
-    badgeText: 'text-indigo-800',
-    headerBorder: 'border-indigo-200',
-  },
-  {
-    id: 'qualified',
-    title: '3. Qualificados',
+    id: 'QUALIFICADO',
+    title: '2. Qualificados',
     subtitle: 'Fatos e dor mapeados',
     badgeBg: 'bg-purple-100',
     badgeText: 'text-purple-800',
     headerBorder: 'border-purple-200',
   },
   {
-    id: 'proposal',
-    title: '4. Proposta',
+    id: 'PROPOSTA',
+    title: '3. Proposta',
     subtitle: 'Oferta enviada',
     badgeBg: 'bg-amber-100',
     badgeText: 'text-amber-800',
     headerBorder: 'border-amber-200',
   },
   {
-    id: 'won',
-    title: '5. Fechados (WON)',
+    id: 'NEGOCIACAO',
+    title: '4. Negociação',
+    subtitle: 'Superando objeções',
+    badgeBg: 'bg-indigo-100',
+    badgeText: 'text-indigo-800',
+    headerBorder: 'border-indigo-200',
+  },
+  {
+    id: 'GANHO',
+    title: '5. Fechados (Ganho)',
     subtitle: 'Venda confirmada',
     badgeBg: 'bg-emerald-100',
     badgeText: 'text-emerald-800',
     headerBorder: 'border-emerald-200',
   },
 ];
+
+const normalizeStage = (stage?: string | null): string => {
+  if (!stage) return 'LEAD';
+  const s = stage.toUpperCase();
+  if (s === 'NEW' || s === 'CONTACTED' || s === 'LEAD') return 'LEAD';
+  if (s === 'QUALIFIED' || s === 'QUALIFICADO') return 'QUALIFICADO';
+  if (s === 'PROPOSAL' || s === 'PROPOSTA') return 'PROPOSTA';
+  if (s === 'NEGOTIATION' || s === 'NEGOCIACAO') return 'NEGOCIACAO';
+  if (s === 'WON' || s === 'GANHO') return 'GANHO';
+  if (s === 'LOST' || s === 'PERDIDO') return 'PERDIDO';
+  return s;
+};
 
 export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> = ({
   workspaceId,
@@ -98,14 +110,15 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
           contactPhone: j.phoneE164,
           status: 'OPEN',
           pipelineStage: j.stage,
-          primaryServiceOrProduct: j.primaryServiceOrProduct,
-          startedAt: j.createdAt,
-          updatedAt: j.lastActivityAt,
+          totalRevenueMinor: j.financialValue ? j.financialValue * 100 : 0,
+          currency: 'BRL',
+          startedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         }));
         setJourneys(mapped);
       }
     } catch (err: any) {
-      setError(err?.message || 'Erro ao carregar funil comercial.');
+      setError(err.message || 'Falha ao carregar funil comercial.');
     } finally {
       setLoading(false);
     }
@@ -121,8 +134,9 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
     e: React.MouseEvent
   ) => {
     e.stopPropagation();
-    const stagesOrder = ['NEW', 'CONTACTED', 'QUALIFIED', 'PROPOSAL', 'WON'];
-    const currentIdx = stagesOrder.indexOf((journey.pipelineStage || 'NEW').toUpperCase());
+    const stagesOrder = ['LEAD', 'QUALIFICADO', 'PROPOSTA', 'NEGOCIACAO', 'GANHO'];
+    const currentNormalized = normalizeStage(journey.pipelineStage);
+    const currentIdx = stagesOrder.indexOf(currentNormalized);
     if (currentIdx === -1) return;
 
     const newIdx = direction === 'next' ? currentIdx + 1 : currentIdx - 1;
@@ -160,7 +174,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   const columnsData = useMemo(() => {
     return COLUMNS.map((col) => ({
       ...col,
-      items: filtered.filter((j) => (j.pipelineStage?.toLowerCase() || 'new') === col.id),
+      items: filtered.filter((j) => normalizeStage(j.pipelineStage) === col.id),
     }));
   }, [filtered]);
 
