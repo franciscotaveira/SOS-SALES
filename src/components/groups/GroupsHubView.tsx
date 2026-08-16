@@ -33,6 +33,7 @@ import {
   Tv,
 } from 'lucide-react';
 import { LiveWallboardView } from '../monitoring/LiveWallboardView';
+import { getSupabaseClient } from '../../services/supabaseAuth';
 
 interface GroupsHubViewProps {
   groups: WhatsAppGroup[];
@@ -59,21 +60,58 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     initialGroups[0]?.id || ''
   );
 
-  // Fetch live WhatsApp groups from API
-  React.useEffect(() => {
+  const fetchGroups = React.useCallback(async () => {
     const wsId = workspaceId || '11111111-1111-1111-1111-111111111111';
-    fetch(`/api/v1/workspaces/${wsId}/groups`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && Array.isArray(data.groups) && data.groups.length > 0) {
-          setGroups(data.groups);
-          if (!selectedGroupId || selectedGroupId === initialGroups[0]?.id) {
-            setSelectedGroupId(data.groups[0].id);
-          }
+    try {
+      const res = await fetch(`/api/v1/workspaces/${wsId}/groups`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && Array.isArray(data.groups) && data.groups.length > 0) {
+        setGroups(data.groups);
+        if (!selectedGroupId || selectedGroupId === initialGroups[0]?.id) {
+          setSelectedGroupId(data.groups[0].id);
         }
-      })
-      .catch(() => {});
-  }, [workspaceId]);
+      }
+    } catch {
+      // silent
+    }
+  }, [workspaceId, initialGroups, selectedGroupId]);
+
+  // Fetch live WhatsApp groups from API & Realtime Sync
+  React.useEffect(() => {
+    void fetchGroups();
+
+    const wsId = workspaceId || '11111111-1111-1111-1111-111111111111';
+    const client = getSupabaseClient();
+    let channel: any;
+    if (client) {
+      channel = client
+        .channel(`live-groups-${wsId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'conversation_messages',
+            filter: `workspace_id=eq.${wsId}`,
+          },
+          () => {
+            void fetchGroups();
+          }
+        )
+        .subscribe();
+    }
+
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void fetchGroups();
+    }, 15000);
+
+    return () => {
+      if (client && channel) void client.removeChannel(channel);
+      clearInterval(timer);
+    };
+  }, [fetchGroups, workspaceId]);
 
   const [search, setSearch] = React.useState('');
   const [clientFilter, setClientFilter] = React.useState<string>('all');
