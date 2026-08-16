@@ -173,7 +173,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
         />
       )}
 
-      {activeTab === 'thesis' && <SalesAiThesisConfig />}
+      {activeTab === 'thesis' && <SalesAiThesisConfig workspaceId={currentWorkspace.id} />}
 
       {activeTab === 'learning' && (
         <ContinuousLearningSection

@@ -459,13 +459,13 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {item.id === 'playbook' && isActive && !collapsed && (
                         <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
                           {[
-                            { id: 'diagnosis', label: 'Diagnóstico Histórico (1 Ano)' },
-                            { id: 'knowledge', label: 'Banco de Inteligência' },
-                            { id: 'catalog', label: 'Catálogo & Serviços' },
-                            { id: 'thesis', label: 'Tese Comercial & IA 24/7' },
-                            { id: 'learning', label: 'Aprendizado Contínuo' },
-                            { id: 'company', label: 'Empresa & WABA' },
-                            { id: 'agent', label: 'Squad & Personas dos Agentes' },
+                            { id: 'thesis', label: 'Personalidade & Tom de Voz' },
+                            { id: 'diagnosis', label: 'Diagnóstico de 1 Ano' },
+                            { id: 'catalog', label: 'Tabela de Preços & Serviços' },
+                            { id: 'knowledge', label: 'Documentos & Regras' },
+                            { id: 'learning', label: 'Ajustes da Equipe (Aprendizado)' },
+                            { id: 'company', label: 'Dados da Empresa & WhatsApp' },
+                            { id: 'agent', label: 'Equipe de Robôs Especialistas' },
                           ].map((sub) => {
                             const isSubActive = activeIntelligenceSubTab === sub.id;
                             return (
