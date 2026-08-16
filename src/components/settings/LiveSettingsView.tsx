@@ -49,6 +49,17 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
     setTimeout(() => setSavedSlaToast(false), 3000);
   };
 
+  useEffect(() => {
+    fetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.status) {
+          setQrStatus(data.status);
+        }
+      })
+      .catch(() => undefined);
+  }, [workspace.id]);
+
   const fetchQrCode = async () => {
     setIsQrLoading(true);
     setQrError(null);
@@ -58,9 +69,9 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
         throw new Error('Não foi possível obter o QR Code do canal.');
       }
       const data = await res.json();
-      setQrStatus(data.engineStatus || 'INITIAL');
-      if (data.qrCodeDataUrl) {
-        setQrCodeDataUrl(data.qrCodeDataUrl);
+      setQrStatus(data.status || data.engineStatus || 'INITIAL');
+      if (data.qr || data.qrCodeDataUrl) {
+        setQrCodeDataUrl(data.qr || data.qrCodeDataUrl);
       }
     } catch (err: any) {
       setQrError(err.message || 'Falha ao conectar com o serviço de WhatsApp.');
