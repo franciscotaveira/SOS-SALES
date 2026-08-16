@@ -188,4 +188,105 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
       }
     }
   );
+
+  /**
+   * POST /api/v1/ai/copilot-suggestion
+   * Gera sugestão comercial inteligente contextual para o Cockpit de Vendas
+   */
+  app.post(
+    '/api/v1/ai/copilot-suggestion',
+    {
+      schema: {
+        description: 'Gera sugestão contextual de resposta e ação comercial para o Copilot no Cockpit.',
+        tags: ['AI Copilot'],
+        body: {
+          type: 'object',
+          properties: {
+            journeyStage: { type: 'string', default: 'LEAD' },
+            contactName: { type: 'string', default: 'Cliente' },
+            lastCustomerMessage: { type: 'string', default: '' },
+            businessType: { type: 'string', default: 'serviços' },
+            businessName: { type: 'string', default: 'SOS Sales' },
+            facts: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as {
+        journeyStage?: string;
+        contactName?: string;
+        lastCustomerMessage?: string;
+        businessType?: string;
+        businessName?: string;
+        facts?: string[];
+      };
+
+      const systemPrompt = `Você é o Copilot Comercial de Alta Conversão do SOS Sales para a empresa "${body.businessName || 'Empresa'}" (${body.businessType || 'Comércio'}).
+Sua missão é sugerir a melhor resposta comercial e a próxima ação prática no WhatsApp para avançar o lead no funil.
+
+Estágio atual do funil: ${body.journeyStage || 'LEAD'}
+Nome do cliente: ${body.contactName || 'Cliente'}
+Fatos conhecidos do cliente: ${body.facts?.join('; ') || 'Nenhum'}
+
+Regras:
+1. Resposta humana, direta, sem enrolação e acolhedora (estilo WhatsApp).
+2. Conduza sempre com uma pergunta fechada de fechamento ou call-to-action claro (ex: "Qual melhor horário para você?", "Posso reservar sua vaga?").
+3. Retorne JSON estruturado com os campos:
+   - "suggestedMessage": O texto exato da mensagem para o cliente.
+   - "recommendedAction": Ação comercial recomendada (ex: "Oferecer Agendamento", "Enviar Link de Pagamento PIX", "Quebrar Objeção de Preço").
+   - "rationale": Breve justificativa estratégica (1 frase).`;
+
+      try {
+        const result = await openrouterEngine.generateChatCompletion(
+          [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: body.lastCustomerMessage
+                ? `Última mensagem do cliente: "${body.lastCustomerMessage}"`
+                : `O cliente acabou de entrar no estágio ${body.journeyStage}. O que sugerir como primeiro contato?`,
+            },
+          ],
+          {
+            model: 'nvidia/nemotron-3-nano-30b-a3b:free',
+          }
+        );
+
+        let parsed: any;
+        try {
+          const jsonMatch = result.content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            parsed = JSON.parse(jsonMatch[0]);
+          } else {
+            parsed = {
+              suggestedMessage: result.content,
+              recommendedAction: 'Avançar Conversa',
+              rationale: 'Sugestão contextual gerada pela IA.',
+            };
+          }
+        } catch {
+          parsed = {
+            suggestedMessage: result.content,
+            recommendedAction: 'Avançar Conversa',
+            rationale: 'Sugestão contextual gerada pela IA.',
+          };
+        }
+
+        return reply.code(200).send({
+          success: true,
+          ...parsed,
+          latencyMs: result.latencyMs,
+          model: result.model,
+        });
+      } catch (err: any) {
+        return reply.code(200).send({
+          success: false,
+          suggestedMessage: `Olá ${body.contactName || ''}! Como posso te ajudar hoje? Temos condições especiais para você.`,
+          recommendedAction: 'Atendimento Consultivo',
+          rationale: 'Fallback comercial seguro ativado.',
+        });
+      }
+    }
+  );
 };

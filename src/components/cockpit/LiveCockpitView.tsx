@@ -841,6 +841,33 @@ function LiveJourneyBody({
   const { journey, acquisitionContexts, messages, decisionState, recommendation, handoff, outcome, knownFacts } = view;
   const acquisition = acquisitionContexts[0] ?? null;
   const [draftText, setDraftText] = React.useState("");
+  const [isGeneratingCopilot, setIsGeneratingCopilot] = React.useState(false);
+
+  const handleGenerateCopilotSuggestion = async () => {
+    setIsGeneratingCopilot(true);
+    try {
+      const lastCust = [...messages].reverse().find((m) => m.direction === "inbound");
+      const res = await fetch("/api/v1/ai/copilot-suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          journeyStage: journey.pipelineStage,
+          contactName: journey.contact.name || "Cliente",
+          lastCustomerMessage: lastCust?.textContent || "",
+          businessName: "SOS Sales",
+          facts: knownFacts?.map((f) => `${f.key}: ${f.value}`) || [],
+        }),
+      });
+      const data = await res.json();
+      if (data.suggestedMessage) {
+        setDraftText(data.suggestedMessage);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsGeneratingCopilot(false);
+    }
+  };
 
   const isHandoffActive = handoff && handoff.status !== "RESOLVED" && handoff.status !== "resolved";
 
@@ -1036,29 +1063,41 @@ function LiveJourneyBody({
 
         {/* Supervised AI Suggestion & Outbound Composer Strip */}
         <section className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs shrink-0 space-y-2">
-          {recommendation && (
-            <div className="flex items-center justify-between gap-2 rounded-lg bg-violet-50 px-2.5 py-1 text-xs text-violet-900 border border-violet-200">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <Bot size={14} className="text-violet-600 shrink-0" />
-                <span className="font-bold text-[10.5px] shrink-0">Copilot:</span>
-                <span className="italic truncate text-[11px]">
-                  "{recommendation.suggestedDraftText || recommendation.suggestedAction}"
-                </span>
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs text-violet-900 border border-violet-200">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <Bot size={14} className="text-violet-600 shrink-0" />
+              <span className="font-bold text-[10.5px] shrink-0">Copilot IA:</span>
+              <span className="italic truncate text-[11px]">
+                {recommendation?.suggestedDraftText || recommendation?.suggestedAction || "Sugestão inteligente contextual baseada no estágio"}
+              </span>
+              {recommendation && (
                 <span className="rounded bg-violet-200/80 px-1 py-0.2 font-mono text-[9px] font-bold text-violet-900 shrink-0">
                   {Math.round(recommendation.confidence * 100)}%
                 </span>
-              </div>
-              {recommendation.suggestedDraftText && (
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {recommendation?.suggestedDraftText && (
                 <button
                   type="button"
                   onClick={() => setDraftText(recommendation.suggestedDraftText!)}
-                  className="shrink-0 rounded bg-violet-600 px-2 py-0.5 text-[10.5px] font-bold text-white hover:bg-violet-700 transition"
+                  className="rounded bg-violet-600 px-2 py-0.5 text-[10.5px] font-bold text-white hover:bg-violet-700 transition"
                 >
                   Usar sugestão
                 </button>
               )}
+              <button
+                type="button"
+                onClick={handleGenerateCopilotSuggestion}
+                disabled={isGeneratingCopilot}
+                className="rounded bg-slate-900 px-2 py-0.5 text-[10.5px] font-bold text-white hover:bg-slate-800 transition flex items-center gap-1"
+                title="Gera nova sugestão ultra-rápida via OpenRouter/Nemotron"
+              >
+                <Sparkles size={11} className={isGeneratingCopilot ? "animate-spin" : "text-amber-400"} />
+                {isGeneratingCopilot ? "Gerando..." : "Gerar com IA"}
+              </button>
             </div>
-          )}
+          </div>
 
           {/* Expired Window Advisory */}
           {hoursSinceLastInbound !== null && !isWindowActive && (
