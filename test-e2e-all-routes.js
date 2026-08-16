@@ -1,6 +1,6 @@
 const SUPABASE_URL = 'https://yiiuebhyqixzluguxsqi.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpaXVlYmh5cWl4emx1Z3V4c3FpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3MzE3NTMsImV4cCI6MjEwMjMwNzc1M30.XObsvr-y26SODG2UjnDm1kB0dt_BeYVCkMH88B_SOuA';
-const API_BASE = 'http://localhost:4334/api/v1';
+const API_BASE = process.env.API_BASE || 'https://crm.iaparavendas.tech/api/v1';
 const WS_ID = '11111111-1111-1111-1111-111111111111'; // SOS Sales Oficial
 
 async function runAudit() {
@@ -63,10 +63,10 @@ async function runAudit() {
   await check('7. WhatsApp Live QR', `${API_BASE}/workspaces/${WS_ID}/channels/whatsapp/qr`);
 
   // 8. Health Probe
-  await check('8. Liveness Probe', 'http://localhost:4334/health');
+  await check('8. Liveness Probe', 'https://crm.iaparavendas.tech/health');
 
   // 9. Readiness Probe
-  await check('9. Readiness Probe', 'http://localhost:4334/ready');
+  await check('9. Readiness Probe', 'https://crm.iaparavendas.tech/ready');
 
   console.log('\n=== AUDIT SUMMARY ===');
   const total = results.length;
