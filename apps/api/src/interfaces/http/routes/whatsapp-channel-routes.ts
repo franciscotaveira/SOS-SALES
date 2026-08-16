@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { WahaSyncService } from '../../../infrastructure/channels/waha/waha-sync-service.js';
+import { WabaClient } from '../../../infrastructure/channels/meta/waba-client.js';
 import { dbPool } from '../../../infrastructure/database/pool.js';
 import crypto from 'node:crypto';
 
@@ -315,6 +316,171 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       }
     } catch (err: any) {
       return reply.status(500).send({ error: err.message, statusCode: 500 });
+    }
+  });
+
+  // Helper to fetch WABA credentials for a workspace
+  async function getWabaCreds(workspaceId: string) {
+    const client = await dbPool.connect();
+    try {
+      const res = await client.query(`
+        SELECT c.public_config, s.secret_payload
+        FROM public.channel_connections c
+        JOIN public.channel_connection_secrets s ON s.channel_connection_id = c.id
+        WHERE c.workspace_id = $1 AND c.provider = 'meta_cloud' AND c.status = 'CONNECTED'
+        LIMIT 1
+      `, [workspaceId]);
+      if (res.rowCount === 0) return null;
+      const publicConfig = typeof res.rows[0].public_config === 'string' ? JSON.parse(res.rows[0].public_config) : res.rows[0].public_config;
+      const secretPayload = typeof res.rows[0].secret_payload === 'string' ? JSON.parse(res.rows[0].secret_payload) : res.rows[0].secret_payload;
+      return {
+        phoneNumberId: publicConfig?.phoneNumberId as string,
+        wabaId: publicConfig?.wabaId as string,
+        accessToken: secretPayload?.accessToken as string,
+      };
+    } finally {
+      client.release();
+    }
+  }
+
+  // 7. WABA: List Approved Message Templates
+  app.get('/api/v1/workspaces/:workspaceId/channels/waba/templates', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    const creds = await getWabaCreds(workspaceId);
+    if (!creds || !creds.wabaId || !creds.accessToken) {
+      return reply.status(404).send({ error: 'Canal WABA não configurado ou desconectado para este workspace' });
+    }
+    try {
+      const waba = new WabaClient();
+      const templates = await waba.listTemplates(creds.wabaId, creds.accessToken);
+      return { success: true, templates };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // 8. WABA: Send Approved Template (HSM)
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-template', async (request: FastifyRequest<{
+    Params: { workspaceId: string };
+    Body: { recipientPhone: string; templateName: string; languageCode?: string; headerMediaUrl?: string; bodyParameters?: string[] };
+  }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    const { recipientPhone, templateName, languageCode = 'pt_BR', headerMediaUrl, bodyParameters = [] } = request.body || {};
+    if (!recipientPhone || !templateName) {
+      return reply.status(400).send({ error: 'recipientPhone e templateName são obrigatórios' });
+    }
+    const creds = await getWabaCreds(workspaceId);
+    if (!creds) {
+      return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
+    }
+    try {
+      const waba = new WabaClient();
+      const result = await waba.sendTemplate({
+        phoneNumberId: creds.phoneNumberId,
+        accessToken: creds.accessToken,
+        recipientPhone,
+        templateName,
+        languageCode,
+        headerMediaUrl,
+        bodyParameters,
+      });
+      return { success: true, ...result };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // 9. WABA: Send Interactive Quick Reply Buttons
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-buttons', async (request: FastifyRequest<{
+    Params: { workspaceId: string };
+    Body: { recipientPhone: string; bodyText: string; headerText?: string; footerText?: string; buttons: Array<{ id: string; title: string }> };
+  }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    const { recipientPhone, bodyText, headerText, footerText, buttons } = request.body || {};
+    if (!recipientPhone || !bodyText || !Array.isArray(buttons) || buttons.length === 0) {
+      return reply.status(400).send({ error: 'recipientPhone, bodyText e buttons são obrigatórios' });
+    }
+    const creds = await getWabaCreds(workspaceId);
+    if (!creds) {
+      return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
+    }
+    try {
+      const waba = new WabaClient();
+      const result = await waba.sendInteractiveButtons({
+        phoneNumberId: creds.phoneNumberId,
+        accessToken: creds.accessToken,
+        recipientPhone,
+        bodyText,
+        headerText,
+        footerText,
+        buttons,
+      });
+      return { success: true, ...result };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // 10. WABA: Send Interactive List Menu
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-list', async (request: FastifyRequest<{
+    Params: { workspaceId: string };
+    Body: { recipientPhone: string; bodyText: string; buttonLabel: string; headerText?: string; footerText?: string; sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }> };
+  }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    const { recipientPhone, bodyText, buttonLabel, headerText, footerText, sections } = request.body || {};
+    if (!recipientPhone || !bodyText || !buttonLabel || !Array.isArray(sections) || sections.length === 0) {
+      return reply.status(400).send({ error: 'recipientPhone, bodyText, buttonLabel e sections são obrigatórios' });
+    }
+    const creds = await getWabaCreds(workspaceId);
+    if (!creds) {
+      return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
+    }
+    try {
+      const waba = new WabaClient();
+      const result = await waba.sendInteractiveList({
+        phoneNumberId: creds.phoneNumberId,
+        accessToken: creds.accessToken,
+        recipientPhone,
+        bodyText,
+        buttonLabel,
+        headerText,
+        footerText,
+        sections,
+      });
+      return { success: true, ...result };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // 11. WABA: Send Rich Media (Image, Audio PTT, Video, Document)
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-media', async (request: FastifyRequest<{
+    Params: { workspaceId: string };
+    Body: { recipientPhone: string; mediaType: 'image' | 'audio' | 'video' | 'document'; mediaUrl: string; caption?: string; filename?: string };
+  }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    const { recipientPhone, mediaType, mediaUrl, caption, filename } = request.body || {};
+    if (!recipientPhone || !mediaType || !mediaUrl) {
+      return reply.status(400).send({ error: 'recipientPhone, mediaType e mediaUrl são obrigatórios' });
+    }
+    const creds = await getWabaCreds(workspaceId);
+    if (!creds) {
+      return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
+    }
+    try {
+      const waba = new WabaClient();
+      const result = await waba.sendMedia({
+        phoneNumberId: creds.phoneNumberId,
+        accessToken: creds.accessToken,
+        recipientPhone,
+        mediaType,
+        mediaUrl,
+        caption,
+        filename,
+      });
+      return { success: true, ...result };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
     }
   });
 

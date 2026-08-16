@@ -22,6 +22,7 @@ import { AppointmentGateway } from '../../application/ports/appointment-gateway.
 import { NotesGateway } from '../../application/ports/notes-gateway.js';
 import { WorkspaceProvisioningGateway } from '../../application/ports/workspace-provisioning-gateway.js';
 import { wahaWebhookRoutes } from './routes/webhooks/waha.js';
+import { wabaWebhookPlugin } from './routes/webhooks/waba-webhook.js';
 import { operatorAuthRoutes } from './routes/operator-auth.js';
 import { abacatePayRoutes } from './routes/abacatepay-routes.js';
 import { aiCopilotRoutes } from './routes/ai-copilot-routes.js';
@@ -215,6 +216,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   app.register(abacatePayRoutes);
   app.register(aiCopilotRoutes);
   app.register(whatsappChannelRoutes);
+  app.register(wabaWebhookPlugin);
 
   /**
    * GET /health — Liveness probe.

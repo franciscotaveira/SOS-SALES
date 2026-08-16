@@ -581,11 +581,20 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                 </p>
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-                <span className="font-bold text-slate-700 block">Webhook URL do SOS Sales:</span>
-                <code className="text-[11px] font-mono text-emerald-700 select-all block break-all">
-                  https://crm.iaparavendas.tech/api/v1/channels/waha/webhook
-                </code>
+              <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1.5">
+                <span className="font-bold text-slate-800 block text-[11px]">Dados para Configurar no Meta Business Manager:</span>
+                <div>
+                  <span className="text-[10px] text-slate-500 block font-semibold">URL de Retorno de Chamada (Callback URL):</span>
+                  <code className="text-[11px] font-mono text-emerald-800 select-all block break-all font-bold bg-white px-2 py-1 rounded border border-emerald-200">
+                    https://crm.iaparavendas.tech/api/v1/channels/waba/webhook
+                  </code>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 block font-semibold">Token de Verificação (Verify Token):</span>
+                  <code className="text-[11px] font-mono text-emerald-800 select-all block font-bold bg-white px-2 py-1 rounded border border-emerald-200">
+                    mct_waba_verify_2026
+                  </code>
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
