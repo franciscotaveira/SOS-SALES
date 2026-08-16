@@ -516,11 +516,12 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {item.id === 'configuracoes' && isActive && !collapsed && (
                         <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
                           {[
-                            { id: 'channels', label: 'Canais' },
+                            { id: 'team', label: 'Equipe & Usuários' },
+                            { id: 'api_webhooks', label: 'API & Webhooks' },
+                            { id: 'channels', label: 'Canais de WhatsApp' },
                             { id: 'ads_tracking', label: 'Atribuição & Ads' },
-                            { id: 'governance', label: 'Governança & SLA' },
-                            { id: 'feature_flags', label: 'Feature Flags & Módulos' },
-                            { id: 'engines', label: 'Infraestrutura & Transição' },
+                            { id: 'feature_flags', label: 'Parâmetros Globais' },
+                            { id: 'engines', label: 'Infra & Modelos' },
                           ].map((sub) => {
                             const isSubActive = activeSettingsSubTab === sub.id;
                             return (
