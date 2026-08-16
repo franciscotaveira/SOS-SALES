@@ -24,6 +24,11 @@ import {
   Clock,
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
+import {
+  getWorkspaceAiMode,
+  setWorkspaceAiMode,
+  GlobalAiAutonomyMode,
+} from '../../services/aiAutonomyManager';
 
 interface QaSimulatorViewProps {
   currentWorkspace?: Workspace;
@@ -156,9 +161,26 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
     isHavenActive ? 'haven' : 'all'
   );
 
-  const [autonomyMode, setAutonomyMode] = useState<'copilot_supervised' | 'autonomous_24_7' | 'semi_autonomous'>(
-    'copilot_supervised'
+  const wsId = currentWorkspace?.id || 'ws-haven-beauty';
+  const [autonomyMode, setAutonomyMode] = useState<GlobalAiAutonomyMode>(() =>
+    getWorkspaceAiMode(wsId)
   );
+
+  React.useEffect(() => {
+    setAutonomyMode(getWorkspaceAiMode(wsId));
+    const handleModeChanged = (e: any) => {
+      if (e.detail?.workspaceId === wsId && e.detail?.mode) {
+        setAutonomyMode(e.detail.mode);
+      }
+    };
+    window.addEventListener('sos_ai_mode_changed', handleModeChanged);
+    return () => window.removeEventListener('sos_ai_mode_changed', handleModeChanged);
+  }, [wsId]);
+
+  const handleToggleAutonomyMode = (mode: GlobalAiAutonomyMode) => {
+    setWorkspaceAiMode(wsId, mode);
+    setAutonomyMode(mode);
+  };
 
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>(
     isHavenActive ? 'haven-ctwa-escova' : 'haven-ctwa-escova'
@@ -292,41 +314,41 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
         <div className="flex items-center bg-slate-900 border border-slate-800 p-1 rounded-xl shrink-0">
           <button
             onClick={() => {
-              setAutonomyMode('copilot_supervised');
+              handleToggleAutonomyMode('copilot_supervised');
               setLogs((prev) => [
                 {
                   timestamp: new Date().toLocaleTimeString(),
-                  label: 'Modo Alterado',
-                  details: 'Copilot Supervisionado ATIVADO. Mensagens precisam de aprovação humana no Cockpit.',
+                  label: 'Master Switch Global Alterado',
+                  details: 'Copilot Supervisionado ATIVADO globalmente. Respostas requerem aprovação no Cockpit.',
                   status: 'ok',
                 },
                 ...prev,
               ]);
             }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               autonomyMode === 'copilot_supervised'
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-xs'
+                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-xs font-black'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Supervisionado (1-Clique)</span>
+            <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Aprendizado (Copiloto)</span>
           </button>
 
           <button
             onClick={() => {
-              setAutonomyMode('autonomous_24_7');
+              handleToggleAutonomyMode('autonomous_24_7');
               setLogs((prev) => [
                 {
                   timestamp: new Date().toLocaleTimeString(),
-                  label: 'Modo Alterado',
-                  details: 'Autonomia 24/7 ATIVADA. O agente responderá clientes diretamente no WhatsApp.',
+                  label: 'Master Switch Global Alterado',
+                  details: 'Autonomia 24/7 ATIVADA globalmente. O agente responderá clientes diretamente no WhatsApp em < 30s.',
                   status: 'warn',
                 },
                 ...prev,
               ]);
             }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               autonomyMode === 'autonomous_24_7'
                 ? 'bg-emerald-500 text-slate-950 font-extrabold shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'

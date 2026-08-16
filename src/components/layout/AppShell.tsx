@@ -4,6 +4,11 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { useFeatureFlags } from '../../contexts/FeatureFlagContext';
 import { salesOsRuntimeConfig } from '../../config/runtime';
 import {
+  getWorkspaceAiMode,
+  setWorkspaceAiMode,
+  GlobalAiAutonomyMode,
+} from '../../services/aiAutonomyManager';
+import {
   Flame,
   MessageSquare,
   Columns3,
@@ -29,6 +34,8 @@ import {
   PieChart,
   CalendarDays,
   BookOpen,
+  Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
 
 export type NavigationTab =
@@ -186,6 +193,29 @@ export const AppShell: React.FC<AppShellProps> = ({
       window.removeEventListener('sos_channel_status_changed', handleStatusChanged);
     };
   }, [fetchLiveChannelStatus]);
+
+  // Single Source of Truth for Global AI Autonomy Mode (24/7 vs Learning/Copilot)
+  const [globalAiMode, setGlobalAiMode] = React.useState<GlobalAiAutonomyMode>(() =>
+    getWorkspaceAiMode(currentWorkspace.id)
+  );
+
+  React.useEffect(() => {
+    setGlobalAiMode(getWorkspaceAiMode(currentWorkspace.id));
+    const handleModeChanged = (e: any) => {
+      if (e.detail?.workspaceId === currentWorkspace.id && e.detail?.mode) {
+        setGlobalAiMode(e.detail.mode);
+      }
+    };
+    window.addEventListener('sos_ai_mode_changed', handleModeChanged);
+    return () => window.removeEventListener('sos_ai_mode_changed', handleModeChanged);
+  }, [currentWorkspace.id]);
+
+  const toggleGlobalAiMode = () => {
+    const nextMode: GlobalAiAutonomyMode =
+      globalAiMode === 'autonomous_24_7' ? 'copilot_supervised' : 'autonomous_24_7';
+    setWorkspaceAiMode(currentWorkspace.id, nextMode);
+    setGlobalAiMode(nextMode);
+  };
 
   // Primary channel health computation
   const primaryChannel = currentWorkspace.channels[0];
@@ -818,6 +848,37 @@ export const AppShell: React.FC<AppShellProps> = ({
                 {isChannelOnline ? '(22ms)' : '(offline)'}
               </span>
             </div>
+
+            {/* Global Master Switch for AI Autonomy */}
+            <button
+              onClick={toggleGlobalAiMode}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer shadow-2xs focus-visible:ring-2 ${
+                globalAiMode === 'autonomous_24_7'
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-700 focus-visible:ring-emerald-400'
+                  : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200 focus-visible:ring-indigo-400'
+              }`}
+              title={
+                globalAiMode === 'autonomous_24_7'
+                  ? 'Modo Autônomo 24/7 Ativo: A IA responde mensagens diretamente no WhatsApp em < 30s. Clique para alternar para Copiloto/Aprendizado.'
+                  : 'Modo Aprendizado / Copiloto Ativo: A IA gera rascunhos sem disparar no WhatsApp sem aprovação humana. Clique para ativar Autônomo 24/7.'
+              }
+            >
+              {globalAiMode === 'autonomous_24_7' ? (
+                <>
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-80"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                  </span>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">IA 24/7 Ativa</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                  <span className="hidden sm:inline">Modo Aprendizado (Copiloto)</span>
+                </>
+              )}
+            </button>
 
             {/* Notifications Popover */}
             <div className="relative">
