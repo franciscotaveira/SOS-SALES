@@ -1,3 +1,4 @@
+import pg from 'pg';
 import {
   InboundIngestionGateway,
   IngestChannelEventInput,
@@ -6,19 +7,21 @@ import {
 import { dbPool } from './pool.js';
 
 export class PostgresInboundIngestionGateway implements InboundIngestionGateway {
-  constructor() {
-    if (process.env.NODE_ENV === 'production') {
+  private pool: pg.Pool;
+
+  constructor(pool?: pg.Pool) {
+    this.pool = pool ?? dbPool;
+    if (!pool && process.env.NODE_ENV === 'production') {
       throw new Error(
         'PostgresInboundIngestionGateway is disabled in production. ' +
-        'Direct administrative postgres connections must not be used as application service role identity. ' +
-        'Configure a production service role gateway.'
+        'Pass an explicit scoped database pool.'
       );
     }
   }
 
   public async ingestChannelEvent(input: IngestChannelEventInput): Promise<IngestChannelEventResult> {
     const { channelConnectionId, providerEventId, eventType, rawPayload } = input;
-    const client = await dbPool.connect();
+    const client = await this.pool.connect();
 
     try {
       await client.query('BEGIN');

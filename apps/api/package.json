@@ -9,6 +9,7 @@
     "dev:waha": "tsx watch src/local-waha.ts",
     "build": "tsup src/index.ts --format esm --dts",
     "start": "node dist/index.js",
+    "generate:openapi": "tsx scripts/generate-openapi.ts",
     "infra:up": "npx supabase start && docker compose up -d sos-redis",
     "infra:down": "npx supabase stop && docker compose down",
     "waha:up": "docker compose up -d sos-waha",

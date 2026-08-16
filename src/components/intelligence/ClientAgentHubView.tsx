@@ -2,15 +2,13 @@ import React from 'react';
 import { Workspace } from '../../types/cockpit';
 import {
   clientIntelligenceMap,
-  mockEscovariaIntelligence,
+  mockSosSalesIntelligence,
 } from '../../data/clientIntelligenceFixtures';
 import { ClientIntelligenceBundle } from '../../types/intelligence';
 import { CompanyProfileSection } from './CompanyProfileSection';
 import { ProductCatalogSection } from './ProductCatalogSection';
 import { AgentKnowledgeBaseSection } from './AgentKnowledgeBaseSection';
-import { IntelligenceDataFlowSection } from './IntelligenceDataFlowSection';
 import { ContinuousLearningSection } from './ContinuousLearningSection';
-import { MetaAiBenchmarkSection } from './MetaAiBenchmarkSection';
 import { AgentSettingsSection } from './AgentSettingsSection';
 import {
   Building2,
@@ -27,6 +25,8 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
+import { SalesAiThesisConfig } from '../settings/SalesAiThesisConfig';
+
 interface ClientAgentHubViewProps {
   currentWorkspace: Workspace;
   workspaces: Workspace[];
@@ -36,12 +36,11 @@ interface ClientAgentHubViewProps {
 }
 
 export type IntelligenceTab =
-  | 'company'
-  | 'catalog'
   | 'knowledge'
-  | 'dataflow'
+  | 'catalog'
+  | 'thesis'
   | 'learning'
-  | 'benchmark'
+  | 'company'
   | 'agent';
 
 export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
@@ -56,14 +55,17 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   const setActiveTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalActiveTab;
 
   // Client Bundle state scoped strictly to the selected client workspace
-  const [bundleMap, setBundleMap] = React.useState<Record<string, ClientIntelligenceBundle>>(clientIntelligenceMap);
+  const [bundleMap, setBundleMap] = React.useState<Record<string, ClientIntelligenceBundle>>({
+    ...clientIntelligenceMap,
+    [currentWorkspace.id]: mockSosSalesIntelligence,
+  });
 
   const currentBundle = React.useMemo(() => {
     return bundleMap[currentWorkspace.id] || {
-      ...mockEscovariaIntelligence,
+      ...mockSosSalesIntelligence,
       workspaceId: currentWorkspace.id,
       companyProfile: {
-        ...mockEscovariaIntelligence.companyProfile,
+        ...mockSosSalesIntelligence.companyProfile,
         tradeName: currentWorkspace.name,
       },
     };
@@ -132,95 +134,8 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
         </div>
       </div>
 
-      {/* Navigation Sub-Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200 text-xs">
-        <button
-          onClick={() => setActiveTab('knowledge')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${
-            activeTab === 'knowledge'
-              ? 'bg-purple-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Brain className="w-4 h-4" />
-          <span>Banco de Inteligência & Arquivos ({currentBundle.documents.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('catalog')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${
-            activeTab === 'catalog'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <ShoppingBag className="w-4 h-4" />
-          <span>Catálogo Oficial & Serviços ({currentBundle.catalog.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('dataflow')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${
-            activeTab === 'dataflow'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Radio className="w-4 h-4" />
-          <span>De Onde Vem ➔ Para Onde Vai</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('learning')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${
-            activeTab === 'learning'
-              ? 'bg-emerald-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <TrendingUp className="w-4 h-4" />
-          <span>Aprendizado Contínuo ({currentBundle.learningRecords.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('company')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${
-            activeTab === 'company'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Building2 className="w-4 h-4" />
-          <span>Empresa & WABA Oficial</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('agent')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${
-            activeTab === 'agent'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Bot className="w-4 h-4" />
-          <span>Persona & Alçadas</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('benchmark')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${
-            activeTab === 'benchmark'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Award className="w-4 h-4" />
-          <span>Meta AI Benchmark</span>
-        </button>
-      </div>
-
-      {/* Active Tab Component */}
-      {activeTab === 'knowledge' && (
+      {/* Active Section Content (Navigation controlled via sidebar) */}
+      {(activeTab === 'knowledge' || !activeTab) && (
         <AgentKnowledgeBaseSection
           documents={currentBundle.documents}
           onUpdateDocuments={(docs) => {
@@ -238,12 +153,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
         />
       )}
 
-      {activeTab === 'dataflow' && (
-        <IntelligenceDataFlowSection
-          sources={currentBundle.sources}
-          destinations={currentBundle.destinations}
-        />
-      )}
+      {activeTab === 'thesis' && <SalesAiThesisConfig />}
 
       {activeTab === 'learning' && (
         <ContinuousLearningSection
@@ -284,8 +194,6 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
           }}
         />
       )}
-
-      {activeTab === 'benchmark' && <MetaAiBenchmarkSection />}
     </div>
   );
 };

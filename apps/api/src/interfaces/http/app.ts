@@ -2,6 +2,8 @@ import Fastify, { FastifyInstance, FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
+import fastifySwagger from '@fastify/swagger';
+import fastifySwaggerUi from '@fastify/swagger-ui';
 import rateLimit, { RateLimitPluginOptions } from '@fastify/rate-limit';
 import { WebhookSecretProvider } from '../../application/ports/webhook-secret-provider.js';
 import { ChannelWebhookAdapter } from '../../application/ports/channel-webhook-adapter.js';
@@ -16,8 +18,14 @@ import { CommercialOutcomeGateway } from '../../application/ports/commercial-out
 import { OutboundDispatchGateway } from '../../application/ports/outbound-dispatch-gateway.js';
 import { TrafficProofGateway } from '../../application/ports/traffic-proof-gateway.js';
 import { KnownFactOperationsGateway } from '../../application/ports/known-fact-operations-gateway.js';
+import { AppointmentGateway } from '../../application/ports/appointment-gateway.js';
+import { NotesGateway } from '../../application/ports/notes-gateway.js';
+import { WorkspaceProvisioningGateway } from '../../application/ports/workspace-provisioning-gateway.js';
 import { wahaWebhookRoutes } from './routes/webhooks/waha.js';
 import { operatorAuthRoutes } from './routes/operator-auth.js';
+import { abacatePayRoutes } from './routes/abacatepay-routes.js';
+import { aiCopilotRoutes } from './routes/ai-copilot-routes.js';
+import { whatsappChannelRoutes } from './routes/whatsapp-channel-routes.js';
 
 export interface RateLimitOptions {
   max?: number;
@@ -68,6 +76,12 @@ export interface AppDependencies {
   trafficProofGateway?: TrafficProofGateway;
   /** Authenticated, RLS-scoped append-only human known-fact commands. */
   knownFactOperationsGateway?: KnownFactOperationsGateway;
+  /** Authenticated, RLS-scoped commercial appointments CRUD gateway. */
+  appointmentGateway?: AppointmentGateway;
+  /** Authenticated, RLS-scoped operational notes CRUD gateway. */
+  notesGateway?: NotesGateway;
+  /** Authenticated first-login workspace auto-provisioning gateway. */
+  workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
   logger?: boolean | Record<string, unknown>;
   rateLimit?: RateLimitOptions | false;
   /**
@@ -127,6 +141,34 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   app.register(cors, { origin: true });
   app.register(sensible);
 
+  // OpenAPI / Swagger
+  app.register(fastifySwagger, {
+    openapi: {
+      openapi: '3.0.3',
+      info: {
+        title: 'SOS Sales API',
+        version: '1.0.0',
+        description: 'API do SOS Sales — Sistema Operacional Comercial (TX Commercial Core). Todas as rotas exigem Bearer JWT emitido pelo Supabase Auth.'
+      },
+      servers: [
+        { url: 'http://localhost:4334', description: 'Local Dev' },
+        { url: 'https://sos.mct.com.br', description: 'Produção VPS' }
+      ],
+      components: {
+        securitySchemes: {
+          bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
+        }
+      },
+      security: [{ bearerAuth: [] }]
+    }
+  });
+
+  app.register(fastifySwaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: { docExpansion: 'list', deepLinking: true },
+    staticCSP: true,
+  });
+
   // Rate Limiting (Default 600 req/min, bypass for /health and /ready)
   if (dependencies.rateLimit !== false) {
     const rateConfig = typeof dependencies.rateLimit === 'object' ? dependencies.rateLimit : {};
@@ -165,7 +207,14 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     outboundDispatchGateway: dependencies.outboundDispatchGateway,
     trafficProofGateway: dependencies.trafficProofGateway,
     knownFactOperationsGateway: dependencies.knownFactOperationsGateway,
+    appointmentGateway: dependencies.appointmentGateway,
+    notesGateway: dependencies.notesGateway,
+    workspaceProvisioningGateway: dependencies.workspaceProvisioningGateway,
   });
+
+  app.register(abacatePayRoutes);
+  app.register(aiCopilotRoutes);
+  app.register(whatsappChannelRoutes);
 
   /**
    * GET /health — Liveness probe.

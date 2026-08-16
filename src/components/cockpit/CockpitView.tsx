@@ -333,8 +333,8 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
         id="cockpit-css-grid"
         className={`flex-1 min-h-0 h-full w-full overflow-hidden ${
           isDockedActive
-            ? 'lg:grid lg:grid-cols-[280px_minmax(0,1fr)_340px] xl:grid-cols-[300px_minmax(0,1fr)_380px] lg:gap-2.5'
-            : 'lg:grid lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] lg:gap-2.5'
+            ? 'lg:grid lg:grid-cols-[290px_minmax(0,1fr)_320px] xl:grid-cols-[320px_minmax(0,1fr)_340px] lg:gap-2'
+            : 'lg:grid lg:grid-cols-[290px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)] lg:gap-2'
         }`}
       >
         {/* Pane 1: Priority Queue (CSS Grid Track 1) */}
@@ -384,8 +384,8 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
             />
           </div>
 
-          {/* Signature Visual: Continuity Ribbon */}
-          <div className="shrink-0 px-2.5 pt-2 pb-1 bg-slate-50/40 border-b border-slate-100">
+          {/* Signature Visual: Continuity Ribbon (Sleek 34px bar) */}
+          <div className="shrink-0 px-2 pt-1 pb-0.5 bg-slate-50/60">
             <ContinuityRibbon
               acquisition={currentJourney.acquisition}
               lastLeadMessage={currentJourney.lastLeadMessage}
@@ -399,26 +399,26 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
             />
           </div>
 
-          {/* AI Smart Funnel Auto-Advance Suggestion Banner */}
+          {/* AI Smart Funnel Auto-Advance Suggestion (Compact 1-line chip) */}
           {(!currentJourney.stage || currentJourney.stage === 'new' || currentJourney.stage === 'contacted') && (
-            <div className="mx-2.5 mt-2 p-2.5 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between text-xs text-purple-900 shadow-2xs shrink-0">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
-                <div>
-                  <span className="font-bold">IA Sugere Avanço de Funil:</span> O lead demonstrou interesse em agendamento ou proposta.
-                </div>
+            <div className="mx-2 mt-1 px-2 py-1 bg-purple-50/90 border border-purple-200/80 rounded-lg flex items-center justify-between text-xs text-purple-900 shadow-2xs shrink-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                <span className="text-[11px] truncate">
+                  <strong className="font-semibold">IA Sugere:</strong> Avançar para Negociação (interesse detectado)
+                </span>
               </div>
               <button
                 onClick={() => handleStageChange('negotiation')}
-                className="px-3 py-1 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-lg text-xs shadow-xs transition-colors shrink-0"
+                className="px-2 py-0.5 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded text-[10.5px] shadow-xs transition-colors shrink-0 ml-2"
               >
-                Avançar para Negociação
+                Avançar
               </button>
             </div>
           )}
 
-          {/* Scrollable Conversation Center */}
-          <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50/40 p-2.5">
+          {/* Scrollable Conversation Center - Maximized Viewport */}
+          <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50/40 p-2 sm:p-2.5">
             <MessageTimeline
               messages={messages}
               onRetryMessage={handleRetryMessage}

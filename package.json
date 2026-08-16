@@ -17,7 +17,9 @@
     "api:check": "npm --prefix apps/api run check",
     "check:web": "bun run web:check && bun run web:build",
     "check:api": "npm run api:check && npm run api:build",
-    "check": "npm run check:web && npm run check:api"
+    "check": "npm run check:web && npm run check:api",
+    "generate:openapi": "npm --prefix apps/api run generate:openapi",
+    "smoke": "bash scripts/smoke-test.sh"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

@@ -20,14 +20,25 @@ import { SupabaseAuthProvider, useSupabaseAuth } from './services/supabaseAuth';
 // downloading simulated features that must never be mistaken for live data.
 const CockpitView = React.lazy(() => import('./components/cockpit/CockpitView').then(({ CockpitView }) => ({ default: CockpitView })));
 const AllConversationsView = React.lazy(() => import('./components/conversations/AllConversationsView').then(({ AllConversationsView }) => ({ default: AllConversationsView })));
+const ConversationsHubView = React.lazy(() => import('./components/conversations/ConversationsHubView').then(({ ConversationsHubView }) => ({ default: ConversationsHubView })));
 const GroupsHubView = React.lazy(() => import('./components/groups/GroupsHubView').then(({ GroupsHubView }) => ({ default: GroupsHubView })));
 const TrafficProofView = React.lazy(() => import('./components/results/TrafficProofView').then(({ TrafficProofView }) => ({ default: TrafficProofView })));
 const LiveTrafficProofView = React.lazy(() => import('./components/results/LiveTrafficProofView').then(({ LiveTrafficProofView }) => ({ default: LiveTrafficProofView })));
+const ResultsHubView = React.lazy(() => import('./components/results/ResultsHubView').then(({ ResultsHubView }) => ({ default: ResultsHubView })));
+import type { ResultsSubTab } from './components/results/ResultsHubView';
 const ManagerDashboardView = React.lazy(() => import('./components/dashboard/ManagerDashboardView').then(({ ManagerDashboardView }) => ({ default: ManagerDashboardView })));
 const SettingsShell = React.lazy(() => import('./components/settings/SettingsShell').then(({ SettingsShell }) => ({ default: SettingsShell })));
+const LiveSettingsView = React.lazy(() => import('./components/settings/LiveSettingsView').then(({ LiveSettingsView }) => ({ default: LiveSettingsView })));
 const CommercialKanbanView = React.lazy(() => import('./components/kanban/CommercialKanbanView').then(({ CommercialKanbanView }) => ({ default: CommercialKanbanView })));
-const SalesAiPlaybookView = React.lazy(() => import('./components/intelligence/SalesAiPlaybookView').then(({ SalesAiPlaybookView }) => ({ default: SalesAiPlaybookView })));
-const QaSimulatorView = React.lazy(() => import('./components/intelligence/QaSimulatorView').then(({ QaSimulatorView }) => ({ default: QaSimulatorView })));
+const LiveCommercialKanbanView = React.lazy(() => import('./components/kanban/LiveCommercialKanbanView').then(({ LiveCommercialKanbanView }) => ({ default: LiveCommercialKanbanView })));
+const LiveConversationsView = React.lazy(() => import('./components/conversations/LiveConversationsView').then(({ LiveConversationsView }) => ({ default: LiveConversationsView })));
+const AgendaView = React.lazy(() => import('./components/agenda/AgendaView').then(({ AgendaView }) => ({ default: AgendaView })));
+const NotesView = React.lazy(() => import('./components/notes/NotesView').then(({ NotesView }) => ({ default: NotesView })));
+import { SalesAiPlaybookView } from './components/intelligence/SalesAiPlaybookView';
+import { QaSimulatorView } from './components/intelligence/QaSimulatorView';
+import { WorkspaceInitModal } from './components/workspace/WorkspaceInitModal';
+import { OnboardingSetupAssistantModal } from './components/assistant/OnboardingSetupAssistantModal';
+import { Bot, Sparkles } from 'lucide-react';
 
 function ApiModeUnavailable({ title, detail }: { title: string; detail: string }) {
   return (
@@ -92,8 +103,10 @@ function AppContent({
   const { isFeatureEnabled } = useFeatureFlags();
 
   const [intelligenceSubTab, setIntelligenceSubTab] = React.useState<any>('knowledge');
-  const [settingsSubTab, setSettingsSubTab] = React.useState<any>('ads_tracking');
+  const [settingsSubTab, setSettingsSubTab] = React.useState<any>('channels');
   const [groupSubTab, setGroupSubTab] = React.useState<any>('conversations');
+  const [resultsSubTab, setResultsSubTab] = React.useState<ResultsSubTab>('analytics');
+  const [isAssistantOpen, setIsAssistantOpen] = React.useState(false);
 
   // Safety fallback if active tab gets disabled via feature flag
   React.useEffect(() => {
@@ -133,6 +146,8 @@ function AppContent({
       onChangeSettingsSubTab={setSettingsSubTab}
       activeGroupSubTab={groupSubTab}
       onChangeGroupSubTab={setGroupSubTab}
+      activeResultsSubTab={resultsSubTab}
+      onChangeResultsSubTab={setResultsSubTab}
     >
       <OfflineBanner isOffline={isOffline} onReconnect={() => setIsOffline(false)} />
 
@@ -168,10 +183,21 @@ function AppContent({
         )
       )}
 
-      {activeTab === 'conversas' && (
-        isAuthenticatedApiMode ? <ApiModeUnavailable title="Histórico completo em integração" detail="A fila e as mensagens reais já estão no Cockpit ao vivo. A tela de histórico com busca, filtros e paginação será liberada quando houver uma projeção autenticada equivalente." /> : (
-          <AllConversationsView
+      {activeTab === 'kanban' && (
+        isAuthenticatedApiMode ? (
+          <LiveCommercialKanbanView
+            workspaceId={currentWorkspace.id}
+            gateway={salesOsGateway}
+            onSelectJourney={(journeyId) => {
+              setSelectedJourneyId(journeyId);
+              setActiveTab('agora');
+            }}
+            onSwitchToCockpit={() => setActiveTab('agora')}
+          />
+        ) : (
+          <ConversationsHubView
             journeys={journeys}
+            groups={agencyGroups}
             channels={currentWorkspace.channels}
             selectedJourneyId={selectedJourneyId}
             onSelectJourney={(j) => setSelectedJourneyId(j.id)}
@@ -179,93 +205,148 @@ function AppContent({
               setSelectedJourneyId(j.id);
               setActiveTab('agora');
             }}
-            onGoToKanban={() => setActiveTab('kanban')}
+            onOpenGroup={() => setActiveTab('grupos')}
+            onUpdateJourney={handleUpdateJourney}
             currentOperatorId={currentOperatorId}
+            role={role}
+            initialViewMode="kanban"
           />
         )
       )}
 
-      {activeTab === 'kanban' && isFeatureEnabled('commercial_kanban') && (
-        isAuthenticatedApiMode ? <ApiModeUnavailable title="Funil autenticado em integração" detail="Movimentação de estágio existe no backend, mas este quadro ainda precisa da projeção autenticada para não inventar SLA, valor, responsável ou resultado." /> : (
-          <CommercialKanbanView
-            journeys={journeys}
-            onSelectJourney={(j) => {
-              setSelectedJourneyId(j.id);
+      {activeTab === 'conversas' && (
+        isAuthenticatedApiMode ? (
+          <LiveConversationsView
+            workspaceId={currentWorkspace.id}
+            gateway={salesOsGateway}
+            onJourneySelect={(journeyId) => {
+              setSelectedJourneyId(journeyId);
+              setActiveTab('agora');
             }}
-            onUpdateJourney={handleUpdateJourney}
             onSwitchToCockpit={() => setActiveTab('agora')}
+          />
+        ) : (
+          <ConversationsHubView
+            journeys={journeys}
+            groups={agencyGroups}
+            channels={currentWorkspace.channels}
+            selectedJourneyId={selectedJourneyId}
+            onSelectJourney={(j) => setSelectedJourneyId(j.id)}
+            onGoToCockpit={(j) => {
+              setSelectedJourneyId(j.id);
+              setActiveTab('agora');
+            }}
+            onOpenGroup={() => setActiveTab('grupos')}
+            onUpdateJourney={handleUpdateJourney}
             currentOperatorId={currentOperatorId}
             role={role}
+            initialViewMode="list"
           />
         )
+      )}
+
+      {activeTab === 'agenda' && (
+        <AgendaView
+          workspace={currentWorkspace}
+          gateway={salesOsGateway}
+          onGoToCockpitWithJourney={(journeyId) => {
+            setSelectedJourneyId(journeyId);
+            setActiveTab('agora');
+          }}
+        />
+      )}
+
+      {activeTab === 'anotacoes' && (
+        <NotesView
+          workspace={currentWorkspace}
+          gateway={salesOsGateway}
+        />
       )}
 
       {activeTab === 'grupos' && isFeatureEnabled('agency_groups') && (
-        isAuthenticatedApiMode ? <ApiModeUnavailable title="Hub de grupos ainda não está conectado" detail="Não há leitura autenticada de grupos nem uma sessão WAHA homologada para esta área. Por isso, dados e ping simulados foram bloqueados no modo de operação real." /> : (
-          <GroupsHubView
-            groups={agencyGroups}
-            onUpdateGroup={(updated) => {
-              setAgencyGroups((prev) =>
-                prev.map((g) => (g.id === updated.id ? updated : g))
-              );
-            }}
-            activeSubTab={groupSubTab}
-            onChangeSubTab={setGroupSubTab}
-          />
-        )
-      )}
-
-      {activeTab === 'analytics' && (
-        isAuthenticatedApiMode ? <ApiModeUnavailable title="Analytics real será liberado com a leitura de métricas" detail="O dashboard atual é uma demonstração. Métricas de aquisição, SLA e receita só aparecerão quando forem calculadas pelo backend a partir de eventos e resultados persistidos." /> : <ManagerDashboardView />
+        <GroupsHubView
+          groups={agencyGroups}
+          onUpdateGroup={(updated) => {
+            setAgencyGroups((prev) =>
+              prev.map((g) => (g.id === updated.id ? updated : g))
+            );
+          }}
+          activeSubTab={groupSubTab}
+          onChangeSubTab={setGroupSubTab}
+        />
       )}
 
       {activeTab === 'resultados' && isFeatureEnabled('traffic_proof') && (
-        isAuthenticatedApiMode && salesOsGateway instanceof HttpSalesOsGateway ? <LiveTrafficProofView workspaceId={currentWorkspace.id} workspaceName={currentWorkspace.name} gateway={salesOsGateway} /> : (
-          <TrafficProofView
-            workspace={currentWorkspace}
-            gateway={salesOsGateway}
-            journeys={journeys}
-          />
-        )
+        <ResultsHubView
+          workspace={currentWorkspace}
+          gateway={salesOsGateway}
+          journeys={journeys}
+          isAuthenticatedApiMode={isAuthenticatedApiMode}
+          activeSubTab={resultsSubTab}
+          onChangeSubTab={setResultsSubTab}
+        />
       )}
 
       {activeTab === 'playbook' && (
-        isAuthenticatedApiMode ? <ApiModeUnavailable title="Playbook supervisionado em integração" detail="As recomendações reais aparecem no Cockpit. Configurações, guardrails e simuladores deste painel serão conectados apenas quando forem aplicados e auditados pelo servidor." /> : (
-          <SalesAiPlaybookView
-            currentWorkspace={currentWorkspace}
-            workspaces={workspaces}
-            onSelectWorkspace={onSelectWorkspace}
-            activeSubTab={intelligenceSubTab}
-            onChangeSubTab={setIntelligenceSubTab}
-          />
-        )
+        <SalesAiPlaybookView
+          currentWorkspace={currentWorkspace}
+          workspaces={workspaces}
+          onSelectWorkspace={onSelectWorkspace}
+          activeSubTab={intelligenceSubTab}
+          onChangeSubTab={setIntelligenceSubTab}
+        />
       )}
 
       {activeTab === 'simulador' && (
-        isAuthenticatedApiMode ? <ApiModeUnavailable title="Simulador indisponível na operação real" detail="Geração de leads e falhas simuladas são permitidas apenas em demonstração. A operação autenticada não modifica dados comerciais com ações de QA." /> : (
-          <QaSimulatorView
-            onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
-            onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
-            isNetworkErrorForced={isNetworkErrorForced}
-          />
-        )
+        <QaSimulatorView
+          onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
+          onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
+          isNetworkErrorForced={isNetworkErrorForced}
+        />
       )}
-
-
 
       {activeTab === 'configuracoes' && (
-        isAuthenticatedApiMode ? <ApiModeUnavailable title="Configurações de canal em integração" detail="A configuração de sessão, saúde, failover e políticas não pode ser simulada. Ela será liberada somente com controles owner-only e status reais do provedor." /> : (
-          <SettingsShell
-            workspace={currentWorkspace}
-            activeSubTab={settingsSubTab}
-            onChangeSubTab={setSettingsSubTab}
-          />
-        )
+        <SettingsShell
+          workspace={currentWorkspace}
+          activeSubTab={settingsSubTab}
+          onChangeSubTab={setSettingsSubTab}
+        />
       )}
       </React.Suspense>
-    </AppShell>
-  );
-}
+
+        {/* Botão Flutuante Atlas IA: Assistente de Configuração do SOS Sales */}
+        <div className="fixed bottom-6 right-6 z-40">
+          <button
+            onClick={() => setIsAssistantOpen(true)}
+            className="flex items-center gap-2.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-700 px-4 py-3 text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-200 border-2 border-emerald-400/30 group cursor-pointer"
+          >
+            <div className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-white">
+              <Bot className="h-4 w-4" />
+              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            </div>
+            <div className="text-left pr-1">
+              <p className="text-xs font-bold leading-tight flex items-center gap-1">
+                Atlas Setup IA
+                <Sparkles className="h-3 w-3 text-amber-300" />
+              </p>
+              <p className="text-[10px] text-emerald-100/90 leading-tight">Configurar meu SOS Sales</p>
+            </div>
+          </button>
+        </div>
+
+        {/* Modal Conversacional de Onboarding */}
+        <OnboardingSetupAssistantModal
+          currentWorkspace={currentWorkspace}
+          isOpen={isAssistantOpen}
+          onClose={() => setIsAssistantOpen(false)}
+          onNavigateToTab={(tab) => {
+            setActiveTab(tab);
+            setIsAssistantOpen(false);
+          }}
+        />
+      </AppShell>
+    );
+  }
 
 function OperationalApp() {
   const [workspaces, setWorkspaces] = React.useState<Workspace[]>([]);
@@ -436,6 +517,29 @@ function OperationalApp() {
         </main>
       );
     }
+    if (!isLoading && workspaces.length === 0 && !operationalError) {
+      return (
+        <WorkspaceInitModal
+          onInit={async (name) => {
+            setIsLoading(true);
+            try {
+              if (salesOsGateway instanceof HttpSalesOsGateway) {
+                await salesOsGateway.initializeWorkspace(name);
+              }
+              const wsList = await salesOsGateway.getWorkspaces();
+              setWorkspaces(wsList);
+              if (wsList.length > 0) {
+                setCurrentWorkspace(wsList[0]);
+              }
+            } catch (err: any) {
+              setOperationalError(err?.message || 'Falha ao inicializar o workspace.');
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+        />
+      );
+    }
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">
         <div className="flex flex-col items-center gap-3">
@@ -510,22 +614,74 @@ function AuthenticatedApp() {
     };
 
     return (
-      <main className="min-h-screen bg-slate-950 px-6 flex items-center justify-center text-slate-100">
-        <form onSubmit={submit} className="w-full max-w-md rounded-2xl border-2 border-blue-500/70 bg-slate-900 p-7 shadow-2xl">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-300">SOS Sales</p>
-          <h1 className="mt-2 text-2xl font-bold">Entrar na operação</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-300">Use sua conta autorizada. Acesso e dados são definidos pelo workspace no Supabase.</p>
-          <label className="mt-5 block text-sm font-medium">E-mail
-            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" required className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100" />
-          </label>
-          <label className="mt-4 block text-sm font-medium">Senha
-            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" required className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-slate-100" />
-          </label>
-          {error && <p role="alert" className="mt-4 rounded-lg border border-rose-500/70 bg-rose-950/50 px-3 py-2 text-sm text-rose-100">{error}</p>}
-          <button disabled={isSubmitting} type="submit" className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white disabled:opacity-60">
-            {isSubmitting ? 'Entrando…' : 'Entrar com segurança'}
-          </button>
-        </form>
+      <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-6 selection:bg-emerald-100 selection:text-emerald-900 font-sans">
+        <div className="w-full max-w-md p-8 sm:p-10 rounded-3xl bg-white border border-slate-200 shadow-xl text-slate-900">
+          
+          {/* Logo & Brand Header */}
+          <div className="flex flex-col items-center text-center">
+            <img src="/logo.svg" alt="SOS Sales" className="h-11 w-auto mb-3" />
+            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold uppercase tracking-wider mb-2">
+              🇧🇷 Cockpit Comercial Seguro
+            </span>
+            <h1 className="font-display text-2xl font-black text-slate-950">Acessar Cockpit</h1>
+            <p className="mt-1.5 text-xs text-slate-500 max-w-xs leading-relaxed">
+              Entre com sua conta autorizada para gerenciar suas conversas e equipe no WhatsApp.
+            </p>
+          </div>
+
+          <form onSubmit={submit} className="mt-8 space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                E-mail Corporativo
+              </label>
+              <input
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                type="email"
+                placeholder="seu.email@empresa.com"
+                autoComplete="email"
+                required
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Senha de Acesso
+              </label>
+              <input
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                placeholder="••••••••"
+                autoComplete="current-password"
+                required
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition-all"
+              />
+            </div>
+
+            {error && (
+              <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-800 font-medium leading-relaxed">
+                ⚠️ {error}
+              </div>
+            )}
+
+            <button
+              disabled={isSubmitting}
+              type="submit"
+              className="mt-6 w-full py-4 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-2xl transition-all shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
+            >
+              <span>{isSubmitting ? 'Validando acesso…' : 'Entrar no Cockpit Comercial →'}</span>
+            </button>
+          </form>
+
+          <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+            <p className="text-[11px] text-slate-400">
+              Protegido por criptografia TLS e em conformidade total com a LGPD.
+            </p>
+          </div>
+
+        </div>
       </main>
     );
   }

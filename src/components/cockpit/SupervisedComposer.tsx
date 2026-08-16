@@ -174,85 +174,50 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
         filterQuery={macroFilter}
       />
 
-      {/* AI Copilot Integrated Suggestion Strip */}
+      {/* AI Copilot Integrated Suggestion Strip (Compact 1-line bar) */}
       {hasActiveAiSuggestion && recommendation && (
         <div
           id="composer-ai-copilot-strip"
-          className="mb-2 bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 border border-purple-200 rounded-xl p-2.5 shadow-2xs space-y-1.5 animate-in fade-in slide-in-from-bottom-2 duration-150"
+          className="mb-1.5 bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5 shadow-2xs flex items-center justify-between gap-2 text-xs animate-in fade-in"
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <div className="w-5 h-5 rounded-md bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                <Sparkles className="w-3 h-3" />
-              </div>
-              <span className="text-[11px] font-bold text-purple-950 truncate font-heading">
-                Copilot Comercial: {recommendation.suggestedAction}
-              </span>
-              <span className="text-[10px] bg-purple-200/80 text-purple-900 font-mono px-1.5 py-0.2 rounded font-bold shrink-0">
-                {Math.round(recommendation.confidence * 100)}% confiança
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                onClick={() => setEvidenceModalOpen(true)}
-                className="text-[10.5px] font-semibold text-purple-700 hover:text-purple-900 px-2 py-0.5 rounded hover:bg-purple-100/70 transition-colors flex items-center gap-1"
-                title="Ver evidências que justificam esta sugestão"
-              >
-                <Eye className="w-3 h-3" />
-                <span className="hidden sm:inline">Evidências</span>
-              </button>
-
-              <button
-                onClick={() => setIsAiDetailsExpanded(!isAiDetailsExpanded)}
-                className="text-[10.5px] font-semibold text-purple-700 hover:text-purple-900 p-0.5 rounded hover:bg-purple-100/70 transition-colors"
-                title={isAiDetailsExpanded ? 'Recolher detalhes' : 'Ver detalhes da tese'}
-              >
-                {isAiDetailsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-
-              <button
-                onClick={() => setIsAiSuggestionDismissed(true)}
-                className="text-slate-400 hover:text-slate-600 p-0.5 rounded transition-colors ml-1"
-                title="Dispensar sugestão"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Suggested Draft Preview + Apply Buttons */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-purple-200/70 text-xs">
-            <p className="text-[11.5px] text-purple-900 italic line-clamp-2 leading-relaxed">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+            <span className="text-[10.5px] font-bold text-purple-950 shrink-0 hidden sm:inline">
+              Copilot:
+            </span>
+            <p className="text-[11px] text-purple-900 italic truncate">
               "{recommendation.draftText || recommendation.suggestedAction}"
             </p>
-
-            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
-              <button
-                onClick={handleApplyAiSuggestion}
-                className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-purple-600 hover:bg-purple-700 text-white transition-colors flex items-center gap-1 shadow-2xs"
-              >
-                <span>Usar Sugestão</span>
-                <ArrowRight className="w-3 h-3" />
-              </button>
-            </div>
+            <span className="text-[9px] bg-purple-200/80 text-purple-900 font-mono px-1 py-0.2 rounded font-bold shrink-0 hidden md:inline">
+              {Math.round(recommendation.confidence * 100)}%
+            </span>
           </div>
 
-          {/* Expanded AI Thesis & Policy Details */}
-          {isAiDetailsExpanded && (
-            <div className="p-2 bg-white/90 border border-purple-200 rounded-lg text-[11px] space-y-1 text-slate-700 mt-1.5">
-              <div className="flex items-center justify-between text-purple-900 font-bold">
-                <span>Política Comercial Aplicada:</span>
-                <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                  {recommendation.policyStatus === 'compliant' ? '100% Conforme' : 'Atenção'}
-                </span>
-              </div>
-              <p className="text-slate-600 leading-snug">
-                {recommendation.explanation ||
-                  'A sugestão conduz o cliente diretamente para a confirmação de horário de agenda sem conceder descontos fora da tabela autorizada.'}
-              </p>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={handleApplyAiSuggestion}
+              className="px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-purple-600 hover:bg-purple-700 text-white transition-colors flex items-center gap-1 shadow-2xs"
+            >
+              <span>Usar</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+
+            <button
+              onClick={() => setEvidenceModalOpen(true)}
+              className="text-purple-600 hover:text-purple-900 p-0.5 rounded hover:bg-purple-100/70 transition-colors"
+              title="Ver evidências"
+            >
+              <Eye className="w-3 h-3" />
+            </button>
+
+            <button
+              onClick={() => setIsAiSuggestionDismissed(true)}
+              className="text-slate-400 hover:text-slate-600 p-0.5 rounded transition-colors"
+              title="Dispensar sugestão"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
         </div>
       )}
 

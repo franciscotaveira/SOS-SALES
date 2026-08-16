@@ -35,7 +35,7 @@ export const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({
         aria-expanded={isOpen}
         aria-haspopup="true"
       >
-        <div className="w-6 h-6 rounded-md bg-blue-600/10 text-blue-700 flex items-center justify-center font-bold text-xs">
+        <div className="w-6 h-6 rounded-md bg-emerald-600/10 text-emerald-700 flex items-center justify-center font-bold text-xs">
           <Building2 className="w-3.5 h-3.5" />
         </div>
         <span className="truncate max-w-[170px] text-left">{currentWorkspace.name}</span>
@@ -60,12 +60,12 @@ export const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({
                   setIsOpen(false);
                 }}
                 className={`w-full flex items-start gap-3 px-3 py-2.5 text-left text-sm hover:bg-slate-50 transition-colors ${
-                  isSelected ? 'bg-blue-50/50 text-blue-900 font-medium' : 'text-slate-700'
+                  isSelected ? 'bg-emerald-50 text-emerald-900 font-medium' : 'text-slate-700'
                 }`}
               >
                 <div
                   className={`w-7 h-7 mt-0.5 rounded-md flex items-center justify-center text-xs font-bold shrink-0 ${
-                    isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                    isSelected ? 'bg-[#00A884] text-white' : 'bg-slate-100 text-slate-600'
                   }`}
                 >
                   {ws.name.charAt(0)}
@@ -73,7 +73,7 @@ export const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-slate-900 truncate flex items-center gap-1.5">
                     {ws.name}
-                    {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 inline" />}
+                    {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600 inline" />}
                   </div>
                   <div className="text-xs text-slate-500 truncate">{ws.tagline}</div>
                 </div>

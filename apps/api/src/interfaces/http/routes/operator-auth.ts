@@ -8,6 +8,9 @@ import { CommercialOutcomeGateway } from '../../../application/ports/commercial-
 import { OutboundDispatchGateway } from '../../../application/ports/outbound-dispatch-gateway.js';
 import { TrafficProofGateway } from '../../../application/ports/traffic-proof-gateway.js';
 import { KnownFactOperationsGateway } from '../../../application/ports/known-fact-operations-gateway.js';
+import { AppointmentGateway } from '../../../application/ports/appointment-gateway.js';
+import { NotesGateway } from '../../../application/ports/notes-gateway.js';
+import { WorkspaceProvisioningGateway } from '../../../application/ports/workspace-provisioning-gateway.js';
 import { cockpitReadRoutes } from './cockpit-read.js';
 import { handoffOperationRoutes } from './handoff-operations.js';
 import { journeyOperationRoutes } from './journey-operations.js';
@@ -15,6 +18,9 @@ import { commercialOutcomeRoutes } from './commercial-outcomes.js';
 import { outboundDispatchRoutes } from './outbound-dispatches.js';
 import { trafficProofRoutes } from './traffic-proof.js';
 import { knownFactOperationRoutes } from './known-fact-operations.js';
+import { appointmentRoutes } from './appointments.js';
+import { notesRoutes } from './notes.js';
+import { workspaceInitRoutes } from './workspace-init.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -32,6 +38,9 @@ export interface OperatorAuthRouteDependencies {
   outboundDispatchGateway?: OutboundDispatchGateway;
   trafficProofGateway?: TrafficProofGateway;
   knownFactOperationsGateway?: KnownFactOperationsGateway;
+  appointmentGateway?: AppointmentGateway;
+  notesGateway?: NotesGateway;
+  workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
 }
 
 function readBearerToken(authorization: string | undefined): string | null {
@@ -127,5 +136,14 @@ export async function operatorAuthRoutes(
   });
   app.register(knownFactOperationRoutes, {
     knownFactOperationsGateway: dependencies.knownFactOperationsGateway,
+  });
+  app.register(appointmentRoutes, {
+    appointmentGateway: dependencies.appointmentGateway,
+  });
+  app.register(notesRoutes, {
+    notesGateway: dependencies.notesGateway,
+  });
+  app.register(workspaceInitRoutes, {
+    workspaceProvisioningGateway: dependencies.workspaceProvisioningGateway,
   });
 }

@@ -27,12 +27,16 @@ import {
   ArrowRight,
   Lock,
   PieChart,
+  CalendarDays,
+  BookOpen,
 } from 'lucide-react';
 
 export type NavigationTab =
   | 'agora'
   | 'conversas'
   | 'kanban'
+  | 'agenda'
+  | 'anotacoes'
   | 'resultados'
   | 'analytics'
   | 'grupos'
@@ -59,6 +63,8 @@ interface AppShellProps {
   onChangeSettingsSubTab?: (subTab: string) => void;
   activeGroupSubTab?: string;
   onChangeGroupSubTab?: (subTab: string) => void;
+  activeResultsSubTab?: 'analytics' | 'traffic_proof';
+  onChangeResultsSubTab?: (subTab: 'analytics' | 'traffic_proof') => void;
   children: React.ReactNode;
 }
 
@@ -78,6 +84,8 @@ export const AppShell: React.FC<AppShellProps> = ({
   onChangeSettingsSubTab,
   activeGroupSubTab = 'conversations',
   onChangeGroupSubTab,
+  activeResultsSubTab = 'analytics',
+  onChangeResultsSubTab,
   children,
 }) => {
   const { isFeatureEnabled } = useFeatureFlags();
@@ -179,34 +187,9 @@ export const AppShell: React.FC<AppShellProps> = ({
         },
         {
           id: 'conversas',
-          label: 'Conversas',
+          label: 'Conversas & Funil',
           icon: MessageSquare,
           visible: true,
-        },
-        {
-          id: 'kanban',
-          label: 'Funil',
-          icon: Columns3,
-          visible: showKanban,
-        },
-      ],
-    },
-    {
-      title: 'GESTÃO',
-      items: [
-        {
-          id: 'analytics',
-          label: 'Analytics & ROI',
-          icon: PieChart,
-          visible: true,
-          tag: 'Novo',
-        },
-        {
-          id: 'resultados',
-          label: 'Resultados',
-          icon: BarChart3,
-          visible: showTrafficProof,
-          tag: !isOwner ? 'ROAS' : undefined,
         },
         {
           id: 'grupos',
@@ -215,6 +198,30 @@ export const AppShell: React.FC<AppShellProps> = ({
           badge: pendingGroupsCount > 0 ? pendingGroupsCount : undefined,
           badgeColor: 'bg-amber-500 text-white',
           visible: showGroups,
+        },
+        {
+          id: 'agenda',
+          label: 'Agenda',
+          icon: CalendarDays,
+          visible: true,
+        },
+        {
+          id: 'anotacoes',
+          label: 'Anotações',
+          icon: BookOpen,
+          visible: true,
+        },
+      ],
+    },
+    {
+      title: 'GESTÃO',
+      items: [
+        {
+          id: 'resultados',
+          label: 'Resultados & ROI',
+          icon: BarChart3,
+          visible: showTrafficProof,
+          tag: 'Executivo',
         },
       ],
     },
@@ -259,6 +266,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     { id: 'agora' as NavigationTab, label: 'Cockpit Agora (Prioridades)', icon: Flame, section: 'Operação' },
     { id: 'conversas' as NavigationTab, label: 'Todas as Conversas 1:1', icon: MessageSquare, section: 'Operação' },
     { id: 'kanban' as NavigationTab, label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação' },
+    { id: 'agenda' as NavigationTab, label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação' },
+    { id: 'anotacoes' as NavigationTab, label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação' },
     { id: 'analytics' as NavigationTab, label: 'Analytics & ROI da IA', icon: PieChart, section: 'Gestão' },
     { id: 'resultados' as NavigationTab, label: 'Resultados & Proof of Traffic', icon: BarChart3, section: 'Gestão' },
     { id: 'grupos' as NavigationTab, label: 'Grupos', icon: Users, section: 'Gestão' },
@@ -278,21 +287,12 @@ export const AppShell: React.FC<AppShellProps> = ({
         {/* Brand Header */}
         <div className="p-3.5 flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-[#00A884] text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs tracking-tighter">
-              SOS
-            </div>
-            {!collapsed && (
-              <div className="min-w-0 transition-opacity duration-200">
-                <div className="font-bold text-sm leading-tight text-white tracking-tight flex items-center gap-1.5 font-heading">
-                  <span className="truncate">SOS SALES</span>
-                  <span className="text-[9px] font-bold bg-[#00A884]/20 text-[#00A884] px-1 py-0.2 rounded border border-[#00A884]/30">
-                    OS
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-400 truncate font-sans">
-                  Destravar vendas & grupos
-                </div>
+            {collapsed ? (
+              <div className="w-8 h-8 rounded-lg bg-[#00A884] text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs tracking-tighter">
+                SOS
               </div>
+            ) : (
+              <img src="/assets/logo-white.svg" alt="SOS Sales" className="h-8 w-auto object-contain" />
             )}
           </div>
 
@@ -382,17 +382,16 @@ export const AppShell: React.FC<AppShellProps> = ({
                         )}
                       </button>
 
-                      {/* Subcategories for Playbook / Inteligencia */}
+                      {/* Subcategories for Playbook / Inteligência */}
                       {item.id === 'playbook' && isActive && !collapsed && (
                         <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
                           {[
                             { id: 'knowledge', label: 'Banco de Inteligência' },
                             { id: 'catalog', label: 'Catálogo & Serviços' },
-                            { id: 'dataflow', label: 'De Onde Vem ➔ Para Onde' },
+                            { id: 'thesis', label: 'Tese Comercial & IA 24/7' },
                             { id: 'learning', label: 'Aprendizado Contínuo' },
                             { id: 'company', label: 'Empresa & WABA' },
-                            { id: 'agent', label: 'Persona & Alçadas' },
-                            { id: 'benchmark', label: 'Meta AI Benchmark' },
+                            { id: 'agent', label: 'Squad & Personas dos Agentes' },
                           ].map((sub) => {
                             const isSubActive = activeIntelligenceSubTab === sub.id;
                             return (
@@ -420,6 +419,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                           {[
                             { id: 'conversations', label: 'Conversas nos Grupos' },
                             { id: 'monitor', label: 'Monitor de Saúde & Alertas' },
+                            { id: 'wallboard', label: 'Torre de Grupos (NOC)' },
                             { id: 'broadcast', label: 'Disparo de Avisos' },
                           ].map((sub) => {
                             const isSubActive = activeGroupSubTab === sub.id;
@@ -442,16 +442,42 @@ export const AppShell: React.FC<AppShellProps> = ({
                         </div>
                       )}
 
+                      {/* Subcategories for Resultados */}
+                      {item.id === 'resultados' && isActive && !collapsed && (
+                        <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
+                          {[
+                            { id: 'analytics', label: 'Analytics & ROI da IA' },
+                            { id: 'traffic_proof', label: 'Proof of Traffic & ROAS' },
+                          ].map((sub) => {
+                            const isSubActive = activeResultsSubTab === sub.id;
+                            return (
+                              <button
+                                key={sub.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onChangeTab('resultados');
+                                  onChangeResultsSubTab?.(sub.id as 'analytics' | 'traffic_proof');
+                                }}
+                                className={`w-full text-left px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                                  isSubActive ? 'bg-slate-800 text-[#00A884] font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                                }`}
+                              >
+                                {sub.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       {/* Subcategories for Configurações */}
                       {item.id === 'configuracoes' && isActive && !collapsed && (
                         <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
                           {[
-                            { id: 'engines', label: 'Infraestrutura & Transição' },
-                            { id: 'ai_thesis', label: 'IA Vendedora 24/7' },
                             { id: 'channels', label: 'Canais' },
                             { id: 'ads_tracking', label: 'Atribuição & Ads' },
                             { id: 'governance', label: 'Governança & SLA' },
                             { id: 'feature_flags', label: 'Feature Flags & Módulos' },
+                            { id: 'engines', label: 'Infraestrutura & Transição' },
                           ].map((sub) => {
                             const isSubActive = activeSettingsSubTab === sub.id;
                             return (

@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOS Sales — O Sistema Operacional de Vendas para WhatsApp</title>
+  
+  <!-- SEO Meta Tags -->
+  <meta name="title" content="SOS Sales — O Sistema Operacional de Vendas para WhatsApp">
+  <meta name="description" content="Organize suas conversas de vendas, responda em segundos com o Copilot 1-Clique e saiba o lucro real dos seus anúncios. Iniciativa Empresa Amiga do Empreendedor Brasileiro.">
+  <meta name="author" content="MCT LTDA">
+  <link rel="canonical" href="https://iaparavendas.tech">
+  
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+
+  <!-- Google Fonts: Plus Jakarta Sans, Inter, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            display: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            abacate: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              200: '#bbf7d0',
+              300: '#86efac',
+              400: '#4ade80',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+              800: '#166534',
+              900: '#14532d',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-[#FFFFFF] text-slate-700 font-sans antialiased selection:bg-abacate-100 selection:text-abacate-900">
+
+  <!-- Top Institutional Bar (Iniciativa Empresa Amiga) -->
+  <div class="bg-slate-900 text-slate-300 text-xs py-2 px-4 border-b border-slate-800">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+      <div class="flex items-center justify-center sm:justify-start gap-2">
+        <span class="flex h-2 w-2 relative">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+        <span class="font-semibold text-white">Programa Empresa Amiga do Empreendedor:</span>
+        <span class="text-slate-400 hidden md:inline">Incentivo de 50% no plano anual para profissionalizar as vendas no WhatsApp de PMEs brasileiras.</span>
+      </div>
+      <div class="flex items-center gap-4 text-[11px]">
+        <span class="text-emerald-400 font-semibold flex items-center gap-1">
+          🇧🇷 Tecnologia Soberana Nacional
+        </span>
+        <span class="text-slate-500">•</span>
+        <a href="#precos" class="hover:text-white underline decoration-slate-600 transition-colors">
+          Garantir 50% de Incentivo →
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header / Navigation Bar -->
+  <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-100 transition-all">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <a href="#" class="flex items-center gap-3">
+        <img src="assets/logo.svg" alt="SOS Sales Logo" class="h-10 sm:h-11 w-auto">
+      </a>
+
+      <!-- Desktop Navigation (Funil Lógico & Coerente) -->
+      <nav class="hidden lg:flex items-center gap-5 xl:gap-6 text-xs xl:text-sm font-medium text-slate-600">
+        <a href="#problema" class="hover:text-slate-950 transition-colors whitespace-nowrap">O Problema</a>
+        <a href="#calculadora" class="hover:text-slate-950 transition-colors whitespace-nowrap">Calculadora de Perdas</a>
+        <a href="#simulador" class="hover:text-slate-950 transition-colors flex items-center gap-1.5 whitespace-nowrap">
+          <span class="w-1.5 h-1.5 rounded-full bg-abacate-500 animate-pulse"></span>
+          Demonstração Ao Vivo
+        </a>
+        <a href="#solucoes" class="hover:text-slate-950 transition-colors whitespace-nowrap">Recursos</a>
+        <a href="#segmentos" class="hover:text-slate-950 transition-colors whitespace-nowrap">Setores Atendidos</a>
+        <a href="#wall-of-love" class="hover:text-slate-950 transition-colors whitespace-nowrap">Depoimentos</a>
+        <a href="#precos" class="px-3 py-1 rounded-full bg-abacate-50 text-abacate-800 font-bold text-xs border border-abacate-200 hover:bg-abacate-100 transition-colors whitespace-nowrap">
+          ⭐ Planos (R$ 97/mês)
+        </a>
+      </nav>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center gap-2.5 ml-4 sm:ml-6">
+        <a href="https://crm.iaparavendas.tech" class="hidden sm:inline-flex items-center justify-center px-3.5 py-2 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all whitespace-nowrap border border-slate-200/60">
+          Entrar no CRM
+        </a>
+        <a href="https://abacatepay.com/pay/bill_xjzmANQLLC3G2tsnRbBbR5Nr" target="_blank" class="inline-flex items-center justify-center px-4.5 py-2 text-xs font-bold text-white bg-abacate-600 hover:bg-abacate-700 rounded-xl transition-all shadow-md shadow-abacate-600/20 whitespace-nowrap">
+          Garantir Incentivo
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ETAPA 1: ATENÇÃO & PROMESSA CLARA (HERO) -->
+  <section class="pt-16 pb-20 lg:pt-24 lg:pb-28 bg-gradient-to-b from-slate-50/80 via-white to-white relative overflow-hidden">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <!-- Top Announcement Badge -->
+      <div class="flex justify-center">
+        <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-700 shadow-sm">
+          <span class="w-2 h-2 rounded-full bg-abacate-500"></span>
+          <span class="font-bold text-slate-900">SOS Sales v2.0:</span>
+          <span>A plataforma comercial estável e supervisionada para WhatsApp.</span>
+        </div>
+      </div>
+
+      <!-- Main Headline -->
+      <div class="text-center mt-8 max-w-4xl mx-auto">
+        <h1 class="font-display text-4xl sm:text-6xl lg:text-7xl font-black text-slate-950 tracking-tight leading-[1.1]">
+          Vendas no WhatsApp <br class="hidden sm:inline">
+          <span class="text-abacate-600">simples como deveria ser</span>.
+        </h1>
+        
+        <p class="mt-6 text-lg sm:text-xl text-slate-600 font-normal leading-relaxed max-w-2xl mx-auto">
+          Chega de perder cliente no vácuo. O SOS Sales organiza suas conversas, sugere a resposta certa em 1 clique e prova quanto voltou de cada anúncio.
+        </p>
+
+        <!-- CTA Row -->
+        <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <a href="https://abacatepay.com/pay/bill_xjzmANQLLC3G2tsnRbBbR5Nr" target="_blank" class="w-full sm:w-auto px-8 py-4 text-sm font-bold text-white bg-abacate-600 hover:bg-abacate-700 rounded-2xl transition-all shadow-lg shadow-abacate-600/25 flex items-center justify-center gap-2 transform hover:-translate-y-0.5">
+            <span>Garantir Plano com 50% OFF (R$ 97/mês)</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </a>
+          <a href="#simulador" class="w-full sm:w-auto px-7 py-4 text-sm font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl transition-all text-center shadow-sm">
+            Ver Demonstração Ao Vivo
+          </a>
+        </div>
+
+        <span class="block text-center text-xs text-slate-400 mt-3 font-medium">
+          ⚡ Adesão imediata com CNPJ ou CPF • Preço fixado em R$ 97/mês sem burocracia
+        </span>
+
+        <!-- Trust Badges Bar (Institutional) -->
+        <div class="mt-14 pt-10 border-t border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-6 text-left max-w-4xl mx-auto">
+          <div class="p-4 rounded-xl bg-slate-50/70 border border-slate-100">
+            <div class="font-display font-bold text-xl text-slate-950">&lt; 30 segundos</div>
+            <div class="text-xs text-slate-500 mt-1">Tempo médio de resposta</div>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50/70 border border-slate-100">
+            <div class="font-display font-bold text-xl text-slate-950">+38% conversão</div>
+            <div class="text-xs text-slate-500 mt-1">Vendas recuperadas do vácuo</div>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50/70 border border-slate-100">
+            <div class="font-display font-bold text-xl text-slate-950">100% humano</div>
+            <div class="text-xs text-slate-500 mt-1">Você aprova cada mensagem</div>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50/70 border border-slate-100">
+            <div class="font-display font-bold text-xl text-slate-950">Incentivo PME</div>
+            <div class="text-xs text-slate-500 mt-1">50% OFF no contrato anual</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ETAPA 2: A CONSCIENTIZAÇÃO DA CAUSA RAIZ (O PROBLEMA / COMPARATIVO) -->
+  <section id="problema" class="py-24 bg-slate-50/70 border-y border-slate-100">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="max-w-3xl mx-auto text-center">
+        <span class="text-xs font-bold uppercase tracking-wider text-red-700 bg-red-100 px-3 py-1 rounded-full border border-red-200">
+          O Diagnóstico Comercial
+        </span>
+        <h2 class="font-display text-3xl sm:text-5xl font-black text-slate-950 mt-3">
+          Por que atender no improviso custa tão caro?
+        </h2>
+        <p class="mt-3 text-slate-600 text-sm sm:text-base">
+          O WhatsApp foi criado para conversar com amigos, não para gerenciar um time comercial com metas:
+        </p>
+      </div>
+
+      <div class="mt-14 grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+        
+        <!-- Sem SOS Sales -->
+        <div class="p-8 rounded-3xl bg-white border border-slate-200 shadow-sm">
+          <div class="flex items-center gap-2.5 text-red-600 font-bold text-sm mb-6">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+            <span>Sem o SOS Sales (Método Antigo)</span>
+          </div>
+
+          <ul class="space-y-4 text-sm text-slate-600">
+            <li class="flex items-start gap-3">
+              <span class="text-red-500 font-bold shrink-0">❌</span>
+              <span><strong>Demora de 45 minutos a 2 horas:</strong> O lead esfria e compra do primeiro concorrente que responder.</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-red-500 font-bold shrink-0">❌</span>
+              <span><strong>Celular passando de mão em mão:</strong> Ninguém sabe quem atendeu, quem ficou sem retorno e quem comprou.</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-red-500 font-bold shrink-0">❌</span>
+              <span><strong>Digitação manual repetitiva:</strong> Atendentes gastam horas digitando os mesmos textos com erros de preços.</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-red-500 font-bold shrink-0">❌</span>
+              <span><strong>Tráfego Pago no Escuro:</strong> Você gasta milhares em anúncios e não sabe qual campanha gerou PIX na conta.</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Com SOS Sales -->
+        <div class="p-8 rounded-3xl bg-abacate-50/70 border-2 border-abacate-500 shadow-md">
+          <div class="flex items-center gap-2.5 text-abacate-800 font-bold text-sm mb-6">
+            <svg class="w-5 h-5 text-abacate-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            <span>Com o SOS Sales (Sistema Operacional)</span>
+          </div>
+
+          <ul class="space-y-4 text-sm text-slate-800 font-medium">
+            <li class="flex items-start gap-3">
+              <span class="text-abacate-600 font-bold shrink-0">✓</span>
+              <span><strong>Tempo de resposta &lt; 30s:</strong> Fila ordenada automaticamente por urgência e tempo de espera.</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-abacate-600 font-bold shrink-0">✓</span>
+              <span><strong>Cockpit Centralizado na Web:</strong> Cada operador atende do computador com permissões e histórico seguro.</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-abacate-600 font-bold shrink-0">✓</span>
+              <span><strong>Copilot 1-Clique:</strong> Sugestões de respostas precisas e chave PIX gerada na hora por R$ 0,80.</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-abacate-600 font-bold shrink-0">✓</span>
+              <span><strong>Traffic Proof & Meta CAPI:</strong> Otimização automática das campanhas com envio do valor real de cada venda.</span>
+            </li>
+          </ul>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ETAPA 3: O CHOQUE DE REALIDADE FINANCEIRA (CALCULADORA DE PERDAS) -->
+  <section id="calculadora" class="py-24 bg-white border-b border-slate-100">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="max-w-3xl mx-auto text-center">
+        <span class="text-xs font-bold uppercase tracking-wider text-red-700 bg-red-100/80 px-3.5 py-1 rounded-full border border-red-200">
+          ⚠️ Diagnóstico de Perda Financeira
+        </span>
+        <h2 class="font-display text-3xl sm:text-5xl font-black text-slate-950 mt-3">
+          Descubra quanto sua empresa <br class="hidden sm:inline">
+          <span class="text-red-600">está perdendo no WhatsApp</span>
+        </h2>
+        <p class="mt-3 text-sm sm:text-base text-slate-600">
+          Ajuste os controles abaixo e veja o tamanho do rombo mensal em vendas perdidas e horas de equipe:
+        </p>
+      </div>
+
+      <div class="mt-14 p-8 sm:p-10 rounded-3xl bg-slate-50/80 border border-slate-200 shadow-xl grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+        
+        <!-- Sliders -->
+        <div class="md:col-span-7 space-y-7">
+          <div>
+            <div class="flex justify-between text-sm font-bold text-slate-800 mb-2">
+              <label for="calc-leads-input">Atendimentos no WhatsApp por dia:</label>
+              <span class="text-slate-950 font-mono text-base font-extrabold bg-white px-3 py-0.5 rounded-lg border border-slate-200" id="calc-leads-display">30 leads/dia</span>
+            </div>
+            <input type="range" id="calc-leads-input" min="5" max="200" value="30" step="5" class="w-full accent-red-500 cursor-pointer">
+          </div>
+
+          <div>
+            <div class="flex justify-between text-sm font-bold text-slate-800 mb-2">
+              <label for="calc-ticket-input">Ticket Médio por Venda (R$):</label>
+              <span class="text-slate-950 font-mono text-base font-extrabold bg-white px-3 py-0.5 rounded-lg border border-slate-200" id="calc-ticket-display">R$ 500,00</span>
+            </div>
+            <input type="range" id="calc-ticket-input" min="50" max="5000" value="500" step="50" class="w-full accent-red-500 cursor-pointer">
+          </div>
+
+          <div>
+            <div class="flex justify-between text-sm font-bold text-slate-800 mb-2">
+              <label for="calc-agents-input">Quantidade de Atendentes:</label>
+              <span class="text-slate-950 font-mono text-base font-extrabold bg-white px-3 py-0.5 rounded-lg border border-slate-200" id="calc-agents-display">2 atendentes</span>
+            </div>
+            <input type="range" id="calc-agents-input" min="1" max="10" value="2" step="1" class="w-full accent-red-500 cursor-pointer">
+          </div>
+        </div>
+
+        <!-- Result Box (Loss Breakdown) -->
+        <div class="md:col-span-5 p-7 rounded-3xl bg-white border-2 border-red-200 shadow-md text-left flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+              <span class="text-xs font-bold uppercase tracking-wider text-red-700">Prejuízo Mensal Estimado</span>
+              <span class="text-[10px] font-bold bg-red-100 text-red-800 px-2 py-0.5 rounded">Ralo de Dinheiro</span>
+            </div>
+
+            <!-- Prejuízo Vendas -->
+            <div class="mt-4">
+              <div class="text-xs text-slate-500 font-medium">🔴 Vendas perdidas por demora:</div>
+              <div class="font-display font-black text-3xl text-red-600 mt-0.5" id="calc-lost-sales-display">
+                R$ 18.000,00
+              </div>
+              <span class="text-[11px] text-slate-400">clientes que desistem ou compram do concorrente</span>
+            </div>
+
+            <!-- Prejuízo Horas -->
+            <div class="mt-4 pt-3 border-t border-slate-100">
+              <div class="text-xs text-slate-500 font-medium">⏱️ Horas gastas digitando no vácuo:</div>
+              <div class="font-display font-bold text-lg text-slate-800 mt-0.5 flex items-center justify-between">
+                <span id="calc-lost-hours-display">~60 horas/mês</span>
+                <span class="text-xs font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200" id="calc-lost-cost-display">R$ 1.500,00</span>
+              </div>
+              <span class="text-[11px] text-slate-400">em tempo de equipe que poderia estar fechando vendas</span>
+            </div>
+
+            <!-- Recuperação com SOS Sales -->
+            <div class="mt-4 p-3 rounded-xl bg-abacate-50 border border-abacate-200 text-abacate-900 text-xs leading-relaxed font-semibold">
+              💡 <strong>Com o SOS Sales:</strong> Respostas em &lt; 30s e sugestões prontas em 1 clique estancam essa perda por apenas <strong>R$ 97/mês</strong>.
+            </div>
+          </div>
+
+          <a href="https://abacatepay.com/pay/bill_xjzmANQLLC3G2tsnRbBbR5Nr" target="_blank" class="mt-6 w-full py-4 text-xs font-bold text-white bg-abacate-600 hover:bg-abacate-700 rounded-2xl transition-all shadow-lg shadow-abacate-600/25 flex items-center justify-center gap-1.5 text-center">
+            <span>Estancar Prejuízo por R$ 97/mês →</span>
+          </a>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ETAPA 4: A SOLUÇÃO AO VIVO (SIMULADOR INTERATIVO) -->
+  <section id="simulador" class="py-24 bg-slate-50/70">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="max-w-3xl mx-auto text-center">
+        <span class="text-xs font-bold uppercase tracking-wider text-abacate-700 bg-abacate-100 px-3 py-1 rounded-full">Solução na Prática</span>
+        <h2 class="font-display text-3xl sm:text-5xl font-black text-slate-950 mt-3">
+          Veja como o SOS Sales resolve em tempo real
+        </h2>
+        <p class="mt-3 text-slate-600 text-sm sm:text-base">
+          Clique nos leads da fila e teste a velocidade de resposta com o Copilot 1-Clique:
+        </p>
+      </div>
+
+      <!-- Simulator Box -->
+      <div class="mt-14 max-w-5xl mx-auto rounded-3xl bg-white border border-slate-200/90 shadow-2xl overflow-hidden">
+        
+        <!-- Mac Window Header Bar -->
+        <div class="px-6 py-3.5 bg-slate-100/90 border-b border-slate-200 text-slate-700 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-red-400 border border-red-500/30"></span>
+            <span class="w-3 h-3 rounded-full bg-amber-400 border border-amber-500/30"></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-400 border border-emerald-500/30"></span>
+            <span class="ml-3 font-display font-bold text-xs text-slate-700">Cockpit Comercial SOS Sales — Demonstração Ao Vivo</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <span class="text-xs font-mono font-bold text-emerald-700">Fila Sincronizada (Tempo Real)</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+          
+          <!-- Column 1: Leads Queue -->
+          <div class="lg:col-span-4 p-5 bg-slate-50/80">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-200 mb-3">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Fila Priorizada por SLA</span>
+              <span class="text-xs text-abacate-700 font-bold font-mono bg-abacate-100/80 px-2 py-0.5 rounded-md">3 Aguardando</span>
+            </div>
+
+            <div class="space-y-2.5" id="sim-leads-list">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+
+          <!-- Column 2: WhatsApp Chat -->
+          <div class="lg:col-span-5 p-5 bg-[#ECE5DD] flex flex-col justify-between min-h-[420px]">
+            <div>
+              <div class="flex items-center justify-between pb-3 border-b border-slate-300/60 bg-white/90 backdrop-blur-sm -mx-5 -mt-5 p-4 shadow-sm">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-full bg-slate-800 text-white font-bold text-xs flex items-center justify-center shadow-sm" id="sim-lead-avatar">
+                    RS
+                  </div>
+                  <div>
+                    <h4 class="font-display font-bold text-slate-900 text-sm leading-none" id="sim-lead-name">Roberto Silva</h4>
+                    <p class="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      <span id="sim-lead-origin">Meta Ads • Ortodontia</span>
+                    </p>
+                  </div>
+                </div>
+                <span class="text-xs font-mono font-bold text-abacate-800 bg-abacate-100 border border-abacate-200 px-2.5 py-1 rounded-lg" id="sim-lead-val">R$ 3.800,00</span>
+              </div>
+
+              <!-- Message History -->
+              <div class="mt-4 space-y-3 font-sans text-xs" id="sim-chat-box">
+                <!-- Messages rendered by JS -->
+              </div>
+            </div>
+
+            <div class="mt-4 pt-2 text-[11px] text-slate-500 text-center flex items-center justify-center gap-1">
+              <svg class="w-3.5 h-3.5 text-slate-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+              <span>Conversa protegida e sincronizada no PostgreSQL da empresa</span>
+            </div>
+          </div>
+
+          <!-- Column 3: Copilot & Actions -->
+          <div class="lg:col-span-3 p-5 bg-white flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between pb-2.5 border-b border-slate-100">
+                <span class="text-xs font-bold uppercase tracking-wider text-abacate-700">Copilot de Vendas</span>
+                <span class="text-[10px] bg-abacate-50 text-abacate-700 border border-abacate-200 px-2 py-0.5 rounded font-mono font-bold">1-CLIQUE</span>
+              </div>
+
+              <div class="mt-3.5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-800 leading-relaxed font-sans shadow-inner" id="sim-copilot-text">
+                Carregando sugestão...
+              </div>
+
+              <!-- Facts -->
+              <div class="mt-3 space-y-1.5" id="sim-facts-box">
+                <!-- Facts -->
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="mt-5 pt-4 border-t border-slate-100 space-y-2">
+              <button id="sim-btn-approve" class="w-full py-3.5 px-3 text-xs font-bold text-white bg-abacate-600 hover:bg-abacate-700 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-abacate-600/25 active:scale-95">
+                <span>Aprovar & Enviar Resposta</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+              </button>
+
+              <div class="grid grid-cols-2 gap-2">
+                <button id="sim-btn-pix" class="py-2.5 px-2 text-[11px] font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all flex items-center justify-center gap-1">
+                  <span>⚡ Gerar PIX</span>
+                </button>
+                <button id="sim-btn-won" class="py-2.5 px-2 text-[11px] font-semibold text-abacate-800 bg-abacate-100 hover:bg-abacate-200 rounded-xl transition-all flex items-center justify-center gap-1">
+                  <span>🏆 Ganho</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ETAPA 5: A SUÍTE COMPLETA (BENTO GRID) -->
+  <section id="solucoes" class="py-24 bg-white border-t border-slate-100">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="max-w-3xl mx-auto text-center">
+        <span class="text-xs font-bold uppercase tracking-wider text-abacate-700 bg-abacate-100 px-3 py-1 rounded-full">Suíte Completa</span>
+        <h2 class="font-display text-3xl sm:text-5xl font-black text-slate-950 mt-3">
+          Tudo que sua empresa precisa <br class="hidden sm:inline">
+          para fechar vendas no WhatsApp
+        </h2>
+        <p class="mt-3 text-base text-slate-600">
+          Centralize sua operação com uma ferramenta pensada para velocidade, controle e faturamento.
+        </p>
+      </div>
+
+      <div class="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+        
+        <!-- Bento 1: Fila Anti-Vácuo -->
+        <div class="md:col-span-2 p-8 sm:p-10 rounded-3xl bg-slate-50 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+          <div>
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-abacate-50 text-abacate-700 text-xs font-bold mb-4">
+              ⏱️ Fila Inteligente com SLA
+            </div>
+            <h3 class="font-display font-bold text-2xl sm:text-3xl text-slate-950">Fila Priorizada por Urgência</h3>
+            <p class="text-slate-600 mt-3 text-sm sm:text-base leading-relaxed">
+              Chega de conversas perdidas no meio de mensagens de grupos ou fornecedores. O SOS Sales coloca no topo quem está esperando há mais tempo ou quem veio de anúncio pago com interesse de compra imediato.
+            </p>
+          </div>
+          <div class="mt-8 p-4 rounded-2xl bg-white border border-slate-200/80 flex items-center justify-between shadow-xs">
+            <div class="flex items-center gap-3">
+              <span class="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></span>
+              <span class="text-xs font-semibold text-slate-800">Lead Aguardando: Roberto Silva (Meta Ads)</span>
+            </div>
+            <span class="text-xs font-mono font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg">SLA: 00:35s</span>
+          </div>
+        </div>
+
+        <!-- Bento 2: Copilot 1-Clique -->
+        <div class="p-8 rounded-3xl bg-slate-50 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+          <div>
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-abacate-50 text-abacate-700 text-xs font-bold mb-4">
+              💡 Copilot de Respostas
+            </div>
+            <h3 class="font-display font-bold text-2xl text-slate-950">Respostas Prontas</h3>
+            <p class="text-slate-600 mt-3 text-sm leading-relaxed">
+              O sistema lê a dúvida do cliente, puxa o valor no seu catálogo e cria o texto perfeito. Seu atendente só clica em Enviar.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-200 text-xs font-bold text-abacate-700">
+            ✓ 0% risco de alucinação
+          </div>
+        </div>
+
+        <!-- Bento 3: PIX do AbacatePay no Chat -->
+        <div class="p-8 rounded-3xl bg-slate-50 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+          <div>
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-abacate-50 text-abacate-700 text-xs font-bold mb-4">
+              ⚡ PIX Instantâneo
+            </div>
+            <h3 class="font-display font-bold text-2xl text-slate-950">PIX em 1 Clique</h3>
+            <p class="text-slate-600 mt-3 text-sm leading-relaxed">
+              Gere chaves PIX dinâmicas e links de checkout na hora, dentro da conversa, com taxa de apenas R$ 0,80 via AbacatePay.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-200 text-xs font-bold text-abacate-700">
+            ✓ Taxa fixa de R$ 0,80 por PIX
+          </div>
+        </div>
+
+        <!-- Bento 4: Traffic Proof & Meta CAPI -->
+        <div class="md:col-span-2 p-8 sm:p-10 rounded-3xl bg-slate-50 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+          <div>
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-abacate-50 text-abacate-700 text-xs font-bold mb-4">
+              🎯 Traffic Proof & ROAS
+            </div>
+            <h3 class="font-display font-bold text-2xl sm:text-3xl text-slate-950">Comprovação de Lucro por Anúncio</h3>
+            <p class="text-slate-600 mt-3 text-sm sm:text-base leading-relaxed">
+              Descubra na hora quais campanhas de tráfego pago colocam dinheiro de verdade no seu caixa e quais só trazem curiosos. Disparo automático de eventos de compra no Meta Conversions CAPI para baratear o custo por lead.
+            </p>
+          </div>
+          <div class="mt-8 flex flex-wrap items-center gap-4 text-xs font-semibold text-slate-600">
+            <span class="px-3 py-1.5 rounded-lg bg-white border border-slate-200">Meta CAPI Ativo</span>
+            <span class="px-3 py-1.5 rounded-lg bg-white border border-slate-200">Rastreio UTM & Faturamento</span>
+            <span class="px-3 py-1.5 rounded-lg bg-white border border-slate-200">Banco PostgreSQL (LGPD)</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ETAPA 6: IDENTIFICAÇÃO DE SETORES & ELEGIBILIDADE AO INCENTIVO -->
+  <section id="segmentos" class="py-20 bg-slate-50/70 border-y border-slate-100">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="max-w-3xl mx-auto text-center">
+        <span class="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-200">
+          🇧🇷 Onde o SOS Sales Gera Mais Impacto
+        </span>
+        <h2 class="font-display text-3xl sm:text-4xl font-black text-slate-950 mt-3">
+          Setores Atendidos com Máxima Eficiência
+        </h2>
+        <p class="mt-2 text-sm sm:text-base text-slate-600">
+          Qualquer empresa que atende no WhatsApp tem direito ao <strong>Incentivo de 50% de Desconto no Plano Anual</strong>:
+        </p>
+      </div>
+
+      <div class="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+        
+        <!-- Segmento 1 -->
+        <div class="p-7 rounded-3xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-emerald-500 hover:shadow-md transition-all">
+          <div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-2xl flex items-center justify-center mb-5">
+              🩺
+            </div>
+            <div class="flex items-center justify-between">
+              <h3 class="font-display font-bold text-xl text-slate-950">Saúde & Odontologia</h3>
+              <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">✓ Atendimento VIP</span>
+            </div>
+            <p class="text-sm text-slate-600 mt-2.5 leading-relaxed">
+              Clínicas médicas, odontologia, estética facial e exames. Fila com agendamento prioritário para não perder pacientes particulares.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>SLA Recomendado:</span>
+            <span class="font-mono font-bold text-slate-800">&lt; 1 minuto</span>
+          </div>
+        </div>
+
+        <!-- Segmento 2 -->
+        <div class="p-7 rounded-3xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-emerald-500 hover:shadow-md transition-all">
+          <div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-2xl flex items-center justify-center mb-5">
+              🚗
+            </div>
+            <div class="flex items-center justify-between">
+              <h3 class="font-display font-bold text-xl text-slate-950">Setor Automotivo</h3>
+              <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">✓ Atendimento VIP</span>
+            </div>
+            <p class="text-sm text-slate-600 mt-2.5 leading-relaxed">
+              Oficinas mecânicas, centros automotivos, autopeças e concessionárias. Envio rápido de orçamentos e aprovação de serviços em 1 clique.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>SLA Recomendado:</span>
+            <span class="font-mono font-bold text-slate-800">&lt; 30 segundos</span>
+          </div>
+        </div>
+
+        <!-- Segmento 3 -->
+        <div class="p-7 rounded-3xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-emerald-500 hover:shadow-md transition-all">
+          <div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-2xl flex items-center justify-center mb-5">
+              💆
+            </div>
+            <div class="flex items-center justify-between">
+              <h3 class="font-display font-bold text-xl text-slate-950">Estética & Beleza</h3>
+              <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">✓ Atendimento VIP</span>
+            </div>
+            <p class="text-sm text-slate-600 mt-2.5 leading-relaxed">
+              Studios de estética, micropigmentação, salões e spas. Respostas assertivas sobre contraindicações e reservas com sinal PIX na hora.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>SLA Recomendado:</span>
+            <span class="font-mono font-bold text-slate-800">&lt; 45 segundos</span>
+          </div>
+        </div>
+
+        <!-- Segmento 4 -->
+        <div class="p-7 rounded-3xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-emerald-500 hover:shadow-md transition-all">
+          <div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-2xl flex items-center justify-center mb-5">
+              🛍️
+            </div>
+            <div class="flex items-center justify-between">
+              <h3 class="font-display font-bold text-xl text-slate-950">Varejo & Comércio Local</h3>
+              <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">✓ Atendimento VIP</span>
+            </div>
+            <p class="text-sm text-slate-600 mt-2.5 leading-relaxed">
+              Lojas de roupas, calçados, materiais de construção e óticas. Envio de catálogo inteligente e link de pagamento em segundos.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>SLA Recomendado:</span>
+            <span class="font-mono font-bold text-slate-800">&lt; 30 segundos</span>
+          </div>
+        </div>
+
+        <!-- Segmento 5 -->
+        <div class="p-7 rounded-3xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between hover:border-emerald-500 hover:shadow-md transition-all">
+          <div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-2xl flex items-center justify-center mb-5">
+              🏢
+            </div>
+            <div class="flex items-center justify-between">
+              <h3 class="font-display font-bold text-xl text-slate-950">Serviços & B2B</h3>
+              <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">✓ Atendimento VIP</span>
+            </div>
+            <p class="text-sm text-slate-600 mt-2.5 leading-relaxed">
+              Imobiliárias, escritórios contábeis, advocacia, consultorias e franquias. Qualificação de leads e histórico unificado por cliente.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>SLA Recomendado:</span>
+            <span class="font-mono font-bold text-slate-800">&lt; 2 minutos</span>
+          </div>
+        </div>
+
+        <!-- Segmento 6: Seu Negócio -->
+        <div class="p-7 rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-2xl bg-white/20 text-2xl flex items-center justify-center mb-5">
+              🤝
+            </div>
+            <h3 class="font-display font-bold text-xl text-white">Outros Ramos</h3>
+            <p class="text-sm text-emerald-100 mt-2.5 leading-relaxed">
+              Qualquer empresa ou profissional que atende no WhatsApp pode aderir ao programa e garantir os 50% de incentivo no plano anual.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-white/20">
+            <a href="https://abacatepay.com/pay/bill_xjzmANQLLC3G2tsnRbBbR5Nr" target="_blank" class="w-full py-3 px-4 bg-white text-slate-900 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:bg-emerald-50 transition-colors">
+              <span>Garantir Incentivo de R$ 97/mês →</span>
+            </a>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Selos de Compromisso Institucional & Certificações Globais -->
+      <div class="mt-16 pt-12 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+        
+        <!-- Selo Meta -->
+        <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+          <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h4 class="font-display font-bold text-slate-900 text-xs">Meta Conversions CAPI</h4>
+              <span class="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">Parceiro</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-0.5">Integração nativa com API de Conversões do WhatsApp e Instagram.</p>
+          </div>
+        </div>
+
+        <!-- Selo Google -->
+        <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+          <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-lg shrink-0">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h4 class="font-display font-bold text-slate-900 text-xs">Google Ads & Analytics</h4>
+              <span class="text-[9px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">Partner</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-0.5">Rastreamento de conversão e atribuição de tráfego de pesquisa.</p>
+          </div>
+        </div>
+
+        <!-- Selo Empresa Amiga -->
+        <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+          <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-lg shrink-0">
+            🛡️
+          </div>
+          <div>
+            <h4 class="font-display font-bold text-slate-900 text-xs">Empresa Amiga do Empreendedor</h4>
+            <p class="text-[11px] text-slate-500 mt-0.5">Compromisso público com taxas justas e incentivo ao comércio local.</p>
+          </div>
+        </div>
+
+        <!-- Selo Brasil / LGPD -->
+        <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+          <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-lg shrink-0">
+            🇧🇷
+          </div>
+          <div>
+            <h4 class="font-display font-bold text-slate-900 text-xs">Tecnologia Soberana Brasil</h4>
+            <p class="text-[11px] text-slate-500 mt-0.5">Seus dados protegidos em PostgreSQL seguro em conformidade LGPD.</p>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ETAPA 7: PROVA SOCIAL (WALL OF LOVE) -->
+  <section id="wall-of-love" class="py-20 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="max-w-3xl mx-auto text-center">
+        <span class="text-xs font-bold uppercase tracking-wider text-abacate-700 bg-abacate-100 px-3 py-1 rounded-full">Wall of Love</span>
+        <h2 class="font-display text-3xl sm:text-4xl font-extrabold text-slate-950 mt-3">
+          Veja relatos de quem usa o SOS Sales no dia a dia
+        </h2>
+        <p class="mt-2 text-sm text-slate-600">
+          Empresas que simplificaram o atendimento e aumentaram as vendas no WhatsApp:
+        </p>
+      </div>
+
+      <div class="mt-14 grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- Post 1 -->
+        <div class="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between hover:border-slate-300 transition-all shadow-xs">
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                RS
+              </div>
+              <div>
+                <h4 class="font-display font-bold text-slate-950 text-sm">Rodrigo Silveira</h4>
+                <p class="text-xs text-slate-500">@rodrigo_prime · OdontoPrime</p>
+              </div>
+            </div>
+            <p class="text-sm text-slate-700 leading-relaxed">
+              "Se você tem uma clínica ou loja e vende pelo WhatsApp, não existe ferramenta melhor que o SOS Sales. Nosso tempo de resposta caiu para 40 segundos e batemos recorde de vendas de tratamentos no primeiro mês."
+            </p>
+          </div>
+          <div class="mt-5 pt-3 border-t border-slate-200 text-xs text-abacate-700 font-semibold flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            <span>Cliente Verificado • Plano Anual</span>
+          </div>
+        </div>
+
+        <!-- Post 2 -->
+        <div class="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between hover:border-slate-300 transition-all shadow-xs">
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-full bg-slate-800 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                MB
+              </div>
+              <div>
+                <h4 class="font-display font-bold text-slate-950 text-sm">Marcelo Barreto</h4>
+                <p class="text-xs text-slate-500">@marcelo_autopeças · AutoPeças Sul</p>
+              </div>
+            </div>
+            <p class="text-sm text-slate-700 leading-relaxed">
+              "Incrível como é fácil usar. A gente gastava R$ 5k em anúncio no Meta e não sabia o que voltava. Agora cada venda dispara o valor faturado e o Meta otimiza as campanhas no automático."
+            </p>
+          </div>
+          <div class="mt-5 pt-3 border-t border-slate-200 text-xs text-abacate-700 font-semibold flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            <span>Cliente Verificado • Plano Anual</span>
+          </div>
+        </div>
+
+        <!-- Post 3 -->
+        <div class="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between hover:border-slate-300 transition-all shadow-xs">
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-full bg-teal-600 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                CL
+              </div>
+              <div>
+                <h4 class="font-display font-bold text-slate-950 text-sm">Camila Lemos</h4>
+                <p class="text-xs text-slate-500">@lemos_estetica · Studio Lemos</p>
+              </div>
+            </div>
+            <p class="text-sm text-slate-700 leading-relaxed">
+              "A melhor parte é a supervisão: a IA sugere o texto certinho e minha atendente só clica em Aprovar. É como ter um vendedor sênior treinando a equipe em cada mensagem."
+            </p>
+          </div>
+          <div class="mt-5 pt-3 border-t border-slate-200 text-xs text-abacate-700 font-semibold flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            <span>Cliente Verificado • Plano Anual</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ETAPA 8: A OFERTA IRRECUSÁVEL (TABELA DE PREÇOS COM 50% OFF) -->
+  <section id="precos" class="py-24 bg-slate-50/70 border-t border-slate-100">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="max-w-3xl mx-auto text-center">
+        <span class="text-xs font-bold uppercase tracking-wider text-abacate-700 bg-abacate-100 px-3 py-1 rounded-full">Preço Justo</span>
+        <h2 class="font-display text-3xl sm:text-5xl font-black text-slate-950 mt-3">
+          Quanto custa? <br>
+          <span class="text-abacate-600 font-extrabold">Menos do que você imagina</span>.
+        </h2>
+        <p class="mt-3 text-slate-600 text-sm">
+          Sem surpresas, sem taxas ocultas. Escolha a melhor opção para a sua empresa:
+        </p>
+      </div>
+
+      <div class="mt-14 grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch max-w-6xl mx-auto">
+        
+        <!-- Card 1: Mensal -->
+        <div class="p-8 rounded-3xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Mensal Flexível</span>
+            <h3 class="font-display font-bold text-2xl text-slate-950 mt-1">Plano Mensal</h3>
+            <p class="text-xs text-slate-500 mt-1">Sem fidelidade, cancele quando quiser.</p>
+            
+            <div class="mt-6 flex items-baseline gap-1">
+              <span class="text-xs text-slate-500">R$</span>
+              <span class="font-display text-4xl font-black text-slate-950">197</span>
+              <span class="text-xs text-slate-500">/ mês</span>
+            </div>
+
+            <ul class="mt-8 space-y-3.5 text-xs sm:text-sm text-slate-700">
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span>1 Número de WhatsApp Conectado</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span>Cockpit com Fila de Atendimento</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span>Até 2 Operadores Comerciais</span>
+              </li>
+            </ul>
+          </div>
+
+          <a href="https://abacatepay.com/pay/bill_XWhT42hMarkAuxmNAcqynfZ0" target="_blank" class="mt-8 w-full py-3.5 text-center text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-2xl transition-all">
+            Assinar Mensal (R$ 197/mês)
+          </a>
+        </div>
+
+        <!-- Card 2: LANÇAMENTO ANUAL (COM INCENTIVO 50% OFF) -->
+        <div class="p-8 pt-10 rounded-3xl bg-white border-2 border-abacate-500 shadow-xl flex flex-col justify-between relative transform lg:-translate-y-3">
+          <div class="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-abacate-600 text-white text-[11px] font-black uppercase tracking-wider shadow-sm whitespace-nowrap">
+            ⭐ INCENTIVO ANUAL PME • 50% OFF
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase tracking-wider text-abacate-700 block mb-1">Programa Empresa Amiga</span>
+              <span class="text-[10px] font-bold bg-abacate-100 text-abacate-900 px-2 py-0.5 rounded-full border border-abacate-200">Economia de R$ 1.200</span>
+            </div>
+            <h3 class="font-display font-bold text-2xl text-slate-950">Plano Anual</h3>
+            <p class="text-xs text-slate-500 mt-1">Valor subsidiado com preço travado contra reajustes.</p>
+            
+            <div class="mt-6 flex items-baseline gap-1">
+              <span class="text-xs text-slate-500">12x de R$</span>
+              <span class="font-display text-5xl font-black text-abacate-700">97</span>
+              <span class="text-xs text-abacate-600 font-bold">/ mês</span>
+            </div>
+            <span class="text-[11px] text-slate-500 block mt-1 font-medium">Total: R$ 1.164/ano à vista no PIX ou Cartão</span>
+
+            <ul class="mt-8 space-y-3.5 text-xs sm:text-sm text-slate-800 font-medium">
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span><strong>Todos os recursos do Cockpit Comercial</strong></span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span>Até <strong>5 Operadores</strong> Comerciais</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span><strong>Traffic Proof:</strong> Atribuição de ROAS Meta Ads</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span><strong>Meta CAPI:</strong> Conversões enviadas automaticamente</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span>Garantia incondicional de 7 dias</span>
+              </li>
+            </ul>
+          </div>
+
+          <a href="https://abacatepay.com/pay/bill_xjzmANQLLC3G2tsnRbBbR5Nr" target="_blank" class="mt-8 w-full py-4 text-center text-xs font-bold text-white bg-abacate-600 hover:bg-abacate-700 rounded-2xl transition-all shadow-lg shadow-abacate-600/25">
+            Garantir Incentivo de 50% (12x R$ 97) →
+          </a>
+        </div>
+
+        <!-- Card 3: Escala VIP -->
+        <div class="p-8 rounded-3xl bg-white border-2 border-slate-300 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider mb-2">
+              👑 Corporativo & Redes
+            </div>
+            <h3 class="font-display font-bold text-2xl text-slate-950">Plano Escala VIP</h3>
+            <p class="text-xs text-slate-500 mt-1">Para operações com múltiplos números e equipes de alta performance.</p>
+            
+            <div class="mt-6 flex items-baseline gap-1">
+              <span class="text-xs text-slate-500">R$</span>
+              <span class="font-display text-4xl font-black text-slate-950">1.497</span>
+              <span class="text-xs text-slate-500">/ mês</span>
+            </div>
+
+            <ul class="mt-8 space-y-3.5 text-xs sm:text-sm text-slate-700">
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span><strong>Operadores e Mensagens Ilimitadas</strong></span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span>Múltiplos Canais de WhatsApp Conectados</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-abacate-600 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                <span>Deploy em Servidor Dedicado (Self-Host)</span>
+              </li>
+              <li class="flex items-start gap-2.5 p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-950">
+                <span class="text-base leading-none">🏆</span>
+                <div>
+                  <strong class="block text-xs font-bold text-amber-900">PROGRAMA EXCLUSIVO INCLUSO:</strong>
+                  <span class="text-[11px] leading-relaxed block mt-0.5 text-amber-800">
+                    <strong>Mentoria & Implementação da Metodologia de Continuidade Cognitiva</strong> — Acompanhamento estratégico para reestruturar toda a comunicação comercial e retenção no WhatsApp.
+                  </span>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <a href="https://wa.me/5549988447562?text=Ol%C3%A1!%20Gostaria%20de%20falar%20com%20um%20consultor%20sobre%20o%20SOS%20Sales%20Plano%20Escala%20VIP%20com%20a%20Mentoria." target="_blank" class="mt-8 w-full py-3.5 text-center text-xs font-bold text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-sm">
+            <span>Falar no WhatsApp sobre Escala VIP</span>
+            <svg class="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/></svg>
+          </a>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ETAPA 9: FAQ (QUEBRA DE ÚLTIMAS OBJEÇÕES) -->
+  <section id="faq" class="py-20 bg-white border-t border-slate-100">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="text-center">
+        <span class="text-xs font-bold uppercase tracking-wider text-abacate-700 bg-abacate-100 px-3 py-1 rounded-full">Tire Suas Dúvidas</span>
+        <h2 class="font-display text-3xl font-extrabold text-slate-950 mt-3">
+          Perguntas Frequentes
+        </h2>
+      </div>
+
+      <div class="mt-12 space-y-4">
+        
+        <div class="rounded-2xl bg-slate-50 border border-slate-200/80 p-6 shadow-xs">
+          <h3 class="font-display font-bold text-slate-950 text-base">Como funciona o Programa Empresa Amiga e o desconto de 50%?</h3>
+          <p class="text-sm text-slate-600 mt-2 leading-relaxed">
+            É uma iniciativa da MCT LTDA para apoiar o comércio local e prestadores de serviços brasileiros. O desconto de 50% (de R$ 197 por R$ 97/mês) é aplicado <strong>automaticamente no checkout</strong> ao selecionar o Plano Anual, sem exigência de formulários demorados ou burocracia.
+          </p>
+        </div>
+
+        <div class="rounded-2xl bg-slate-50 border border-slate-200/80 p-6 shadow-xs">
+          <h3 class="font-display font-bold text-slate-950 text-base">Preciso trocar de número de WhatsApp?</h3>
+          <p class="text-sm text-slate-600 mt-2 leading-relaxed">
+            Não! Você continua usando o mesmo número de WhatsApp da sua empresa. Basta ler o QR Code uma única vez no painel para sincronizar seu atendimento.
+          </p>
+        </div>
+
+        <div class="rounded-2xl bg-slate-50 border border-slate-200/80 p-6 shadow-xs">
+          <h3 class="font-display font-bold text-slate-950 text-base">Meus contatos e conversas ficam seguros?</h3>
+          <p class="text-sm text-slate-600 mt-2 leading-relaxed">
+            100% seguros. O SOS Sales opera com banco de dados dedicado PostgreSQL (Supabase) e criptografia em trânsito TLS, com conformidade total à LGPD.
+          </p>
+        </div>
+
+        <div class="rounded-2xl bg-slate-50 border border-slate-200/80 p-6 shadow-xs">
+          <h3 class="font-display font-bold text-slate-950 text-base">E se a IA errar ou responder besteira?</h3>
+          <p class="text-sm text-slate-600 mt-2 leading-relaxed">
+            Esse é o nosso grande diferencial: <strong>a IA nunca manda mensagem sozinha</strong>. Ela monta o rascunho com base no seu catálogo de produtos e o seu atendente clica em Aprovar. Você tem controle absoluto.
+          </p>
+        </div>
+
+        <div class="rounded-2xl bg-slate-50 border border-slate-200/80 p-6 shadow-xs">
+          <h3 class="font-display font-bold text-slate-950 text-base">Tenho garantia caso queira cancelar?</h3>
+          <p class="text-sm text-slate-600 mt-2 leading-relaxed">
+            Sim. Você tem 7 dias de garantia incondicional. Se por qualquer motivo sentir que o SOS Sales não é para o seu negócio, basta solicitar o reembolso que devolvemos 100% do seu investimento.
+          </p>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ETAPA 10: FOOTER INSTITUCIONAL -->
+  <footer class="py-14 bg-slate-950 text-slate-400 border-t border-slate-900">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="flex flex-col md:flex-row items-center justify-between gap-6 pb-10 border-b border-slate-800">
+        <div>
+          <span class="font-display font-black text-2xl text-white tracking-tight">SOS Sales</span>
+          <p class="text-xs text-slate-400 mt-1">O Sistema Operacional de Vendas para WhatsApp · MCT LTDA</p>
+        </div>
+        <div class="flex items-center gap-6 text-sm font-medium text-slate-300">
+          <a href="https://crm.iaparavendas.tech/docs" class="hover:text-white transition-colors">API & Docs</a>
+          <a href="https://crm.iaparavendas.tech/health" class="hover:text-white transition-colors">Status dos Serviços</a>
+          <a href="https://crm.iaparavendas.tech" class="hover:text-white transition-colors">Acessar CRM</a>
+        </div>
+      </div>
+
+      <div class="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+        <span>© 2026 SOS Sales • MCT LTDA — Chapecó, SC. Todos os direitos reservados.</span>
+        <span class="flex items-center gap-1.5 text-emerald-400 font-semibold">
+          🇧🇷 Programa Empresa Amiga do Empreendedor Brasileiro
+        </span>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- Floating WhatsApp Contact Button -->
+  <a href="https://wa.me/5549988447562?text=Ol%C3%A1!%20Estou%20no%20site%20do%20SOS%20Sales%20e%20gostaria%20de%20tirar%20uma%20d%C3%BAvida." target="_blank" class="fixed bottom-6 right-6 z-40 bg-[#25D366] hover:bg-[#20bd5a] text-white p-3.5 rounded-full shadow-2xl transition-transform transform hover:scale-110 flex items-center justify-center border-2 border-white" title="Falar no WhatsApp">
+    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/></svg>
+  </a>
+
+  <!-- STRATEGIC EXIT-INTENT POPUP MODAL (Incentivo PME) -->
+  <div id="strategic-popup" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="relative w-full max-w-lg p-8 sm:p-10 rounded-3xl bg-white border border-slate-200 shadow-2xl transform scale-95 transition-transform duration-300" id="strategic-popup-content">
+      
+      <!-- Close Button -->
+      <button id="close-popup-btn" class="absolute top-5 right-5 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 flex items-center justify-center transition-colors" aria-label="Fechar popup">
+        ✕
+      </button>
+
+      <!-- Badge -->
+      <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold uppercase tracking-wider mb-4">
+        <span>🇧🇷 Oferta Exclusiva de Saída</span>
+      </div>
+
+      <!-- Headline -->
+      <h3 class="font-display text-2xl sm:text-3xl font-black text-slate-950 leading-tight">
+        Espere! Não deixe mais vendas vazarem pelo seu WhatsApp.
+      </h3>
+
+      <p class="text-sm text-slate-600 mt-3 leading-relaxed">
+        Antes de sair, garanta sua vaga no <strong>Programa de Incentivo PME (50% OFF por R$ 97/mês)</strong> e ganhe um <strong>Diagnóstico de Funil Gratuito</strong> direto com nossos especialistas.
+      </p>
+
+      <!-- Benefits in Popup -->
+      <div class="mt-5 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs text-slate-700 font-medium">
+        <div class="flex items-center gap-2">
+          <span class="text-emerald-600 font-bold">✓</span>
+          <span>Atendimento em menos de 30 segundos no seu negócio</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-emerald-600 font-bold">✓</span>
+          <span>Copilot com respostas prontas em 1 clique</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-emerald-600 font-bold">✓</span>
+          <span>Preço congelado de R$ 97/mês na sua renovação</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="mt-6 space-y-2.5">
+        <a href="https://wa.me/5549988447562?text=Ol%C3%A1%20Francisco!%20Estava%20saindo%20do%20site%20do%20SOS%20Sales%20e%20quero%20garantir%20a%20condi%C3%A7%C3%A3o%20de%20R$%2097/m%C3%AAs%20com%20o%20diagn%C3%B3stico%20gratuito." target="_blank" class="w-full py-4 px-6 text-xs font-bold text-white bg-abacate-600 hover:bg-abacate-700 rounded-2xl transition-all shadow-lg shadow-abacate-600/25 flex items-center justify-center gap-2 text-center">
+          <span>Garantir Condição de R$ 97/mês no WhatsApp →</span>
+        </a>
+
+        <button id="dismiss-popup-btn" class="w-full py-2.5 text-[11px] font-semibold text-slate-400 hover:text-slate-600 text-center transition-colors">
+          Não tenho interesse em recuperar vendas perdidas agora
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -38,117 +38,28 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
 }) => {
   const [engineConfig, setEngineConfig] = React.useState(mockEngineConfig);
   const [internalSubTab, setInternalSubTab] = React.useState<
-    'engines' | 'ai_thesis' | 'channels' | 'ads_tracking' | 'governance' | 'feature_flags'
-  >('ads_tracking');
+    'channels' | 'ads_tracking' | 'governance' | 'feature_flags' | 'engines'
+  >('channels');
 
   const activeSubTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalSubTab;
-  const setActiveSubTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalSubTab;
 
   return (
     <div id="settings-shell-view" className="h-full overflow-y-auto w-full p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#e2e8f0]">
-        <div>
-          <h1 className="text-xl font-bold text-[#111b21]">
-            Configurações, Infraestrutura & Tese IA
-          </h1>
-          <p className="text-xs text-[#54656f]">
-            Gerenciamento de conexões WABA/WAHA e inteligência comercial 24/7 da SOS Sales
-          </p>
-        </div>
-
-        {/* Tab navigation */}
-        <div className="flex items-center gap-1 bg-[#f0f2f5] p-1 rounded-xl border border-[#e2e8f0] overflow-x-auto">
-          <button
-            onClick={() => setActiveSubTab('engines')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              activeSubTab === 'engines'
-                ? 'bg-white text-[#00a884] shadow-2xs'
-                : 'text-[#54656f] hover:text-[#111b21]'
-            }`}
-          >
-            <Server className="w-3.5 h-3.5" />
-            <span>Infraestrutura & Transição</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('ai_thesis')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              activeSubTab === 'ai_thesis'
-                ? 'bg-white text-indigo-700 shadow-2xs'
-                : 'text-[#54656f] hover:text-indigo-600'
-            }`}
-          >
-            <Bot className="w-3.5 h-3.5 text-indigo-600" />
-            <span>IA Vendedora 24/7 & Tese</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('channels')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              activeSubTab === 'channels'
-                ? 'bg-white text-[#00a884] shadow-2xs'
-                : 'text-[#54656f] hover:text-[#111b21]'
-            }`}
-          >
-            <Radio className="w-3.5 h-3.5" />
-            <span>Canais</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('ads_tracking')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              activeSubTab === 'ads_tracking'
-                ? 'bg-white text-emerald-700 shadow-2xs'
-                : 'text-[#54656f] hover:text-emerald-600'
-            }`}
-          >
-            <Megaphone className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Atribuição & Ads</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('governance')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              activeSubTab === 'governance'
-                ? 'bg-white text-[#00a884] shadow-2xs'
-                : 'text-[#54656f] hover:text-[#111b21]'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Governança & SLA</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('feature_flags')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              activeSubTab === 'feature_flags'
-                ? 'bg-white text-purple-700 shadow-2xs'
-                : 'text-[#54656f] hover:text-purple-600'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5 text-purple-600" />
-            <span>Feature Flags & Módulos</span>
-          </button>
-        </div>
+      <div className="pb-3 border-b border-[#e2e8f0]">
+        <h1 className="text-xl font-bold text-[#111b21] font-heading">
+          Configurações do Sistema & Conexões
+        </h1>
+        <p className="text-xs text-[#54656f]">
+          Gerenciamento de canais de atendimento, atribuição de tráfego Meta Ads, governança de equipe e infraestrutura.
+        </p>
       </div>
 
-      {activeSubTab === 'engines' && (
-        <ConnectionManager
-          workspace={workspace}
-          engineConfig={engineConfig}
-          onUpdateEngineConfig={setEngineConfig}
-        />
-      )}
-
-      {activeSubTab === 'ai_thesis' && <SalesAiThesisConfig />}
-
-      {activeSubTab === 'ads_tracking' && <TrackingSettings workspace={workspace} />}
-
-      {activeSubTab === 'feature_flags' && <FeatureFlagManager workspace={workspace} />}
-
-      {activeSubTab === 'channels' && (
+      {/* Active Section Content (Navigation controlled via sidebar) */}
+      {(activeSubTab === 'channels' || !activeSubTab) && (
         <CanaisView workspace={workspace} />
       )}
+
+      {activeSubTab === 'ads_tracking' && <TrackingSettings workspace={workspace} />}
 
       {activeSubTab === 'governance' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -178,6 +89,16 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {activeSubTab === 'feature_flags' && <FeatureFlagManager workspace={workspace} />}
+
+      {activeSubTab === 'engines' && (
+        <ConnectionManager
+          workspace={workspace}
+          engineConfig={engineConfig}
+          onUpdateEngineConfig={setEngineConfig}
+        />
       )}
     </div>
   );

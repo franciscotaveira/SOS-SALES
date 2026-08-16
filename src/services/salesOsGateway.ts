@@ -8,11 +8,18 @@ import {
   CommercialStage,
 } from '../types/cockpit';
 import {
+  CommercialAppointment,
+  OperationalNote,
+  AppointmentStatus,
+  NoteCategory,
+} from '../types/agendaAndNotes';
+import {
   mockWorkspaces,
   mockJourneysEscovaria,
   mockJourneysTitanium,
   mockMessagesByJourney,
 } from '../data/fixtures';
+import { mockAppointments, mockOperationalNotes } from '../data/agendaAndNotesFixtures';
 import { salesOsRuntimeConfig } from '../config/runtime';
 import { getSupabaseAccessToken } from './supabaseAuth';
 
@@ -247,6 +254,16 @@ export interface SalesOsGateway {
   getTrafficStats(workspaceId: string): Promise<TrafficProofStats>;
   simulateIncomingLeadMessage(journeyId: string, text: string): Promise<Message>;
   resetJourneysToDefault(): Promise<void>;
+
+  listAppointments(workspaceId: string, filters?: { status?: AppointmentStatus; leadPhone?: string }): Promise<CommercialAppointment[]>;
+  createAppointment(workspaceId: string, input: Partial<CommercialAppointment>): Promise<CommercialAppointment>;
+  updateAppointment(workspaceId: string, appointmentId: string, input: Partial<CommercialAppointment>): Promise<CommercialAppointment>;
+  deleteAppointment(workspaceId: string, appointmentId: string): Promise<void>;
+
+  listNotes(workspaceId: string, filters?: { category?: NoteCategory; pinned?: boolean }): Promise<OperationalNote[]>;
+  createNote(workspaceId: string, input: Partial<OperationalNote>): Promise<OperationalNote>;
+  updateNote(workspaceId: string, noteId: string, input: Partial<OperationalNote>): Promise<OperationalNote>;
+  deleteNote(workspaceId: string, noteId: string): Promise<void>;
 }
 
 const JOURNEYS_STORAGE_KEY = 'sales_os_journeys_v2';
@@ -682,6 +699,120 @@ export class MockSalesOsGateway implements SalesOsGateway {
 
     return JSON.parse(JSON.stringify(newMsg));
   }
+
+  private mockAppointmentsList: CommercialAppointment[] = JSON.parse(JSON.stringify(mockAppointments));
+  private mockNotesList: OperationalNote[] = JSON.parse(JSON.stringify(mockOperationalNotes));
+
+  async listAppointments(
+    workspaceId: string,
+    filters?: { status?: AppointmentStatus; leadPhone?: string },
+  ): Promise<CommercialAppointment[]> {
+    await this.sleep(100);
+    return this.mockAppointmentsList.filter((a) => {
+      if (a.workspaceId && a.workspaceId !== workspaceId) return false;
+      if (filters?.status && a.status !== filters.status) return false;
+      if (filters?.leadPhone && a.leadPhone !== filters.leadPhone) return false;
+      return true;
+    });
+  }
+
+  async createAppointment(
+    workspaceId: string,
+    input: Partial<CommercialAppointment>,
+  ): Promise<CommercialAppointment> {
+    await this.sleep(100);
+    const newApt: CommercialAppointment = {
+      id: `apt-${Date.now()}`,
+      workspaceId,
+      leadName: input.leadName || 'Novo Lead',
+      leadPhone: input.leadPhone || '+5511999999999',
+      serviceName: input.serviceName || 'Consulta Geral',
+      serviceValue: input.serviceValue ?? 1500,
+      scheduledAt: input.scheduledAt || new Date().toISOString(),
+      durationMinutes: input.durationMinutes ?? 45,
+      status: input.status || 'confirmed',
+      source: input.source || 'operator',
+      operatorName: input.operatorName || 'Operador',
+      notes: input.notes,
+      location: input.location,
+    };
+    this.mockAppointmentsList.unshift(newApt);
+    return JSON.parse(JSON.stringify(newApt));
+  }
+
+  async updateAppointment(
+    _workspaceId: string,
+    appointmentId: string,
+    input: Partial<CommercialAppointment>,
+  ): Promise<CommercialAppointment> {
+    await this.sleep(100);
+    const idx = this.mockAppointmentsList.findIndex((a) => a.id === appointmentId);
+    if (idx === -1) throw new Error(`Appointment ${appointmentId} not found`);
+    this.mockAppointmentsList[idx] = { ...this.mockAppointmentsList[idx], ...input };
+    return JSON.parse(JSON.stringify(this.mockAppointmentsList[idx]));
+  }
+
+  async deleteAppointment(_workspaceId: string, appointmentId: string): Promise<void> {
+    await this.sleep(100);
+    this.mockAppointmentsList = this.mockAppointmentsList.filter((a) => a.id !== appointmentId);
+  }
+
+  async listNotes(
+    workspaceId: string,
+    filters?: { category?: NoteCategory; pinned?: boolean },
+  ): Promise<OperationalNote[]> {
+    await this.sleep(100);
+    return this.mockNotesList.filter((n) => {
+      if (n.workspaceId && n.workspaceId !== workspaceId) return false;
+      if (filters?.category && n.category !== filters.category) return false;
+      if (filters?.pinned !== undefined && n.pinned !== filters.pinned) return false;
+      return true;
+    });
+  }
+
+  async createNote(
+    workspaceId: string,
+    input: Partial<OperationalNote>,
+  ): Promise<OperationalNote> {
+    await this.sleep(100);
+    const now = new Date().toISOString();
+    const newNote: OperationalNote = {
+      id: `note-${Date.now()}`,
+      workspaceId,
+      title: input.title || 'Nova Anotação',
+      content: input.content || '',
+      category: input.category || 'general',
+      tags: input.tags || [],
+      pinned: input.pinned ?? false,
+      color: input.color || 'emerald',
+      authorName: input.authorName || 'Operador',
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.mockNotesList.unshift(newNote);
+    return JSON.parse(JSON.stringify(newNote));
+  }
+
+  async updateNote(
+    _workspaceId: string,
+    noteId: string,
+    input: Partial<OperationalNote>,
+  ): Promise<OperationalNote> {
+    await this.sleep(100);
+    const idx = this.mockNotesList.findIndex((n) => n.id === noteId);
+    if (idx === -1) throw new Error(`Note ${noteId} not found`);
+    this.mockNotesList[idx] = {
+      ...this.mockNotesList[idx],
+      ...input,
+      updatedAt: new Date().toISOString(),
+    };
+    return JSON.parse(JSON.stringify(this.mockNotesList[idx]));
+  }
+
+  async deleteNote(_workspaceId: string, noteId: string): Promise<void> {
+    await this.sleep(100);
+    this.mockNotesList = this.mockNotesList.filter((n) => n.id !== noteId);
+  }
 }
 
 /**
@@ -707,6 +838,28 @@ export class HttpSalesOsGateway implements SalesOsGateway {
 
   async listWorkspaces(): Promise<ApiWorkspace[]> {
     return (await this.request<ApiEnvelope<ApiWorkspace[]>>('/workspaces')).data;
+  }
+
+  async initializeWorkspace(workspaceName?: string): Promise<{
+    workspaceId: string;
+    workspaceName: string;
+    membershipId: string;
+    role: 'owner';
+    channelConnectionId: string;
+    isExisting?: boolean;
+  }> {
+    const response = await this.request<ApiEnvelope<{
+      workspaceId: string;
+      workspaceName: string;
+      membershipId: string;
+      role: 'owner';
+      channelConnectionId: string;
+      isExisting?: boolean;
+    }>>('/workspaces/init', {
+      method: 'POST',
+      body: workspaceName ? { workspaceName } : {},
+    });
+    return response.data;
   }
 
   async listPriorities(workspaceId: string, limit = 5): Promise<ApiPriority[]> {
@@ -760,6 +913,137 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     });
     return this.request<ApiTrafficProofReport>(
       `/workspaces/${encodeURIComponent(workspaceId)}/traffic-proof?${params}`,
+    );
+  }
+
+  async listAppointments(
+    workspaceId: string,
+    filters?: { status?: AppointmentStatus; leadPhone?: string },
+  ): Promise<CommercialAppointment[]> {
+    const params = new URLSearchParams();
+    if (filters?.status) params.set('status', filters.status);
+    if (filters?.leadPhone) params.set('leadPhone', filters.leadPhone);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const response = await this.request<ApiEnvelope<any[]>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/appointments${qs}`,
+    );
+    return (response.data || []).map((item) => ({
+      ...item,
+      serviceValue: item.serviceValue ?? (item.serviceValueMinor !== undefined ? item.serviceValueMinor / 100 : 0),
+    }));
+  }
+
+  async createAppointment(
+    workspaceId: string,
+    input: Partial<CommercialAppointment>,
+  ): Promise<CommercialAppointment> {
+    const serviceValueMinor = input.serviceValueMinor !== undefined
+      ? input.serviceValueMinor
+      : Math.round((input.serviceValue ?? 0) * 100);
+
+    const body: Record<string, unknown> = {
+      ...input,
+      serviceValueMinor,
+    };
+    delete (body as any).serviceValue;
+
+    const response = await this.request<ApiEnvelope<any>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/appointments`,
+      {
+        method: 'POST',
+        body,
+      },
+    );
+    const item = response.data;
+    return {
+      ...item,
+      serviceValue: item.serviceValue ?? (item.serviceValueMinor !== undefined ? item.serviceValueMinor / 100 : 0),
+    };
+  }
+
+  async updateAppointment(
+    workspaceId: string,
+    appointmentId: string,
+    input: Partial<CommercialAppointment>,
+  ): Promise<CommercialAppointment> {
+    const body: Record<string, unknown> = { ...input };
+    if (input.serviceValue !== undefined) {
+      body.serviceValueMinor = Math.round(input.serviceValue * 100);
+      delete body.serviceValue;
+    }
+
+    const response = await this.request<ApiEnvelope<any>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/appointments/${encodeURIComponent(appointmentId)}`,
+      {
+        method: 'PATCH',
+        body,
+      },
+    );
+    const item = response.data;
+    return {
+      ...item,
+      serviceValue: item.serviceValue ?? (item.serviceValueMinor !== undefined ? item.serviceValueMinor / 100 : 0),
+    };
+  }
+
+  async deleteAppointment(workspaceId: string, appointmentId: string): Promise<void> {
+    await this.request<void>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/appointments/${encodeURIComponent(appointmentId)}`,
+      {
+        method: 'DELETE',
+      },
+    );
+  }
+
+  async listNotes(
+    workspaceId: string,
+    filters?: { category?: NoteCategory; pinned?: boolean },
+  ): Promise<OperationalNote[]> {
+    const params = new URLSearchParams();
+    if (filters?.category) params.set('category', filters.category);
+    if (filters?.pinned !== undefined) params.set('pinned', String(filters.pinned));
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const response = await this.request<ApiEnvelope<OperationalNote[]>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/notes${qs}`,
+    );
+    return response.data;
+  }
+
+  async createNote(
+    workspaceId: string,
+    input: Partial<OperationalNote>,
+  ): Promise<OperationalNote> {
+    const response = await this.request<ApiEnvelope<OperationalNote>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/notes`,
+      {
+        method: 'POST',
+        body: input,
+      },
+    );
+    return response.data;
+  }
+
+  async updateNote(
+    workspaceId: string,
+    noteId: string,
+    input: Partial<OperationalNote>,
+  ): Promise<OperationalNote> {
+    const response = await this.request<ApiEnvelope<OperationalNote>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/notes/${encodeURIComponent(noteId)}`,
+      {
+        method: 'PATCH',
+        body: input,
+      },
+    );
+    return response.data;
+  }
+
+  async deleteNote(workspaceId: string, noteId: string): Promise<void> {
+    await this.request<void>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/notes/${encodeURIComponent(noteId)}`,
+      {
+        method: 'DELETE',
+      },
     );
   }
 

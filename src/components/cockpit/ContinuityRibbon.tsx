@@ -149,280 +149,93 @@ export const ContinuityRibbon: React.FC<ContinuityRibbonProps> = ({
       <nav
         id="continuity-ribbon-container"
         aria-label="Linha de Continuidade Comercial"
-        className={`bg-slate-900 text-slate-100 rounded-xl border border-slate-800 shadow-sm transition-all duration-200 overflow-hidden ${className}`}
+        className={`bg-slate-900 text-slate-100 rounded-lg border border-slate-800 shadow-xs transition-all overflow-hidden ${className}`}
       >
-        {/* Streamlined Horizontal Strip */}
-        <div className="flex items-stretch min-h-[42px] px-2 py-1.5 gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
-          {/* Label / Pulse Tag */}
+        {/* Sleek Ultra-Compact Horizontal Strip (34px height) */}
+        <div className="flex items-center min-h-[34px] px-2 py-1 gap-1.5 overflow-x-auto no-scrollbar text-xs">
+          {/* Pulse Tag */}
           <div
-            className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/80 rounded-lg shrink-0 border border-slate-700/60"
-            title="Cadeia de Continuidade Comercial em Tempo Real"
+            className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-800/90 rounded text-[10px] font-bold uppercase tracking-wider text-emerald-400 shrink-0 border border-slate-700/60"
+            title="Linha de Continuidade Comercial"
           >
-            <span className="flex h-2 w-2 relative">
+            <span className="flex h-1.5 w-1.5 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
             </span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-200 font-heading select-none hidden sm:inline">
-              Continuidade
-            </span>
-            <Zap className="w-3 h-3 text-amber-400 sm:hidden" />
+            <span className="hidden sm:inline font-bold">Continuidade</span>
           </div>
 
           {/* Segment 1: Origem */}
-          <div
-            id="continuity-ribbon-origin"
+          <button
+            type="button"
             onClick={() => handleOpenStepEvidence('origin')}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && handleOpenStepEvidence('origin')}
-            className={`flex-1 min-w-[130px] sm:min-w-[150px] max-w-[240px] px-2.5 py-1 rounded-lg flex items-center justify-between gap-1.5 transition-all cursor-pointer select-none border group ${
+            className={`flex-1 min-w-[110px] max-w-[200px] px-2 py-0.5 rounded flex items-center justify-between gap-1 transition-all text-left truncate border ${
               hasOrigin
-                ? 'bg-slate-800/90 border-slate-700 hover:bg-slate-750 hover:border-blue-500/50'
-                : 'bg-slate-800/40 border-dashed border-slate-700 hover:bg-slate-800'
+                ? 'bg-slate-800/80 border-slate-700 hover:bg-slate-750 hover:border-blue-500/50'
+                : 'bg-slate-800/30 border-dashed border-slate-700'
             }`}
-            title="Clique para auditar evidências da origem do anúncio"
+            title="1. Origem do Anúncio (Clique para ver evidência)"
           >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Tag className="w-3 h-3 text-blue-400 shrink-0 group-hover:scale-110 transition-transform" />
-              <div className="min-w-0">
-                <div className="flex items-center gap-1">
-                  <span className="text-[9px] font-bold text-blue-300 uppercase tracking-wider">1. Origem</span>
-                  {acquisition.referralOffer && (
-                    <span className="text-[8px] bg-blue-950 text-blue-300 px-1 py-0.2 rounded border border-blue-800 font-mono hidden md:inline truncate max-w-[70px]">
-                      {acquisition.referralOffer}
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] font-medium text-slate-100 truncate leading-tight">
-                  {originText}
-                </p>
-              </div>
-            </div>
-            <Eye className="w-3 h-3 text-slate-400 group-hover:text-blue-300 shrink-0 transition-colors" />
-          </div>
-
-          {/* Connector Arrow 1 */}
-          <div className="flex items-center text-slate-600 shrink-0" aria-hidden="true">
-            <ChevronRight className="w-3.5 h-3.5" />
-          </div>
+            <span className="text-[9px] font-bold text-blue-300 uppercase shrink-0">1. Origem:</span>
+            <span className="text-[11px] font-medium text-slate-200 truncate">{originText}</span>
+          </button>
 
           {/* Segment 2: Desejo Atual */}
-          <div
-            id="continuity-ribbon-intent"
+          <button
+            type="button"
             onClick={() => handleOpenStepEvidence('intent')}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && handleOpenStepEvidence('intent')}
-            className="flex-1 min-w-[140px] sm:min-w-[170px] max-w-[280px] px-2.5 py-1 rounded-lg flex items-center justify-between gap-1.5 bg-slate-800/90 border border-slate-700 hover:bg-slate-750 hover:border-amber-500/50 transition-all cursor-pointer select-none group"
-            title="Clique para auditar evidências da intenção do lead"
+            className="flex-1 min-w-[120px] max-w-[240px] px-2 py-0.5 rounded flex items-center justify-between gap-1 transition-all text-left truncate border bg-slate-800/80 border-slate-700 hover:bg-slate-750 hover:border-amber-500/50"
+            title="2. Desejo Atual do Lead (Clique para ver evidência)"
           >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <MessageSquareQuote className="w-3 h-3 text-amber-400 shrink-0 group-hover:scale-110 transition-transform" />
-              <div className="min-w-0">
-                <span className="text-[9px] font-bold text-amber-300 uppercase tracking-wider block leading-none mb-0.5">
-                  2. Desejo Atual
-                </span>
-                <p className="text-[11px] font-medium text-slate-100 italic truncate leading-tight">
-                  "{intentText}"
-                </p>
-              </div>
-            </div>
-            <Eye className="w-3 h-3 text-slate-400 group-hover:text-amber-300 shrink-0 transition-colors" />
-          </div>
+            <span className="text-[9px] font-bold text-amber-300 uppercase shrink-0">2. Desejo:</span>
+            <span className="text-[11px] font-medium text-slate-200 truncate italic">"{intentText}"</span>
+          </button>
 
-          {/* Connector Arrow 2 */}
-          <div className="flex items-center text-slate-600 shrink-0" aria-hidden="true">
-            <ChevronRight className="w-3.5 h-3.5" />
-          </div>
-
-          {/* Segment 3: Próximo Passo Seguro */}
-          <div
-            id="continuity-ribbon-next"
+          {/* Segment 3: Próximo Passo */}
+          <button
+            type="button"
             onClick={() => handleOpenStepEvidence('next')}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && handleOpenStepEvidence('next')}
-            className={`flex-1 min-w-[150px] sm:min-w-[190px] px-2.5 py-1 rounded-lg flex items-center justify-between gap-1.5 transition-all cursor-pointer select-none border group ${
-              recommendation
-                ? 'bg-purple-950/50 border-purple-600/60 hover:bg-purple-900/60 hover:border-purple-500'
-                : 'bg-slate-800/40 border-dashed border-slate-700 hover:bg-slate-800'
+            className={`flex-1 min-w-[130px] max-w-[260px] px-2 py-0.5 rounded flex items-center justify-between gap-1 transition-all text-left truncate border ${
+              isNextBlocked
+                ? 'bg-amber-950/40 border-amber-800/60'
+                : 'bg-slate-800/80 border-slate-700 hover:bg-slate-750 hover:border-purple-500/50'
             }`}
-            title="Clique para auditar a recomendação comercial segura"
+            title="3. Próximo Passo Validado (Clique para ver evidência)"
           >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Sparkles className="w-3 h-3 text-purple-400 shrink-0 group-hover:scale-110 transition-transform" />
-              <div className="min-w-0">
-                <div className="flex items-center gap-1">
-                  <span className="text-[9px] font-bold text-purple-300 uppercase tracking-wider">
-                    3. Próximo Passo
-                  </span>
-                  {recommendation && (
-                    <span className="text-[8px] bg-emerald-950 text-emerald-300 px-1 py-0.2 rounded border border-emerald-800 font-bold hidden lg:inline">
-                      Validado
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] font-semibold text-slate-100 truncate leading-tight">
-                  {nextActionText}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <Eye className="w-3 h-3 text-slate-400 group-hover:text-purple-300 transition-colors" />
-            </div>
-          </div>
+            <span className="text-[9px] font-bold text-purple-300 uppercase shrink-0">3. Próximo:</span>
+            <span className="text-[11px] font-medium text-slate-200 truncate">{nextActionText}</span>
+          </button>
 
-          {/* Quick Action CTAs on the Right */}
-          <div className="flex items-center gap-1 pl-1 border-l border-slate-800 shrink-0">
+          {/* Quick Copy / Use Buttons */}
+          <div className="flex items-center gap-1 shrink-0 ml-auto">
             {recommendation && (
-              <>
-                <button
-                  id="btn-copy-next-step-ribbon"
-                  onClick={handleCopyNextStep}
-                  className="flex items-center gap-1 text-[10px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded-lg border border-slate-700 transition-colors shadow-2xs"
-                  title="Copiar mensagem sugerida para a área de transferência"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3 h-3 text-emerald-400" />
-                      <span className="text-emerald-400 font-bold hidden sm:inline">Copiado</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3 h-3 text-slate-300" />
-                      <span className="hidden xl:inline">Copiar</span>
-                    </>
-                  )}
-                </button>
-
-                {onApplyRecommendation && (
-                  <button
-                    id="continuity-use-draft-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onApplyRecommendation();
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold bg-[#00A884] hover:bg-[#008f6f] text-white rounded-lg transition-colors shadow-2xs shrink-0"
-                    title="Inserir rascunho validado no compositor WhatsApp"
-                  >
-                    <span className="hidden sm:inline">Usar</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                )}
-              </>
+              <button
+                type="button"
+                onClick={handleCopyNextStep}
+                className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors flex items-center gap-1 border border-slate-700"
+                title="Copiar texto da sugestão"
+              >
+                {copied ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5 text-slate-400" />}
+                <span className="hidden md:inline">{copied ? 'Copiado' : 'Copiar'}</span>
+              </button>
             )}
 
-            {/* Quick Peeking Toggle */}
-            <button
-              id="continuity-expand-toggle-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsExpanded(!isExpanded);
-              }}
-              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
-              title={isExpanded ? 'Recolher detalhes' : 'Expandir visão completa da trilha'}
-              aria-label="Expandir ou recolher detalhes da linha de continuidade"
-            >
-              {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
-            </button>
+            {recommendation?.draftText && onApplyRecommendation && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onApplyRecommendation();
+                }}
+                className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#00A884] hover:bg-[#008f6f] text-white transition-colors flex items-center gap-1 shadow-2xs"
+                title="Inserir texto no compositor"
+              >
+                <span>Usar</span>
+                <ArrowRight className="w-2.5 h-2.5" />
+              </button>
+            )}
           </div>
         </div>
-
-        {/* Optional Expandable Detailed Drawer / Peek Area */}
-        {isExpanded && (
-          <div
-            id="continuity-ribbon-expanded-details"
-            className="p-3 bg-slate-950/80 border-t border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-2.5 animate-in slide-in-from-top-2 duration-150"
-          >
-            {/* Origin Details */}
-            <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex flex-col justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-[10px] text-blue-300 font-bold">
-                  <span className="flex items-center gap-1">
-                    <Tag className="w-3 h-3" /> 1. Origem Comercial
-                  </span>
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-blue-950 text-blue-300 font-mono">
-                    {isCTWA ? 'CTWA Meta' : 'Orgânico'}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-200 font-medium">{originText}</p>
-                {acquisition.referralOffer && (
-                  <p className="text-[10px] text-slate-400 font-mono">
-                    Oferta de entrada: <span className="text-blue-300 font-semibold">{acquisition.referralOffer}</span>
-                  </p>
-                )}
-              </div>
-              <button
-                onClick={() => handleOpenStepEvidence('origin')}
-                className="mt-2 text-[10px] text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 font-medium"
-              >
-                <Eye className="w-2.5 h-2.5" /> Ver evidência de origem
-              </button>
-            </div>
-
-            {/* Intent Details */}
-            <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex flex-col justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-[10px] text-amber-300 font-bold">
-                  <span className="flex items-center gap-1">
-                    <MessageSquareQuote className="w-3 h-3" /> 2. Desejo Atual do Lead
-                  </span>
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950 text-amber-300">
-                    Mensagem Viva
-                  </span>
-                </div>
-                <p className="text-xs text-slate-200 italic">"{intentText}"</p>
-              </div>
-              <button
-                onClick={() => handleOpenStepEvidence('intent')}
-                className="mt-2 text-[10px] text-amber-400 hover:text-amber-300 hover:underline flex items-center gap-1 font-medium"
-              >
-                <Eye className="w-2.5 h-2.5" /> Ver histórico de mensagens
-              </button>
-            </div>
-
-            {/* Next Action Details */}
-            <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex flex-col justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-[10px] text-purple-300 font-bold">
-                  <span className="flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" /> 3. Próximo Passo Seguro
-                  </span>
-                  <span
-                    className={`text-[9px] px-1 py-0.2 rounded font-bold ${
-                      recommendation ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {recommendation ? 'Recomendação Copilot' : 'Aguardando'}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-200 font-semibold">{nextActionText}</p>
-                {recommendation?.draftText && (
-                  <div className="p-1.5 rounded bg-slate-800/80 border border-slate-700/80 text-[10px] text-slate-300 font-mono line-clamp-2">
-                    "{recommendation.draftText}"
-                  </div>
-                )}
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-1 pt-1 border-t border-slate-800">
-                <button
-                  onClick={() => handleOpenStepEvidence('next')}
-                  className="text-[10px] text-purple-400 hover:text-purple-300 hover:underline flex items-center gap-1 font-medium"
-                >
-                  <Eye className="w-2.5 h-2.5" /> Ver evidências e regras
-                </button>
-                {recommendation && onApplyRecommendation && (
-                  <button
-                    onClick={onApplyRecommendation}
-                    className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-[#00A884] hover:bg-[#008f6f] text-white rounded transition-colors"
-                  >
-                    <span>Usar rascunho</span>
-                    <ArrowRight className="w-2.5 h-2.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
       </nav>
 
       {/* Audit Evidence Modal */}

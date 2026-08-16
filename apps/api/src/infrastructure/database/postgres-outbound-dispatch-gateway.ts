@@ -3,6 +3,7 @@ import { AuthenticatedActor } from '../../application/ports/operator-authenticat
 import {
   ApproveOutboundDispatchInput,
   CancelOutboundDispatchInput,
+  ClaimedOutboundDispatch,
   CreateOutboundDraftInput,
   OutboundDispatchConflictError,
   OutboundDispatchGateway,
@@ -128,6 +129,77 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
     });
   }
 
+  async listClaimableDispatches(params: { limit: number }): Promise<Array<{ dispatchId: string; workspaceId: string }>> {
+    return this.withServiceRole(async (client) => {
+      const query = await client.query<{ id: string; workspace_id: string }>(
+        `SELECT id, workspace_id
+         FROM public.outbound_dispatches
+         WHERE status = 'APPROVED'
+            OR (status = 'CLAIMED' AND claim_expires_at < NOW())
+         ORDER BY created_at ASC
+         LIMIT $1`,
+        [params.limit],
+      );
+      return query.rows.map((r) => ({ dispatchId: r.id, workspaceId: r.workspace_id }));
+    });
+  }
+
+  async claimDispatch(params: { dispatchId: string; workerId: string; leaseSeconds?: number }): Promise<ClaimedOutboundDispatch | null> {
+    return this.withServiceRole(async (client) => {
+      try {
+        const query = await client.query<RpcRow>(
+          'SELECT public.claim_outbound_dispatch($1, $2, $3) AS result',
+          [params.dispatchId, params.workerId, params.leaseSeconds ?? 60],
+        );
+        const raw = query.rows[0]?.result;
+        if (!raw) return null;
+        const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Record<string, string>;
+
+        const detailsQuery = await client.query<{ phone: string; session_name: string | null }>(
+          `SELECT c.phone, cc.session_name
+           FROM public.outbound_dispatches od
+           JOIN public.contacts c ON c.id = od.contact_id
+           JOIN public.channel_connections cc ON cc.id = od.channel_connection_id
+           WHERE od.id = $1`,
+          [params.dispatchId],
+        );
+        const details = detailsQuery.rows[0];
+
+        return {
+          dispatchId: parsed.dispatchId,
+          claimToken: parsed.claimToken,
+          textContent: parsed.textContent,
+          channelConnectionId: parsed.channelConnectionId,
+          contactId: parsed.contactId,
+          contactPhone: details?.phone,
+          session: details?.session_name ?? undefined,
+        };
+      } catch (error) {
+        return null;
+      }
+    });
+  }
+
+  async recordProviderAcceptance(params: { dispatchId: string; claimToken: string; workerId: string; providerMessageId: string }): Promise<OutboundDispatchMutationResult | null> {
+    return this.withServiceRole(async (client) => {
+      const query = await client.query<RpcRow>(
+        'SELECT public.record_outbound_provider_acceptance($1, $2, $3, $4) AS result',
+        [params.dispatchId, params.claimToken, params.workerId, params.providerMessageId],
+      );
+      return parseMutation(query.rows[0]?.result);
+    });
+  }
+
+  async recordProviderFailure(params: { dispatchId: string; claimToken: string; workerId: string; failureCode: string }): Promise<OutboundDispatchMutationResult | null> {
+    return this.withServiceRole(async (client) => {
+      const query = await client.query<RpcRow>(
+        'SELECT public.record_outbound_provider_failure($1, $2, $3, $4) AS result',
+        [params.dispatchId, params.claimToken, params.workerId, params.failureCode],
+      );
+      return parseMutation(query.rows[0]?.result);
+    });
+  }
+
   private async mutate<T>(actor: AuthenticatedActor, action: (client: PoolClient) => Promise<T>): Promise<T | null> {
     try {
       return await this.withActor(actor, action);
@@ -146,7 +218,9 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SET LOCAL ROLE authenticated');
+      // Use sos_sales_runtime which has EXECUTE on current_user_workspace_ids()
+      // and inherits from authenticated, so auth.uid() works via request.jwt.claim.sub
+      await client.query('SET LOCAL ROLE sos_sales_runtime');
       await client.query("SELECT pg_catalog.set_config('request.jwt.claim.role', 'authenticated', true)");
       await client.query("SELECT pg_catalog.set_config('request.jwt.claim.sub', $1, true)", [actor.userId]);
       const result = await action(client);
@@ -160,4 +234,22 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
       client.release();
     }
   }
+
+  private async withServiceRole<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL ROLE service_role');
+      const result = await action(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      await client.query('RESET ROLE').catch(() => undefined);
+      client.release();
+    }
+  }
 }
+

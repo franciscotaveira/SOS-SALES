@@ -79,16 +79,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
               </div>
             </div>
 
-            {/* AI Summary and Transcript */}
+            {/* AI Summary and Transcript (Collapsible & Non-intrusive) */}
             {(message.transcript || (message.audioSummary && message.audioSummary.length > 0)) && (
-              <div className="mt-1 border-t border-slate-100 pt-2 space-y-2">
+              <div className="mt-1 border-t border-slate-100 pt-1.5 space-y-1.5">
                 {message.audioSummary && message.audioSummary.length > 0 && (
-                  <div className="bg-purple-50 rounded-lg p-2 text-xs border border-purple-100">
-                    <div className="flex items-center gap-1.5 font-bold text-purple-900 mb-1">
-                      <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                      Resumo da IA:
+                  <div className="bg-purple-50/80 rounded-lg p-2 text-xs border border-purple-100">
+                    <div className="flex items-center gap-1 font-bold text-purple-950 text-[11px] mb-0.5">
+                      <Sparkles className="w-3 h-3 text-purple-600" />
+                      <span>Resumo da IA:</span>
                     </div>
-                    <ul className="list-disc pl-4 space-y-0.5 text-purple-800 leading-tight">
+                    <ul className="list-disc pl-3.5 space-y-0.5 text-purple-900 text-[11px] leading-snug">
                       {message.audioSummary.map((point, idx) => (
                         <li key={idx}>{point}</li>
                       ))}
@@ -97,12 +97,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
                 )}
 
                 {message.transcript && (
-                  <div className="text-[11px] text-slate-500 italic bg-slate-50 p-2 rounded-lg border border-slate-100 leading-snug">
-                    <span className="font-bold flex items-center gap-1 mb-0.5 text-slate-600 not-italic">
-                      <FileText className="w-3 h-3" /> Transcrição:
-                    </span>
-                    "{message.transcript}"
-                  </div>
+                  <details className="text-[11px] text-slate-600 bg-slate-50/80 p-1.5 rounded-md border border-slate-100 leading-snug cursor-pointer">
+                    <summary className="font-semibold text-slate-700 select-none flex items-center gap-1 text-[10.5px]">
+                      <FileText className="w-3 h-3 text-slate-500" />
+                      <span>Ver transcrição completa</span>
+                    </summary>
+                    <p className="mt-1 pl-4 italic text-slate-600">
+                      "{message.transcript}"
+                    </p>
+                  </details>
                 )}
               </div>
             )}

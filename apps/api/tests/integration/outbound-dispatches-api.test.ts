@@ -41,6 +41,10 @@ function gateway(overrides: Partial<OutboundDispatchGateway> = {}): OutboundDisp
     approve: async () => result('APPROVED'),
     cancel: async () => result('CANCELLED'),
     get: async () => record(),
+    listClaimableDispatches: async () => [],
+    claimDispatch: async () => null,
+    recordProviderAcceptance: async () => null,
+    recordProviderFailure: async () => null,
     ...overrides,
   };
 }

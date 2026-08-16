@@ -8,6 +8,7 @@
  *     In production, inject a server-only adapter that uses a scoped credential.
  */
 
+import pg from 'pg';
 import {
   OutboxProcessingGateway,
   OutboxEvent,
@@ -16,8 +17,11 @@ import {
 import { dbPool } from './pool.js';
 
 export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway {
-  constructor() {
-    if (process.env.NODE_ENV === 'production') {
+  private pool: pg.Pool;
+
+  constructor(pool?: pg.Pool) {
+    this.pool = pool ?? dbPool;
+    if (!pool && process.env.NODE_ENV === 'production') {
       throw new Error(
         'PostgresOutboxProcessingGateway is disabled in production. ' +
         'Direct administrative postgres connections must not be used as ' +
@@ -32,7 +36,7 @@ export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway 
     batchSize: number;
     leaseSeconds: number;
   }): Promise<OutboxEvent[]> {
-    const client = await dbPool.connect();
+    const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SET LOCAL ROLE service_role');

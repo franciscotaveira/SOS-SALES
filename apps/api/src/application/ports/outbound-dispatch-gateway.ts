@@ -52,13 +52,29 @@ export class OutboundDispatchConflictError extends Error {}
 /** Internal sentinel that keeps absent and cross-workspace resources indistinguishable. */
 export class OutboundDispatchNotFoundError extends Error {}
 
+export interface ClaimedOutboundDispatch {
+  dispatchId: string;
+  claimToken: string;
+  textContent: string;
+  channelConnectionId: string;
+  contactId: string;
+  contactPhone?: string;
+  session?: string;
+}
+
 /**
- * Supervised outbound boundary. This interface deliberately has no send method:
- * provider transport remains a separate server-only worker concern.
+ * Supervised outbound boundary.
  */
 export interface OutboundDispatchGateway {
   createDraft(actor: AuthenticatedActor, input: CreateOutboundDraftInput): Promise<OutboundDispatchMutationResult | null>;
   approve(actor: AuthenticatedActor, input: ApproveOutboundDispatchInput): Promise<OutboundDispatchMutationResult | null>;
   cancel(actor: AuthenticatedActor, input: CancelOutboundDispatchInput): Promise<OutboundDispatchMutationResult | null>;
   get(actor: AuthenticatedActor, workspaceId: string, dispatchId: string): Promise<OutboundDispatchRecord | null>;
+
+  // Worker / service-role operations
+  listClaimableDispatches(params: { limit: number }): Promise<Array<{ dispatchId: string; workspaceId: string }>>;
+  claimDispatch(params: { dispatchId: string; workerId: string; leaseSeconds?: number }): Promise<ClaimedOutboundDispatch | null>;
+  recordProviderAcceptance(params: { dispatchId: string; claimToken: string; workerId: string; providerMessageId: string }): Promise<OutboundDispatchMutationResult | null>;
+  recordProviderFailure(params: { dispatchId: string; claimToken: string; workerId: string; failureCode: string }): Promise<OutboundDispatchMutationResult | null>;
 }
+

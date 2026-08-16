@@ -30,13 +30,15 @@ import {
   FileText,
   TrendingUp,
   Activity,
+  Tv,
 } from 'lucide-react';
+import { LiveWallboardView } from '../monitoring/LiveWallboardView';
 
 interface GroupsHubViewProps {
   groups: WhatsAppGroup[];
   onUpdateGroup?: (updated: WhatsAppGroup) => void;
-  activeSubTab?: 'conversations' | 'monitor' | 'broadcast';
-  onChangeSubTab?: (subTab: 'conversations' | 'monitor' | 'broadcast') => void;
+  activeSubTab?: 'conversations' | 'monitor' | 'broadcast' | 'wallboard';
+  onChangeSubTab?: (subTab: 'conversations' | 'monitor' | 'broadcast' | 'wallboard') => void;
 }
 
 export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
@@ -46,11 +48,11 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
   onChangeSubTab: externalOnChangeSubTab,
 }) => {
   const [groups, setGroups] = React.useState<WhatsAppGroup[]>(initialGroups);
-  const [internalSubTab, setInternalSubTab] = React.useState<'conversations' | 'monitor' | 'broadcast'>('conversations');
+  const [internalSubTab, setInternalSubTab] = React.useState<'conversations' | 'monitor' | 'broadcast' | 'wallboard'>('conversations');
   const activeSubTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalSubTab;
   const setActiveSubTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalSubTab;
 
-  const [hubMode, setHubMode] = React.useState<'conversations' | 'monitor'>('conversations');
+  const [hubMode, setHubMode] = React.useState<'conversations' | 'monitor' | 'wallboard'>('conversations');
   const [selectedGroupId, setSelectedGroupId] = React.useState<string>(
     initialGroups[0]?.id || ''
   );
@@ -74,6 +76,9 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
       setIsBroadcastModalOpen(false);
     } else if (activeSubTab === 'monitor') {
       setHubMode('monitor');
+      setIsBroadcastModalOpen(false);
+    } else if (activeSubTab === 'wallboard') {
+      setHubMode('wallboard');
       setIsBroadcastModalOpen(false);
     } else if (activeSubTab === 'broadcast') {
       setIsBroadcastModalOpen(true);
@@ -368,66 +373,51 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
           </p>
         </div>
 
-        {/* Quick Agency Metrics & Actions */}
+        {/* View Mode Switcher & Quick Agency Metrics */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Sub-view Toggle */}
-          <div className="flex items-center gap-1 bg-[#f0f2f5] p-1 rounded-xl border border-[#e2e8f0]">
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
             <button
-              onClick={() => {
-                setHubMode('conversations');
-                setActiveSubTab('conversations');
-              }}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
-                hubMode === 'conversations' && !isBroadcastModalOpen
-                  ? 'bg-white text-[#00a884] shadow-2xs'
-                  : 'text-[#54656f] hover:text-[#111b21]'
+              onClick={() => setActiveSubTab('conversations')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                hubMode === 'conversations'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5" />
-              <span>Painel de Conversas</span>
+              <span>Conversas</span>
             </button>
+
             <button
-              onClick={() => {
-                setHubMode('monitor');
-                setActiveSubTab('monitor');
-              }}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
-                hubMode === 'monitor' && !isBroadcastModalOpen
-                  ? 'bg-white text-purple-700 shadow-2xs'
-                  : 'text-[#54656f] hover:text-purple-600'
+              onClick={() => setActiveSubTab('monitor')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                hubMode === 'monitor'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Activity className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
-              <span>Grupo Monitor (SLA & Métricas)</span>
+              <Activity className="w-3.5 h-3.5" />
+              <span>Monitor</span>
+            </button>
+
+            <button
+              id="groups-switch-wallboard-btn"
+              onClick={() => setActiveSubTab('wallboard')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                hubMode === 'wallboard'
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white shadow-2xs'
+                  : 'text-slate-500 hover:text-purple-700'
+              }`}
+            >
+              <Tv className="w-3.5 h-3.5" />
+              <span>Torre TV (NOC)</span>
             </button>
           </div>
 
-          <button
-            onClick={() => {
-              setIsBroadcastModalOpen(true);
-              setActiveSubTab('broadcast');
-            }}
-            className={`px-3 py-1.5 rounded-xl shadow-2xs text-xs flex items-center gap-1.5 font-bold transition-colors border ${
-              isBroadcastModalOpen
-                ? 'bg-emerald-600 text-white border-emerald-700'
-                : 'bg-white hover:bg-slate-50 border-[#e2e8f0] text-[#111b21]'
-            }`}
-          >
-            <Megaphone className="w-3.5 h-3.5 text-[#00a884]" />
-            <span>Aviso em Lote</span>
-          </button>
-
           <div className="bg-white border border-[#e2e8f0] px-3 py-1.5 rounded-xl shadow-2xs text-xs flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-            <span className="font-bold text-[#111b21]">
-              {pendingAttentionCount} grupos
-            </span>
-            <span className="text-[#667781]">com pendência</span>
-          </div>
-
-          <div className="bg-[#f0f2f5] border border-[#e2e8f0] px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 text-[#54656f]">
-            <Layers className="w-3.5 h-3.5 text-[#00a884]" />
-            <span>Híbrido WABA/WAHA</span>
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+            <span className="font-bold text-[#111b21]">7 grupos</span>
+            <span className="text-[#54656f]">pendentes</span>
           </div>
         </div>
       </div>
@@ -491,8 +481,17 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
         )}
       </div>
 
-      {/* View Conditional: Group Monitor or Standard 2-Column Split */}
-      {hubMode === 'monitor' ? (
+      {/* View Conditional: Wallboard, Group Monitor or Standard 2-Column Split */}
+      {hubMode === 'wallboard' ? (
+        <LiveWallboardView
+          groups={groups}
+          mode="groups"
+          onOpenGroup={(groupId) => {
+            setSelectedGroupId(groupId);
+            setActiveSubTab('conversations');
+          }}
+        />
+      ) : hubMode === 'monitor' ? (
         <GroupMonitor
           groups={groups}
           onSelectGroup={(groupId) => {

@@ -195,8 +195,8 @@ export const FeatureFlagManager: React.FC<FeatureFlagManagerProps> = ({ workspac
                         {key}
                       </code>
                       {flag.isOverridden && (
-                        <span className="text-[9.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
-                          Sobrescrito localmente
+                        <span className="text-[9.5px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-1.5 py-0.2 rounded" title="Você alterou esta chave manualmente neste navegador">
+                          Ajustado manualmente
                         </span>
                       )}
                     </div>
@@ -250,10 +250,10 @@ export const FeatureFlagManager: React.FC<FeatureFlagManagerProps> = ({ workspac
                       </div>
                       <div className="text-[10px] text-slate-400">
                         {flag.isOverridden
-                          ? 'Manual (Override)'
+                          ? 'Ajuste manual'
                           : workspaceTier === 'agency'
-                          ? 'Regra da Agência'
-                          : 'Regra Standard'}
+                          ? 'Padrão da Agência'
+                          : 'Padrão Standard'}
                       </div>
                     </div>
 

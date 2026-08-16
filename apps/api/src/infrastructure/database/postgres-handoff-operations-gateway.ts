@@ -94,7 +94,9 @@ export class PostgresHandoffOperationsGateway implements HandoffOperationsGatewa
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SET LOCAL ROLE authenticated');
+      // Use sos_sales_runtime which has EXECUTE on current_user_workspace_ids()
+      // and inherits from authenticated, so auth.uid() works via request.jwt.claim.sub
+      await client.query('SET LOCAL ROLE sos_sales_runtime');
       await client.query("SELECT pg_catalog.set_config('request.jwt.claim.role', 'authenticated', true)");
       await client.query("SELECT pg_catalog.set_config('request.jwt.claim.sub', $1, true)", [actor.userId]);
       const result = await action(client);

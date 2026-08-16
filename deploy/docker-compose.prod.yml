@@ -1,0 +1,74 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: sos-sales-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /opt/sos-sales/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/sos-sales/dist:/var/www/html:ro
+      - /opt/sos-sales/landing:/var/www/landing:ro
+      - /opt/sos-sales/caddy_data:/data
+      - /opt/sos-sales/caddy_config:/config
+    networks:
+      - sos-network
+    depends_on:
+      - sos-sales-api
+
+  sos-sales-api:
+    build:
+      context: /opt/sos-sales/api
+      dockerfile: Dockerfile
+    container_name: sos-sales-api
+    restart: unless-stopped
+    env_file:
+      - /opt/sos-sales/.env.production
+    environment:
+      - NODE_ENV=production
+      - PORT=4334
+      - HOST=0.0.0.0
+    networks:
+      - sos-network
+    depends_on:
+      sos-sales-redis:
+        condition: service_healthy
+
+  sos-sales-redis:
+    image: redis:7-alpine
+    container_name: sos-sales-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - /opt/sos-sales/redis_data:/data
+    networks:
+      - sos-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sos-sales-waha:
+    image: devlikeapro/waha:latest
+    container_name: sos-sales-waha
+    restart: unless-stopped
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: WEBJS
+      WAHA_DASHBOARD_ENABLED: "true"
+      WHATSAPP_SWAGGER_ENABLED: "true"
+      WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_LOG_FORMAT: JSON
+      TZ: America/Sao_Paulo
+    volumes:
+      - /opt/sos-sales/waha_sessions:/app/.sessions
+      - /opt/sos-sales/waha_media:/app/.media
+    networks:
+      - sos-network
+    shm_size: 1gb
+
+networks:
+  sos-network:
+    name: sos-sales-network
+    driver: bridge

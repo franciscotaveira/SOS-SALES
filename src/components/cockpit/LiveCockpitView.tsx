@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
+  Trash2,
   UserCheck,
   UserMinus,
   UserRound,
@@ -29,6 +30,7 @@ import {
   HttpSalesOsGateway,
   SalesOsTransportError,
 } from "../../services/salesOsGateway";
+import { getSupabaseClient } from "../../services/supabaseAuth";
 
 interface LiveCockpitViewProps {
   workspaceId: string;
@@ -224,7 +226,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     };
   }, [gateway, selectedJourneyId, workspaceId]);
 
-  const refresh = async () => {
+  const refresh = React.useCallback(async () => {
     setRefreshing(true);
     await loadQueue();
     if (selectedJourneyId) {
@@ -239,7 +241,45 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       }
     }
     setRefreshing(false);
-  };
+  }, [gateway, loadQueue, selectedJourneyId, workspaceId]);
+
+  // Live Realtime Subscriptions via Supabase WebSockets
+  React.useEffect(() => {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    const channel = client
+      .channel(`live-cockpit-${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversation_messages',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        () => {
+          void refresh();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'commercial_journeys',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        () => {
+          void refresh();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [workspaceId, refresh]);
 
   const showNotification = (type: "success" | "error", message: string) => {
     setFeedback({ type, message });
@@ -374,6 +414,30 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
+  const handleClearHistory = async () => {
+    if (!window.confirm("Deseja realmente limpar todo o histórico de conversas e leads deste workspace? Essa ação é permanente e deixará o painel limpo.")) {
+      return;
+    }
+    setActionInProgress(true);
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspaceId}/channels/whatsapp/clear-history`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showNotification("success", "Histórico de conversas e leads limpo com sucesso.");
+        onSelectedJourneyChange(undefined);
+        await refresh();
+      } else {
+        showNotification("error", data.error || "Erro ao limpar histórico.");
+      }
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Falha na conexão.");
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
   const queue = priorities.state === "ready" ? priorities.value : journeys.state === "ready" ? journeys.value : [];
   const view = cockpit.state === "ready" ? cockpit.value : null;
 
@@ -414,9 +478,18 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         <div className="flex items-center gap-3">
           <button
             type="button"
+            onClick={() => void handleClearHistory()}
+            disabled={actionInProgress}
+            className="inline-flex items-center gap-2 rounded-xl border-2 border-rose-300 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-60 transition cursor-pointer"
+            title="Apaga todas as conversas e leads sincronizados deste workspace"
+          >
+            <Trash2 size={16} /> Limpar Histórico do Workspace
+          </button>
+          <button
+            type="button"
             onClick={() => void refresh()}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-blue-600 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl border-2 border-blue-600 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-60 transition cursor-pointer"
           >
             <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} /> Atualizar dados
           </button>
@@ -577,25 +650,29 @@ function LiveJourneyBody({
   return (
     <>
       {/* Header & Stage Controller */}
-      <header className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="flex items-center gap-2 text-lg font-bold text-slate-950">
-              <UserRound size={19} className="text-blue-600" />
-              {journey.contact.name || "Contato sem nome"}
-            </p>
-            <p className="mt-1 font-mono text-sm text-slate-600">{journey.contact.phone}</p>
+      {/* Compact 1-Row Header */}
+      <header className="border-b border-slate-200 bg-slate-50 px-4 py-2.5 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
+              <UserRound size={16} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-sm text-slate-950 truncate">
+                {journey.contact.name || "Contato sem nome"}
+              </p>
+              <p className="font-mono text-xs text-slate-500 truncate">{journey.contact.phone}</p>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label htmlFor="stage-selector" className="text-xs font-bold text-slate-600">
-              Estágio:
-            </label>
+
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            <span className="text-[11px] font-bold text-slate-600 hidden sm:inline">Estágio:</span>
             <select
               id="stage-selector"
               value={journey.pipelineStage ? journey.pipelineStage.toUpperCase() : "LEAD"}
               onChange={(e) => onStageChange(e.target.value)}
               disabled={actionInProgress}
-              className="rounded-lg border border-blue-300 bg-white px-2.5 py-1 text-xs font-bold text-blue-900 shadow-xs focus:ring-2 focus:ring-blue-500"
+              className="rounded-md border border-blue-300 bg-white px-2 py-0.5 text-xs font-bold text-blue-900 shadow-xs focus:ring-1 focus:ring-blue-500"
             >
               {PIPELINE_STAGES.map((s) => (
                 <option key={s.value} value={s.value}>
@@ -603,132 +680,94 @@ function LiveJourneyBody({
                 </option>
               ))}
             </select>
-            <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700">
-              {journey.status}
-            </span>
-            {journey.channel ? (
-              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                {journey.channel.name}
-              </span>
-            ) : (
-              <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">
-                Canal não vinculado
-              </span>
+
+            {handoff && isHandoffActive && (
+              <div className="flex items-center gap-1 ml-1">
+                <button
+                  type="button"
+                  onClick={() => onAcceptHandoff(handoff.id)}
+                  disabled={actionInProgress}
+                  className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-0.5 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-60"
+                >
+                  <UserCheck size={12} /> Assumir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onResolveHandoff(handoff.id)}
+                  disabled={actionInProgress}
+                  className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  <Check size={12} /> Concluir
+                </button>
+              </div>
             )}
+
+            <button
+              type="button"
+              onClick={onOpenFollowUpModal}
+              disabled={actionInProgress}
+              className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-60"
+            >
+              <Calendar size={12} /> Follow-Up
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenOutcomeModal}
+              disabled={actionInProgress}
+              className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+            >
+              <DollarSign size={12} /> Desfecho
+            </button>
           </div>
-        </div>
-
-        {/* Operational Actions Toolbar */}
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
-          {handoff && isHandoffActive && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-700">
-                Handoff: {handoff.status}
-              </span>
-              <button
-                type="button"
-                onClick={() => onAcceptHandoff(handoff.id)}
-                disabled={actionInProgress}
-                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-60"
-              >
-                <UserCheck size={14} /> Assumir
-              </button>
-              <button
-                type="button"
-                onClick={() => onResolveHandoff(handoff.id)}
-                disabled={actionInProgress}
-                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-60"
-              >
-                <Check size={14} /> Concluir
-              </button>
-              <button
-                type="button"
-                onClick={onOpenReturnAiModal}
-                disabled={actionInProgress}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-              >
-                <UserMinus size={14} /> Devolver p/ IA
-              </button>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={onOpenFollowUpModal}
-            disabled={actionInProgress}
-            className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-60"
-          >
-            <Calendar size={14} /> Agendar Follow-Up
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenOutcomeModal}
-            disabled={actionInProgress}
-            className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
-          >
-            <DollarSign size={14} /> Registrar Desfecho
-          </button>
         </div>
       </header>
 
-      <div className="space-y-4 p-4">
-        {/* Continuity Line */}
-        <section className="rounded-2xl border-2 border-slate-800 bg-slate-950 p-4 text-white shadow-sm">
-          <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-emerald-300">
-            <CircleDot size={15} /> Linha de continuidade comercial
+      <div className="flex flex-col flex-1 min-h-0 p-3 gap-2">
+        {/* Sleek 1-Line Continuity Strip */}
+        <section className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1 text-white shadow-xs shrink-0 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar text-xs">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 shrink-0">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Continuidade</span>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <ContinuityCell
-              icon={<Target size={16} />}
-              label="Origem"
-              tone="blue"
-              value={acquisition?.campaignName || acquisition?.source || null}
-              detail={acquisition?.offerHook || acquisition?.entryMessage || "Origem ainda não registrada"}
-            />
-            <ContinuityCell
-              icon={<MessageSquare size={16} />}
-              label="Estado atual"
-              tone="amber"
-              value={decisionState?.currentStage || null}
-              detail={decisionState?.primaryFriction || "Sem fricção classificada"}
-            />
-            <ContinuityCell
-              icon={<ChevronRight size={16} />}
-              label="Próximo passo"
-              tone="violet"
-              value={recommendation?.suggestedAction || null}
-              detail={recommendation?.microCommitmentGoal || "Nenhuma recomendação autorizada"}
-            />
+
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-blue-300 truncate">
+              1. Origem: {acquisition?.campaignName || acquisition?.source || "Direto / Meta Ads"}
+            </span>
+            <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-amber-300 truncate">
+              2. Estado: {decisionState?.currentStage || "Em atendimento"}
+            </span>
+            <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-purple-300 truncate">
+              3. Ação: {recommendation?.suggestedAction || "Supervisionar conversa"}
+            </span>
           </div>
         </section>
 
-        {/* Normalized Messages Stream */}
-        <section className="rounded-2xl border-2 border-slate-200 bg-[#efeae2] p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="font-bold text-slate-900">Conversa recente</p>
-            <span className="text-xs text-slate-500">até 50 mensagens normalizadas</span>
-          </div>
+        {/* Normalized Messages Stream (Flexible & Spacious) */}
+        <section className="flex-1 min-h-[240px] rounded-xl border border-slate-200 bg-[#efeae2] p-3 overflow-y-auto">
           {messages.length === 0 ? (
             availability(
               "Nenhuma mensagem disponível",
               "Ainda não há mensagens normalizadas acessíveis para esta jornada."
             )
           ) : (
-            <div className="max-h-[380px] space-y-3 overflow-y-auto pr-1">
+            <div className="space-y-2.5">
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`max-w-[86%] rounded-xl border px-3 py-2 shadow-sm ${
+                  className={`max-w-[85%] rounded-xl border px-3 py-2 shadow-xs ${
                     message.direction === "outbound"
-                      ? "ml-auto border-emerald-200 bg-emerald-50"
-                      : "border-slate-200 bg-white"
+                      ? "ml-auto border-emerald-200 bg-emerald-50 text-slate-900"
+                      : "border-slate-200 bg-white text-slate-900"
                   }`}
                 >
-                  <p className="text-sm leading-5 text-slate-800">
-                    {message.textContent || "Mensagem sem conteúdo de texto"}
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                    {message.textContent && message.textContent.trim()
+                      ? message.textContent
+                      : "📎 Mídia / Mensagem WhatsApp"}
                   </p>
-                  <p className="mt-1 text-right text-[11px] text-slate-500">
+                  <p className="mt-1 text-right text-[10px] text-slate-500 font-mono">
                     {message.senderType} · {formatDate(message.sentAt)}
                   </p>
                 </div>
@@ -737,69 +776,47 @@ function LiveJourneyBody({
           )}
         </section>
 
-        {/* Supervised AI Suggestion */}
-        <section className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="flex items-center gap-2 font-bold text-violet-950">
-              <Bot size={17} /> Sugestão supervisionada
-            </p>
-            {recommendation && (
-              <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-violet-700">
-                {Math.round(recommendation.confidence * 100)}% confiança
-              </span>
-            )}
-          </div>
-          {recommendation ? (
-            <>
-              <p className="mt-3 text-sm font-semibold text-slate-900">{recommendation.suggestedAction}</p>
+        {/* Supervised AI Suggestion & Outbound Composer Strip */}
+        <section className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs shrink-0 space-y-2">
+          {recommendation && (
+            <div className="flex items-center justify-between gap-2 rounded-lg bg-violet-50 px-2.5 py-1 text-xs text-violet-900 border border-violet-200">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Bot size={14} className="text-violet-600 shrink-0" />
+                <span className="font-bold text-[10.5px] shrink-0">Copilot:</span>
+                <span className="italic truncate text-[11px]">
+                  "{recommendation.suggestedDraftText || recommendation.suggestedAction}"
+                </span>
+                <span className="rounded bg-violet-200/80 px-1 py-0.2 font-mono text-[9px] font-bold text-violet-900 shrink-0">
+                  {Math.round(recommendation.confidence * 100)}%
+                </span>
+              </div>
               {recommendation.suggestedDraftText && (
-                <div className="mt-2 space-y-2">
-                  <p className="rounded-lg border border-violet-200 bg-white p-3 font-mono text-sm leading-6 text-slate-700">
-                    {recommendation.suggestedDraftText}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setDraftText(recommendation.suggestedDraftText!)}
-                    className="text-xs font-bold text-violet-700 hover:underline"
-                  >
-                    Usar sugestão no rascunho abaixo →
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setDraftText(recommendation.suggestedDraftText!)}
+                  className="shrink-0 rounded bg-violet-600 px-2 py-0.5 text-[10.5px] font-bold text-white hover:bg-violet-700 transition"
+                >
+                  Usar sugestão
+                </button>
               )}
-              <p className="mt-2 text-xs text-slate-600">
-                Política: {recommendation.policyStatus}
-                {recommendation.policyReason ? ` · ${recommendation.policyReason}` : ""}
-              </p>
-            </>
-          ) : (
-            availability(
-              "Nenhuma sugestão aprovada",
-              "O sistema não inventa uma resposta quando não existe recomendação registrada."
-            )
+            </div>
           )}
-        </section>
 
-        {/* Supervised Outbound Composer */}
-        <section className="rounded-2xl border-2 border-slate-300 bg-white p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="flex items-center gap-2 font-bold text-slate-900">
-              <Send size={16} className="text-blue-600" /> Rascunho Outbound Supervisionado
-            </p>
-            <span className="text-[11px] font-semibold text-amber-700">
-              Envio real bloqueado até homologação WAHA
-            </span>
-          </div>
-          <textarea
-            rows={3}
-            value={draftText}
-            onChange={(e) => setDraftText(e.target.value)}
-            placeholder="Escreva uma resposta para criar um rascunho supervisionado auditável..."
-            className="w-full rounded-xl border border-slate-300 p-3 text-sm text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-hidden focus:ring-2 focus:ring-blue-200"
-          />
-          <div className="mt-2 flex items-center justify-between">
-            <p className="text-xs text-slate-500">
-              Rascunhos criam eventos auditáveis na state machine de outbound.
-            </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={draftText}
+              onChange={(e) => setDraftText(e.target.value)}
+              placeholder="Digite uma mensagem supervisionada..."
+              className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && draftText.trim()) {
+                  e.preventDefault();
+                  onCreateOutboundDraft(draftText.trim());
+                  setDraftText("");
+                }
+              }}
+            />
             <button
               type="button"
               onClick={() => {
@@ -809,9 +826,9 @@ function LiveJourneyBody({
                 }
               }}
               disabled={actionInProgress || !draftText.trim()}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50 transition shrink-0"
             >
-              <Send size={14} /> Salvar Rascunho
+              <Send size={13} /> Enviar
             </button>
           </div>
         </section>
