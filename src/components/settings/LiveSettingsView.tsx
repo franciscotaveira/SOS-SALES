@@ -91,7 +91,6 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
       }, 5000);
     } else {
       setQrCodeDataUrl(null);
-      setQrStatus('INITIAL');
     }
     return () => {
       if (interval) clearInterval(interval);
