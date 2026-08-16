@@ -106,9 +106,21 @@ export class MetaSpendImportWorker {
       await client.query('SET LOCAL ROLE service_role');
       const result = await client.query<{ workspace_id: string; meta_ads_account_id: string }>(
         `SELECT DISTINCT workspace_id, 
-           COALESCE(public_config->>'meta_ads_account_id', '') as meta_ads_account_id
+           COALESCE(
+             public_config->>'meta_ads_account_id',
+             public_config->>'ad_account_id',
+             public_config->>'adAccountId',
+             public_config->>'account_id',
+             ''
+           ) as meta_ads_account_id
          FROM public.channel_connections
-         WHERE COALESCE(public_config->>'meta_ads_account_id', '') != ''`,
+         WHERE COALESCE(
+           public_config->>'meta_ads_account_id',
+           public_config->>'ad_account_id',
+           public_config->>'adAccountId',
+           public_config->>'account_id',
+           ''
+         ) != ''`,
       );
       await client.query('COMMIT');
       return result.rows.map((r) => ({
