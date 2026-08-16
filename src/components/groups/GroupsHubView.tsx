@@ -60,6 +60,27 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     initialGroups[0]?.id || ''
   );
 
+  const RESOLVED_STORAGE_KEY = `sos_sales_resolved_groups_${workspaceId || 'default'}`;
+
+  const [resolvedMap, setResolvedMap] = React.useState<Record<string, { resolvedAt: string; isResolved: boolean }>>(() => {
+    try {
+      const saved = localStorage.getItem(RESOLVED_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const updateResolvedMap = (updater: (prev: Record<string, { resolvedAt: string; isResolved: boolean }>) => Record<string, { resolvedAt: string; isResolved: boolean }>) => {
+    setResolvedMap((prev) => {
+      const next = updater(prev);
+      try {
+        localStorage.setItem(RESOLVED_STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   const fetchGroups = React.useCallback(async () => {
     const wsId = workspaceId || '11111111-1111-1111-1111-111111111111';
     try {
@@ -67,7 +88,27 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
       if (!res.ok) return;
       const data = await res.json();
       if (data && Array.isArray(data.groups) && data.groups.length > 0) {
-        setGroups(data.groups);
+        // Read latest resolved map from localStorage to preserve user actions
+        let currentResolvedMap: Record<string, { resolvedAt: string; isResolved: boolean }> = {};
+        try {
+          const saved = localStorage.getItem(`sos_sales_resolved_groups_${wsId}`);
+          if (saved) currentResolvedMap = JSON.parse(saved);
+        } catch {}
+
+        const merged = data.groups.map((g: WhatsAppGroup) => {
+          const resInfo = currentResolvedMap[g.id];
+          if (resInfo?.isResolved) {
+            return {
+              ...g,
+              healthStatus: 'active' as const,
+              unreadCount: 0,
+              pendingTaskCount: 0,
+            };
+          }
+          return g;
+        });
+
+        setGroups(merged);
         if (!selectedGroupId || selectedGroupId === initialGroups[0]?.id) {
           setSelectedGroupId(data.groups[0].id);
         }
@@ -186,9 +227,11 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     });
   }, [groups, search, clientFilter, categoryFilter, engineFilter]);
 
-  const pendingAttentionCount = (groups || []).filter(
-    (g) => g && (g.healthStatus === 'pending_action' || (g.unreadCount || 0) > 0)
-  ).length;
+  const pendingAttentionCount = (groups || []).filter((g) => {
+    if (!g) return false;
+    const isResolved = Boolean(resolvedMap[g.id]?.isResolved) || (g.healthStatus === 'active' && (g.unreadCount || 0) === 0);
+    return !isResolved && (g.healthStatus === 'pending_action' || (g.unreadCount || 0) > 0);
+  }).length;
 
   const handleTogglePin = (groupId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -198,18 +241,41 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     setGroups(updated);
   };
 
-  const handleMarkAsDone = (groupId: string) => {
-    const updated = groups.map((g) =>
-      g.id === groupId
-        ? {
-            ...g,
-            unreadCount: 0,
-            healthStatus: 'active' as const,
-            pendingTaskCount: Math.max(0, g.pendingTaskCount - 1),
-          }
-        : g
+  const handleToggleResolve = async (groupId: string) => {
+    const isCurrentlyResolved = Boolean(resolvedMap[groupId]?.isResolved);
+    const newResolved = !isCurrentlyResolved;
+
+    updateResolvedMap((prev) => ({
+      ...prev,
+      [groupId]: {
+        resolvedAt: new Date().toISOString(),
+        isResolved: newResolved,
+      },
+    }));
+
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id === groupId
+          ? {
+              ...g,
+              unreadCount: newResolved ? 0 : 1,
+              healthStatus: newResolved ? ('active' as const) : ('pending_action' as const),
+              pendingTaskCount: newResolved ? 0 : 1,
+            }
+          : g
+      )
     );
-    setGroups(updated);
+
+    try {
+      const wsId = workspaceId || '11111111-1111-1111-1111-111111111111';
+      await fetch(`/api/v1/workspaces/${wsId}/groups/${encodeURIComponent(groupId)}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolved: newResolved }),
+      });
+    } catch {
+      // silent
+    }
   };
 
   const handleSendGroupMessage = async () => {
@@ -218,12 +284,22 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     const messageToSend = quickReplyText.trim();
     setQuickReplyText('');
 
+    // Mark as resolved automatically on operator reply
+    updateResolvedMap((prev) => ({
+      ...prev,
+      [selectedGroup.id]: {
+        resolvedAt: new Date().toISOString(),
+        isResolved: true,
+      },
+    }));
+
     const updated = groups.map((g) =>
       g.id === selectedGroup.id
         ? {
             ...g,
             unreadCount: 0,
             healthStatus: 'active' as const,
+            pendingTaskCount: 0,
             lastMessage: {
               sender: 'Você (Gestor)',
               text: messageToSend,
@@ -695,7 +771,8 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
             ) : (
               filteredGroups.map((grp) => {
                 const isSelected = grp.id === selectedGroup?.id;
-                const needsAttention = grp.healthStatus === 'pending_action' || grp.unreadCount > 0;
+                const isResolved = Boolean(resolvedMap[grp.id]?.isResolved) || (grp.healthStatus === 'active' && (grp.unreadCount || 0) === 0);
+                const needsAttention = !isResolved && (grp.healthStatus === 'pending_action' || (grp.unreadCount || 0) > 0);
 
                 return (
                   <div
@@ -742,7 +819,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                           {grp.engine ? grp.engine.toUpperCase() : 'WAHA'}
                         </span>
 
-                        {grp.unreadCount > 0 && (
+                        {!isResolved && (grp.unreadCount || 0) > 0 && (
                           <span className="bg-[#25d366] text-white font-bold text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center">
                             {grp.unreadCount}
                           </span>
@@ -770,10 +847,15 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                         )}
                       </div>
 
-                      {needsAttention && (
+                      {needsAttention ? (
                         <span className="text-amber-800 font-bold flex items-center gap-1">
                           <AlertTriangle className="w-3 h-3 text-amber-600" />
                           Pendente
+                        </span>
+                      ) : (
+                        <span className="text-emerald-700 font-medium flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Resolvido
                         </span>
                       )}
                     </div>
@@ -815,7 +897,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                 <div className="bg-white border border-[#e2e8f0] p-0.5 rounded-lg flex items-center text-[10.5px] font-bold">
                   <button
                     onClick={() => handleSwitchEngine('waba')}
-                    className={`px-2 py-1 rounded transition-colors ${
+                    className={`px-2 py-1 rounded transition-colors cursor-pointer ${
                       selectedGroup.engine === 'waba'
                         ? 'bg-[#00a884] text-white shadow-2xs'
                         : 'text-[#667781] hover:text-[#111b21]'
@@ -826,7 +908,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                   </button>
                   <button
                     onClick={() => handleSwitchEngine('waha')}
-                    className={`px-2 py-1 rounded transition-colors ${
+                    className={`px-2 py-1 rounded transition-colors cursor-pointer ${
                       selectedGroup.engine === 'waha'
                         ? 'bg-blue-600 text-white shadow-2xs'
                         : 'text-[#667781] hover:text-[#111b21]'
@@ -837,14 +919,36 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                   </button>
                 </div>
 
-                <button
-                  onClick={() => handleMarkAsDone(selectedGroup.id)}
-                  className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors flex items-center gap-1 shadow-2xs"
-                  title="Marcar como atendido / pendências resolvidas"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Resolvido</span>
-                </button>
+                {(() => {
+                  const isCurrentResolved = Boolean(resolvedMap[selectedGroup.id]?.isResolved) || (selectedGroup.healthStatus === 'active' && (selectedGroup.unreadCount || 0) === 0);
+                  return (
+                    <button
+                      onClick={() => handleToggleResolve(selectedGroup.id)}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer ${
+                        isCurrentResolved
+                          ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
+                          : 'bg-amber-50 hover:bg-emerald-50 text-amber-900 hover:text-emerald-900 border border-amber-300 hover:border-emerald-300'
+                      }`}
+                      title={
+                        isCurrentResolved
+                          ? 'Grupo resolvido. Clique para reabrir pendência se necessário.'
+                          : 'Marcar como atendido / pendências resolvidas'
+                      }
+                    >
+                      {isCurrentResolved ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Resolvido</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-amber-700" />
+                          <span>Marcar como Resolvido</span>
+                        </>
+                      )}
+                    </button>
+                  );
+                })()}
               </div>
             </div>
 

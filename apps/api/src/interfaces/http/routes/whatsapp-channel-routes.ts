@@ -961,6 +961,45 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
+  // 15c. Mark a WhatsApp Group as Resolved (WAHA sendSeen & status update)
+  app.post('/api/v1/workspaces/:workspaceId/groups/:groupId/resolve', async (request: FastifyRequest<{
+    Params: { workspaceId: string; groupId: string };
+    Body: { resolved?: boolean };
+  }>, reply: FastifyReply) => {
+    const { workspaceId, groupId } = request.params;
+    const { resolved = true } = (request.body || {}) as { resolved?: boolean };
+    const sessionName = getSessionName(workspaceId);
+
+    try {
+      // Clear unread badge in WAHA if resolving
+      if (resolved) {
+        await fetch(`${WAHA_BASE_URL}/api/sendSeen`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': WAHA_API_KEY },
+          body: JSON.stringify({
+            session: sessionName,
+            chatId: groupId,
+          }),
+        }).catch(() => {});
+      }
+
+      return reply.code(200).send({
+        success: true,
+        groupId,
+        resolved,
+        resolvedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      return reply.code(200).send({
+        success: true,
+        groupId,
+        resolved,
+        resolvedAt: new Date().toISOString(),
+        warning: err.message,
+      });
+    }
+  });
+
   // 16. Live Send Message to Journey Contact (WAHA / WABA)
   app.post('/api/v1/workspaces/:workspaceId/journeys/:journeyId/send-message', async (request: FastifyRequest<{
     Params: { workspaceId: string; journeyId: string };
