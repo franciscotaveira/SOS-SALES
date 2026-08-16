@@ -106,14 +106,14 @@ export interface ProductCatalogItem {
   category: string;
   description: string;
   basePrice: number;
-  minPromoPrice: number;
+  minPromoPrice?: number;
   durationOrExecutionTime?: string;
   imageUrl: string;
   inStock: boolean;
   wabaProductLink?: string;
   metaCatalogId?: string;
   tags: string[];
-  frequentlyAsked: {
+  frequentlyAsked?: {
     question: string;
     answer: string;
   }[];
