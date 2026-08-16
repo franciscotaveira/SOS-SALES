@@ -205,6 +205,75 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
     }
   };
 
+  // Facebook JS SDK Loader
+  const loadAndInitFacebookSdk = (appId: string): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).FB) {
+        (window as any).FB.init({
+          appId: appId.trim(),
+          cookie: true,
+          xfbml: true,
+          version: 'v20.0',
+        });
+        return resolve((window as any).FB);
+      }
+      const script = document.createElement('script');
+      script.src = 'https://connect.facebook.net/pt_BR/sdk.js';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        (window as any).FB.init({
+          appId: appId.trim(),
+          cookie: true,
+          xfbml: true,
+          version: 'v20.0',
+        });
+        resolve((window as any).FB);
+      };
+      script.onerror = (err) => reject(err);
+      document.body.appendChild(script);
+    });
+  };
+
+  // Popup Facebook Login Trigger
+  const triggerFacebookPopupLogin = async () => {
+    if (!metaAppId.trim()) {
+      setWabaFeedback({
+        success: false,
+        message: 'Para abrir o popup do Facebook, informe o Meta App ID do seu aplicativo do Meta for Developers (Ex: 104829482910394), ou cole o Access Token diretamente abaixo.',
+      });
+      return;
+    }
+
+    setWabaSaving(true);
+    setWabaFeedback(null);
+    try {
+      const fb = await loadAndInitFacebookSdk(metaAppId);
+      fb.login(
+        (response: any) => {
+          if (response.authResponse && response.authResponse.accessToken) {
+            const userToken = response.authResponse.accessToken;
+            setAccessToken(userToken);
+            handleOAuthConnect(userToken);
+          } else {
+            setWabaSaving(false);
+            setWabaFeedback({
+              success: false,
+              message: 'Login com Facebook cancelado ou permissões de WhatsApp não autorizadas no popup.',
+            });
+          }
+        },
+        { scope: 'whatsapp_business_messaging,whatsapp_business_management' }
+      );
+    } catch (err: any) {
+      setWabaSaving(false);
+      setWabaFeedback({
+        success: false,
+        message: 'Erro ao inicializar SDK do Facebook: ' + (err.message || 'Verifique se há bloqueadores de popup ativos.'),
+      });
+    }
+  };
+
   // OAuth Auto-Connect
   const handleOAuthConnect = async (tokenToUse?: string) => {
     const token = tokenToUse || accessToken;
@@ -601,75 +670,99 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                 <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5">
                   <span className="font-bold text-blue-900 block text-xs">Login com Facebook / Meta OAuth:</span>
                   <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Faça login com a sua conta do Facebook ou insira o Access Token do usuário para que o SOS Sales detecte e conecte sua conta do WhatsApp Business e números de forma assistida.
+                    Você pode conectar clicando no botão do Facebook (se tiver o Meta App ID) ou colando o Token de Acesso da Meta abaixo.
                   </p>
                 </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Meta User Access Token (ou Token do Facebook Login)
-                  </label>
-                  <textarea
-                    rows={3}
-                    placeholder="EAAG... ou clique no botão abaixo para autorizar"
-                    value={accessToken}
-                    onChange={(e) => setAccessToken(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
+                {/* Method 1: Popup Login */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                  <span className="font-bold text-slate-800 block text-[11px]">Método 1: Login com Popup do Facebook</span>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      Phone Number ID (Opcional)
+                    <label className="block font-semibold text-slate-600 mb-1 text-[10px]">
+                      Meta App ID (do painel developers.facebook.com)
                     </label>
                     <input
                       type="text"
-                      placeholder="Auto-detectado se vazio"
-                      value={phoneNumberId}
-                      onChange={(e) => setPhoneNumberId(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      placeholder="Ex: 104829482910394"
+                      value={metaAppId}
+                      onChange={(e) => setMetaAppId(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 outline-none text-xs"
                     />
                   </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      WABA ID (Opcional)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Auto-detectado se vazio"
-                      value={wabaId}
-                      onChange={(e) => setWabaId(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => setWabaModalOpen(false)}
-                    className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    onClick={triggerFacebookPopupLogin}
+                    disabled={wabaSaving}
+                    className="w-full py-2 px-3 bg-[#1877F2] hover:bg-[#166fe5] text-white font-bold rounded-lg flex items-center justify-center gap-2 shadow-xs transition"
                   >
-                    Cancelar
+                    <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                    </svg>
+                    <span>{wabaSaving ? 'Aguardando autorização...' : 'Abrir Popup de Login do Facebook'}</span>
                   </button>
+                </div>
+
+                {/* Method 2: Direct Token Connect */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                  <span className="font-bold text-slate-800 block text-[11px]">Método 2: Colar Token de Acesso da Meta</span>
+                  <div>
+                    <textarea
+                      rows={2}
+                      placeholder="Cole aqui o Token EAAG... (do Graph API Explorer ou Usuários do Sistema)"
+                      value={accessToken}
+                      onChange={(e) => setAccessToken(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 outline-none text-xs"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Phone Number ID (Opcional)"
+                        value={phoneNumberId}
+                        onChange={(e) => setPhoneNumberId(e.target.value)}
+                        className="w-full px-2.5 py-1 border border-slate-300 rounded-lg font-mono text-[11px] focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="WABA ID (Opcional)"
+                        value={wabaId}
+                        onChange={(e) => setWabaId(e.target.value)}
+                        className="w-full px-2.5 py-1 border border-slate-300 rounded-lg font-mono text-[11px] focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => handleOAuthConnect()}
                     disabled={wabaSaving || !accessToken.trim()}
-                    className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors shadow-2xs flex items-center gap-1.5"
+                    className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-xs transition"
                   >
                     {wabaSaving ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Conectando via Login Auth...</span>
+                        <span>Validando e Conectando com a Meta...</span>
                       </>
                     ) : (
                       <>
                         <Zap className="w-3.5 h-3.5" />
-                        <span>Conectar via Login Auth</span>
+                        <span>Validar & Conectar via Token</span>
                       </>
                     )}
+                  </button>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setWabaModalOpen(false)}
+                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    Fechar
                   </button>
                 </div>
               </div>
