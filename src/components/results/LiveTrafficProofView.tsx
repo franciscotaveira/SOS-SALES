@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart3, RefreshCw, AlertCircle, CalendarDays, TrendingUp, Users, Target, DollarSign, ShieldAlert } from 'lucide-react';
-import { ApiTrafficProofCampaign, ApiTrafficProofResponse, SalesOsGateway } from '../../services/salesOsGateway';
+import { ApiTrafficProofCampaign, ApiTrafficProofReport, SalesOsGateway } from '../../services/salesOsGateway';
 import { getSupabaseClient } from '../../services/supabaseAuth';
 
 interface LiveTrafficProofViewProps {
@@ -11,7 +11,7 @@ interface LiveTrafficProofViewProps {
 type LoadState =
   | { state: 'loading' }
   | { state: 'error'; message: string }
-  | { state: 'ready'; value: ApiTrafficProofResponse };
+  | { state: 'ready'; value: ApiTrafficProofReport };
 
 function defaultPeriod() {
   const to = new Date();
@@ -102,7 +102,9 @@ export const LiveTrafficProofView: React.FC<LiveTrafficProofViewProps> = ({ work
     void loadMetrics();
   };
 
-  const campaigns = loadState.state === 'ready' ? loadState.value.campaigns : [];
+  const campaigns: ApiTrafficProofCampaign[] = loadState.state === 'ready'
+    ? (loadState.value.data || (loadState.value as any).campaigns || [])
+    : [];
   const acquiredLeads = campaigns.reduce((acc, item) => acc + item.acquiredLeads, 0);
   const wonOutcomes = campaigns.reduce((acc, item) => acc + item.wonOutcomes, 0);
   const revenueMinor = campaigns.reduce((acc, item) => acc + item.revenueMinor, 0);
@@ -294,7 +296,7 @@ function MetricCard({
   );
 }
 
-function CampaignRow({ campaign }: { campaign: ApiTrafficProofCampaign }) {
+const CampaignRow: React.FC<{ campaign: ApiTrafficProofCampaign }> = ({ campaign }) => {
   return (
     <tr className="hover:bg-slate-50/70 transition-colors">
       <td className="px-4 py-3.5">

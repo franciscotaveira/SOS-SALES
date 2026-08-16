@@ -13,6 +13,7 @@ export interface CommercialAppointment {
   leadPhone: string;
   serviceName: string;
   serviceValue: number;
+  serviceValueMinor?: number;
   scheduledAt: string; // ISO date string or YYYY-MM-DDTHH:mm
   durationMinutes: number;
   status: AppointmentStatus;

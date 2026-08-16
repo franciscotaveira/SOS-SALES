@@ -107,12 +107,11 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
         const mapped: ApiJourney[] = raw.map((j) => ({
           id: j.id,
           contactId: j.id,
-          contactName: j.leadName,
-          contactPhone: j.phoneE164,
+          contactName: j.leadName || null,
+          contactPhone: j.leadPhone || (j as any).phoneE164 || null,
           status: 'OPEN',
-          pipelineStage: j.stage,
-          totalRevenueMinor: j.financialValue ? j.financialValue * 100 : 0,
-          currency: 'BRL',
+          pipelineStage: j.stage || null,
+          primaryServiceOrProduct: (j as any).primaryServiceOrProduct || null,
           startedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }));

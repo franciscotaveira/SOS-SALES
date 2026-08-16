@@ -291,13 +291,13 @@ export const CommercialKanbanView: React.FC<CommercialKanbanViewProps> = ({
   const renderDeliveryStatus = (status?: MessageStatus) => {
     switch (status) {
       case 'read':
-        return <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" title="Lido" />;
+        return <span title="Lido" className="inline-flex"><CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" /></span>;
       case 'delivered':
-        return <CheckCheck className="w-3.5 h-3.5 text-[#8696a0]" title="Entregue" />;
+        return <span title="Entregue" className="inline-flex"><CheckCheck className="w-3.5 h-3.5 text-[#8696a0]" /></span>;
       case 'sent':
-        return <Check className="w-3.5 h-3.5 text-[#8696a0]" title="Enviado" />;
+        return <span title="Enviado" className="inline-flex"><Check className="w-3.5 h-3.5 text-[#8696a0]" /></span>;
       default:
-        return <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" title="Lido" />;
+        return <span title="Lido" className="inline-flex"><CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" /></span>;
     }
   };
 

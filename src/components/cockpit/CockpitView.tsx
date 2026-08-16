@@ -251,7 +251,10 @@ export const CockpitView: React.FC<CockpitViewProps> = ({
     closedBy: string;
   }) => {
     if (!currentJourney) return;
-    const updated = await gateway.markOutcome(currentJourney.id, outcomeData);
+    const updated = await gateway.markOutcome(currentJourney.id, {
+      ...outcomeData,
+      journeyId: currentJourney.id,
+    });
     onUpdateJourney(updated);
   };
 

@@ -48,13 +48,13 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
         const mapped: ApiJourney[] = rawJourneys.map((j) => ({
           id: j.id,
           contactId: j.id,
-          contactName: j.leadName,
-          contactPhone: j.phoneE164,
+          contactName: j.leadName || null,
+          contactPhone: j.leadPhone || (j as any).phoneE164 || null,
           status: 'OPEN',
-          pipelineStage: j.stage,
-          primaryServiceOrProduct: j.primaryServiceOrProduct,
-          startedAt: j.createdAt,
-          updatedAt: j.lastActivityAt,
+          pipelineStage: j.stage || null,
+          primaryServiceOrProduct: (j as any).primaryServiceOrProduct || null,
+          startedAt: (j as any).createdAt || (j as any).lastActivityAt || new Date().toISOString(),
+          updatedAt: (j as any).lastActivityAt || new Date().toISOString(),
         }));
         setJourneys(mapped);
       }

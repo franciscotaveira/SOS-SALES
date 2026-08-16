@@ -1,12 +1,12 @@
 import { FeatureFlagKey, WorkspaceTier } from './featureFlags';
 
-export type OperatorRole = 'owner' | 'supervisor' | 'operator' | 'viewer';
+export type OperatorRole = 'admin' | 'owner' | 'supervisor' | 'operator' | 'viewer';
 
 export type HandoffStatus = 'pending_operator' | 'in_progress' | 'bot_handling' | 'resolved';
 
 export type SLAStatus = 'critical' | 'warning' | 'normal' | 'expired';
 
-export type ChannelHealth = 'connected' | 'paused' | 'degraded' | 'disconnected';
+export type ChannelHealth = 'healthy' | 'connected' | 'paused' | 'degraded' | 'disconnected';
 
 export type EvidenceSource =
   | 'CUSTOMER_MESSAGE'

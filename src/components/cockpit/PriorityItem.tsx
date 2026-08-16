@@ -52,17 +52,17 @@ export const PriorityItem: React.FC<PriorityItemProps> = ({
   const renderDeliveryStatus = (status?: MessageStatus) => {
     switch (status) {
       case 'read':
-        return <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb] shrink-0" title="Lido pelo cliente" />;
+        return <span title="Lido pelo cliente" className="inline-flex"><CheckCheck className="w-3.5 h-3.5 text-[#53bdeb] shrink-0" /></span>;
       case 'delivered':
-        return <CheckCheck className="w-3.5 h-3.5 text-[#8696a0] shrink-0" title="Entregue no aparelho" />;
+        return <span title="Entregue no aparelho" className="inline-flex"><CheckCheck className="w-3.5 h-3.5 text-[#8696a0] shrink-0" /></span>;
       case 'sent':
-        return <Check className="w-3.5 h-3.5 text-[#8696a0] shrink-0" title="Enviado aos servidores" />;
+        return <span title="Enviado aos servidores" className="inline-flex"><Check className="w-3.5 h-3.5 text-[#8696a0] shrink-0" /></span>;
       case 'sending':
-        return <Clock className="w-3 h-3 text-[#8696a0] animate-spin shrink-0" title="Enviando..." />;
+        return <span title="Enviando..." className="inline-flex"><Clock className="w-3 h-3 text-[#8696a0] animate-spin shrink-0" /></span>;
       case 'failed':
-        return <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" title="Falha no envio" />;
+        return <span title="Falha no envio" className="inline-flex"><AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" /></span>;
       default:
-        return <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb] shrink-0" title="Lido" />;
+        return <span title="Lido" className="inline-flex"><CheckCheck className="w-3.5 h-3.5 text-[#53bdeb] shrink-0" /></span>;
     }
   };
 

@@ -92,7 +92,6 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
           isAuthenticatedApiMode && gateway instanceof HttpSalesOsGateway ? (
             <LiveTrafficProofView
               workspaceId={workspace.id}
-              workspaceName={workspace.name}
               gateway={gateway}
             />
           ) : (

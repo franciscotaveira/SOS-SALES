@@ -46,8 +46,8 @@ const MicroConversationCard = memo(({
   const isPending = journey.handoffStatus === 'pending_operator';
   const isCritical = journey.slaStatus === 'critical';
 
-  const leadName = journey.leadName || journey.contact?.name || 'Cliente';
-  const leadPhone = journey.leadPhone || journey.contact?.phone || '';
+  const leadName = journey.leadName || (journey as any).contact?.name || 'Cliente';
+  const leadPhone = journey.leadPhone || (journey as any).phoneE164 || (journey as any).contact?.phone || '';
   const slaMinutes = journey.slaMinutesRemaining ?? 15;
   const lastActivity = journey.lastActivityAt || 'Agora';
 
@@ -455,7 +455,7 @@ export const LiveWallboardView: React.FC<LiveWallboardViewProps> = ({
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-xs text-slate-400 py-1">
           <span>
-            Exibindo página {currentPage + 1} de {totalPages} ({itemsCount} {currentTarget === 'conversas' ? 'conversas' : 'grupos'} no radar)
+            Exibindo página {currentPage + 1} de {totalPages} ({itemsCount} {currentTarget === 'conversations' ? 'conversas' : 'grupos'} no radar)
           </span>
           <div className="flex items-center gap-1">
             {Array.from({ length: totalPages }).map((_, idx) => (

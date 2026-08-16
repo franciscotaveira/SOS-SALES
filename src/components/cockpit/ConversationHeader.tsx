@@ -71,7 +71,9 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
               <h1 className="font-bold text-xs sm:text-sm text-[#111b21] truncate">
                 {journey.leadName}
               </h1>
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#00a884] fill-[#00a884]/10 shrink-0" title="Oficial" />
+              <span title="Oficial" className="inline-flex items-center">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#00a884] fill-[#00a884]/10 shrink-0" />
+              </span>
             </div>
             <div className="flex items-center gap-1 text-[11px] text-[#667781] truncate">
               <span className="font-mono text-[#54656f] truncate">

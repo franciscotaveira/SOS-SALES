@@ -144,11 +144,12 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
     const leadName = journey.leadName.split(' ')[0] || 'amigo';
     let suggestion = '';
 
-    if (journey.commercialStep === 'agendamento' || journey.commercialStep === 'orcamento') {
+    const step = (journey as any).commercialStep || journey.stage;
+    if (step === 'agendamento' || step === 'orcamento' || step === 'proposal') {
       suggestion = `Oi ${leadName}! Tudo bem? Vi que você estava interessado(a) no nosso atendimento. Consegui segurar um horário exclusivo aqui na agenda para você amanhã às 14h30 ou 16h00. Qual fica melhor para você?`;
-    } else if (journey.commercialStep === 'fechamento') {
+    } else if (step === 'fechamento' || step === 'negotiation') {
       suggestion = `Oi ${leadName}! Passando para te avisar que já deixei suas condições especiais ativadas aqui. Posso te enviar a chave Pix para confirmarmos seu pedido agora e garantir o bônus?`;
-    } else if (journey.commercialStep === 'qualificacao') {
+    } else if (step === 'qualificacao' || step === 'qualified') {
       suggestion = `Olá ${leadName}, vi sua mensagem pelo anúncio! Para eu te passar o valor exato e personalizado, qual o modelo do seu veículo / serviço desejado?`;
     } else {
       suggestion = `Oi ${leadName}! Como posso te ajudar a concluir sua solicitação hoje? Estamos com a equipe pronta para te atender agora!`;

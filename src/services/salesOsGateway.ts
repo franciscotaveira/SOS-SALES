@@ -210,6 +210,8 @@ export interface ApiTrafficProofReport {
   };
 }
 
+export type ApiTrafficProofResponse = ApiTrafficProofReport;
+
 export interface TrafficProofStats {
   workspaceId: string;
   totalLeadsAttributed: number;

@@ -31,6 +31,7 @@ import {
   ApiCockpitView,
   ApiJourney,
   ApiPriority,
+  ApiMessage,
   HttpSalesOsGateway,
   SalesOsTransportError,
 } from "../../services/salesOsGateway";

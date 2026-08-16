@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { Component } from 'react';
 import { Workspace, Journey, OperatorRole } from './types/cockpit';
 import { WhatsAppGroup } from './types/groupsAndEngines';
 import { mockAgencyGroups } from './data/groupFixtures';
@@ -40,16 +40,20 @@ import { WorkspaceInitModal } from './components/workspace/WorkspaceInitModal';
 import { OnboardingSetupAssistantModal } from './components/assistant/OnboardingSetupAssistantModal';
 import { Bot, Sparkles } from 'lucide-react';
 
-class TabErrorBoundary extends React.Component<
-  { children: React.ReactNode; tabName: string },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: { children: React.ReactNode; tabName: string }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+interface TabErrorBoundaryProps {
+  children: React.ReactNode;
+  tabName: string;
+}
 
-  static getDerivedStateFromError(error: Error) {
+interface TabErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class TabErrorBoundary extends Component<TabErrorBoundaryProps, TabErrorBoundaryState> {
+  state: TabErrorBoundaryState = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error): TabErrorBoundaryState {
     return { hasError: true, error };
   }
 
@@ -422,9 +426,11 @@ function OperationalApp({
         'conversas',
         'grupos',
         'agenda',
-        'notas',
+        'anotacoes',
         'resultados',
-        'inteligencia',
+        'analytics',
+        'playbook',
+        'simulador',
         'configuracoes',
       ];
       if (saved && validTabs.includes(saved)) {

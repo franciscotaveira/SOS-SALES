@@ -30,6 +30,7 @@ export interface FeatureFlagDefinition {
 }
 
 export const ROLE_HIERARCHY: Record<OperatorRole, number> = {
+  admin: 5,
   owner: 4,
   supervisor: 3,
   operator: 2,
