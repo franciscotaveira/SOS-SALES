@@ -8,8 +8,11 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleDot,
+  Clock,
   DatabaseZap,
   DollarSign,
+  FileText,
+  LayoutGrid,
   MessageSquare,
   Plus,
   RefreshCw,
@@ -22,6 +25,7 @@ import {
   UserMinus,
   UserRound,
   X,
+  Zap,
 } from "lucide-react";
 import {
   ApiCockpitView,
@@ -171,7 +175,59 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   const [outcomeModalOpen, setOutcomeModalOpen] = React.useState(false);
   const [factModalOpen, setFactModalOpen] = React.useState(false);
   const [returnAiModalOpen, setReturnAiModalOpen] = React.useState(false);
+  const [wabaButtonsModalOpen, setWabaButtonsModalOpen] = React.useState(false);
+  const [wabaTemplateModalOpen, setWabaTemplateModalOpen] = React.useState(false);
   const [actionInProgress, setActionInProgress] = React.useState(false);
+
+  const handleSendWabaButtons = async (bodyText: string, buttons: Array<{ id: string; title: string }>) => {
+    if (!selectedJourneyId || cockpit.state !== "ready") return;
+    setActionInProgress(true);
+    try {
+      const recipientPhone = cockpit.value.journey.contact.phone;
+      const res = await fetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-buttons`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipientPhone, bodyText, buttons }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setWabaButtonsModalOpen(false);
+        setFeedback({ type: "success", message: "Botões interativos WABA enviados com sucesso!" });
+        await refresh();
+      } else {
+        setFeedback({ type: "error", message: data.error || "Falha ao enviar botões WABA." });
+      }
+    } catch (err: any) {
+      setFeedback({ type: "error", message: err.message });
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
+  const handleSendWabaTemplate = async (templateName: string, languageCode: string, bodyParameters: string[]) => {
+    if (!selectedJourneyId || cockpit.state !== "ready") return;
+    setActionInProgress(true);
+    try {
+      const recipientPhone = cockpit.value.journey.contact.phone;
+      const res = await fetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-template`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipientPhone, templateName, languageCode, bodyParameters }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setWabaTemplateModalOpen(false);
+        setFeedback({ type: "success", message: "Template HSM oficial enviado com sucesso!" });
+        await refresh();
+      } else {
+        setFeedback({ type: "error", message: data.error || "Falha ao enviar template WABA." });
+      }
+    } catch (err: any) {
+      setFeedback({ type: "error", message: err.message });
+    } finally {
+      setActionInProgress(false);
+    }
+  };
 
   const selectedJourneyRef = React.useRef(selectedJourneyId);
   React.useEffect(() => {
@@ -550,6 +606,8 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               onStageChange={handleStageChange}
               onOpenFollowUpModal={() => setFollowUpModalOpen(true)}
               onOpenOutcomeModal={() => setOutcomeModalOpen(true)}
+              onOpenWabaButtonsModal={() => setWabaButtonsModalOpen(true)}
+              onOpenWabaTemplateModal={() => setWabaTemplateModalOpen(true)}
               onCreateOutboundDraft={handleCreateOutboundDraft}
               actionInProgress={actionInProgress}
             />
@@ -616,6 +674,23 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           inProgress={actionInProgress}
         />
       )}
+
+      {wabaButtonsModalOpen && (
+        <WabaButtonsModal
+          onClose={() => setWabaButtonsModalOpen(false)}
+          onSubmit={handleSendWabaButtons}
+          inProgress={actionInProgress}
+        />
+      )}
+
+      {wabaTemplateModalOpen && (
+        <WabaTemplateModal
+          workspaceId={workspaceId}
+          onClose={() => setWabaTemplateModalOpen(false)}
+          onSubmit={handleSendWabaTemplate}
+          inProgress={actionInProgress}
+        />
+      )}
     </main>
   );
 };
@@ -628,6 +703,8 @@ function LiveJourneyBody({
   onStageChange,
   onOpenFollowUpModal,
   onOpenOutcomeModal,
+  onOpenWabaButtonsModal,
+  onOpenWabaTemplateModal,
   onCreateOutboundDraft,
   actionInProgress,
 }: {
@@ -638,14 +715,29 @@ function LiveJourneyBody({
   onStageChange: (stage: string) => void;
   onOpenFollowUpModal: () => void;
   onOpenOutcomeModal: () => void;
+  onOpenWabaButtonsModal: () => void;
+  onOpenWabaTemplateModal: () => void;
   onCreateOutboundDraft: (text: string) => void;
   actionInProgress: boolean;
 }) {
-  const { journey, acquisitionContexts, messages, decisionState, recommendation, handoff, outcome } = view;
+  const { journey, acquisitionContexts, messages, decisionState, recommendation, handoff, outcome, knownFacts } = view;
   const acquisition = acquisitionContexts[0] ?? null;
   const [draftText, setDraftText] = React.useState("");
 
   const isHandoffActive = handoff && handoff.status !== "RESOLVED" && handoff.status !== "resolved";
+
+  // 24-hour Meta Service Window Calculation
+  const lastInboundMessage = [...messages].reverse().find((m) => m.direction === "inbound");
+  const hoursSinceLastInbound = lastInboundMessage
+    ? (Date.now() - new Date(lastInboundMessage.sentAt).getTime()) / (1000 * 60 * 60)
+    : null;
+  const isWindowActive = hoursSinceLastInbound !== null && hoursSinceLastInbound < 24;
+  const hoursRemaining = hoursSinceLastInbound !== null ? Math.max(0, 24 - hoursSinceLastInbound) : 0;
+
+  // CTWA (Click to WhatsApp Ads) Meta Attribution
+  const ctwaFact = knownFacts?.find(
+    (f) => f.key === "ad.referral" || f.key === "meta_ctwa_ad" || f.source === "ad_payload"
+  );
 
   return (
     <>
@@ -658,9 +750,28 @@ function LiveJourneyBody({
               <UserRound size={16} />
             </div>
             <div className="min-w-0">
-              <p className="font-bold text-sm text-slate-950 truncate">
-                {journey.contact.name || "Contato sem nome"}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="font-bold text-sm text-slate-950 truncate">
+                  {journey.contact.name || "Contato sem nome"}
+                </p>
+                {hoursSinceLastInbound !== null && (
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      isWindowActive
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                        : "bg-amber-100 text-amber-800 border border-amber-300"
+                    }`}
+                    title={
+                      isWindowActive
+                        ? `Janela de mensagens livres ativa: ${hoursRemaining.toFixed(1)}h restantes`
+                        : "Janela de 24h expirada. Utilize um Template HSM para reabrir o contato."
+                    }
+                  >
+                    <Clock size={10} />
+                    {isWindowActive ? `Janela Meta: ${hoursRemaining.toFixed(1)}h` : "Janela: Expirada (Usar HSM)"}
+                  </span>
+                )}
+              </div>
               <p className="font-mono text-xs text-slate-500 truncate">{journey.contact.phone}</p>
             </div>
           </div>
@@ -742,6 +853,12 @@ function LiveJourneyBody({
               3. Ação: {recommendation?.suggestedAction || "Supervisionar conversa"}
             </span>
           </div>
+
+          {ctwaFact && (
+            <span className="rounded bg-indigo-950 border border-indigo-500/50 px-2 py-0.5 text-[10px] font-bold text-indigo-300 flex items-center gap-1 shrink-0">
+              <Zap size={10} className="text-amber-400" /> Lead Meta Ads (CTWA)
+            </span>
+          )}
         </section>
 
         {/* Normalized Messages Stream (Flexible & Spacious) */}
@@ -767,8 +884,11 @@ function LiveJourneyBody({
                       ? message.textContent
                       : "📎 Mídia / Mensagem WhatsApp"}
                   </p>
-                  <p className="mt-1 text-right text-[10px] text-slate-500 font-mono">
-                    {message.senderType} · {formatDate(message.sentAt)}
+                  <p className="mt-1 text-right text-[10px] text-slate-500 font-mono flex items-center justify-end gap-1">
+                    <span>{message.senderType} · {formatDate(message.sentAt)}</span>
+                    {message.direction === "outbound" && (
+                      <span className="text-blue-500 font-bold" title="Status WhatsApp">✓✓</span>
+                    )}
                   </p>
                 </div>
               ))}
@@ -802,7 +922,24 @@ function LiveJourneyBody({
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          {/* Expired Window Advisory */}
+          {hoursSinceLastInbound !== null && !isWindowActive && (
+            <div className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 border border-amber-200">
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle size={13} className="text-amber-600 shrink-0" />
+                <span className="text-[11px]">Janela de 24h Meta encerrada. Para reabrir, envie um Template HSM oficial:</span>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenWabaTemplateModal}
+                className="shrink-0 rounded bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 transition flex items-center gap-1 shadow-2xs"
+              >
+                <FileText size={11} /> Escolher Template HSM
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5">
             <input
               type="text"
               value={draftText}
@@ -817,6 +954,29 @@ function LiveJourneyBody({
                 }
               }}
             />
+
+            {/* Quick WABA Interactive Buttons Trigger */}
+            <button
+              type="button"
+              onClick={onOpenWabaButtonsModal}
+              disabled={actionInProgress}
+              className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition shrink-0"
+              title="Enviar Botões Interativos Quick Reply (WABA)"
+            >
+              <LayoutGrid size={13} /> Botões
+            </button>
+
+            {/* Quick WABA Template Trigger */}
+            <button
+              type="button"
+              onClick={onOpenWabaTemplateModal}
+              disabled={actionInProgress}
+              className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition shrink-0"
+              title="Enviar Template HSM Oficial (Meta)"
+            >
+              <FileText size={13} /> HSM
+            </button>
+
             <button
               type="button"
               onClick={() => {
@@ -1342,6 +1502,256 @@ function ReturnToAiModal({
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
           >
             Confirmar Devolução
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WabaButtonsModal({
+  onClose,
+  onSubmit,
+  inProgress,
+}: {
+  onClose: () => void;
+  onSubmit: (bodyText: string, buttons: Array<{ id: string; title: string }>) => void;
+  inProgress: boolean;
+}) {
+  const [bodyText, setBodyText] = React.useState("Olá! Como prefere dar continuidade ao seu atendimento?");
+  const [btn1, setBtn1] = React.useState("1. Agendar Reunião");
+  const [btn2, setBtn2] = React.useState("2. Ver Demonstração");
+  const [btn3, setBtn3] = React.useState("3. Falar com Atendente");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4">
+        <div className="flex items-center justify-between border-b pb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+              <LayoutGrid size={16} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Enviar Botões Interativos (WABA)</h3>
+              <p className="text-xs text-slate-500">Quick Reply buttons oficiais para WhatsApp</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="space-y-3 text-xs">
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">Texto da Mensagem</label>
+            <textarea
+              rows={3}
+              value={bodyText}
+              onChange={(e) => setBodyText(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+              placeholder="Digite o texto explicativo..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="block font-bold text-slate-700">Botões de Resposta Rápida (Até 3)</label>
+            <input
+              type="text"
+              value={btn1}
+              onChange={(e) => setBtn1(e.target.value)}
+              placeholder="Botão 1 (máx 20 caracteres)"
+              maxLength={20}
+              className="w-full rounded-lg border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+            />
+            <input
+              type="text"
+              value={btn2}
+              onChange={(e) => setBtn2(e.target.value)}
+              placeholder="Botão 2 (opcional, máx 20 caracteres)"
+              maxLength={20}
+              className="w-full rounded-lg border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+            />
+            <input
+              type="text"
+              value={btn3}
+              onChange={(e) => setBtn3(e.target.value)}
+              placeholder="Botão 3 (opcional, máx 20 caracteres)"
+              maxLength={20}
+              className="w-full rounded-lg border border-slate-300 p-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={inProgress}
+            className="rounded-lg border border-slate-300 px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const buttons: Array<{ id: string; title: string }> = [];
+              if (btn1.trim()) buttons.push({ id: "btn_1", title: btn1.trim() });
+              if (btn2.trim()) buttons.push({ id: "btn_2", title: btn2.trim() });
+              if (btn3.trim()) buttons.push({ id: "btn_3", title: btn3.trim() });
+              if (bodyText.trim() && buttons.length > 0) {
+                onSubmit(bodyText.trim(), buttons);
+              }
+            }}
+            disabled={inProgress || !bodyText.trim() || !btn1.trim()}
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <Send size={13} /> Enviar Botões
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WabaTemplateModal({
+  workspaceId,
+  onClose,
+  onSubmit,
+  inProgress,
+}: {
+  workspaceId: string;
+  onClose: () => void;
+  onSubmit: (templateName: string, languageCode: string, bodyParameters: string[]) => void;
+  inProgress: boolean;
+}) {
+  const [templateName, setTemplateName] = React.useState("hello_world");
+  const [languageCode, setLanguageCode] = React.useState("pt_BR");
+  const [param1, setParam1] = React.useState("");
+  const [param2, setParam2] = React.useState("");
+  const [availableTemplates, setAvailableTemplates] = React.useState<Array<{ name: string; language: string; status: string }>>([]);
+  const [loadingTemplates, setLoadingTemplates] = React.useState(false);
+
+  React.useEffect(() => {
+    setLoadingTemplates(true);
+    fetch(`/api/v1/workspaces/${workspaceId}/channels/waba/templates`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.templates && Array.isArray(data.templates)) {
+          setAvailableTemplates(data.templates);
+          if (data.templates.length > 0) {
+            setTemplateName(data.templates[0].name);
+            setLanguageCode(data.templates[0].language || "pt_BR");
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTemplates(false));
+  }, [workspaceId]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4">
+        <div className="flex items-center justify-between border-b pb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <FileText size={16} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Enviar Template HSM Oficial</h3>
+              <p className="text-xs text-slate-500">Reabertura de janela de 24h & Notificações Meta</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="space-y-3 text-xs">
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">
+              Template Aprovado na Meta
+              {loadingTemplates && <span className="text-slate-400 font-normal ml-2">(carregando...)</span>}
+            </label>
+            {availableTemplates.length > 0 ? (
+              <select
+                value={templateName}
+                onChange={(e) => {
+                  setTemplateName(e.target.value);
+                  const selected = availableTemplates.find((t) => t.name === e.target.value);
+                  if (selected) setLanguageCode(selected.language);
+                }}
+                className="w-full rounded-lg border border-slate-300 p-2 font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+              >
+                {availableTemplates.map((t) => (
+                  <option key={`${t.name}-${t.language}`} value={t.name}>
+                    {t.name} ({t.language}) - {t.status}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder="Ex: reabertura_contato ou hello_world"
+                className="w-full rounded-lg border border-slate-300 p-2 font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+              />
+            )}
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">Código de Idioma</label>
+            <input
+              type="text"
+              value={languageCode}
+              onChange={(e) => setLanguageCode(e.target.value)}
+              placeholder="pt_BR"
+              className="w-full rounded-lg border border-slate-300 p-2 font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="block font-bold text-slate-700">Parâmetros das Variáveis (Opcional)</label>
+            <input
+              type="text"
+              value={param1}
+              onChange={(e) => setParam1(e.target.value)}
+              placeholder="Variável {{1}} (Ex: Nome do Cliente)"
+              className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+            />
+            <input
+              type="text"
+              value={param2}
+              onChange={(e) => setParam2(e.target.value)}
+              placeholder="Variável {{2}} (Ex: Data ou Horário)"
+              className="w-full rounded-lg border border-slate-300 p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={inProgress}
+            className="rounded-lg border border-slate-300 px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const params: string[] = [];
+              if (param1.trim()) params.push(param1.trim());
+              if (param2.trim()) params.push(param2.trim());
+              if (templateName.trim() && languageCode.trim()) {
+                onSubmit(templateName.trim(), languageCode.trim(), params);
+              }
+            }}
+            disabled={inProgress || !templateName.trim() || !languageCode.trim()}
+            className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <Send size={13} /> Disparar Template
           </button>
         </div>
       </div>
