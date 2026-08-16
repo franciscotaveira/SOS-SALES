@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart3, RefreshCw, AlertCircle, CalendarDays, TrendingUp, Users, Target, DollarSign, ShieldAlert } from 'lucide-react';
 import { ApiTrafficProofCampaign, ApiTrafficProofResponse, SalesOsGateway } from '../../services/salesOsGateway';
+import { getSupabaseClient } from '../../services/supabaseAuth';
 
 interface LiveTrafficProofViewProps {
   workspaceId: string;
@@ -50,7 +51,49 @@ export const LiveTrafficProofView: React.FC<LiveTrafficProofViewProps> = ({ work
 
   useEffect(() => {
     void loadMetrics();
-  }, [loadMetrics]);
+
+    const client = getSupabaseClient();
+    let channel: any;
+    if (client) {
+      channel = client
+        .channel(`live-traffic-proof-${workspaceId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'commercial_outcomes',
+            filter: `workspace_id=eq.${workspaceId}`,
+          },
+          () => {
+            void loadMetrics(true);
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'campaign_spend_daily_facts',
+            filter: `workspace_id=eq.${workspaceId}`,
+          },
+          () => {
+            void loadMetrics(true);
+          }
+        )
+        .subscribe();
+    }
+
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void loadMetrics(true);
+    }, 30000);
+
+    return () => {
+      if (client && channel) void client.removeChannel(channel);
+      clearInterval(timer);
+    };
+  }, [loadMetrics, workspaceId]);
 
   const refresh = () => loadMetrics(true);
 
