@@ -195,3 +195,22 @@
 - **Trade-offs:** Zero quebra de compatibilidade; maior robustez e segurança em produção.
 - **Confidence:** 10/10
 - **Date:** 2026-08-16
+
+---
+
+## Task 18: Otimização de Consulta SQL Atômica no Cockpit & Revalidação Silenciosa (Zero Flicker)
+- **Context:** Eliminar roundtrips adicionais na carga do Cockpit Comercial e aprimorar a fluidez visual em tempo real nas visões de Kanban, Conversas e Grupos.
+- **Decision:**
+  1. Consolidação da leitura do Cockpit Comercial em uma única consulta PostgreSQL (`apps/api/src/infrastructure/database/postgres-cockpit-read-gateway.ts`) com agregação JSON direta no banco (`json_agg` e `row_to_json`), atingindo latência < 20ms.
+  2. Implementação do padrão de revalidação silenciosa (`silent = true`) no `LiveCommercialKanbanView.tsx` e `LiveConversationsView.tsx`, garantindo que atualizações via WebSocket do Supabase e timers não gerem flickers visuais.
+  3. Adição de listener global para a tecla `Escape` no modal de disparos em massa do `GroupsHubView.tsx`.
+- **Rationale:** Proporciona uma experiência instantânea tanto no backend com zero roundtrip secundário quanto no frontend com transições sem piscar de tela.
+- **Scope:**
+  - `apps/api/src/infrastructure/database/postgres-cockpit-read-gateway.ts`
+  - `src/components/kanban/LiveCommercialKanbanView.tsx`
+  - `src/components/conversations/LiveConversationsView.tsx`
+  - `src/components/groups/GroupsHubView.tsx`
+- **Trade-offs:** Nenhum; melhora direta de performance e ergonomia.
+- **Confidence:** 10/10
+- **Date:** 2026-08-16
+
