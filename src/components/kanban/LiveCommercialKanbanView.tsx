@@ -10,6 +10,7 @@ import {
   Columns3,
 } from 'lucide-react';
 import { ApiJourney, SalesOsGateway } from '../../services/salesOsGateway';
+import { getSupabaseClient } from '../../services/supabaseAuth';
 
 interface LiveCommercialKanbanViewProps {
   workspaceId: string;
@@ -125,8 +126,38 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   }, [workspaceId, gateway]);
 
   useEffect(() => {
-    fetchJourneys();
-  }, [fetchJourneys]);
+    void fetchJourneys();
+
+    const client = getSupabaseClient();
+    let channel: any;
+    if (client) {
+      channel = client
+        .channel(`live-kanban-${workspaceId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'commercial_journeys',
+            filter: `workspace_id=eq.${workspaceId}`,
+          },
+          () => {
+            void fetchJourneys();
+          }
+        )
+        .subscribe();
+    }
+
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void fetchJourneys();
+    }, 10000);
+
+    return () => {
+      if (client && channel) void client.removeChannel(channel);
+      clearInterval(timer);
+    };
+  }, [workspaceId, fetchJourneys]);
 
   const handleStageMove = async (
     journey: ApiJourney,
