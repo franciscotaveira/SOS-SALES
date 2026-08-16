@@ -429,6 +429,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {item.id === 'playbook' && isActive && !collapsed && (
                         <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
                           {[
+                            { id: 'diagnosis', label: 'Diagnóstico Histórico (1 Ano)' },
                             { id: 'knowledge', label: 'Banco de Inteligência' },
                             { id: 'catalog', label: 'Catálogo & Serviços' },
                             { id: 'thesis', label: 'Tese Comercial & IA 24/7' },

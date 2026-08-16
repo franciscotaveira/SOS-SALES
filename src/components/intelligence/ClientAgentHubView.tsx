@@ -10,6 +10,7 @@ import { ProductCatalogSection } from './ProductCatalogSection';
 import { AgentKnowledgeBaseSection } from './AgentKnowledgeBaseSection';
 import { ContinuousLearningSection } from './ContinuousLearningSection';
 import { AgentSettingsSection } from './AgentSettingsSection';
+import { HistoricalDiagnosisSection } from './HistoricalDiagnosisSection';
 import {
   Building2,
   ShoppingBag,
@@ -36,6 +37,7 @@ interface ClientAgentHubViewProps {
 }
 
 export type IntelligenceTab =
+  | 'diagnosis'
   | 'knowledge'
   | 'catalog'
   | 'thesis'
@@ -149,6 +151,10 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
       </div>
 
       {/* Active Section Content (Navigation controlled via sidebar) */}
+      {activeTab === 'diagnosis' && (
+        <HistoricalDiagnosisSection workspace={currentWorkspace} />
+      )}
+
       {(activeTab === 'knowledge' || !activeTab) && (
         <AgentKnowledgeBaseSection
           documents={currentBundle.documents}
