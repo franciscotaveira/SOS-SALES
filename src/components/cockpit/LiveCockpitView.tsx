@@ -499,8 +499,10 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
     setActionInProgress(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspaceId}/journeys/${selectedJourneyId}/clear`, {
+      const res = await fetch(`/api/v1/workspaces/${workspaceId}/channels/whatsapp/clear-journey`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ journeyId: selectedJourneyId }),
       });
       const data = await res.json();
       if (res.ok && data.success) {

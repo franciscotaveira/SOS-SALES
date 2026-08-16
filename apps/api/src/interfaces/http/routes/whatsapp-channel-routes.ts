@@ -206,33 +206,36 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     const { workspaceId } = request.params;
     const client = await dbPool.connect();
     try {
-      await client.query('BEGIN');
-      await client.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'true', true)");
-
-      await client.query('DELETE FROM public.conversation_message_events WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.conversation_messages WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.known_fact_events WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.known_facts WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.decision_events WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.decision_states WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.recommended_actions WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.executed_actions WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.handoff_events WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.handoff_cases WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.commercial_outcome_events WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.commercial_outcomes WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.commercial_appointments WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.operational_notes WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.outbound_dispatch_events WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.outbound_dispatches WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.follow_up_tasks WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.campaign_attributions WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.outbox_events WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.commercial_journeys WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.contacts WHERE workspace_id = $1', [workspaceId]);
-      await client.query('DELETE FROM public.inbound_channel_events WHERE workspace_id = $1', [workspaceId]);
-
-      await client.query('COMMIT');
+      const sql = `
+        DO $$
+        BEGIN
+          PERFORM pg_catalog.set_config('sales_os.allow_redaction', 'true', true);
+          DELETE FROM public.conversation_message_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.conversation_messages WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.known_fact_supersessions WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.known_fact_commands WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.known_facts WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.decision_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.decision_states WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.recommended_actions WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.executed_actions WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.handoff_case_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.handoff_cases WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.commercial_outcomes WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.commercial_appointments WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.operational_notes WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.outbound_dispatch_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.outbound_dispatches WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.pipeline_stage_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.follow_up_tasks WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.outbox_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.commercial_journeys WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.contacts WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.inbound_channel_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+          DELETE FROM public.acquisition_contexts WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}';
+        END $$;
+      `;
+      await client.query(sql);
 
       return {
         success: true,
@@ -240,7 +243,6 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
         message: 'Histórico de conversas, jornadas e contatos limpo com sucesso!',
       };
     } catch (err: any) {
-      await client.query('ROLLBACK');
       return reply.status(500).send({ error: err.message, statusCode: 500 });
     } finally {
       client.release();
@@ -248,33 +250,43 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
   });
 
   // 5.1 Clear / Reset Single Journey
-  app.post('/api/v1/workspaces/:workspaceId/journeys/:journeyId/clear', async (request: FastifyRequest<{ Params: { workspaceId: string; journeyId: string } }>, reply: FastifyReply) => {
-    const { workspaceId, journeyId } = request.params;
+  app.post('/api/v1/workspaces/:workspaceId/channels/whatsapp/clear-journey', async (request: FastifyRequest<{
+    Params: { workspaceId: string };
+    Body: { journeyId: string };
+  }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    const { journeyId } = (request.body || {}) as { journeyId: string };
+    if (!journeyId) {
+      return reply.status(400).send({ error: 'journeyId is required in request body', statusCode: 400 });
+    }
     const client = await dbPool.connect();
     try {
-      await client.query('BEGIN');
-      await client.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'true', true)");
-
-      await client.query('DELETE FROM public.conversation_message_events WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.conversation_messages WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.known_fact_events WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.known_facts WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.decision_events WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.decision_states WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.recommended_actions WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.executed_actions WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.handoff_events WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.handoff_cases WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.commercial_outcome_events WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.commercial_outcomes WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.commercial_appointments WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.operational_notes WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.outbound_dispatch_events WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.outbound_dispatches WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.follow_up_tasks WHERE workspace_id = $1 AND journey_id = $2', [workspaceId, journeyId]);
-      await client.query('DELETE FROM public.commercial_journeys WHERE workspace_id = $1 AND id = $2', [workspaceId, journeyId]);
-
-      await client.query('COMMIT');
+      const sql = `
+        DO $$
+        BEGIN
+          PERFORM pg_catalog.set_config('sales_os.allow_redaction', 'true', true);
+          DELETE FROM public.conversation_message_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND message_id IN (SELECT id FROM public.conversation_messages WHERE journey_id = '${journeyId.replace(/'/g, "''")}');
+          DELETE FROM public.conversation_messages WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.known_fact_supersessions WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.known_fact_commands WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.known_facts WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.decision_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.decision_states WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.recommended_actions WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.executed_actions WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.handoff_case_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND handoff_case_id IN (SELECT id FROM public.handoff_cases WHERE journey_id = '${journeyId.replace(/'/g, "''")}');
+          DELETE FROM public.handoff_cases WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.commercial_outcomes WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.commercial_appointments WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.outbound_dispatch_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND outbound_dispatch_id IN (SELECT id FROM public.outbound_dispatches WHERE journey_id = '${journeyId.replace(/'/g, "''")}');
+          DELETE FROM public.outbound_dispatches WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.pipeline_stage_events WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.follow_up_tasks WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.acquisition_contexts WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND journey_id = '${journeyId.replace(/'/g, "''")}';
+          DELETE FROM public.commercial_journeys WHERE workspace_id = '${workspaceId.replace(/'/g, "''")}' AND id = '${journeyId.replace(/'/g, "''")}';
+        END $$;
+      `;
+      await client.query(sql);
 
       return {
         success: true,
@@ -283,7 +295,6 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
         message: 'Conversa limpa com sucesso!',
       };
     } catch (err: any) {
-      await client.query('ROLLBACK');
       return reply.status(500).send({ error: err.message, statusCode: 500 });
     } finally {
       client.release();
