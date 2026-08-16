@@ -985,8 +985,9 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       }
 
       const row = journeyRes.rows[0];
-      const contactPhone = row.phone;
-      const whatsappTarget = row.whatsapp_id || (contactPhone.includes('@') ? contactPhone : `${contactPhone}@c.us`);
+      const contactPhone = row.phone || '';
+      const cleanDigits = contactPhone.replace(/\D/g, '');
+      const whatsappTarget = row.whatsapp_id || (cleanDigits ? `${cleanDigits}@c.us` : (contactPhone.includes('@') ? contactPhone : `${contactPhone}@c.us`));
       const sessionName = getSessionName(workspaceId);
       let channelConnectionId = row.channel_connection_id;
 

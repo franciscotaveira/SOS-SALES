@@ -35,9 +35,10 @@ export class WahaSyncService {
       const meRes = await fetch(`${WAHA_BASE_URL}/api/sessions`, {
         headers: { 'x-api-key': WAHA_API_KEY },
       });
-      const sessions = (await meRes.json()) as Array<{ name: string; status: string; me?: any }>;
-      const phoneNumber = session?.me?.id ? session.me.id.split('@')[0] : (session?.name || '554933401014');
-      const channelName = session?.me?.pushName ? `WhatsApp (${session.me.pushName})` : `WhatsApp (${sessionName})`;
+      const sessions = (await meRes.json().catch(() => [])) as Array<{ name: string; status: string; me?: any }>;
+      const currentSession = Array.isArray(sessions) ? sessions.find((s) => s.name === sessionName) : null;
+      const phoneNumber = currentSession?.me?.id ? currentSession.me.id.split('@')[0] : (currentSession?.name || '554933401014');
+      const channelName = currentSession?.me?.pushName ? `WhatsApp (${currentSession.me.pushName})` : `WhatsApp (${sessionName})`;
 
       let channelConnectionId: string;
       const existing = await client.query('SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1', [workspaceId]);
