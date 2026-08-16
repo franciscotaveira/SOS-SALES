@@ -40,7 +40,7 @@ export class MultimodalVisionAnalyzer {
   constructor(
     apiKey?: string,
     baseUrl = 'https://openrouter.ai/api/v1',
-    visionModel = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'
+    visionModel = 'meta-llama/llama-3.2-11b-vision-instruct:free'
   ) {
     this.apiKey = apiKey || process.env.OPENROUTER_API_KEY || '';
     this.baseUrl = baseUrl;
