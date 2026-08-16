@@ -82,15 +82,43 @@ infra:
 
 ---
 
-## 4. Comandos de Operação e Deploy
+## 4. Sincronização em Tempo Real (Supabase WebSockets)
+
+Todas as 7 áreas operacionais do frontend possuem subscrições ativas via `supabase.channel('live-*')` com fallback de polling silencioso:
+- **Cockpit**: `commercial_journeys` e `conversation_messages`
+- **Kanban**: `commercial_journeys`
+- **Conversas**: `commercial_journeys`
+- **Agenda**: `workspace_appointments`
+- **Anotações**: `workspace_notes`
+- **Resultados / Traffic Proof**: `commercial_outcomes` e `campaign_spend_daily_facts`
+- **Grupos**: `conversation_messages`
+
+---
+
+## 5. Workers e Processamento Assíncrono
+
+- `WahaInboundWorker`: Processa webhooks de mensagens e eventos recebidos do WhatsApp.
+- `WahaOutboundWorker`: Monitora e envia mensagens aprovadas no WhatsApp via API REST do WAHA com retries exponenciais e lease tokens.
+- `MetaSpendImportWorker`: Ingestão periódica de gastos de campanhas na Meta Graph API v20.
+- `CapiDispatchWorker`: Despacha eventos `Purchase`/`Lead` para a Conversions API da Meta com SHA-256 de PII.
+- `RecurringFollowUpWorker`: Expansão RFC 5545 de regras de recorrência RRULE para follow-ups comerciais.
+
+---
+
+## 6. Comandos de Operação, Teste e Deploy
 
 ```bash
-# Build e Deploy Local -> VPS
+# Build do Frontend e da API
 npm run build
 npm --prefix apps/api run build
+
+# Deploy Local -> VPS
 rsync -avz --delete dist/ vps:/opt/sos-sales/dist/
 rsync -avz --delete apps/api/dist/ vps:/opt/sos-sales/api/dist/
 ssh vps "docker restart sos-sales-api"
+
+# Auditoria Geral de Rotas de Produção (9 Rotas E2E)
+node test-e2e-all-routes.js
 
 # Validação RLS no Supabase Remoto
 ssh vps "docker exec -i sos-sales-api node" < scripts/full-tstack-rls-test.cjs
