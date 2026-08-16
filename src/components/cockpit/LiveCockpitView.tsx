@@ -492,6 +492,31 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
+  const handleClearCurrentJourney = async () => {
+    if (!selectedJourneyId) return;
+    if (!window.confirm("Deseja realmente reiniciar e limpar esta conversa específica?")) {
+      return;
+    }
+    setActionInProgress(true);
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspaceId}/journeys/${selectedJourneyId}/clear`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showNotification("success", "Conversa limpa com sucesso.");
+        onSelectedJourneyChange(undefined);
+        await refresh();
+      } else {
+        showNotification("error", data.error || "Erro ao limpar conversa.");
+      }
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Falha na conexão.");
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
   const queue = priorities.state === "ready" ? priorities.value : journeys.state === "ready" ? journeys.value : [];
   const view = cockpit.state === "ready" ? cockpit.value : null;
 
@@ -608,6 +633,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               onOpenWabaButtonsModal={() => setWabaButtonsModalOpen(true)}
               onOpenWabaTemplateModal={() => setWabaTemplateModalOpen(true)}
               onCreateOutboundDraft={handleCreateOutboundDraft}
+              onClearCurrentJourney={handleClearCurrentJourney}
               actionInProgress={actionInProgress}
             />
           )}
@@ -705,6 +731,7 @@ function LiveJourneyBody({
   onOpenWabaButtonsModal,
   onOpenWabaTemplateModal,
   onCreateOutboundDraft,
+  onClearCurrentJourney,
   actionInProgress,
 }: {
   view: ApiCockpitView;
@@ -717,6 +744,7 @@ function LiveJourneyBody({
   onOpenWabaButtonsModal: () => void;
   onOpenWabaTemplateModal: () => void;
   onCreateOutboundDraft: (text: string) => void;
+  onClearCurrentJourney?: () => void;
   actionInProgress: boolean;
 }) {
   const { journey, acquisitionContexts, messages, decisionState, recommendation, handoff, outcome, knownFacts } = view;
@@ -829,6 +857,18 @@ function LiveJourneyBody({
             >
               <DollarSign size={12} /> Desfecho
             </button>
+
+            {onClearCurrentJourney && (
+              <button
+                type="button"
+                onClick={onClearCurrentJourney}
+                disabled={actionInProgress}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-600 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-200 disabled:opacity-60 transition"
+                title="Reiniciar/limpar apenas esta conversa"
+              >
+                <Trash2 size={12} /> Limpar
+              </button>
+            )}
           </div>
         </div>
       </header>
