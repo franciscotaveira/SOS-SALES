@@ -73,6 +73,13 @@ interface JourneyDetailRow extends QueryResultRow {
   channel_phone_number: string | null;
   channel_name: string | null;
   channel_status: string | null;
+  acquisitions: unknown[];
+  messages: unknown[];
+  facts: unknown[];
+  state: Record<string, unknown> | null;
+  recommendation: Record<string, unknown> | null;
+  handoff: Record<string, unknown> | null;
+  outcome: Record<string, unknown> | null;
 }
 
 function asIso(value: Date | string | null): string | null {
@@ -189,37 +196,24 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
     messageLimit: number,
   ): Promise<CockpitJourneyView | null> {
     return this.withActor(actor, async (client) => {
-      // Resolve by both IDs inside the actor-scoped transaction. This keeps a
-      // cross-workspace journey indistinguishable from a missing journey.
-      const journeyResult = await client.query<JourneyDetailRow>(`
-        SELECT j.id, j.contact_id, j.status, j.pipeline_stage,
-               j.primary_service_or_product, j.total_revenue_minor, j.currency,
-               j.started_at, j.closed_at, j.updated_at,
-               c.name AS contact_name, c.phone AS contact_phone,
-               cc.id AS channel_id, cc.provider AS channel_provider,
-               cc.phone_number AS channel_phone_number, cc.name AS channel_name,
-               cc.status AS channel_status
-        FROM public.commercial_journeys j
-        JOIN public.contacts c
-          ON c.workspace_id = j.workspace_id AND c.id = j.contact_id
-        LEFT JOIN public.channel_connections cc
-          ON cc.workspace_id = j.workspace_id AND cc.id = j.channel_connection_id
-        WHERE j.workspace_id = $1 AND j.id = $2
-      `, [workspaceId, journeyId]);
-      const row = journeyResult.rows[0];
-      if (!row) return null;
-
-      // Execute all journey related sub-entities in a single consolidated query
+      // Execute journey and all sub-entities in a single consolidated query
       // to eliminate multi-roundtrip network latency across remote database pooler.
-      const compositeResult = await client.query(`
+      const journeyResult = await client.query<JourneyDetailRow>(`
         SELECT
+          j.id, j.contact_id, j.status, j.pipeline_stage,
+          j.primary_service_or_product, j.total_revenue_minor, j.currency,
+          j.started_at, j.closed_at, j.updated_at,
+          c.name AS contact_name, c.phone AS contact_phone,
+          cc.id AS channel_id, cc.provider AS channel_provider,
+          cc.phone_number AS channel_phone_number, cc.name AS channel_name,
+          cc.status AS channel_status,
           (
             SELECT COALESCE(json_agg(a ORDER BY a.occurred_at ASC, a.id ASC), '[]'::json)
             FROM (
               SELECT id, source, campaign_id, campaign_name, ad_set_id, ad_id,
                      creative_code, offer_hook, entry_message, confidence, occurred_at
               FROM public.acquisition_contexts
-              WHERE workspace_id = $1 AND journey_id = $2
+              WHERE workspace_id = j.workspace_id AND journey_id = j.id
             ) a
           ) AS acquisitions,
           (
@@ -227,7 +221,7 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
             FROM (
               SELECT id, direction, sender_type, text_content, sent_at
               FROM public.conversation_messages
-              WHERE workspace_id = $1 AND journey_id = $2
+              WHERE workspace_id = j.workspace_id AND journey_id = j.id
               ORDER BY sent_at DESC, id DESC
               LIMIT $3
             ) m
@@ -237,7 +231,7 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
             FROM (
               SELECT id, key, value, source, confidence, confirmed_by_customer, observed_at
               FROM public.known_facts
-              WHERE workspace_id = $1 AND journey_id = $2 AND superseded_by IS NULL
+              WHERE workspace_id = j.workspace_id AND journey_id = j.id AND superseded_by IS NULL
             ) f
           ) AS facts,
           (
@@ -247,7 +241,7 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
                      secondary_frictions, friction_evidence, friction_confidence,
                      friction_resolved, updated_at
               FROM public.decision_states
-              WHERE workspace_id = $1 AND journey_id = $2
+              WHERE workspace_id = j.workspace_id AND journey_id = j.id
             ) s
           ) AS state,
           (
@@ -256,7 +250,7 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
               SELECT id, suggested_action, suggested_draft_text, micro_commitment_goal,
                      confidence, policy_status, policy_reason, created_at
               FROM public.recommended_actions
-              WHERE workspace_id = $1 AND journey_id = $2
+              WHERE workspace_id = j.workspace_id AND journey_id = j.id
               ORDER BY created_at DESC, id DESC
               LIMIT 1
             ) r
@@ -267,7 +261,7 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
               SELECT id, status, assigned_to_user_id, briefing, trigger_reason,
                      opened_at, accepted_at, resolved_at
               FROM public.handoff_cases
-              WHERE workspace_id = $1 AND journey_id = $2
+              WHERE workspace_id = j.workspace_id AND journey_id = j.id
                 AND status IN ('PENDING', 'ACCEPTED', 'RETURNED_TO_AI')
               ORDER BY opened_at DESC, id DESC
               LIMIT 1
@@ -279,20 +273,28 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
               SELECT id, result, final_revenue_minor, currency, closed_reason,
                      capi_status, occurred_at
               FROM public.commercial_outcomes
-              WHERE workspace_id = $1 AND journey_id = $2
+              WHERE workspace_id = j.workspace_id AND journey_id = j.id
               LIMIT 1
             ) o
-          ) AS outcome;
+          ) AS outcome
+        FROM public.commercial_journeys j
+        JOIN public.contacts c
+          ON c.workspace_id = j.workspace_id AND c.id = j.contact_id
+        LEFT JOIN public.channel_connections cc
+          ON cc.workspace_id = j.workspace_id AND cc.id = j.channel_connection_id
+        WHERE j.workspace_id = $1 AND j.id = $2
       `, [workspaceId, journeyId, messageLimit]);
 
-      const comp = compositeResult.rows[0] || {};
-      const acquisitionsList = Array.isArray(comp.acquisitions) ? comp.acquisitions : [];
-      const messagesList = Array.isArray(comp.messages) ? comp.messages : [];
-      const factsList = Array.isArray(comp.facts) ? comp.facts : [];
-      const state = comp.state as Record<string, unknown> | null;
-      const recommendation = comp.recommendation as Record<string, unknown> | null;
-      const handoff = comp.handoff as Record<string, unknown> | null;
-      const outcome = comp.outcome as Record<string, unknown> | null;
+      const row = journeyResult.rows[0];
+      if (!row) return null;
+
+      const acquisitionsList = Array.isArray(row.acquisitions) ? row.acquisitions : [];
+      const messagesList = Array.isArray(row.messages) ? row.messages : [];
+      const factsList = Array.isArray(row.facts) ? row.facts : [];
+      const state = row.state as Record<string, unknown> | null;
+      const recommendation = row.recommendation as Record<string, unknown> | null;
+      const handoff = row.handoff as Record<string, unknown> | null;
+      const outcome = row.outcome as Record<string, unknown> | null;
 
       return {
         journey: {
