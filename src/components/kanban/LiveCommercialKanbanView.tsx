@@ -1,18 +1,15 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
+  Sparkles,
+  Search,
+  RefreshCw,
   Clock,
   ArrowRight,
   ArrowLeft,
-  UserRound,
-  RefreshCw,
   AlertCircle,
-  MessageSquare,
-  Sparkles,
-  Search,
-  Filter,
+  Columns3,
 } from 'lucide-react';
 import { ApiJourney, SalesOsGateway } from '../../services/salesOsGateway';
-import { CommercialStage } from '../../types/cockpit';
 
 interface LiveCommercialKanbanViewProps {
   workspaceId: string;
@@ -21,8 +18,8 @@ interface LiveCommercialKanbanViewProps {
   onSwitchToCockpit?: () => void;
 }
 
-interface ColumnDef {
-  id: CommercialStage;
+interface KanbanColumn {
+  id: string;
   title: string;
   subtitle: string;
   badgeBg: string;
@@ -30,46 +27,46 @@ interface ColumnDef {
   headerBorder: string;
 }
 
-const COLUMNS: ColumnDef[] = [
+const COLUMNS: KanbanColumn[] = [
   {
     id: 'new',
-    title: 'Novos Leads',
-    subtitle: 'Triagem inicial',
-    badgeBg: 'bg-slate-800',
-    badgeText: 'text-slate-200',
-    headerBorder: 'border-slate-700',
+    title: '1. Novos Leads',
+    subtitle: 'Sem contato inicial',
+    badgeBg: 'bg-blue-100',
+    badgeText: 'text-blue-800',
+    headerBorder: 'border-blue-200',
   },
   {
     id: 'contacted',
-    title: 'Em Contato',
-    subtitle: 'Conversando / Sondagem',
-    badgeBg: 'bg-blue-900/40',
-    badgeText: 'text-blue-300',
-    headerBorder: 'border-blue-700/50',
+    title: '2. Em Contato',
+    subtitle: 'Interação iniciada',
+    badgeBg: 'bg-indigo-100',
+    badgeText: 'text-indigo-800',
+    headerBorder: 'border-indigo-200',
   },
   {
     id: 'qualified',
-    title: 'Qualificados',
-    subtitle: 'Fit confirmado',
-    badgeBg: 'bg-emerald-900/40',
-    badgeText: 'text-emerald-300',
-    headerBorder: 'border-emerald-700/50',
+    title: '3. Qualificados',
+    subtitle: 'Fatos e dor mapeados',
+    badgeBg: 'bg-purple-100',
+    badgeText: 'text-purple-800',
+    headerBorder: 'border-purple-200',
   },
   {
     id: 'proposal',
-    title: 'Proposta Enviada',
-    subtitle: 'Aguardando decisão',
-    badgeBg: 'bg-amber-900/40',
-    badgeText: 'text-amber-300',
-    headerBorder: 'border-amber-700/50',
+    title: '4. Proposta',
+    subtitle: 'Oferta enviada',
+    badgeBg: 'bg-amber-100',
+    badgeText: 'text-amber-800',
+    headerBorder: 'border-amber-200',
   },
   {
-    id: 'negotiation',
-    title: 'Em Negociação',
-    subtitle: 'Fechamento / Objeções',
-    badgeBg: 'bg-violet-900/40',
-    badgeText: 'text-violet-300',
-    headerBorder: 'border-violet-700/50',
+    id: 'won',
+    title: '5. Fechados (WON)',
+    subtitle: 'Venda confirmada',
+    badgeBg: 'bg-emerald-100',
+    badgeText: 'text-emerald-800',
+    headerBorder: 'border-emerald-200',
   },
 ];
 
@@ -90,11 +87,11 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
     setError(null);
     try {
       if ('listJourneys' in gateway && typeof (gateway as any).listJourneys === 'function') {
-        const res = await (gateway as any).listJourneys(workspaceId, { limit: 50 });
+        const res = await (gateway as any).listJourneys(workspaceId, { limit: 150 });
         setJourneys(res.data || []);
       } else {
-        const rawJourneys = await gateway.getJourneys(workspaceId);
-        const mapped: ApiJourney[] = rawJourneys.map((j) => ({
+        const raw = await gateway.getJourneys(workspaceId);
+        const mapped: ApiJourney[] = raw.map((j) => ({
           id: j.id,
           contactId: j.id,
           contactName: j.leadName,
@@ -108,7 +105,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
         setJourneys(mapped);
       }
     } catch (err: any) {
-      setError(err?.message || 'Erro ao carregar o funil ao vivo.');
+      setError(err?.message || 'Erro ao carregar funil comercial.');
     } finally {
       setLoading(false);
     }
@@ -120,30 +117,29 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
 
   const handleStageMove = async (
     journey: ApiJourney,
-    direction: 'prev' | 'next',
-    e: React.MouseEvent,
+    direction: 'next' | 'prev',
+    e: React.MouseEvent
   ) => {
     e.stopPropagation();
-    const currentIdx = COLUMNS.findIndex((c) => c.id === journey.pipelineStage?.toLowerCase());
+    const stagesOrder = ['NEW', 'CONTACTED', 'QUALIFIED', 'PROPOSAL', 'WON'];
+    const currentIdx = stagesOrder.indexOf((journey.pipelineStage || 'NEW').toUpperCase());
     if (currentIdx === -1) return;
-    const targetIdx = direction === 'next' ? currentIdx + 1 : currentIdx - 1;
-    if (targetIdx < 0 || targetIdx >= COLUMNS.length) return;
 
-    const targetStage = COLUMNS[targetIdx]?.id;
-    if (!targetStage) return;
+    const newIdx = direction === 'next' ? currentIdx + 1 : currentIdx - 1;
+    if (newIdx < 0 || newIdx >= stagesOrder.length) return;
 
+    const nextStage = stagesOrder[newIdx];
     setUpdatingId(journey.id);
+
     try {
-      if ('setJourneyStage' in gateway && typeof (gateway as any).setJourneyStage === 'function') {
-        await (gateway as any).setJourneyStage(workspaceId, journey.id, targetStage.toUpperCase());
-      } else if (gateway.updateJourneyStage) {
-        await gateway.updateJourneyStage(journey.id, targetStage);
+      if ('transitionJourneyStage' in gateway && typeof (gateway as any).transitionJourneyStage === 'function') {
+        await (gateway as any).transitionJourneyStage(workspaceId, journey.id, nextStage);
       }
       setJourneys((prev) =>
-        prev.map((j) => (j.id === journey.id ? { ...j, pipelineStage: targetStage } : j))
+        prev.map((j) => (j.id === journey.id ? { ...j, pipelineStage: nextStage } : j))
       );
     } catch (err: any) {
-      alert(`Falha ao alterar etapa: ${err?.message}`);
+      alert(`Falha ao avançar estágio: ${err.message}`);
     } finally {
       setUpdatingId(null);
     }
@@ -171,24 +167,24 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   const totalActive = filtered.length;
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-100 p-4 sm:p-6 overflow-hidden">
+    <div className="flex flex-col h-full bg-slate-50/50 text-slate-900 p-4 sm:p-6 overflow-hidden max-w-7xl mx-auto w-full">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-emerald-400" /> Funil Comercial Ao Vivo
+            <h1 className="text-xl font-bold text-slate-950 font-heading tracking-tight flex items-center gap-2">
+              <Columns3 className="w-5 h-5 text-emerald-600" /> Funil Comercial Ao Vivo
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               {totalActive} Leads Ativos
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5">
             Progressão supervisionada de jornadas comerciais conectada ao banco soberano.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -196,14 +192,14 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar por nome, telefone..."
-              className="pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors w-48 sm:w-64"
+              className="pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors w-48 sm:w-64 shadow-2xs"
             />
           </div>
 
           <button
             onClick={() => fetchJourneys()}
             disabled={loading}
-            className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-slate-600 hover:text-slate-900 transition-colors shadow-2xs cursor-pointer"
             title="Atualizar funil"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -212,12 +208,12 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
       </div>
 
       {error && (
-        <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+        <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
           <span>{error}</span>
           <button
             onClick={() => fetchJourneys()}
-            className="ml-auto underline font-medium cursor-pointer"
+            className="ml-auto underline font-bold cursor-pointer hover:text-rose-900"
           >
             Tentar novamente
           </button>
@@ -225,17 +221,17 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
       )}
 
       {/* Kanban Board Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mt-4 flex-1 min-h-0 overflow-x-auto">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-3.5 mt-4 flex-1 min-h-0 overflow-x-auto">
         {columnsData.map((col, colIdx) => (
           <div
             key={col.id}
-            className="flex flex-col bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden min-w-[240px]"
+            className="flex flex-col bg-slate-100/70 border border-slate-200 rounded-2xl overflow-hidden min-w-[240px] shadow-2xs"
           >
             {/* Column Header */}
-            <div className={`p-3 border-b ${col.headerBorder} bg-slate-900/90 flex items-center justify-between`}>
+            <div className={`p-3 border-b ${col.headerBorder} bg-white flex items-center justify-between`}>
               <div>
-                <span className="font-semibold text-xs text-white block">{col.title}</span>
-                <span className="text-[10px] text-slate-400">{col.subtitle}</span>
+                <span className="font-bold text-xs text-slate-900 block font-heading">{col.title}</span>
+                <span className="text-[10px] text-slate-500">{col.subtitle}</span>
               </div>
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${col.badgeBg} ${col.badgeText}`}>
                 {col.items.length}
@@ -246,18 +242,16 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
             <div className="flex-1 p-2 space-y-2 overflow-y-auto min-h-0">
               {loading ? (
                 <div className="space-y-2 pt-2">
-                  <div className="h-20 bg-slate-800/40 rounded-lg animate-pulse" />
-                  <div className="h-20 bg-slate-800/40 rounded-lg animate-pulse" />
+                  <div className="h-20 bg-white rounded-xl animate-pulse" />
+                  <div className="h-20 bg-white rounded-xl animate-pulse" />
                 </div>
               ) : col.items.length === 0 ? (
-                <div className="h-32 flex flex-col items-center justify-center text-center p-3 text-slate-600">
-                  <span className="text-[11px]">Nenhum lead nesta etapa</span>
+                <div className="h-32 flex flex-col items-center justify-center text-center p-3 text-slate-400">
+                  <span className="text-[11px] font-medium">Nenhum lead nesta etapa</span>
                 </div>
               ) : (
                 col.items.map((journey) => {
                   const isUpdating = updatingId === journey.id;
-                  const isOverdue = false;
-                  const isDue = false;
 
                   return (
                     <div
@@ -266,47 +260,31 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                         onSelectJourney?.(journey.id);
                         onSwitchToCockpit?.();
                       }}
-                      className={`p-3 bg-slate-900 border rounded-lg transition-all cursor-pointer relative group hover:border-slate-600 hover:shadow-lg ${
-                        isOverdue
-                          ? 'border-rose-500/40 bg-rose-950/10'
-                          : isDue
-                          ? 'border-amber-500/40 bg-amber-950/10'
-                          : 'border-slate-800'
-                      }`}
+                      className="p-3 bg-white border border-slate-200 rounded-xl transition-all cursor-pointer relative group hover:border-emerald-500 hover:shadow-xs"
                     >
-                      <div className="flex items-start justify-between gap-1 mb-1.5">
-                        <span className="text-xs font-bold text-white group-hover:text-emerald-400 transition-colors line-clamp-1">
+                      <div className="flex items-start justify-between gap-1 mb-1">
+                        <span className="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors line-clamp-1">
                           {journey.contactName || journey.contactPhone || 'Lead Sem Nome'}
                         </span>
                       </div>
 
                       {journey.contactPhone && (
-                        <p className="text-[11px] text-slate-400 font-mono mb-1">
+                        <p className="text-[11px] text-slate-500 font-mono mb-1.5">
                           {journey.contactPhone}
                         </p>
                       )}
 
                       {journey.primaryServiceOrProduct && (
-                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 mb-2">
+                        <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 mb-2 truncate max-w-full">
                           {journey.primaryServiceOrProduct}
                         </span>
                       )}
 
                       {/* Card Footer */}
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[10px] text-slate-500">
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          <span
-                            className={
-                              isOverdue
-                                ? 'text-rose-400 font-bold'
-                                : isDue
-                                ? 'text-amber-400 font-bold'
-                                : 'text-slate-400'
-                            }
-                          >
-                            {isOverdue ? 'SLA Estourado' : isDue ? 'SLA Crítico' : 'SLA OK'}
-                          </span>
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] text-slate-400">
+                        <div className="flex items-center gap-1 font-medium">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          <span>Ativo</span>
                         </div>
 
                         {/* Fast Move Buttons */}
@@ -315,7 +293,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                             <button
                               disabled={isUpdating}
                               onClick={(e) => handleStageMove(journey, 'prev', e)}
-                              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors cursor-pointer"
+                              className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
                               title="Voltar etapa"
                             >
                               <ArrowLeft className="w-3 h-3" />
@@ -325,7 +303,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                             <button
                               disabled={isUpdating}
                               onClick={(e) => handleStageMove(journey, 'next', e)}
-                              className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors cursor-pointer"
+                              className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
                               title="Avançar etapa"
                             >
                               <ArrowRight className="w-3 h-3" />

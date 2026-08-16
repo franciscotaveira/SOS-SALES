@@ -365,7 +365,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
                         {/* Role / Mode Tag */}
                         {!collapsed && item.tag && (
-                          <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 font-medium">
                             {item.tag}
                           </span>
                         )}

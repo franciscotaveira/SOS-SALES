@@ -122,12 +122,10 @@ function QueueCard({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full rounded-xl border-2 p-3 text-left transition focus-visible:outline-offset-2 ${
+      className={`w-full rounded-xl border p-3 text-left transition-all focus-visible:outline-offset-2 ${
         selected
-          ? "border-blue-600 bg-blue-50 shadow-sm"
-          : urgent
-            ? "border-rose-200 bg-rose-50 hover:border-rose-400"
-            : "border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50"
+          ? "border-emerald-600 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-600/30"
+          : "border-slate-200 bg-white hover:border-emerald-500/50 hover:bg-slate-50/60 shadow-2xs"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -137,22 +135,22 @@ function QueueCard({
         </div>
         {hasPriority && (
           <span
-            className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-bold ${
+            className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold border ${
               urgent
-                ? "bg-rose-100 text-rose-700"
+                ? "bg-rose-50 text-rose-700 border-rose-200"
                 : item.slaState === "DUE"
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-emerald-100 text-emerald-700"
+                  ? "bg-amber-50 text-amber-800 border-amber-200"
+                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
             }`}
           >
             {item.slaState === "OVERDUE" ? "SLA vencido" : item.slaState === "DUE" ? "SLA próximo" : "No prazo"}
           </span>
         )}
       </div>
-      <p className="mt-2 line-clamp-2 text-sm leading-5 text-slate-700">{secondary}</p>
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-200 pt-2 text-xs text-slate-500">
-        <span className="truncate">{hasPriority ? item.priorityReason : stageLabel(item.pipelineStage)}</span>
-        <span className="shrink-0 font-mono">{formatDate(time)}</span>
+      <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-600">{secondary}</p>
+      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+        <span className="truncate font-medium">{hasPriority ? item.priorityReason : stageLabel(item.pipelineStage)}</span>
+        <span className="shrink-0 font-mono text-[10px]">{formatDate(time)}</span>
       </div>
     </button>
   );
@@ -521,48 +519,49 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         </div>
       )}
 
-      <section className="mb-4 flex flex-wrap items-start justify-between gap-4 rounded-2xl border-2 border-blue-200 bg-white px-5 py-4 shadow-sm">
+      <section className="mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 shadow-xs">
         <div>
-          <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-blue-700">
-            <DatabaseZap size={15} /> Operação autenticada
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Operação Autenticada
           </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Cockpit ao vivo</h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <h1 className="mt-0.5 text-xl font-bold tracking-tight text-slate-950 font-heading">Cockpit ao Vivo</h1>
+          <p className="text-xs text-slate-500">
             Fila, conversa e contexto vindos do Supabase. Mutações reais com auditoria, JWT e RLS.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             type="button"
             onClick={() => void handleClearHistory()}
             disabled={actionInProgress}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-rose-300 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-60 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-200 disabled:opacity-60 transition shadow-2xs cursor-pointer"
             title="Apaga todas as conversas e leads sincronizados deste workspace"
           >
-            <Trash2 size={16} /> Limpar Histórico do Workspace
+            <Trash2 size={14} /> Limpar Histórico do Workspace
           </button>
           <button
             type="button"
             onClick={() => void refresh()}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-blue-600 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-60 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-emerald-600 text-white px-3.5 py-1.5 text-xs font-bold disabled:opacity-60 transition shadow-2xs cursor-pointer"
           >
-            <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} /> Atualizar dados
+            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} /> Atualizar dados
           </button>
         </div>
       </section>
 
       <div className="grid min-h-[660px] gap-4 xl:grid-cols-[310px_minmax(0,1fr)_340px]">
         {/* Priority Queue Sidebar */}
-        <aside className="cockpit-panel flex min-h-0 flex-col border-2 border-blue-200">
-          <div className="cockpit-panel-header flex items-center justify-between px-4 py-3">
+        <aside className="bg-white border border-slate-200 rounded-2xl shadow-xs flex min-h-0 flex-col overflow-hidden">
+          <div className="border-b border-slate-100 bg-slate-50/70 flex items-center justify-between px-4 py-3">
             <div>
-              <p className="text-sm font-bold text-slate-900">Fila priorizada</p>
-              <p className="text-xs text-slate-500">até 5 itens com contexto real</p>
+              <p className="text-xs font-bold text-slate-900 font-heading uppercase tracking-wider">Fila Priorizada</p>
+              <p className="text-[11px] text-slate-500">até 5 itens com contexto real</p>
             </div>
-            <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-bold text-blue-700">{queue.length}</span>
+            <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-bold text-slate-700">{queue.length}</span>
           </div>
-          <div className="space-y-2 overflow-y-auto p-3">
+          <div className="space-y-2 overflow-y-auto p-3 flex-1">
             {priorities.state === "loading" || journeys.state === "loading" ? (
               <p className="px-2 py-5 text-sm text-slate-500">Carregando fila…</p>
             ) : null}
@@ -583,7 +582,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         </aside>
 
         {/* Central Conversation and Actions */}
-        <section className="cockpit-panel min-w-0 border-2 border-slate-200">
+        <section className="bg-white border border-slate-200 rounded-2xl shadow-xs min-w-0 overflow-hidden flex flex-col">
           {cockpit.state === "loading" && (
             <div className="flex h-full min-h-[560px] items-center justify-center text-sm text-slate-500">
               Carregando jornada autenticada…
@@ -615,26 +614,26 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         </section>
 
         {/* Right Dossier Sidebar */}
-        <aside className="cockpit-panel min-w-0 border-2 border-violet-200">
-          <div className="cockpit-panel-header flex items-center justify-between px-4 py-3">
+        <aside className="bg-white border border-slate-200 rounded-2xl shadow-xs min-w-0 overflow-hidden flex flex-col">
+          <div className="border-b border-slate-100 bg-slate-50/70 flex items-center justify-between px-4 py-3">
             <div>
-              <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                <Sparkles size={16} className="text-violet-600" /> Dossiê vivo
+              <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading uppercase tracking-wider">
+                <Sparkles size={14} className="text-indigo-600" /> Dossiê Vivo
               </p>
-              <p className="mt-0.5 text-xs text-slate-500">fatos e decisões com proveniência</p>
+              <p className="text-[11px] text-slate-500">fatos e decisões com proveniência</p>
             </div>
             {view && (
               <button
                 type="button"
                 onClick={() => setFactModalOpen(true)}
-                className="inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-violet-50 px-2 py-1 text-xs font-bold text-violet-700 hover:bg-violet-100"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs"
                 title="Registrar fato conhecido"
               >
-                <Plus size={14} /> Fato
+                <Plus size={13} /> Fato
               </button>
             )}
           </div>
-          <div className="space-y-3 p-3">
+          <div className="space-y-3 p-3 overflow-y-auto flex-1">
             {!view && availability("Sem dossiê selecionado", "O dossiê aparece apenas para uma jornada acessível.")}
             {view && <LiveDossier view={view} onOpenFactModal={() => setFactModalOpen(true)} />}
           </div>
@@ -1037,32 +1036,32 @@ function LiveDossier({
   const { journey, knownFacts, decisionState, handoff, outcome } = view;
   return (
     <>
-      <section className="rounded-xl border-2 border-blue-200 bg-blue-50 p-3">
-        <p className="text-xs font-bold uppercase tracking-[0.12em] text-blue-700">Jornada</p>
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-heading">Jornada</p>
         <p className="mt-1 text-sm font-bold text-slate-900">
           {journey.primaryServiceOrProduct || "Produto/serviço não registrado"}
         </p>
-        <dl className="mt-2 space-y-1 text-xs text-slate-600">
+        <dl className="mt-2 space-y-1 text-xs text-slate-600 border-t border-slate-100 pt-2">
           <div className="flex justify-between gap-2">
-            <dt>Iniciada</dt>
-            <dd>{formatDate(journey.startedAt)}</dd>
+            <dt className="text-slate-500">Iniciada</dt>
+            <dd className="font-medium text-slate-800">{formatDate(journey.startedAt)}</dd>
           </div>
           <div className="flex justify-between gap-2">
-            <dt>Receita registrada</dt>
-            <dd className="font-mono">{formatMoney(journey.totalRevenueMinor, journey.currency)}</dd>
+            <dt className="text-slate-500">Receita registrada</dt>
+            <dd className="font-mono font-bold text-emerald-700">{formatMoney(journey.totalRevenueMinor, journey.currency)}</dd>
           </div>
         </dl>
       </section>
 
-      <section className="rounded-xl border-2 border-violet-200 bg-white">
-        <div className="flex items-center justify-between border-b border-violet-100 px-3 py-2">
-          <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
-            <Sparkles size={15} className="text-violet-600" /> Fatos conhecidos ({knownFacts.length})
+      <section className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-3 py-2">
+          <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading">
+            <Sparkles size={13} className="text-indigo-600" /> Fatos Conhecidos ({knownFacts.length})
           </p>
           <button
             type="button"
             onClick={onOpenFactModal}
-            className="text-xs font-bold text-violet-700 hover:underline"
+            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
           >
             + Adicionar
           </button>
@@ -1075,12 +1074,12 @@ function LiveDossier({
             )
           ) : (
             knownFacts.map((fact) => (
-              <div key={fact.id} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-                <p className="text-xs font-bold text-violet-700">{fact.key}</p>
-                <p className="mt-1 break-words text-sm text-slate-800">{valueToText(fact.value)}</p>
-                <p className="mt-1 text-[11px] text-slate-500">
+              <div key={fact.id} className="rounded-lg border border-slate-100 bg-slate-50/70 p-2.5">
+                <p className="text-xs font-bold text-indigo-700">{fact.key}</p>
+                <p className="mt-0.5 break-words text-xs text-slate-800 font-medium">{valueToText(fact.value)}</p>
+                <p className="mt-1 text-[10.5px] text-slate-500">
                   {fact.source} · confiança {Math.round(fact.confidence * 100)}%
-                  {fact.confirmedByCustomer ? " · confirmado pelo cliente" : ""}
+                  {fact.confirmedByCustomer ? " · confirmado" : ""}
                 </p>
               </div>
             ))
@@ -1088,13 +1087,13 @@ function LiveDossier({
         </div>
       </section>
 
-      <section className="rounded-xl border-2 border-amber-200 bg-amber-50 p-3">
-        <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
-          <AlertTriangle size={15} className="text-amber-700" /> Fricção atual
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+        <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading">
+          <AlertTriangle size={13} className="text-amber-600" /> Fricção Atual
         </p>
         {decisionState ? (
           <>
-            <p className="mt-2 text-sm font-semibold text-slate-800">
+            <p className="mt-2 text-xs font-bold text-slate-800">
               {decisionState.primaryFriction || "Nenhuma fricção primária"}
             </p>
             <p className="mt-1 text-xs leading-5 text-slate-600">
@@ -1102,31 +1101,31 @@ function LiveDossier({
             </p>
           </>
         ) : (
-          <p className="mt-2 text-sm text-slate-600">Ainda não há um estado decisório registrado.</p>
+          <p className="mt-1.5 text-xs text-slate-500">Ainda não há um estado decisório registrado.</p>
         )}
       </section>
 
-      <section className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-3">
-        <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
-          <ShieldCheck size={15} className="text-emerald-700" /> Handoff e resultado
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+        <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading">
+          <ShieldCheck size={13} className="text-emerald-600" /> Handoff e Resultado
         </p>
-        <p className="mt-2 text-sm text-slate-700">
+        <p className="mt-1.5 text-xs text-slate-600">
           {handoff
             ? `Handoff ${handoff.status.toLocaleLowerCase("pt-BR")} · ${handoff.triggerReason}`
             : "Sem handoff aberto."}
         </p>
         {outcome ? (
-          <div className="mt-2 border-t border-emerald-200 pt-2">
-            <p className="text-sm font-semibold text-emerald-900">
+          <div className="mt-2 border-t border-slate-100 pt-2">
+            <p className="text-xs font-bold text-emerald-800">
               {outcome.result} · {formatMoney(outcome.finalRevenueMinor, outcome.currency)}
             </p>
             {outcome.closedReason && (
-              <p className="mt-0.5 text-xs text-emerald-800">{outcome.closedReason}</p>
+              <p className="mt-0.5 text-[11px] text-slate-600">{outcome.closedReason}</p>
             )}
             <p className="mt-1 font-mono text-[10px] text-emerald-700">CAPI: {outcome.capiStatus}</p>
           </div>
         ) : (
-          <p className="mt-2 text-xs text-slate-600">Resultado final ainda não registrado.</p>
+          <p className="mt-1 text-xs text-slate-500">Resultado final ainda não registrado.</p>
         )}
       </section>
     </>
