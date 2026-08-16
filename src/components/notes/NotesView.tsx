@@ -23,6 +23,7 @@ import {
 
 import { SalesOsGateway } from '../../services/salesOsGateway';
 import { salesOsRuntimeConfig } from '../../config/runtime';
+import { getSupabaseClient } from '../../services/supabaseAuth';
 
 interface NotesViewProps {
   workspace: Workspace;
@@ -46,20 +47,50 @@ export const NotesView: React.FC<NotesViewProps> = ({ workspace, gateway }) => {
   const [newTags, setNewTags] = useState('');
   const [newColor, setNewColor] = useState<'emerald' | 'purple' | 'amber' | 'blue'>('emerald');
 
-  React.useEffect(() => {
-    if (gateway?.listNotes) {
-      setLoading(true);
-      gateway
-        .listNotes(workspace.id)
-        .then((data) => {
-          setNotes(data || []);
-        })
-        .catch((err) => {
-          console.error('Failed to load notes:', err);
-        })
-        .finally(() => setLoading(false));
+  const fetchNotes = React.useCallback(async () => {
+    if (!gateway?.listNotes) return;
+    try {
+      const data = await gateway.listNotes(workspace.id);
+      setNotes(data || []);
+    } catch (err) {
+      console.error('Failed to load notes:', err);
     }
   }, [workspace.id, gateway]);
+
+  React.useEffect(() => {
+    setLoading(true);
+    fetchNotes().finally(() => setLoading(false));
+
+    const client = getSupabaseClient();
+    let channel: any;
+    if (client) {
+      channel = client
+        .channel(`live-notes-${workspace.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'workspace_notes',
+            filter: `workspace_id=eq.${workspace.id}`,
+          },
+          () => {
+            void fetchNotes();
+          }
+        )
+        .subscribe();
+    }
+
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void fetchNotes();
+    }, 10000);
+
+    return () => {
+      if (client && channel) void client.removeChannel(channel);
+      clearInterval(timer);
+    };
+  }, [workspace.id, fetchNotes]);
 
   const filteredNotes = useMemo(() => {
     return notes.filter((n) => {

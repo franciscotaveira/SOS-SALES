@@ -37,6 +37,7 @@ import { WeeklyCalendarView } from './WeeklyCalendarView';
 import { DailyCalendarView } from './DailyCalendarView';
 import { SalesOsGateway } from '../../services/salesOsGateway';
 import { salesOsRuntimeConfig } from '../../config/runtime';
+import { getSupabaseClient } from '../../services/supabaseAuth';
 
 interface AgendaViewProps {
   workspace: Workspace;
@@ -75,20 +76,50 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
   const [newLocation, setNewLocation] = useState('Atendimento Online / Presencial');
   const [newNotes, setNewNotes] = useState('');
 
-  React.useEffect(() => {
-    if (gateway?.listAppointments) {
-      setLoading(true);
-      gateway
-        .listAppointments(workspace.id)
-        .then((data) => {
-          setAppointments(data || []);
-        })
-        .catch((err) => {
-          console.error('Failed to load appointments:', err);
-        })
-        .finally(() => setLoading(false));
+  const fetchAppointments = React.useCallback(async () => {
+    if (!gateway?.listAppointments) return;
+    try {
+      const data = await gateway.listAppointments(workspace.id);
+      setAppointments(data || []);
+    } catch (err) {
+      console.error('Failed to load appointments:', err);
     }
   }, [workspace.id, gateway]);
+
+  React.useEffect(() => {
+    setLoading(true);
+    fetchAppointments().finally(() => setLoading(false));
+
+    const client = getSupabaseClient();
+    let channel: any;
+    if (client) {
+      channel = client
+        .channel(`live-appointments-${workspace.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'workspace_appointments',
+            filter: `workspace_id=eq.${workspace.id}`,
+          },
+          () => {
+            void fetchAppointments();
+          }
+        )
+        .subscribe();
+    }
+
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void fetchAppointments();
+    }, 10000);
+
+    return () => {
+      if (client && channel) void client.removeChannel(channel);
+      clearInterval(timer);
+    };
+  }, [workspace.id, fetchAppointments]);
 
   // Stats Calculations
   const stats = useMemo(() => {
