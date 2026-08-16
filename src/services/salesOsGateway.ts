@@ -299,12 +299,19 @@ export class MockSalesOsGateway implements SalesOsGateway {
     }
 
     if (!loadedFromStorage || this.journeys.size === 0) {
+      this.journeys.set('ws-haven-beauty', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
+      this.journeys.set('ws-sos-sales-official', JSON.parse(JSON.stringify(mockJourneysTitanium)));
       this.journeys.set('ws-escovaria', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
       this.journeys.set('ws-peliculas', JSON.parse(JSON.stringify(mockJourneysTitanium)));
       this.journeys.set('ws-agencia', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
       this.persistJourneys();
-    } else if (!this.journeys.has('ws-agencia')) {
-      this.journeys.set('ws-agencia', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
+    } else {
+      if (!this.journeys.has('ws-haven-beauty')) {
+        this.journeys.set('ws-haven-beauty', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
+      }
+      if (!this.journeys.has('ws-sos-sales-official')) {
+        this.journeys.set('ws-sos-sales-official', JSON.parse(JSON.stringify(mockJourneysTitanium)));
+      }
       this.persistJourneys();
     }
 
@@ -342,6 +349,8 @@ export class MockSalesOsGateway implements SalesOsGateway {
 
   async resetJourneysToDefault(): Promise<void> {
     await this.sleep(100);
+    this.journeys.set('ws-haven-beauty', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
+    this.journeys.set('ws-sos-sales-official', JSON.parse(JSON.stringify(mockJourneysTitanium)));
     this.journeys.set('ws-escovaria', JSON.parse(JSON.stringify(mockJourneysEscovaria)));
     this.journeys.set('ws-peliculas', JSON.parse(JSON.stringify(mockJourneysTitanium)));
     this.persistJourneys();
@@ -354,7 +363,16 @@ export class MockSalesOsGateway implements SalesOsGateway {
 
   async getJourneys(workspaceId: string, search?: string): Promise<Journey[]> {
     await this.sleep(120);
-    const list = this.journeys.get(workspaceId) || [];
+    let list = this.journeys.get(workspaceId);
+    if (!list || list.length === 0) {
+      if (workspaceId.includes('haven') || workspaceId.includes('escovaria')) {
+        list = JSON.parse(JSON.stringify(mockJourneysEscovaria));
+      } else {
+        list = JSON.parse(JSON.stringify(mockJourneysTitanium));
+      }
+      this.journeys.set(workspaceId, list);
+      this.persistJourneys();
+    }
     if (!search || !search.trim()) {
       return JSON.parse(JSON.stringify(list));
     }

@@ -117,10 +117,12 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       }
 
       const sessions = (await listRes.json()) as Array<{ name: string; status: string; me?: any }>;
-      const session = sessions.find((s) => s.name === sessionName);
+      let session = sessions.find((s) => s.name === sessionName && s.status === 'WORKING') ||
+                    sessions.find((s) => s.name === sessionName) ||
+                    sessions.find((s) => s.status === 'WORKING');
 
       return {
-        session: sessionName,
+        session: session?.name || sessionName,
         status: session ? session.status : 'STOPPED',
         me: session?.me || null,
       };

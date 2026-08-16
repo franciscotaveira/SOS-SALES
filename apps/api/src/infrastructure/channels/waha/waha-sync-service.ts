@@ -32,13 +32,20 @@ export class WahaSyncService {
 
     try {
       // 1. Ensure channel_connection exists in database
-      const meRes = await fetch(`${WAHA_BASE_URL}/api/sessions`, {
+      const meRes = await fetch(`${WAHA_BASE_URL}/api/sessions?all=true`, {
         headers: { 'x-api-key': WAHA_API_KEY },
       });
       const sessions = (await meRes.json().catch(() => [])) as Array<{ name: string; status: string; me?: any }>;
-      const currentSession = Array.isArray(sessions) ? sessions.find((s) => s.name === sessionName) : null;
-      const phoneNumber = currentSession?.me?.id ? currentSession.me.id.split('@')[0] : (currentSession?.name || '554933401014');
-      const channelName = currentSession?.me?.pushName ? `WhatsApp (${currentSession.me.pushName})` : `WhatsApp (${sessionName})`;
+      const currentSession = Array.isArray(sessions)
+        ? (sessions.find((s) => s.name === sessionName && s.status === 'WORKING') ||
+           sessions.find((s) => s.name === sessionName) ||
+           sessions.find((s) => s.status === 'WORKING') ||
+           sessions[0] ||
+           null)
+        : null;
+      const actualSessionName = currentSession?.name || sessionName;
+      const phoneNumber = currentSession?.me?.id ? currentSession.me.id.split('@')[0] : (currentSession?.name || '5549991234567');
+      const channelName = currentSession?.me?.pushName ? `WhatsApp (${currentSession.me.pushName})` : `WhatsApp (${actualSessionName})`;
 
       let channelConnectionId: string;
       const existing = await client.query('SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1', [workspaceId]);
@@ -61,7 +68,7 @@ export class WahaSyncService {
       }
 
       // 2. Fetch chats from WAHA
-      const chatsRes = await fetch(`${WAHA_BASE_URL}/api/${sessionName}/chats?limit=${maxChats}`, {
+      const chatsRes = await fetch(`${WAHA_BASE_URL}/api/${actualSessionName}/chats?limit=${maxChats}`, {
         headers: { 'x-api-key': WAHA_API_KEY },
       });
 
