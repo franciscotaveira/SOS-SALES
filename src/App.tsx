@@ -329,14 +329,16 @@ function AppContent({
       )}
 
       {activeTab === 'resultados' && isFeatureEnabled('traffic_proof') && (
-        <ResultsHubView
-          workspace={currentWorkspace}
-          gateway={salesOsGateway}
-          journeys={journeys}
-          isAuthenticatedApiMode={isAuthenticatedApiMode}
-          activeSubTab={resultsSubTab}
-          onChangeSubTab={setResultsSubTab}
-        />
+        <TabErrorBoundary tabName="Resultados Comerciais & ROAS">
+          <ResultsHubView
+            workspace={currentWorkspace}
+            gateway={salesOsGateway}
+            journeys={journeys}
+            isAuthenticatedApiMode={isAuthenticatedApiMode}
+            activeSubTab={resultsSubTab}
+            onChangeSubTab={setResultsSubTab}
+          />
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'playbook' && (

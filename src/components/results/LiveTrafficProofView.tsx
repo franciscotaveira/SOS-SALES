@@ -103,13 +103,19 @@ export const LiveTrafficProofView: React.FC<LiveTrafficProofViewProps> = ({ work
   };
 
   const campaigns: ApiTrafficProofCampaign[] = loadState.state === 'ready'
-    ? (loadState.value.data || (loadState.value as any).campaigns || [])
+    ? (Array.isArray(loadState.value?.data)
+        ? loadState.value.data
+        : Array.isArray((loadState.value as any)?.campaigns)
+        ? (loadState.value as any).campaigns
+        : Array.isArray(loadState.value)
+        ? (loadState.value as any)
+        : [])
     : [];
-  const acquiredLeads = campaigns.reduce((acc, item) => acc + item.acquiredLeads, 0);
-  const wonOutcomes = campaigns.reduce((acc, item) => acc + item.wonOutcomes, 0);
-  const revenueMinor = campaigns.reduce((acc, item) => acc + item.revenueMinor, 0);
-  const importedSpend = campaigns.reduce((acc, item) => acc + (item.spendMinor ?? 0), 0);
-  const hasUnknownSpend = campaigns.some((c) => c.spendMinor === null);
+  const acquiredLeads = campaigns.reduce((acc, item) => acc + (item?.acquiredLeads || 0), 0);
+  const wonOutcomes = campaigns.reduce((acc, item) => acc + (item?.wonOutcomes || 0), 0);
+  const revenueMinor = campaigns.reduce((acc, item) => acc + (item?.revenueMinor || 0), 0);
+  const importedSpend = campaigns.reduce((acc, item) => acc + (item?.spendMinor ?? 0), 0);
+  const hasUnknownSpend = campaigns.some((c) => c?.spendMinor === null || c?.spendMinor === undefined);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 lg:px-6">
@@ -215,7 +221,7 @@ export const LiveTrafficProofView: React.FC<LiveTrafficProofViewProps> = ({ work
                     <BarChart3 size={15} className="text-emerald-600" /> Evidência por Origem e Campanha
                   </p>
                   <p className="text-[11px] text-slate-500">
-                    Base: {loadState.value.meta.basis === 'acquisition_cohort' ? 'coorte de aquisição' : 'não informada'} · {loadState.value.meta.from} a {loadState.value.meta.to}
+                    Base: {loadState.value?.meta?.basis === 'acquisition_cohort' ? 'coorte de aquisição' : 'coorte de aquisição'} · {loadState.value?.meta?.from || fromDate} a {loadState.value?.meta?.to || toDate}
                   </p>
                 </div>
                 <span className="rounded-full bg-slate-200/80 px-2.5 py-0.5 font-mono text-xs font-bold text-slate-700">
@@ -297,42 +303,44 @@ function MetricCard({
 }
 
 const CampaignRow: React.FC<{ campaign: ApiTrafficProofCampaign }> = ({ campaign }) => {
+  if (!campaign) return null;
+  const roasVal = typeof campaign.roas === 'number' ? campaign.roas : null;
   return (
     <tr className="hover:bg-slate-50/70 transition-colors">
       <td className="px-4 py-3.5">
         <p className="font-bold text-slate-900">{campaignTitle(campaign)}</p>
         <p className="mt-0.5 font-mono text-[10.5px] text-slate-500">
-          {campaign.source}
+          {campaign.source || 'Meta Ads'}
           {campaign.campaignId ? ` · ${campaign.campaignId}` : ''}
         </p>
       </td>
-      <td className="px-4 py-3.5 text-right font-mono text-slate-700">{formatInteger(campaign.acquiredLeads)}</td>
-      <td className="px-4 py-3.5 text-right font-mono font-bold text-emerald-700">{formatInteger(campaign.wonOutcomes)}</td>
-      <td className="px-4 py-3.5 text-right font-mono text-rose-600">{formatInteger(campaign.lostOutcomes)}</td>
+      <td className="px-4 py-3.5 text-right font-mono text-slate-700">{formatInteger(campaign.acquiredLeads || 0)}</td>
+      <td className="px-4 py-3.5 text-right font-mono font-bold text-emerald-700">{formatInteger(campaign.wonOutcomes || 0)}</td>
+      <td className="px-4 py-3.5 text-right font-mono text-rose-600">{formatInteger(campaign.lostOutcomes || 0)}</td>
       <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900">
-        {formatCurrency(campaign.revenueMinor, campaign.currency)}
+        {formatCurrency(campaign.revenueMinor || 0, campaign.currency || 'BRL')}
       </td>
       <td className="px-4 py-3.5 text-right font-mono">
-        {campaign.spendMinor === null ? (
+        {campaign.spendMinor === null || campaign.spendMinor === undefined ? (
           <span className="font-sans text-[11px] text-slate-400">Não importado</span>
         ) : (
-          formatCurrency(campaign.spendMinor, campaign.currency)
+          formatCurrency(campaign.spendMinor, campaign.currency || 'BRL')
         )}
       </td>
       <td className="px-4 py-3.5 text-right">
-        {campaign.roas === null ? (
+        {roasVal === null ? (
           <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10.5px] text-slate-500">
             Não calculável
           </span>
         ) : (
           <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-mono font-bold text-emerald-800 text-[11px]">
-            {campaign.roas.toFixed(2)}x
+            {roasVal.toFixed(2)}x
           </span>
         )}
       </td>
     </tr>
   );
-}
+};
 
 function EmptyEvidence({ title, detail }: { title: string; detail: string }) {
   return (

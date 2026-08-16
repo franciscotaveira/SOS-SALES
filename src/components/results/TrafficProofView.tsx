@@ -42,12 +42,29 @@ export const TrafficProofView: React.FC<TrafficProofViewProps> = ({
   React.useEffect(() => {
     let isMounted = true;
     setIsLoading(true);
-    gateway.getTrafficStats(workspace.id).then((data) => {
-      if (isMounted) {
-        setStats(data);
-        setIsLoading(false);
-      }
-    });
+    gateway
+      .getTrafficStats(workspace.id)
+      .then((data) => {
+        if (isMounted) {
+          setStats(data);
+          setIsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setStats({
+            workspaceId: workspace.id,
+            totalDealsWonBrl: 0,
+            totalCtwaCostBrl: 0,
+            totalLeadsAttributed: 0,
+            roasRatio: 0,
+            slaAdherenceRate: 100,
+            avgFirstResponseMinutes: 0,
+            campaigns: [],
+          });
+          setIsLoading(false);
+        }
+      });
     return () => {
       isMounted = false;
     };
@@ -66,11 +83,11 @@ export const TrafficProofView: React.FC<TrafficProofViewProps> = ({
     );
   }
 
-  // Calculate deep metrics if available
+  // Calculate deep metrics safely
   const totalLeads = stats.totalLeadsAttributed || 1;
-  const cplAverage = stats.totalCtwaCostBrl / totalLeads;
-  const avgDealTicket =
-    stats.totalDealsWonBrl / (stats.campaigns.reduce((acc, c) => acc + c.conversionsCount, 0) || 1);
+  const cplAverage = (stats.totalCtwaCostBrl || 0) / totalLeads;
+  const totalConversions = (stats.campaigns || []).reduce((acc, c) => acc + (c?.conversionsCount || 0), 0);
+  const avgDealTicket = (stats.totalDealsWonBrl || 0) / (totalConversions || 1);
 
   return (
     <div id="traffic-proof-view" className="h-full overflow-y-auto w-full p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
@@ -215,7 +232,7 @@ export const TrafficProofView: React.FC<TrafficProofViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
-              {stats.campaigns.map((camp, idx) => (
+              {(stats.campaigns || []).map((camp, idx) => (
                 <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
                   <td className="px-4 py-3.5 font-semibold text-slate-900">
                     {camp.campaignName}
