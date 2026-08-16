@@ -58,17 +58,17 @@ export const HistoricalDiagnosisSection: React.FC<HistoricalDiagnosisSectionProp
               <Brain className="w-4 h-4" />
             </div>
             <h2 className="text-base font-bold text-white font-heading flex items-center gap-2">
-              Dossiê de Diagnóstico Cognitivo & Histórico (Desde 2024)
+              Diagnóstico de 1 Ano de Conversas Reais (2024 – 2026)
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                1 Ano de Inteligência
+                1.842 Conversas Analisadas
               </span>
             </h2>
           </div>
           <p className="text-xs text-slate-300 leading-relaxed">
-            Mineração profunda de conversas reais do WhatsApp da <strong>{workspace.name}</strong> para compreender exatamente a jornada de chegada das clientes, termos regionais, dúvidas mais frequentes e gargalos históricos.
+            Análise das 1.842 conversas reais do WhatsApp da <strong>{workspace.name}</strong> para compreender a forma como as clientes chegam, o que perguntam, horários de pico e onde ocorriam perdas de agendamento no passado.
           </p>
           <div className="text-[11px] text-slate-400 font-mono">
-            Última mineração: <strong className="text-purple-300">{lastSyncDate}</strong>
+            Última análise: <strong className="text-purple-300">{lastSyncDate}</strong>
           </div>
         </div>
 

@@ -63,7 +63,7 @@ export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
             <Building2 className="w-5 h-5 text-[#00A884]" />
             <h2 className="text-lg font-bold font-heading">{profile.tradeName}</h2>
             <span className="text-[10px] bg-emerald-950 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-800 flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3" /> WABA Oficial Verificado
+              <ShieldCheck className="w-3 h-3" /> WhatsApp Oficial Conectado
             </span>
           </div>
           <p className="text-xs text-slate-300 max-w-2xl">{profile.tagline}</p>
@@ -72,7 +72,7 @@ export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
         <button
           type="submit"
           id="btn-save-company-profile"
-          className="flex items-center justify-center gap-1.5 px-4 py-2 bg-[#00A884] hover:bg-[#008f6f] text-white rounded-lg text-xs font-bold transition-all shadow-sm shrink-0"
+          className="flex items-center justify-center gap-1.5 px-4 py-2 bg-[#00A884] hover:bg-[#008f6f] text-white rounded-lg text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
         >
           {saved ? (
             <>
@@ -88,7 +88,7 @@ export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
         </button>
       </div>
 
-      {/* Meta WABA Business Verification Card */}
+      {/* WhatsApp Connection Card */}
       <div className="bg-slate-900/40 border border-slate-200 rounded-xl p-4 space-y-3 bg-white shadow-2xs">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
@@ -97,40 +97,40 @@ export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
             </div>
             <div>
               <h3 className="text-xs font-bold text-slate-900 font-heading">
-                Perfil WhatsApp Business API (WABA) & Meta Business AI
+                Identificação do WhatsApp da Empresa
               </h3>
               <p className="text-[11px] text-slate-500">
-                Credenciais oficiais integradas diretamente à Meta Cloud API
+                Dados exibidos para os clientes no WhatsApp
               </p>
             </div>
           </div>
           <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-            Selo Verde Ativo
+            Conexão Ativa
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
           <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5">
-            <span className="text-[10px] text-slate-400 font-semibold uppercase">Nome Exibido Verificado</span>
+            <span className="text-[10px] text-slate-400 font-semibold uppercase">Nome no WhatsApp</span>
             <p className="font-bold text-slate-800">{profile.wabaOfficialInfo.verifiedName}</p>
           </div>
 
           <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5">
-            <span className="text-[10px] text-slate-400 font-semibold uppercase">Número WABA Conectado</span>
+            <span className="text-[10px] text-slate-400 font-semibold uppercase">Número Conectado</span>
             <p className="font-bold text-slate-800 font-mono">{profile.wabaOfficialInfo.phoneNumber}</p>
           </div>
 
           <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5">
             <span className="text-[10px] text-slate-400 font-semibold uppercase">Qualidade do Número</span>
             <p className="font-bold text-emerald-600 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> High Quality (Green Rating)
+              <CheckCircle2 className="w-3.5 h-3.5" /> Alta Qualidade (Sem bloqueios)
             </p>
           </div>
 
           <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5">
-            <span className="text-[10px] text-slate-400 font-semibold uppercase">Meta Catalog Sync</span>
+            <span className="text-[10px] text-slate-400 font-semibold uppercase">Catálogo no WhatsApp</span>
             <p className="font-bold text-indigo-600 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Catálogo Ativo (WABA)
+              <CheckCircle2 className="w-3.5 h-3.5" /> Catálogo Ativo
             </p>
           </div>
         </div>

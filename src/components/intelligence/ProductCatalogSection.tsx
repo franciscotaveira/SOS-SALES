@@ -85,14 +85,14 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-[#00A884]" />
             <h2 className="text-lg font-bold font-heading">
-              Catálogo Oficial de Produtos & Serviços (Meta WABA Sync)
+              Tabela Oficial de Preços & Serviços
             </h2>
-            <span className="text-[10px] bg-indigo-950 text-indigo-300 font-bold px-2 py-0.5 rounded-full border border-indigo-800">
-              Meta Commerce API
+            <span className="text-[10px] bg-emerald-950 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-800">
+              Sincronizado no WhatsApp
             </span>
           </div>
           <p className="text-xs text-slate-300">
-            Produtos e serviços sincronizados com a Meta. O Agente de IA usa esses dados para enviar cards interativos, fotos e orçamentos dentro da alçada de desconto autorizada.
+            Cadastre os serviços e valores praticados pela sua empresa. A IA usa esses dados exatos para informar valores, duração e enviar links de agendamento ou pagamento.
           </p>
         </div>
 

@@ -345,13 +345,13 @@ export const AgentSettingsSection: React.FC<AgentSettingsSectionProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold font-heading flex items-center gap-2">
-                <span>Squad de Agentes Especialistas da Operação</span>
+                <span>Equipe de Robôs Especialistas</span>
                 <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-purple-500/20 text-purple-300 border border-purple-400/30 font-bold">
-                  Multi-Agent Swarm
+                  Especialistas Dedicados
                 </span>
               </h2>
               <p className="text-xs text-slate-300">
-                Cada agente possui identidade, escopo de prompts e guardrails dedicados para eliminar alucinações e isolar a memória.
+                Cada robô tem uma função clara (atender anúncio, fechar venda, marcar horário ou proteger contra descontos não autorizados).
               </p>
             </div>
           </div>

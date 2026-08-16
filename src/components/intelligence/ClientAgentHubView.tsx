@@ -115,7 +115,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
                 <Sparkles className="w-3 h-3 text-purple-600" /> Agente IA Dedicado
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> WABA Oficial Verificado
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> WhatsApp Oficial Conectado
               </span>
             </div>
 

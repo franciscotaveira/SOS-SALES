@@ -199,33 +199,33 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
           <div className="flex items-center gap-2">
             <Brain className="w-5 h-5 text-purple-400" />
             <h2 className="text-lg font-bold font-heading">
-              Banco de Inteligência do Agente (RAG & Base de Conhecimento)
+              Documentos & Regras da Empresa (Base de Conhecimento)
             </h2>
             <span className="text-[10px] bg-purple-950 text-purple-300 font-bold px-2 py-0.5 rounded-full border border-purple-800 flex items-center gap-1">
-              <Database className="w-3 h-3" /> Vector RAG Ativo
+              <Database className="w-3 h-3" /> Leitura Inteligente Ativa
             </span>
           </div>
           <p className="text-xs text-slate-300">
-            Envie arquivos PDF, DOCX, planilhas Excel de preços, manuais técnicos e regras comerciais. O motor de IA vetoriza o conteúdo para responder dúvidas sem inventar ou alucinar.
+            Envie arquivos PDF, DOCX, planilhas Excel de preços, manuais e regras comerciais. O atendente inteligente aprende esse conteúdo para responder dúvidas com precisão, sem inventar dados.
           </p>
         </div>
 
         {/* Stats Summary */}
         <div className="flex items-center gap-3 shrink-0 bg-slate-800/80 px-3.5 py-2 rounded-lg border border-slate-700">
           <div className="text-center">
-            <span className="text-[10px] text-slate-400 block font-semibold">Docs Indexados</span>
+            <span className="text-[10px] text-slate-400 block font-semibold">Documentos</span>
             <span className="text-sm font-bold text-white">{documents.length}</span>
           </div>
           <div className="h-6 w-px bg-slate-700" />
           <div className="text-center">
-            <span className="text-[10px] text-slate-400 block font-semibold">Chunks RAG</span>
-            <span className="text-sm font-bold text-purple-300">{totalChunks}</span>
+            <span className="text-[10px] text-slate-400 block font-semibold">Tópicos Aprendidos</span>
+            <span className="text-sm font-bold text-purple-400">{totalChunks}</span>
           </div>
           <div className="h-6 w-px bg-slate-700" />
           <div className="text-center">
-            <span className="text-[10px] text-slate-400 block font-semibold">Tokens</span>
-            <span className="text-sm font-bold text-emerald-300">
-              {(totalTokens / 1000).toFixed(1)}k
+            <span className="text-[10px] text-slate-400 block font-semibold">Palavras Aprendidas</span>
+            <span className="text-sm font-bold text-emerald-400">
+              {totalTokens.toLocaleString('pt-BR')}
             </span>
           </div>
         </div>
