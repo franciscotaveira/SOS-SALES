@@ -267,6 +267,7 @@ function AppContent({
         isAuthenticatedApiMode ? (
           <LiveConversationsView
             workspaceId={currentWorkspace.id}
+            workspace={currentWorkspace}
             gateway={salesOsGateway}
             onJourneySelect={(journeyId) => {
               setSelectedJourneyId(journeyId);

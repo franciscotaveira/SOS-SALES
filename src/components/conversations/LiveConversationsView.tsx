@@ -10,25 +10,38 @@ import {
   AlertCircle,
   Phone,
   Filter,
+  List,
+  Columns3,
+  FileText,
+  Tv,
 } from 'lucide-react';
 import { ApiJourney, SalesOsGateway } from '../../services/salesOsGateway';
 import { getSupabaseClient } from '../../services/supabaseAuth';
+import { Workspace, Journey } from '../../types/cockpit';
+import { LiveCommercialKanbanView } from '../kanban/LiveCommercialKanbanView';
+import { NotesView } from '../notes/NotesView';
+import { LiveWallboardView } from '../monitoring/LiveWallboardView';
 
 interface LiveConversationsViewProps {
   workspaceId: string;
+  workspace?: Workspace;
   gateway: SalesOsGateway;
   onJourneySelect?: (journeyId: string) => void;
   onSwitchToCockpit?: () => void;
+  initialViewMode?: 'list' | 'kanban' | 'notes' | 'wallboard';
 }
 
 type FilterChip = 'all' | 'handoff_pending' | 'sla_critical' | 'by_stage';
 
 export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
   workspaceId,
+  workspace,
   gateway,
   onJourneySelect,
   onSwitchToCockpit,
+  initialViewMode = 'list',
 }) => {
+  const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'notes' | 'wallboard'>(initialViewMode);
   const [journeys, setJourneys] = useState<ApiJourney[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +133,30 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
     });
   }, [journeys, search, activeChip, stageFilter]);
 
+  // Map ApiJourney[] to Journey[] for LiveWallboardView if active
+  const mappedJourneys: Journey[] = useMemo(() => {
+    return journeys.map((j) => ({
+      id: j.id,
+      contact: {
+        id: j.contactId || j.id,
+        name: j.contactName || 'Lead Sem Nome',
+        phone: j.contactPhone || '',
+      },
+      leadName: j.contactName || 'Lead Sem Nome',
+      leadPhone: j.contactPhone || '',
+      status: 'active',
+      stage: j.pipelineStage || 'LEAD',
+      currentStage: j.pipelineStage || 'LEAD',
+      channel: 'whatsapp',
+      health: 'healthy',
+      slaStatus: 'on_track',
+      messages: [],
+      createdAt: j.startedAt,
+      lastActivityAt: j.updatedAt,
+      primaryServiceOrProduct: j.primaryServiceOrProduct,
+    })) as any;
+  }, [journeys]);
+
   const formatStage = (stage?: string | null) => {
     const st = stage?.toUpperCase();
     switch (st) {
@@ -151,145 +188,243 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
   return (
     <div className="flex flex-col h-full bg-slate-50/50 text-slate-900 p-4 sm:p-6 overflow-hidden max-w-7xl mx-auto w-full">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 shrink-0">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-950 font-heading tracking-tight flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-emerald-600" /> Central de Conversas Ao Vivo
+              <MessageSquare className="w-5 h-5 text-emerald-600" /> Central de Conversas & Funil
             </h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               {filtered.length} Conversas
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Histórico auditável e supervisão de mensagens em tempo real no banco oficial.
+            Supervisão ao vivo, funil comercial, gestão de notas e torre de monitoramento.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar contato ou número..."
-              className="pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors w-48 sm:w-64 shadow-2xs"
-            />
+        {/* 4-Way Mode Toggle */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+            <button
+              id="switch-view-list-btn"
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'list'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <List className="w-3.5 h-3.5" />
+              <span>Lista</span>
+            </button>
+
+            <button
+              id="switch-view-kanban-btn"
+              onClick={() => setViewMode('kanban')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'kanban'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Columns3 className="w-3.5 h-3.5" />
+              <span>Funil Kanban</span>
+            </button>
+
+            <button
+              id="switch-view-notes-btn"
+              onClick={() => setViewMode('notes')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'notes'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Anotações</span>
+            </button>
+
+            <button
+              id="switch-view-wallboard-btn"
+              onClick={() => setViewMode('wallboard')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'wallboard'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'text-slate-500 hover:text-emerald-700'
+              }`}
+            >
+              <Tv className="w-3.5 h-3.5" />
+              <span>Torre TV</span>
+            </button>
           </div>
 
-          <button
-            onClick={() => fetchJourneys()}
-            disabled={loading}
-            className="p-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-slate-600 hover:text-slate-900 transition-colors shadow-2xs cursor-pointer"
-            title="Atualizar conversas"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Filter Chips */}
-      <div className="flex items-center gap-2 py-3 overflow-x-auto text-xs">
-        <button
-          onClick={() => setActiveChip('all')}
-          className={`px-3 py-1.5 rounded-xl font-bold transition-all shadow-2xs cursor-pointer ${
-            activeChip === 'all'
-              ? 'bg-emerald-600 text-white shadow-emerald-600/20'
-              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          Todas as Conversas ({journeys.length})
-        </button>
-      </div>
-
-      {error && (
-        <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-          <span>{error}</span>
-          <button
-            onClick={() => fetchJourneys()}
-            className="ml-auto underline font-bold cursor-pointer hover:text-rose-900"
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      {/* Table / List Container */}
-      <div className="mt-2 flex-1 bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden flex flex-col min-h-0">
-        <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-          {loading ? (
-            <div className="p-6 space-y-3">
-              <div className="h-14 bg-slate-100 rounded-xl animate-pulse" />
-              <div className="h-14 bg-slate-100 rounded-xl animate-pulse" />
-              <div className="h-14 bg-slate-100 rounded-xl animate-pulse" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="h-48 flex flex-col items-center justify-center text-center p-6 text-slate-500">
-              <MessageSquare className="w-8 h-8 text-slate-400 mb-2" />
-              <span className="text-sm font-bold text-slate-800">Nenhuma conversa encontrada</span>
-              <span className="text-xs text-slate-500 mt-1">Tente ajustar os filtros ou os termos da busca.</span>
-            </div>
-          ) : (
-            filtered.map((j) => {
-              const stage = formatStage(j.pipelineStage);
-
-              return (
-                <div
-                  key={j.id}
-                  onClick={() => {
-                    onJourneySelect?.(j.id);
-                    onSwitchToCockpit?.();
-                  }}
-                  className="p-3.5 sm:p-4 hover:bg-slate-50/80 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    {/* Avatar */}
-                    <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
-                      {j.contactName ? j.contactName.charAt(0).toUpperCase() : <Phone className="w-4 h-4" />}
-                    </div>
-
-                    {/* Lead Details */}
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
-                          {j.contactName || j.contactPhone || 'Lead Sem Nome'}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-md text-[10.5px] font-semibold ${stage.bg}`}>
-                          {stage.label}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                        {j.contactPhone && <span className="font-mono text-[11px] text-slate-600">{j.contactPhone}</span>}
-                        {j.primaryServiceOrProduct && (
-                          <span className="truncate text-slate-500">• {j.primaryServiceOrProduct}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right side Action */}
-                  <div className="flex items-center gap-3 shrink-0">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onJourneySelect?.(j.id);
-                        onSwitchToCockpit?.();
-                      }}
-                      className="px-3 py-1.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer group-hover:shadow-xs"
-                    >
-                      <span>Abrir Cockpit</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })
+          {viewMode === 'list' && (
+            <button
+              onClick={() => fetchJourneys()}
+              disabled={loading}
+              className="p-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-slate-600 hover:text-slate-900 transition-colors shadow-2xs cursor-pointer"
+              title="Atualizar conversas"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
           )}
         </div>
       </div>
+
+      {/* Subviews */}
+      {viewMode === 'kanban' && (
+        <div className="flex-1 overflow-hidden mt-3">
+          <LiveCommercialKanbanView
+            workspaceId={workspaceId}
+            gateway={gateway}
+            onSelectJourney={onJourneySelect}
+            onSwitchToCockpit={onSwitchToCockpit}
+          />
+        </div>
+      )}
+
+      {viewMode === 'notes' && (
+        <div className="flex-1 overflow-hidden mt-3">
+          <NotesView
+            workspace={workspace || ({ id: workspaceId, name: 'Workspace', channels: [] } as any)}
+            gateway={gateway}
+          />
+        </div>
+      )}
+
+      {viewMode === 'wallboard' && (
+        <div className="flex-1 overflow-hidden mt-3">
+          <LiveWallboardView
+            journeys={mappedJourneys}
+            groups={[]}
+            mode="conversations"
+            onGoToCockpit={(j) => {
+              onJourneySelect?.(j.id);
+              onSwitchToCockpit?.();
+            }}
+          />
+        </div>
+      )}
+
+      {viewMode === 'list' && (
+        <>
+          {/* Search and Filters */}
+          <div className="flex items-center justify-between gap-2 py-3 overflow-x-auto text-xs shrink-0">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setActiveChip('all')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all shadow-2xs cursor-pointer ${
+                  activeChip === 'all'
+                    ? 'bg-emerald-600 text-white shadow-emerald-600/20'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                Todas as Conversas ({journeys.length})
+              </button>
+            </div>
+
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar contato ou número..."
+                className="pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors w-48 sm:w-64 shadow-2xs"
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="mb-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2 shrink-0">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+              <span>{error}</span>
+              <button
+                onClick={() => fetchJourneys()}
+                className="ml-auto underline font-bold cursor-pointer hover:text-rose-900"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          )}
+
+          {/* Table / List Container */}
+          <div className="flex-1 bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden flex flex-col min-h-0">
+            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+              {loading ? (
+                <div className="p-6 space-y-3">
+                  <div className="h-14 bg-slate-100 rounded-xl animate-pulse" />
+                  <div className="h-14 bg-slate-100 rounded-xl animate-pulse" />
+                  <div className="h-14 bg-slate-100 rounded-xl animate-pulse" />
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="h-48 flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                  <MessageSquare className="w-8 h-8 text-slate-400 mb-2" />
+                  <span className="text-sm font-bold text-slate-800">Nenhuma conversa encontrada</span>
+                  <span className="text-xs text-slate-500 mt-1">Tente ajustar os filtros ou os termos da busca.</span>
+                </div>
+              ) : (
+                filtered.map((j) => {
+                  const stage = formatStage(j.pipelineStage);
+
+                  return (
+                    <div
+                      key={j.id}
+                      onClick={() => {
+                        onJourneySelect?.(j.id);
+                        onSwitchToCockpit?.();
+                      }}
+                      className="p-3.5 sm:p-4 hover:bg-slate-50/80 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Avatar */}
+                        <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+                          {j.contactName ? j.contactName.charAt(0).toUpperCase() : <Phone className="w-4 h-4" />}
+                        </div>
+
+                        {/* Lead Details */}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
+                              {j.contactName || j.contactPhone || 'Lead Sem Nome'}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-md text-[10.5px] font-semibold ${stage.bg}`}>
+                              {stage.label}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                            {j.contactPhone && <span className="font-mono text-[11px] text-slate-600">{j.contactPhone}</span>}
+                            {j.primaryServiceOrProduct && (
+                              <span className="truncate text-slate-500">• {j.primaryServiceOrProduct}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right side Action */}
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onJourneySelect?.(j.id);
+                            onSwitchToCockpit?.();
+                          }}
+                          className="px-3 py-1.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer group-hover:shadow-xs"
+                        >
+                          <span>Abrir Cockpit</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
