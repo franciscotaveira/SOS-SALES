@@ -354,6 +354,7 @@ function AppContent({
 
       {activeTab === 'simulador' && (
         <QaSimulatorView
+          currentWorkspace={currentWorkspace}
           onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
           onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
           isNetworkErrorForced={isNetworkErrorForced}
