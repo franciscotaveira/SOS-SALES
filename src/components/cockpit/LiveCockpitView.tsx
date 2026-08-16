@@ -26,6 +26,12 @@ import {
   UserRound,
   X,
   Zap,
+  Globe,
+  Tag,
+  Brain,
+  MapPin,
+  CreditCard,
+  Handshake,
 } from "lucide-react";
 import {
   ApiCockpitView,
@@ -753,7 +759,14 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           </div>
           <div className="space-y-3 p-3 overflow-y-auto flex-1 min-h-0">
             {!view && availability("Sem dossiê selecionado", "O dossiê aparece apenas para uma jornada acessível.")}
-            {view && <LiveDossier view={view} onOpenFactModal={() => setFactModalOpen(true)} />}
+            {view && (
+              <LiveDossier
+                view={view}
+                onOpenFactModal={() => setFactModalOpen(true)}
+                onOpenFollowUpModal={() => setFollowUpModalOpen(true)}
+                onOpenOutcomeModal={() => setOutcomeModalOpen(true)}
+              />
+            )}
           </div>
         </aside>
       </div>
@@ -884,6 +897,45 @@ function LiveJourneyBody({
   const ctwaFact = knownFacts?.find(
     (f) => f.key === "ad.referral" || f.key === "meta_ctwa_ad" || f.source === "ad_payload"
   );
+
+  // Fast Macro Shortcuts with dynamic contact interpolation
+  const contactFirstName = (journey.contact.name || "Cliente").split(" ")[0];
+  const fastMacros = [
+    {
+      id: "pix",
+      label: "⚡ Pix & Sinal",
+      template: `Segue nossa chave Pix oficial para confirmação do seu atendimento: pix@salesos.com.br. Assim que fizer o envio, me manda o comprovante aqui, ${contactFirstName}!`,
+    },
+    {
+      id: "horarios",
+      label: "📅 Horários",
+      template: `Oi ${contactFirstName}! Temos disponibilidade hoje às 14h30 ou 16h00, e amanhã às 10h00. Qual dessas opções fica melhor para você?`,
+    },
+    {
+      id: "oferta",
+      label: "🎁 Oferta Anúncio",
+      template: `Confirmando sua condição especial do anúncio! A oferta continua 100% garantida para você, ${contactFirstName}.`,
+    },
+    {
+      id: "endereco",
+      label: "📍 Endereço",
+      template: `Ficamos localizados na Rua Central, 450 - Centro. Temos estacionamento privativo e gratuito bem em frente para sua comodidade!`,
+    },
+    {
+      id: "garantia",
+      label: "🛡️ Garantia",
+      template: `Você conta com nossa garantia total de satisfação e atendimento com materiais e serviços de primeira linha.`,
+    },
+    {
+      id: "retomada",
+      label: "🔄 Follow-up",
+      template: `Olá, ${contactFirstName}! Passando para dar continuidade ao que combinamos. Conseguiu dar uma olhada na sua disponibilidade?`,
+    },
+  ];
+
+  const handleApplyMacro = (template: string) => {
+    setDraftText(template);
+  };
 
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
@@ -1117,12 +1169,30 @@ function LiveJourneyBody({
             </div>
           )}
 
+          {/* Fast Macro Shortcuts Toolbar */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+            <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 shrink-0 flex items-center gap-1 font-heading">
+              <Zap size={11} className="text-amber-500" /> Atalhos:
+            </span>
+            {fastMacros.map((macro) => (
+              <button
+                key={macro.id}
+                type="button"
+                onClick={() => handleApplyMacro(macro.template)}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition shrink-0 cursor-pointer shadow-2xs"
+                title={`Inserir modelo ${macro.label}`}
+              >
+                {macro.label}
+              </button>
+            ))}
+          </div>
+
           <div className="flex items-center gap-1.5">
             <input
               type="text"
               value={draftText}
               onChange={(e) => setDraftText(e.target.value)}
-              placeholder="Digite uma mensagem supervisionada..."
+              placeholder="Digite uma mensagem ou clique em um atalho acima..."
               className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && draftText.trim()) {
@@ -1208,15 +1278,79 @@ function ContinuityCell({
 function LiveDossier({
   view,
   onOpenFactModal,
+  onOpenFollowUpModal,
+  onOpenOutcomeModal,
 }: {
   view: ApiCockpitView;
   onOpenFactModal: () => void;
+  onOpenFollowUpModal?: () => void;
+  onOpenOutcomeModal?: () => void;
 }) {
-  const { journey, knownFacts, decisionState, handoff, outcome } = view;
+  const { journey, knownFacts, decisionState, handoff, outcome, acquisitionContexts } = view;
+
+  // Local state for tactical operator notes
+  const [operatorNotes, setOperatorNotes] = React.useState<Array<{ id: string; tag: string; text: string; time: string }>>([
+    { id: '1', tag: 'Orçamento', text: 'Veio pela campanha Meta Ads e busca parcelamento.', time: 'Hoje' }
+  ]);
+  const [isAddingNote, setIsAddingNote] = React.useState(false);
+  const [newNoteText, setNewNoteText] = React.useState('');
+  const [newNoteTag, setNewNoteTag] = React.useState('Preferência');
+
+  const handleAddNote = () => {
+    if (!newNoteText.trim()) return;
+    setOperatorNotes((prev) => [
+      ...prev,
+      { id: String(Date.now()), tag: newNoteTag, text: newNoteText.trim(), time: 'Agora' }
+    ]);
+    setNewNoteText('');
+    setIsAddingNote(false);
+  };
+
+  const primaryAcquisition = acquisitionContexts?.[0];
+
   return (
-    <>
+    <div className="space-y-3">
+      {/* 1. Origem Meta Ads & Atribuição de Entrada (CTWA) */}
+      <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 shadow-2xs">
+        <div className="flex items-center justify-between">
+          <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-950 font-heading">
+            <Globe size={13} className="text-emerald-700" /> Origem Meta Ads (CTWA)
+          </p>
+          <span className="rounded-full bg-emerald-200/90 px-2 py-0.5 font-mono text-[9.5px] font-bold text-emerald-900">
+            {primaryAcquisition ? 'CTWA Ativo' : 'Direto / Orgânico'}
+          </span>
+        </div>
+        <div className="mt-2 space-y-1.5 text-xs">
+          <div className="flex items-center justify-between text-slate-700">
+            <span className="text-[11px] text-slate-500">Campanha:</span>
+            <span className="font-semibold text-slate-900 truncate max-w-[170px]" title={primaryAcquisition?.campaignName || 'Campanha Principal Meta'}>
+              {primaryAcquisition?.campaignName || 'Campanha Principal Meta'}
+            </span>
+          </div>
+          {primaryAcquisition?.offerHook && (
+            <div className="rounded-lg bg-white/90 p-2 border border-emerald-200/70">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                <Tag size={10} /> Oferta de Entrada
+              </p>
+              <p className="mt-0.5 font-medium text-slate-800 text-[11px]">{primaryAcquisition.offerHook}</p>
+            </div>
+          )}
+          {primaryAcquisition?.entryMessage && (
+            <p className="text-[10.5px] text-slate-600 italic bg-white/60 rounded p-1.5 border border-slate-100 truncate">
+              "{primaryAcquisition.entryMessage}"
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* 2. Jornada Comercial & Receita */}
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-heading">Jornada</p>
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-heading">Jornada Comercial</p>
+          <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 uppercase">
+            {journey.pipelineStage || 'LEAD'}
+          </span>
+        </div>
         <p className="mt-1 text-sm font-bold text-slate-900">
           {journey.primaryServiceOrProduct || "Produto/serviço não registrado"}
         </p>
@@ -1232,8 +1366,9 @@ function LiveDossier({
         </dl>
       </section>
 
+      {/* 3. Fatos Conhecidos & Prova com Proveniência */}
       <section className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-3 py-2">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-3 py-2">
           <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading">
             <Sparkles size={13} className="text-indigo-600" /> Fatos Conhecidos ({knownFacts.length})
           </p>
@@ -1245,7 +1380,7 @@ function LiveDossier({
             + Adicionar
           </button>
         </div>
-        <div className="max-h-[260px] space-y-2 overflow-y-auto p-3">
+        <div className="max-h-[220px] space-y-2 overflow-y-auto p-3">
           {knownFacts.length === 0 ? (
             availability(
               "Sem fatos extraídos",
@@ -1254,11 +1389,15 @@ function LiveDossier({
           ) : (
             knownFacts.map((fact) => (
               <div key={fact.id} className="rounded-lg border border-slate-100 bg-slate-50/70 p-2.5">
-                <p className="text-xs font-bold text-indigo-700">{fact.key}</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-indigo-700">{fact.key}</p>
+                  <span className="rounded bg-indigo-100 px-1 py-0.2 font-mono text-[9px] font-bold text-indigo-800">
+                    {Math.round(fact.confidence * 100)}%
+                  </span>
+                </div>
                 <p className="mt-0.5 break-words text-xs text-slate-800 font-medium">{valueToText(fact.value)}</p>
-                <p className="mt-1 text-[10.5px] text-slate-500">
-                  {fact.source} · confiança {Math.round(fact.confidence * 100)}%
-                  {fact.confirmedByCustomer ? " · confirmado" : ""}
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Origem: {fact.source} {fact.confirmedByCustomer ? " · confirmado pelo cliente" : ""}
                 </p>
               </div>
             ))
@@ -1266,9 +1405,78 @@ function LiveDossier({
         </div>
       </section>
 
+      {/* 4. Memória Tática & Notas Rápidas */}
+      <section className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-3 py-2">
+          <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading">
+            <Brain size={13} className="text-purple-600" /> Memória Tática ({operatorNotes.length})
+          </p>
+          <button
+            type="button"
+            onClick={() => setIsAddingNote((v) => !v)}
+            className="text-xs font-bold text-purple-600 hover:text-purple-800 transition cursor-pointer"
+          >
+            {isAddingNote ? 'Cancelar' : '+ Nova Nota'}
+          </button>
+        </div>
+        <div className="p-3 space-y-2">
+          {isAddingNote && (
+            <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-2.5 space-y-2">
+              <div className="flex gap-1.5">
+                {['Preferência', 'Orçamento', 'Decisor', 'Objeção'].map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setNewNoteTag(tag)}
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold transition ${
+                      newNoteTag === tag
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-white text-purple-800 border border-purple-200'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={newNoteText}
+                onChange={(e) => setNewNoteText(e.target.value)}
+                placeholder="Ex: Não ligar antes das 14h, prefere WhatsApp..."
+                className="w-full rounded border border-purple-200 bg-white p-1.5 text-xs text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-purple-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddNote();
+                }}
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAddNote}
+                  className="rounded bg-purple-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-purple-700 transition"
+                >
+                  Salvar Nota
+                </button>
+              </div>
+            </div>
+          )}
+          {operatorNotes.map((note) => (
+            <div key={note.id} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="rounded bg-purple-100 px-1.5 py-0.2 text-[9.5px] font-bold text-purple-800">
+                  {note.tag}
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">{note.time}</span>
+              </div>
+              <p className="mt-1 text-[11.5px] text-slate-800 font-medium">{note.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 5. Fricção Atual & Diagnóstico */}
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
         <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading">
-          <AlertTriangle size={13} className="text-amber-600" /> Fricção Atual
+          <AlertTriangle size={13} className="text-amber-600" /> Fricção Comercial
         </p>
         {decisionState ? (
           <>
@@ -1280,34 +1488,37 @@ function LiveDossier({
             </p>
           </>
         ) : (
-          <p className="mt-1.5 text-xs text-slate-500">Ainda não há um estado decisório registrado.</p>
+          <p className="mt-1.5 text-xs text-slate-500">Nenhuma objeção crítica detectada na conversa.</p>
         )}
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
-        <p className="flex items-center gap-1.5 text-xs font-bold text-slate-900 font-heading">
-          <ShieldCheck size={13} className="text-emerald-600" /> Handoff e Resultado
+      {/* 6. Ações Rápidas do Dossiê */}
+      <section className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 shadow-2xs space-y-2">
+        <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 font-heading">
+          Ações Comerciais Rápidas
         </p>
-        <p className="mt-1.5 text-xs text-slate-600">
-          {handoff
-            ? `Handoff ${handoff.status.toLocaleLowerCase("pt-BR")} · ${handoff.triggerReason}`
-            : "Sem handoff aberto."}
-        </p>
-        {outcome ? (
-          <div className="mt-2 border-t border-slate-100 pt-2">
-            <p className="text-xs font-bold text-emerald-800">
-              {outcome.result} · {formatMoney(outcome.finalRevenueMinor, outcome.currency)}
-            </p>
-            {outcome.closedReason && (
-              <p className="mt-0.5 text-[11px] text-slate-600">{outcome.closedReason}</p>
-            )}
-            <p className="mt-1 font-mono text-[10px] text-emerald-700">CAPI: {outcome.capiStatus}</p>
-          </div>
-        ) : (
-          <p className="mt-1 text-xs text-slate-500">Resultado final ainda não registrado.</p>
-        )}
+        <div className="grid grid-cols-2 gap-1.5">
+          {onOpenFollowUpModal && (
+            <button
+              type="button"
+              onClick={onOpenFollowUpModal}
+              className="flex items-center justify-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs font-bold text-blue-800 hover:bg-blue-100 transition shadow-2xs"
+            >
+              <Calendar size={12} /> Agendar Follow
+            </button>
+          )}
+          {onOpenOutcomeModal && (
+            <button
+              type="button"
+              onClick={onOpenOutcomeModal}
+              className="flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition shadow-2xs"
+            >
+              <DollarSign size={12} /> Desfecho
+            </button>
+          )}
+        </div>
       </section>
-    </>
+    </div>
   );
 }
 

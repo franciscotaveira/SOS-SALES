@@ -367,21 +367,22 @@ function AppContent({
       </React.Suspense>
 
         {/* Botão Flutuante Atlas IA: Assistente de Configuração do SOS Sales */}
-        <div className="fixed bottom-6 right-6 z-40">
+        <div className="fixed bottom-6 right-6 z-50">
           <button
             onClick={() => setIsAssistantOpen(true)}
-            className="flex items-center gap-2.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-700 px-4 py-3 text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-200 border-2 border-emerald-400/30 group cursor-pointer"
+            className="flex items-center gap-3 rounded-full bg-slate-950 text-white px-4.5 py-3 shadow-2xl shadow-slate-950/70 hover:shadow-emerald-950/50 hover:scale-105 transition-all duration-200 border-2 border-emerald-500 group cursor-pointer"
+            style={{ backgroundColor: '#020617', color: '#ffffff' }}
           >
-            <div className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-white">
-              <Bot className="h-4 w-4" />
-              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-white shadow-inner shrink-0">
+              <Bot className="h-4.5 w-4.5 text-white" />
+              <span className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 border-2 border-slate-950 animate-pulse" />
             </div>
-            <div className="text-left pr-1">
-              <p className="text-xs font-bold leading-tight flex items-center gap-1">
-                Atlas Setup IA
-                <Sparkles className="h-3 w-3 text-amber-300" />
+            <div className="text-left pr-1.5">
+              <p className="text-xs font-bold leading-tight flex items-center gap-1.5 text-white">
+                Atlas Copilot IA
+                <Sparkles className="h-3.5 w-3.5 text-amber-400" />
               </p>
-              <p className="text-[10px] text-emerald-100/90 leading-tight">Configurar meu SOS Sales</p>
+              <p className="text-[10.5px] text-emerald-400 font-semibold leading-tight mt-0.5">Orquestrador & Setup</p>
             </div>
           </button>
         </div>
