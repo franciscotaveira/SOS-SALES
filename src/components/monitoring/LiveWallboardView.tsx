@@ -46,6 +46,11 @@ const MicroConversationCard = memo(({
   const isPending = journey.handoffStatus === 'pending_operator';
   const isCritical = journey.slaStatus === 'critical';
 
+  const leadName = journey.leadName || journey.contact?.name || 'Cliente';
+  const leadPhone = journey.leadPhone || journey.contact?.phone || '';
+  const slaMinutes = journey.slaMinutesRemaining ?? 15;
+  const lastActivity = journey.lastActivityAt || 'Agora';
+
   const leadMsg = journey.lastLeadMessage || journey.acquisition?.initialMessageText || 'Olá, gostaria de saber mais...';
   const botOrOperatorMsg = journey.recommendation?.draftText || 'Olá! Como posso te ajudar hoje?';
 
@@ -66,14 +71,14 @@ const MicroConversationCard = memo(({
           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
             isTvMode ? 'bg-slate-800 text-emerald-400' : 'bg-slate-200 text-slate-700'
           }`}>
-            {journey.leadName.charAt(0)}
+            {leadName.charAt(0)}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1">
-              <h4 className="font-bold text-xs truncate">{journey.leadName}</h4>
+              <h4 className="font-bold text-xs truncate">{leadName}</h4>
               <span className="w-2 h-2 rounded-full bg-[#25d366] shrink-0" title="Online" />
             </div>
-            <p className="text-[10px] text-slate-400 font-mono truncate">{journey.leadPhone}</p>
+            <p className="text-[10px] text-slate-400 font-mono truncate">{leadPhone}</p>
           </div>
         </div>
 
@@ -96,7 +101,7 @@ const MicroConversationCard = memo(({
               ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-ping'
               : isTvMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'
           }`}>
-            {journey.slaMinutesRemaining}m
+            {slaMinutes}m
           </span>
         </div>
       </div>
@@ -105,7 +110,7 @@ const MicroConversationCard = memo(({
       <div className="p-3 flex-1 flex flex-col justify-end space-y-2 overflow-hidden text-xs">
         <div className="flex flex-col items-start">
           <div className="flex items-center gap-1 mb-0.5 text-[9.5px] text-slate-400">
-            Cliente · {journey.lastActivityAt}
+            Cliente · {lastActivity}
           </div>
           <div
             className={`px-2.5 py-1.5 rounded-xl text-[11px] leading-snug max-w-[90%] line-clamp-2 ${
