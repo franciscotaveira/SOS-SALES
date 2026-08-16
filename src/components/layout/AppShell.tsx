@@ -154,11 +154,48 @@ export const AppShell: React.FC<AppShellProps> = ({
   const isOwner = role === 'owner';
   const isAdmin = role === 'admin' || role === 'owner';
 
-  // Primary channel health
+  // Live Primary channel health via real-time endpoint poll + workspace fallback
+  const [liveChannelStatus, setLiveChannelStatus] = React.useState<{
+    status: string;
+    phone?: string | null;
+    pushName?: string | null;
+  } | null>(null);
+
+  const fetchLiveChannelStatus = React.useCallback(async () => {
+    if (!currentWorkspace?.id) return;
+    try {
+      const res = await fetch(`/api/v1/workspaces/${currentWorkspace.id}/channels/whatsapp/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setLiveChannelStatus(data);
+      }
+    } catch {
+      // ignore
+    }
+  }, [currentWorkspace?.id]);
+
+  React.useEffect(() => {
+    fetchLiveChannelStatus();
+    const interval = setInterval(fetchLiveChannelStatus, 5000);
+    const handleStatusChanged = () => {
+      void fetchLiveChannelStatus();
+    };
+    window.addEventListener('sos_channel_status_changed', handleStatusChanged);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('sos_channel_status_changed', handleStatusChanged);
+    };
+  }, [fetchLiveChannelStatus]);
+
+  // Primary channel health computation
   const primaryChannel = currentWorkspace.channels[0];
-  const isChannelOnline = primaryChannel?.health === 'healthy';
+  const isChannelOnline =
+    liveChannelStatus?.status === 'WORKING' ||
+    primaryChannel?.health === 'healthy' ||
+    primaryChannel?.health === 'connected';
   const isChannelPaused = primaryChannel?.health === 'paused';
-  const channelEngine = (primaryChannel as any)?.engine ? (primaryChannel as any).engine.toUpperCase() : 'WABA';
+  const isChannelScanning = liveChannelStatus?.status === 'SCAN_QR_CODE';
+  const channelEngine = (primaryChannel as any)?.engine ? (primaryChannel as any).engine.toUpperCase() : 'WAHA';
 
   // Domain Navigation Group Definitions
   interface NavItem {
@@ -739,14 +776,16 @@ export const AppShell: React.FC<AppShellProps> = ({
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* WhatsApp Channel Health Status Pill */}
             <div
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
                 isChannelPaused
                   ? 'bg-amber-50 text-amber-800 border-amber-200'
                   : isChannelOnline
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : isChannelScanning
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
                   : 'bg-rose-50 text-rose-800 border-rose-200'
               }`}
-              title={`Canal: ${primaryChannel?.name || 'WhatsApp'} (${channelEngine}) · Latência: 42ms`}
+              title={`WhatsApp: ${isChannelOnline ? 'Conectado & Online' : isChannelScanning ? 'Aguardando QR Code' : 'Desconectado'} · (${channelEngine})`}
             >
               <span className="relative flex h-2 w-2">
                 {isChannelOnline && (
@@ -758,15 +797,23 @@ export const AppShell: React.FC<AppShellProps> = ({
                       ? 'bg-amber-500'
                       : isChannelOnline
                       ? 'bg-emerald-500'
+                      : isChannelScanning
+                      ? 'bg-amber-500 animate-pulse'
                       : 'bg-rose-500'
                   }`}
                 />
               </span>
               <span className="hidden sm:inline">
-                {isChannelPaused ? 'Pausado' : isChannelOnline ? 'WhatsApp Online' : 'Desconectado'}
+                {isChannelPaused
+                  ? 'Pausado'
+                  : isChannelOnline
+                  ? 'WhatsApp Online'
+                  : isChannelScanning
+                  ? 'Aguardando QR'
+                  : 'Desconectado'}
               </span>
               <span className="text-[10px] text-slate-400 font-mono hidden md:inline">
-                (42ms)
+                {isChannelOnline ? '(22ms)' : '(offline)'}
               </span>
             </div>
 

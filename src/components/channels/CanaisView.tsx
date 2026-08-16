@@ -58,6 +58,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
       if (res.ok) {
         const data = await res.json();
         setChannelStatus(data);
+        window.dispatchEvent(new CustomEvent('sos_channel_status_changed', { detail: data }));
       }
     } catch {
       // ignore
