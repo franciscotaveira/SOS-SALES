@@ -95,8 +95,8 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   const [search, setSearch] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const fetchJourneys = useCallback(async () => {
-    setLoading(true);
+  const fetchJourneys = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       if ('listJourneys' in gateway && typeof (gateway as any).listJourneys === 'function') {
@@ -119,14 +119,14 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
         setJourneys(mapped);
       }
     } catch (err: any) {
-      setError(err.message || 'Falha ao carregar funil comercial.');
+      if (!silent) setError(err.message || 'Falha ao carregar funil comercial.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [workspaceId, gateway]);
 
   useEffect(() => {
-    void fetchJourneys();
+    void fetchJourneys(false);
 
     const client = getSupabaseClient();
     let channel: any;
@@ -142,7 +142,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
             filter: `workspace_id=eq.${workspaceId}`,
           },
           () => {
-            void fetchJourneys();
+            void fetchJourneys(true);
           }
         )
         .subscribe();
@@ -150,7 +150,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
 
     const timer = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      void fetchJourneys();
+      void fetchJourneys(true);
     }, 10000);
 
     return () => {
