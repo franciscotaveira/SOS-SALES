@@ -21,6 +21,7 @@ import { knownFactOperationRoutes } from './known-fact-operations.js';
 import { appointmentRoutes } from './appointments.js';
 import { notesRoutes } from './notes.js';
 import { workspaceInitRoutes } from './workspace-init.js';
+import { atlasToolsRoutes } from './atlas-tools.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -145,5 +146,9 @@ export async function operatorAuthRoutes(
   });
   app.register(workspaceInitRoutes, {
     workspaceProvisioningGateway: dependencies.workspaceProvisioningGateway,
+  });
+  app.register(atlasToolsRoutes, {
+    cockpitReadGateway: dependencies.cockpitReadGateway,
+    knownFactOperationsGateway: dependencies.knownFactOperationsGateway,
   });
 }
