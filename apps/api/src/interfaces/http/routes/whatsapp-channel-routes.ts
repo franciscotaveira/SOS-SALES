@@ -248,9 +248,10 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     try {
       const metaRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(phoneNumberId)}?access_token=${encodeURIComponent(accessToken)}`);
       if (!metaRes.ok) {
-        const errJson = await metaRes.json().catch(() => ({}));
+        const errJson = (await metaRes.json().catch(() => ({}))) as any;
+        const metaErrorMessage = errJson?.error?.message || 'Falha na validação com a Meta Cloud API. Verifique seu Phone Number ID e Access Token.';
         return reply.status(400).send({
-          error: 'Falha na validação com a Meta Cloud API. Verifique seu Phone Number ID e Access Token.',
+          error: `Erro Meta: ${metaErrorMessage}`,
           metaDetails: errJson,
         });
       }
@@ -310,6 +311,127 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
           phoneNumberId,
           status: 'CONNECTED',
           message: 'Canal Meta Cloud API (WABA) conectado e validado com sucesso!',
+        };
+      } finally {
+        client.release();
+      }
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message, statusCode: 500 });
+    }
+  });
+
+  // 6.1. Login Auth / OAuth Embedded Signup Auto-Connect
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/oauth-connect', async (request: FastifyRequest<{
+    Params: { workspaceId: string };
+    Body: { accessToken?: string; code?: string; wabaId?: string; phoneNumberId?: string; appId?: string; appSecret?: string };
+  }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    let { accessToken, code, wabaId, phoneNumberId, appId, appSecret } = request.body || {};
+
+    // 1. If authorization code is provided, exchange for access token
+    if (code && appId && appSecret) {
+      try {
+        const tokenExchangeRes = await fetch(
+          `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${encodeURIComponent(appId)}&client_secret=${encodeURIComponent(appSecret)}&code=${encodeURIComponent(code)}`
+        );
+        if (tokenExchangeRes.ok) {
+          const tokenData = (await tokenExchangeRes.json()) as any;
+          accessToken = tokenData.access_token;
+        }
+      } catch (err: any) {
+        return reply.status(400).send({ error: `Erro ao trocar código por token Meta: ${err.message}` });
+      }
+    }
+
+    if (!accessToken) {
+      return reply.status(400).send({ error: 'Access Token ou Código de Autorização é obrigatório para o Login Auth Meta.' });
+    }
+
+    try {
+      // 2. Auto-discover WABA and Phone Number if missing
+      if (!phoneNumberId && wabaId) {
+        const phonesRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(wabaId)}/phone_numbers?access_token=${encodeURIComponent(accessToken)}`);
+        if (phonesRes.ok) {
+          const phonesData = (await phonesRes.json()) as any;
+          if (Array.isArray(phonesData.data) && phonesData.data.length > 0) {
+            phoneNumberId = phonesData.data[0].id;
+          }
+        }
+      }
+
+      if (!phoneNumberId) {
+        return reply.status(400).send({
+          error: 'Não foi possível detectar o ID do Número de Telefone automaticamente. Por favor informe o Phone Number ID retornado pelo Facebook Login.',
+        });
+      }
+
+      // 3. Validate Phone Number ID with Meta
+      const metaRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(phoneNumberId)}?access_token=${encodeURIComponent(accessToken)}`);
+      if (!metaRes.ok) {
+        const errJson = (await metaRes.json().catch(() => ({}))) as any;
+        return reply.status(400).send({
+          error: `Erro de Validação Meta: ${errJson?.error?.message || 'Token ou Phone ID inválido'}`,
+          metaDetails: errJson,
+        });
+      }
+
+      const metaData = (await metaRes.json()) as { display_phone_number?: string; verified_name?: string; id?: string };
+      const displayPhone = metaData.display_phone_number || phoneNumberId;
+      const verifiedName = metaData.verified_name || 'WhatsApp Business Oficial';
+
+      // 4. Persist in Database
+      const client = await dbPool.connect();
+      try {
+        const publicConfig = {
+          wabaId: wabaId || 'auto_detected',
+          phoneNumberId,
+          verifiedName,
+          verifyToken: 'mct_waba_verify_2026',
+          engine: 'META_CLOUD',
+          connectedVia: 'LOGIN_AUTH_OAUTH',
+        };
+
+        const existing = await client.query(`
+          SELECT id FROM public.channel_connections WHERE workspace_id = $1 AND provider = 'meta_cloud' LIMIT 1
+        `, [workspaceId]);
+
+        let channelId: string;
+        if (existing.rowCount && existing.rowCount > 0) {
+          channelId = existing.rows[0].id;
+          await client.query(`
+            UPDATE public.channel_connections
+            SET phone_number = $1, name = $2, public_config = $3, status = 'CONNECTED', updated_at = NOW()
+            WHERE id = $4
+          `, [displayPhone, verifiedName, JSON.stringify(publicConfig), channelId]);
+        } else {
+          const insertRes = await client.query(`
+            INSERT INTO public.channel_connections (
+              id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at
+            ) VALUES (
+              gen_random_uuid(), $1, 'meta_cloud', $2, $3, $4, 'CONNECTED', NOW(), NOW()
+            ) RETURNING id
+          `, [workspaceId, displayPhone, verifiedName, JSON.stringify(publicConfig)]);
+          channelId = insertRes.rows[0].id;
+        }
+
+        await client.query(`
+          INSERT INTO public.channel_connection_secrets (
+            channel_connection_id, workspace_id, secret_kind, secret_payload, created_at, updated_at
+          ) VALUES (
+            $1, $2, 'meta_bearer_token', $3, NOW(), NOW()
+          )
+          ON CONFLICT (channel_connection_id) DO UPDATE SET secret_payload = EXCLUDED.secret_payload, updated_at = NOW()
+        `, [channelId, workspaceId, JSON.stringify({ accessToken, verifyToken: 'mct_waba_verify_2026' })]);
+
+        return {
+          success: true,
+          channelId,
+          verifiedPhone: displayPhone,
+          verifiedName,
+          wabaId: wabaId || 'auto_detected',
+          phoneNumberId,
+          status: 'CONNECTED',
+          message: 'WhatsApp Oficial (WABA) conectado via Login Auth com sucesso!',
         };
       } finally {
         client.release();
