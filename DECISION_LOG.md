@@ -174,6 +174,24 @@
   - `src/components/cockpit/LiveCockpitView.tsx`
   - `src/components/settings/LiveSettingsView.tsx`
   - `src/components/intelligence/ClientAgentHubView.tsx`
+  - `src/components/assistant/OnboardingSetupAssistantModal.tsx`
 - **Trade-offs:** Zero overhead de servidor; melhora direta na ergonomia do operador.
+- **Confidence:** 10/10
+- **Date:** 2026-08-16
+
+---
+
+## Task 17: Auditoria Completa de SQL & Hardening do Banco de Dados
+- **Context:** Revisão rigorosa de todas as consultas SQL em gateways, workers e webhooks para conformidade com o MCT OS v2.0 (Truth in Data, RLS e ACID).
+- **Decision:**
+  1. Eliminação total de interpolação de strings em `/clear-history` e `/clear-journey`, convertendo para transações parametrizadas nativas (`BEGIN ... COMMIT`).
+  2. Alinhamento de schema no `CapiDispatchWorker` para a coluna oficial `public_config` do Supabase.
+  3. Conformidade com a imutabilidade no `waba-webhook.ts`, gravando eventos append-only em `conversation_message_events`.
+- **Rationale:** Eliminação de qualquer vetor de injeção ou colisão de esquema em ambientes de alta concorrência.
+- **Scope:**
+  - `apps/api/src/interfaces/http/routes/whatsapp-channel-routes.ts`
+  - `apps/api/src/infrastructure/workers/capi-dispatch-worker.ts`
+  - `apps/api/src/interfaces/http/routes/webhooks/waba-webhook.ts`
+- **Trade-offs:** Zero quebra de compatibilidade; maior robustez e segurança em produção.
 - **Confidence:** 10/10
 - **Date:** 2026-08-16
