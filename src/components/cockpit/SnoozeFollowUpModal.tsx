@@ -103,7 +103,7 @@ export const SnoozeFollowUpModal: React.FC<SnoozeFollowUpModalProps> = ({
               <span>Programar Retomada Comercial</span>
             </div>
             <h3 className="text-sm font-bold text-slate-900 leading-snug">
-              Lembrete de Follow-up · {journey.leadName}
+              Lembrete de Follow-up · {journey.leadName || journey.contact?.name || 'Cliente'}
             </h3>
           </div>
           <button

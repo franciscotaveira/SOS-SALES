@@ -80,7 +80,7 @@ export const OutcomeModal: React.FC<OutcomeModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="text-xs text-slate-600">
-            Lead: <strong className="text-slate-900">{journey.leadName}</strong> ({journey.leadPhone})
+            Lead: <strong className="text-slate-900">{journey.leadName || journey.contact?.name || 'Cliente'}</strong> {journey.leadPhone || journey.contact?.phone ? `(${journey.leadPhone || journey.contact?.phone})` : ''}
           </div>
 
           {/* Outcome Status Selector */}
