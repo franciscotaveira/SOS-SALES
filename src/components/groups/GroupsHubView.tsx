@@ -142,6 +142,17 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     }
   }, [activeSubTab]);
 
+  React.useEffect(() => {
+    if (!isBroadcastModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsBroadcastModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isBroadcastModalOpen]);
+
   const selectedGroup = React.useMemo(
     () => groups.find((g) => g.id === selectedGroupId) || groups[0] || null,
     [groups, selectedGroupId]
