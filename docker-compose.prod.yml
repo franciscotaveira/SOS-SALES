@@ -102,6 +102,7 @@ services:
   # ---------------------------------------------------------------------------
   waha:
     image: devlikeapro/waha:latest
+    platform: linux/amd64
     container_name: sos-sales-waha
     restart: unless-stopped
     expose:
