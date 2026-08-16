@@ -133,3 +133,47 @@
 - **Trade-offs:** Requer chave OpenRouter configurada; em caso de instabilidade, atua com fallback de mensagens consultivas pré-aprovadas.
 - **Confidence:** 10/10
 - **Date:** 2026-08-16
+
+---
+
+## Task 14: Sincronização em Tempo Real via Supabase WebSockets (7 Módulos)
+- **Decision:** Integração de canais de broadcast Postgres (`supabase.channel('live-*')`) e fallbacks de polling silencioso em todas as 7 abas operacionais do frontend (`LiveCockpitView`, `LiveCommercialKanbanView`, `LiveConversationsView`, `AgendaView`, `NotesView`, `LiveTrafficProofView`, `GroupsHubView`).
+- **Rationale:** Elimina a necessidade de atualizações manuais (`F5`) por parte dos operadores. Qualquer mensagem, agendamento, venda fechada ou anotação criada reflete instantaneamente para todos os membros do workspace.
+- **Scope:**
+  - `src/components/cockpit/LiveCockpitView.tsx`
+  - `src/components/kanban/LiveCommercialKanbanView.tsx`
+  - `src/components/conversations/LiveConversationsView.tsx`
+  - `src/components/agenda/AgendaView.tsx`
+  - `src/components/notes/NotesView.tsx`
+  - `src/components/results/LiveTrafficProofView.tsx`
+  - `src/components/groups/GroupsHubView.tsx`
+- **Trade-offs:** Pequeno consumo de conexões WebSocket gerenciado eficientemente pelo Supabase Realtime com unsubscribe automático no unmount dos componentes React.
+- **Confidence:** 10/10
+- **Date:** 2026-08-16
+
+---
+
+## Task 15: Background Outbound Dispatch Worker no Servidor
+- **Decision:** Inicialização automática do `WahaOutboundWorker` junto com o servidor principal Fastify, garantindo processamento contínuo de mensagens aprovadas com lease de 60s e retries exponenciais com jitter.
+- **Rationale:** Garante que mensagens preparadas pelo Copilot ou aprovadas pelos operadores sejam enviadas de forma assíncrona sem travar a requisição HTTP do usuário.
+- **Scope:**
+  - `apps/api/src/server.ts`
+  - `apps/api/src/infrastructure/workers/waha-outbound-worker.ts`
+- **Trade-offs:** Requer canal WAHA saudável; falhas transitórias de rede sofrem retry automático com backoff exponencial.
+- **Confidence:** 10/10
+- **Date:** 2026-08-16
+
+---
+
+## Task 16: Refinamentos de UX, Atalhos Globais e Persistência de Inteligência
+- **Decision:** Adição de atalho global `Escape` em todos os modais, preservação do badge de status do canal nas Configurações e persistência de dados de treinamento do cliente (`ClientAgentHubView`) no `localStorage` por `workspaceId`.
+- **Rationale:** Melhora substancial na velocidade de uso pelo atendente e garante integridade do dossiê comercial entre sessões de navegação.
+- **Scope:**
+  - `src/components/cockpit/OutcomeModal.tsx`
+  - `src/components/cockpit/SnoozeFollowUpModal.tsx`
+  - `src/components/cockpit/LiveCockpitView.tsx`
+  - `src/components/settings/LiveSettingsView.tsx`
+  - `src/components/intelligence/ClientAgentHubView.tsx`
+- **Trade-offs:** Zero overhead de servidor; melhora direta na ergonomia do operador.
+- **Confidence:** 10/10
+- **Date:** 2026-08-16
