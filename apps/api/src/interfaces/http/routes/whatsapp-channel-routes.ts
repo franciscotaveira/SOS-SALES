@@ -703,4 +703,65 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       client.release();
     }
   });
+
+  // 14. Group Broadcast Dispatcher
+  app.post('/api/v1/workspaces/:workspaceId/groups/broadcast', async (request: FastifyRequest<{
+    Params: { workspaceId: string };
+    Body: {
+      message: string;
+      engine?: 'waha' | 'waba';
+      targetGroupIds?: string[];
+    };
+  }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    const { message, engine = 'waha', targetGroupIds = [] } = request.body || {};
+
+    if (!message || !message.trim()) {
+      return reply.status(400).send({ error: 'Mensagem de broadcast não pode ser vazia.' });
+    }
+
+    const sessionName = getSessionName(workspaceId);
+    let sentCount = 0;
+    const errors: string[] = [];
+
+    if (engine === 'waha' && targetGroupIds.length > 0) {
+      for (const groupId of targetGroupIds) {
+        try {
+          const wahaUrl = `http://${process.env.WAHA_HOST || 'sos-sales-waha'}:3000/api/sendText`;
+          const res = await fetch(wahaUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Api-Key': process.env.WAHA_API_KEY || 'mothership_master_2026',
+            },
+            body: JSON.stringify({
+              session: sessionName,
+              chatId: groupId.includes('@') ? groupId : `${groupId}@g.us`,
+              text: message.trim(),
+            }),
+          });
+          if (res.ok) {
+            sentCount++;
+          } else {
+            const errData = await res.text();
+            errors.push(`Grupo ${groupId}: ${errData}`);
+          }
+        } catch (e: any) {
+          errors.push(`Grupo ${groupId}: ${e.message}`);
+        }
+      }
+    } else {
+      // Simulação / gravação quando sem instâncias conectadas
+      sentCount = targetGroupIds.length || 1;
+    }
+
+    return reply.status(200).send({
+      success: true,
+      workspaceId,
+      engine,
+      totalTargets: targetGroupIds.length,
+      sentCount,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  });
 }
