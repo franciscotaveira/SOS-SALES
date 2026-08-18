@@ -4,7 +4,8 @@
 > **VPS IP**: `179.197.72.221` (Ubuntu 24.04, Docker, Caddy, API, WAHA, Redis)  
 > **Supabase**: `yiiuebhyqixzluguxsqi` (`aws-0-ca-central-1.pooler.supabase.com:6543`)  
 > **WhatsApp Engines**: WAHA (`devlikeapro/waha:latest`, Sessão: `default`) + Meta Cloud API v20.0 (WABA)  
-> **Última Atualização**: 17 de Agosto de 2026
+> **Titularidade & Arquitetura**: Francisco Taveira Rios (MCT LTDA)  
+> **Última Atualização**: 18 de Agosto de 2026 (Release v2.0 Soberana - Níveis 1 a 5 + Kit Jurídico Completo)  
 
 ---
 
