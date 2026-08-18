@@ -1815,9 +1815,9 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
                     seenIds.add(targetId);
                     foundDatasets.push({
                       id: targetId,
-                      name: targetId === '2042592029613403' ? 'ESCOVARIA E ESMALTERIA | CHAPECÓ Event Data' : `Conjunto de Dados (ID: ${targetId})`,
+                      name: `Conjunto de Dados / Pixel (${targetId})`,
                       type: 'dataset',
-                      owner: targetId === '2042592029613403' ? 'BM - Nail Spa & Beauty' : appName,
+                      owner: appName || 'Meta Business',
                     });
                   }
                 }

@@ -81,10 +81,11 @@ export function resolveWorkspaceTrackingDefaults(wsId: string, wsName?: string):
   // 2. Sora Spa
   if (normId.includes('sora') || normName.includes('sora') || normName.includes('spa') || normId.includes('33333333')) {
     return {
-      pixelId: '394857201948293',
-      datasetId: '394857201948293',
-      googleCustomerId: '512-802-9911',
-      googleConversionId: 'AW-2091827364',
+      pixelId: '',
+      datasetId: '',
+      googleCustomerId: '',
+      googleConversionId: '',
+      metaAccessToken: '',
       campaigns: [
         {
           id: 'camp-sora-1',
@@ -95,42 +96,20 @@ export function resolveWorkspaceTrackingDefaults(wsId: string, wsName?: string):
           utmCampaign: 'headspa_sensorial',
           defaultProduct: 'Sessão Headspa Signature (90 min)',
           hookPromise: 'Desconecte do estresse com massagem capilar e cascata de ozônio',
-          activeLeadsCount: 31,
+          activeLeadsCount: 0,
         },
       ],
     };
   }
 
-  // 3. SOS Sales - Matriz Principal / Sovereign Master
+  // 3. Outros Workspaces (Limpo e Isolado)
   return {
-    pixelId: '2042592029613403',
-    datasetId: '2042592029613403',
-    googleCustomerId: '100-200-3000',
-    googleConversionId: 'AW-3004005001',
-    campaigns: [
-      {
-        id: 'camp-sos-1',
-        platform: 'meta',
-        campaignName: 'Meta Ads — SOS Sales Copilot Comercial B2B',
-        utmSource: 'facebook',
-        utmMedium: 'cpc',
-        utmCampaign: 'sos_b2b_empresas',
-        defaultProduct: 'Licença SOS Sales Pro + Copilot IA',
-        hookPromise: 'Transforme o WhatsApp da sua empresa em uma máquina de vendas com IA',
-        activeLeadsCount: 54,
-      },
-      {
-        id: 'camp-sos-2',
-        platform: 'google',
-        campaignName: 'Google Search — Software Gestão Comercial WhatsApp',
-        utmSource: 'google',
-        utmMedium: 'search',
-        utmCampaign: 'software_crm_whatsapp',
-        defaultProduct: 'Plataforma SOS Sales Enterprise',
-        hookPromise: 'Atendimento supervisionado com Truth in Data e recuperação de leads',
-        activeLeadsCount: 38,
-      },
-    ],
+    pixelId: '',
+    datasetId: '',
+    googleCustomerId: '',
+    googleConversionId: '',
+    metaAccessToken: '',
+    campaigns: [],
   };
 }
 
@@ -274,15 +253,11 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
           });
         }
       } else {
-        // Fallback: If no datasets returned from search, use dataset ID 2042592029613403
-        const fallbackDs = {
-          id: '2042592029613403',
-          name: 'ESCOVARIA E ESMALTERIA | CHAPECÓ Event Data',
-          type: 'dataset' as const,
-          owner: 'BM - Nail Spa & Beauty',
-        };
-        setDiscoveredDatasets([fallbackDs]);
-        selectAndBindDataset(fallbackDs, token);
+        setDiscoveredDatasets([]);
+        setFeedback({
+          success: false,
+          message: 'Nenhum conjunto de dados/pixel encontrado nesta conta da Meta. Verifique se o token de acesso possui permissões de "ads_read" e "business_management" para a conta de anúncios deste workspace.',
+        });
       }
     } catch (err: any) {
       setFeedback({
