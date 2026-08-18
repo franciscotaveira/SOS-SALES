@@ -123,7 +123,7 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
 
       {/* Content Rendering based on selected Subtab */}
       <div className="flex-1 pb-12">
-        {activeSubTab === 'analytics' && <ManagerDashboardView />}
+        {activeSubTab === 'analytics' && <ManagerDashboardView workspace={workspace} />}
 
         {activeSubTab === 'traffic_proof' && (
           isAuthenticatedApiMode && gateway instanceof HttpSalesOsGateway ? (
