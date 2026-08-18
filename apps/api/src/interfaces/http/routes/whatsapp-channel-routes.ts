@@ -118,14 +118,15 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       }
 
       const sessions = (await listRes.json()) as Array<{ name: string; status: string; me?: any }>;
-      let session = sessions.find((s) => s.name === sessionName && s.status === 'WORKING') ||
-                    sessions.find((s) => s.name === sessionName) ||
-                    sessions.find((s) => s.status === 'WORKING');
+      // STRICT TENANT ISOLATION: Only check the exact session for this workspace
+      let session = sessions.find((s) => s.name === sessionName);
 
       return {
-        session: session?.name || sessionName,
-        status: session ? session.status : 'STOPPED',
+        session: sessionName,
+        status: session ? session.status : 'SCAN_QR_CODE',
         me: session?.me || null,
+        phone: session?.me?.id ? session.me.id.split('@')[0] : null,
+        pushName: session?.me?.pushName || null,
       };
     } catch (err: any) {
       return reply.status(500).send({ error: err.message, statusCode: 500 });
