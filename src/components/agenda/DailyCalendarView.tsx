@@ -45,7 +45,7 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({
 
         <div className="flex items-center gap-2">
           <span className="text-xs px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
-            Receita do Dia: R$ {todayApts.reduce((acc, a) => acc + (a.serviceValue || 0), 0).toFixed(2)}
+            Receita do Dia: R$ {todayApts.reduce((acc, a) => acc + (Number(a.serviceValue) || 0), 0).toFixed(2)}
           </span>
         </div>
       </div>
@@ -93,7 +93,7 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({
                           </div>
 
                           <p className="text-[11px] text-slate-600 mt-0.5">
-                            {apt.serviceName} · <span className="font-bold text-emerald-800">R$ {(apt.serviceValue || 0).toFixed(2)}</span>
+                            {apt.serviceName} · <span className="font-bold text-emerald-800">R$ {(Number(apt.serviceValue) || 0).toFixed(2)}</span>
                           </p>
 
                           <p className="text-[10px] text-slate-400 mt-0.5">

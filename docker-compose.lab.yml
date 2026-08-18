@@ -1,0 +1,85 @@
+services:
+  # ---------------------------------------------------------------------------
+  # FRONTEND SPA LAB / TEST (PORT 3333)
+  # ---------------------------------------------------------------------------
+  web-lab:
+    build:
+      context: .
+      dockerfile: Dockerfile.lab.web
+      args:
+        VITE_SOS_API_URL: /api/v1
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-https://yiiuebhyqixzluguxsqi.supabase.co}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-sb_publishable_4Mq9Nya3JTrs7OuqkjSa9g_Bs3g1Dgt}
+    container_name: sos-sales-lab-web
+    restart: unless-stopped
+    ports:
+      - "3333:80"
+    depends_on:
+      - api-lab
+    networks:
+      - sos-lab-network
+
+  # ---------------------------------------------------------------------------
+  # API BACKEND LAB (PORT 4335)
+  # ---------------------------------------------------------------------------
+  api-lab:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: sos-sales-lab-api
+    restart: unless-stopped
+    ports:
+      - "4335:4334"
+    environment:
+      - NODE_ENV=development
+      - PORT=4334
+      - HOST=0.0.0.0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:54322/postgres}
+      - REDIS_URL=redis://redis-lab:6379
+      - SUPABASE_URL=${VITE_SUPABASE_URL:-https://yiiuebhyqixzluguxsqi.supabase.co}
+      - SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-sb_publishable_4Mq9Nya3JTrs7OuqkjSa9g_Bs3g1Dgt}
+      - WAHA_BASE_URL=http://waha-lab:3000
+    depends_on:
+      redis-lab:
+        condition: service_healthy
+    networks:
+      - sos-lab-network
+
+  # ---------------------------------------------------------------------------
+  # REDIS LAB
+  # ---------------------------------------------------------------------------
+  redis-lab:
+    image: redis:7.2-alpine
+    container_name: sos-sales-lab-redis
+    restart: unless-stopped
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks:
+      - sos-lab-network
+
+  # ---------------------------------------------------------------------------
+  # WAHA WHATSAPP ENGINE LAB
+  # ---------------------------------------------------------------------------
+  waha-lab:
+    image: devlikeapro/waha:latest
+    platform: linux/amd64
+    container_name: sos-sales-lab-waha
+    restart: unless-stopped
+    ports:
+      - "3005:3000"
+    environment:
+      - WAHA_WEBHOOK_URL=http://api-lab:4334/webhooks/waha
+      - WAHA_WEBHOOK_EVENTS=message,message.any,session.status
+      - WAHA_WORKER_CONCURRENCY=5
+      - WAHA_ZIP_LOGS=false
+    networks:
+      - sos-lab-network
+
+networks:
+  sos-lab-network:
+    driver: bridge

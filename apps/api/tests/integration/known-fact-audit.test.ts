@@ -50,6 +50,14 @@ describe('P0 known fact audit protocol', () => {
   }
 
   beforeAll(async () => {
+    const client = await dbPool.connect();
+    try {
+      await client.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'true', false)");
+      await client.query('DELETE FROM workspaces WHERE id IN ($1,$2)', [workspaceA, workspaceB]);
+      await client.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'false', false)");
+    } finally {
+      client.release();
+    }
     await query("INSERT INTO workspaces(id,name,slug,active) VALUES ($1,'Facts A','facts-a',true),($2,'Facts B','facts-b',true)", [workspaceA, workspaceB]);
     await query("INSERT INTO workspace_memberships(workspace_id,user_id,role) VALUES ($1,$2,'operator'),($1,$3,'viewer'),($4,$5,'operator')", [workspaceA, operatorA, viewerA, workspaceB, operatorB]);
     await query("INSERT INTO channel_connections(id,workspace_id,provider,phone_number,name,public_config) VALUES ($1,$2,'waha','+5549000007001','Facts A','{}'),($3,$4,'waha','+5549000007002','Facts B','{}')", [channelA, workspaceA, channelB, workspaceB]);

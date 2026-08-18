@@ -168,16 +168,16 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
       audience: process.env.SUPABASE_JWT_AUDIENCE?.trim() || 'authenticated',
     })
     : undefined;
-  const workspaceDirectory = authenticator ? new PostgresWorkspaceDirectory(dbPool) : undefined;
-  const cockpitReadGateway = authenticator ? new PostgresCockpitReadGateway(dbPool) : undefined;
-  const handoffOperationsGateway = authenticator ? new PostgresHandoffOperationsGateway(dbPool) : undefined;
-  const journeyOperationsGateway = authenticator ? new PostgresJourneyOperationsGateway(dbPool) : undefined;
-  const commercialOutcomeGateway = authenticator ? new PostgresCommercialOutcomeGateway(dbPool) : undefined;
-  const outboundDispatchGateway = authenticator ? new PostgresOutboundDispatchGateway(dbPool) : undefined;
-  const trafficProofGateway = authenticator ? new PostgresTrafficProofGateway(dbPool) : undefined;
-  const knownFactOperationsGateway = authenticator ? new PostgresKnownFactOperationsGateway(dbPool) : undefined;
-  const appointmentGateway = authenticator ? new PostgresAppointmentGateway(dbPool) : undefined;
-  const notesGateway = authenticator ? new PostgresNotesGateway(dbPool) : undefined;
+  const workspaceDirectory = new PostgresWorkspaceDirectory(dbPool);
+  const cockpitReadGateway = new PostgresCockpitReadGateway(dbPool);
+  const handoffOperationsGateway = new PostgresHandoffOperationsGateway(dbPool);
+  const journeyOperationsGateway = new PostgresJourneyOperationsGateway(dbPool);
+  const commercialOutcomeGateway = new PostgresCommercialOutcomeGateway(dbPool);
+  const outboundDispatchGateway = new PostgresOutboundDispatchGateway(dbPool);
+  const trafficProofGateway = new PostgresTrafficProofGateway(dbPool);
+  const knownFactOperationsGateway = new PostgresKnownFactOperationsGateway(dbPool);
+  const appointmentGateway = new PostgresAppointmentGateway(dbPool);
+  const notesGateway = new PostgresNotesGateway(dbPool);
 
   return {
     secretProvider: new EnvironmentWebhookSecretProvider(),
@@ -256,6 +256,23 @@ async function startComposedServer(
 ): Promise<ServerInstance> {
   const port = options.port ?? Number(process.env.PORT || 4334);
   const host = options.host ?? process.env.HOST ?? '0.0.0.0';
+
+  const isCustomOrTestRuntime = process.env.NODE_ENV === 'test' || Boolean(options.runtime) || Boolean(options.runtimeFactory) || Boolean(process.env.SOS_SALES_RUNTIME_FACTORY);
+  const metaVerifyToken = process.env.META_VERIFY_TOKEN?.trim() || (isCustomOrTestRuntime ? 'test_verify_token' : '');
+  const metaAppSecret = process.env.META_APP_SECRET?.trim() || (isCustomOrTestRuntime ? 'test_app_secret' : '');
+  if (!metaVerifyToken || !metaAppSecret) {
+    if (process.env.NODE_ENV === 'production' && !isCustomOrTestRuntime) {
+      throw new Error(
+        'Missing required environment variables META_VERIFY_TOKEN and/or META_APP_SECRET for the WABA webhook.'
+      );
+    }
+  }
+
+  const wabaWebhookConfig = (metaVerifyToken && metaAppSecret) ? {
+    verifyToken: metaVerifyToken,
+    appSecret: metaAppSecret,
+  } : undefined;
+
   const app = buildApp({
     secretProvider: runtime.secretProvider,
     wahaAdapter: runtime.wahaAdapter,
@@ -273,6 +290,7 @@ async function startComposedServer(
     appointmentGateway: runtime.appointmentGateway,
     notesGateway: runtime.notesGateway,
     workspaceProvisioningGateway: runtime.workspaceProvisioningGateway,
+    wabaWebhook: wabaWebhookConfig,
     logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? true : { level: 'info' }),
     trustProxy: runtime.trustProxy ?? false,
   });

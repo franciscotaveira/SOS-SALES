@@ -211,7 +211,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
               </span>
               {outcome.dealValueBrl && (
                 <span className="font-mono text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded font-bold">
-                  R$ {outcome.dealValueBrl.toFixed(2)}
+                  R$ {(Number(outcome.dealValueBrl) || 0).toFixed(2)}
                 </span>
               )}
             </div>
@@ -288,7 +288,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${journey.estimatedDealValueBrl ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'}`} />
                 <span className="font-medium text-slate-800">
-                  {journey.estimatedDealValueBrl ? `Orçamento Estimado: R$ ${journey.estimatedDealValueBrl.toFixed(2)}` : 'Orçamento / Faixa de Preço não confirmada'}
+                  {journey.estimatedDealValueBrl ? `Orçamento Estimado: R$ ${(Number(journey.estimatedDealValueBrl) || 0).toFixed(2)}` : 'Orçamento / Faixa de Preço não confirmada'}
                 </span>
               </div>
               {!journey.estimatedDealValueBrl && (

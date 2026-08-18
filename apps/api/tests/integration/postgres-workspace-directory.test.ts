@@ -10,6 +10,14 @@ describe('PostgresWorkspaceDirectory — authenticated claim context and RLS', (
   const directory = new PostgresWorkspaceDirectory(dbPool);
 
   beforeAll(async () => {
+    const client = await dbPool.connect();
+    try {
+      await client.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'true', false)");
+      await client.query('DELETE FROM workspaces WHERE id IN ($1, $2)', [workspaceA, workspaceB]);
+      await client.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'false', false)");
+    } finally {
+      client.release();
+    }
     await query(
       `INSERT INTO workspaces (id, name, slug, active) VALUES
        ($1, 'Workspace Directory Alpha', 'workspace-directory-alpha', true),

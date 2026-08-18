@@ -522,7 +522,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
         </div>
       )}
 
-      {/* Top Header: Agency Command Center Overview */}
+      {/* Top Header: Groups & Communities Overview */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[#e2e8f0]">
         <div>
           <div className="flex items-center gap-2">
@@ -534,7 +534,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-[#54656f] mt-0.5">
-            Gestão unificada de grupos da agência com alternância entre WABA (Oficial) e WAHA (Automação).
+            Gestão unificada de grupos e comunidades de clientes com alternância de motor WABA e Evolution/WAHA.
           </p>
         </div>
 
@@ -1107,13 +1107,13 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                         value={quickReplyText}
                         onChange={(e) => setQuickReplyText(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                          if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
                             handleSendGroupMessage();
                           }
                         }}
                         rows={2}
-                        placeholder={`Responder no grupo "${selectedGroup.name}" como ${selectedGroup.assignedManagerName}... (Cmd + Enter)`}
+                        placeholder={`Responder no grupo "${selectedGroup.name}"... (Pressione Enter para enviar, Shift+Enter para nova linha)`}
                         className="w-full px-3.5 py-2 text-[13px] text-[#111b21] bg-transparent border-none outline-none resize-none leading-relaxed"
                       />
                     </div>

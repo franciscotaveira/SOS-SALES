@@ -25,6 +25,14 @@ describe('P0 cockpit operations', () => {
   }
 
   beforeAll(async () => {
+    const client = await dbPool.connect();
+    try {
+      await client.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'true', false)");
+      await client.query('DELETE FROM workspaces WHERE id = $1', [workspaceId]);
+      await client.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'false', false)");
+    } finally {
+      client.release();
+    }
     await query(`INSERT INTO workspaces (id, name, slug, active) VALUES ($1, 'Cockpit test', 'cockpit-test', true)`, [workspaceId]);
     await query(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'operator'), ($1, $4, 'viewer')`, [workspaceId, ownerId, operatorId, viewerId]);
     await query(`INSERT INTO channel_connections (id, workspace_id, provider, phone_number, name, public_config) VALUES ($1, $2, 'waha', '+5549999000000', 'Cockpit test channel', '{}'::jsonb)`, [channelId, workspaceId]);

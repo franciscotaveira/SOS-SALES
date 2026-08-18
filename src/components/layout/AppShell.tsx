@@ -36,6 +36,7 @@ import {
   BookOpen,
   Sparkles,
   ShieldCheck,
+  Megaphone,
 } from 'lucide-react';
 
 export type NavigationTab =
@@ -70,8 +71,8 @@ interface AppShellProps {
   onChangeSettingsSubTab?: (subTab: string) => void;
   activeGroupSubTab?: string;
   onChangeGroupSubTab?: (subTab: string) => void;
-  activeResultsSubTab?: 'analytics' | 'traffic_proof';
-  onChangeResultsSubTab?: (subTab: 'analytics' | 'traffic_proof') => void;
+  activeResultsSubTab?: string;
+  onChangeResultsSubTab?: (subTab: any) => void;
   userEmail?: string;
   onSignOut?: () => void;
   children: React.ReactNode;
@@ -289,10 +290,10 @@ export const AppShell: React.FC<AppShellProps> = ({
       items: [
         {
           id: 'resultados',
-          label: 'Resultados & ROI',
-          icon: BarChart3,
+          label: 'Gestão de Campanhas',
+          icon: Megaphone,
           visible: showTrafficProof,
-          tag: 'Executivo',
+          tag: 'Marketing',
         },
       ],
     },
@@ -356,34 +357,44 @@ export const AppShell: React.FC<AppShellProps> = ({
     return (
       <div className="flex flex-col h-full justify-between select-none">
         {/* Brand Header */}
-        <div className="p-3.5 flex items-center justify-between border-b border-slate-800 shrink-0">
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            {collapsed ? (
-              <div className="w-8 h-8 rounded-lg bg-[#00A884] text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs tracking-tighter">
-                SOS
-              </div>
-            ) : (
-              <img src="/assets/logo-white.svg" alt="SOS Sales" className="h-8 w-auto object-contain" />
-            )}
-          </div>
-
-          {/* Desktop Collapse Toggle */}
-          {!isMobile && (
+        <div className="p-3 flex items-center justify-between border-b border-slate-800/80 shrink-0">
+          {collapsed ? (
             <button
               onClick={toggleCollapse}
-              className="hidden lg:flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors focus-visible:ring-2 focus-visible:ring-[#00A884]"
-              title={collapsed ? 'Expandir barra lateral (232px)' : 'Recolher barra lateral (72px)'}
-              aria-label={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
+              className="w-10 h-10 mx-auto rounded-xl bg-[#001f18] border border-[#00a884]/40 flex items-center justify-center cursor-pointer group hover:border-[#00a884] transition-colors"
+              title="Expandir barra lateral"
             >
-              {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+              <span className="text-[#00A884] font-black text-xs font-mono group-hover:scale-105 transition-transform">SOS</span>
             </button>
+          ) : (
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#001f18] border border-[#00a884]/40 flex items-center justify-center shrink-0">
+                  <span className="text-[#00A884] font-black text-xs font-mono">SOS</span>
+                </div>
+                <div>
+                  <div className="text-white font-black text-xs tracking-wider leading-none font-heading">SOS SALES</div>
+                  <div className="text-[#00A884] text-[8.5px] font-bold tracking-widest leading-none mt-1 uppercase">SISTEMA OPERACIONAL</div>
+                </div>
+              </div>
+              {!isMobile && (
+                <button
+                  onClick={toggleCollapse}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Recolher barra lateral"
+                  aria-label="Recolher barra lateral"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           )}
 
           {/* Mobile Drawer Close Button */}
           {isMobile && (
             <button
               onClick={() => setMobileDrawerOpen(false)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
               aria-label="Fechar menu"
             >
               <X className="w-5 h-5" />
@@ -392,7 +403,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         </div>
 
         {/* Navigation Sections List */}
-        <div className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+        <div className="flex-1 overflow-y-auto py-3 px-2 space-y-3">
           {navSections.map((section) => {
             const visibleItems = section.items.filter((item) => item.visible !== false);
             if (visibleItems.length === 0) return null;
@@ -400,11 +411,11 @@ export const AppShell: React.FC<AppShellProps> = ({
             return (
               <div key={section.title} className="space-y-1">
                 {!collapsed ? (
-                  <div className="px-2.5 py-1 text-[9.5px] font-bold tracking-wider text-slate-400 uppercase font-heading">
+                  <div className="px-2.5 py-1 text-[10px] font-bold tracking-wider text-slate-400 uppercase font-heading">
                     {section.title}
                   </div>
                 ) : (
-                  <div className="h-px bg-slate-800 my-2 mx-1" />
+                  <div className="h-px bg-slate-800/80 my-2 mx-1" />
                 )}
 
                 {visibleItems.map((item) => {
@@ -418,12 +429,25 @@ export const AppShell: React.FC<AppShellProps> = ({
                         onClick={() => handleNavClick(item.id)}
                         aria-current={isActive ? 'page' : undefined}
                         title={collapsed ? item.label : undefined}
-                        className={`w-full flex items-center gap-3 py-2 rounded-lg text-xs font-semibold transition-colors group relative focus-visible:ring-2 focus-visible:ring-[#00A884] ${
-                          collapsed ? 'justify-center px-0' : 'px-2.5'
-                        } ${
-                          isActive
-                            ? 'bg-[#00A884] text-white shadow-xs'
-                            : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                        style={{
+                          backgroundColor: isActive ? '#00A884' : 'transparent',
+                          color: isActive ? '#FFFFFF' : '#CBD5E1',
+                          border: 'none',
+                          outline: 'none',
+                          boxShadow: isActive ? '0 1px 2px 0 rgba(0, 0, 0, 0.05)' : 'none',
+                        }}
+                        className={`w-full flex items-center transition-colors group relative cursor-pointer border-0 outline-none ${
+                          collapsed
+                            ? `w-10 h-10 mx-auto rounded-xl justify-center ${
+                                isActive
+                                  ? 'text-white'
+                                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                              }`
+                            : `gap-3 py-2 px-2.5 rounded-xl text-xs font-semibold ${
+                                isActive
+                                  ? 'text-white'
+                                  : 'text-slate-300 hover:text-white hover:bg-white/5'
+                              }`
                         }`}
                       >
                         <Icon
@@ -438,7 +462,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
                         {/* Role / Mode Tag */}
                         {!collapsed && item.tag && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 font-medium">
+                          <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-[#1E293B] text-[#94A3B8] border border-[#334155] font-semibold">
                             {item.tag}
                           </span>
                         )}
@@ -448,7 +472,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                           <span
                             className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
                               item.badgeColor || 'bg-slate-700 text-slate-200'
-                            } ${collapsed ? 'absolute -top-1 -right-1 ring-2 ring-[#0F172A]' : ''}`}
+                            } ${collapsed ? 'absolute -top-1 -right-1 ring-2 ring-[#0B132B]' : ''}`}
                           >
                             {item.badge}
                           </span>
@@ -516,12 +540,15 @@ export const AppShell: React.FC<AppShellProps> = ({
                         </div>
                       )}
 
-                      {/* Subcategories for Resultados */}
+                      {/* Subcategories for Gestão de Campanhas */}
                       {item.id === 'resultados' && isActive && !collapsed && (
                         <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
                           {[
-                            { id: 'analytics', label: 'Analytics & ROI da IA' },
-                            { id: 'traffic_proof', label: 'Proof of Traffic & ROAS' },
+                            { id: 'analytics', label: 'Analytics & ROI' },
+                            { id: 'traffic_proof', label: 'Anúncios & CTWA' },
+                            { id: 'campaign_links', label: 'Links & QR Code' },
+                            { id: 'waba_templates', label: 'Modelos WABA' },
+                            { id: 'tracking', label: 'Traqueamento' },
                           ].map((sub) => {
                             const isSubActive = activeResultsSubTab === sub.id;
                             return (
@@ -530,7 +557,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onChangeTab('resultados');
-                                  onChangeResultsSubTab?.(sub.id as 'analytics' | 'traffic_proof');
+                                  onChangeResultsSubTab?.(sub.id as any);
                                 }}
                                 className={`w-full text-left px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
                                   isSubActive ? 'bg-slate-800 text-[#00A884] font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
@@ -550,7 +577,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                             { id: 'team', label: 'Equipe & Usuários' },
                             { id: 'api_webhooks', label: 'API & Webhooks' },
                             { id: 'channels', label: 'Canais de WhatsApp' },
-                            { id: 'ads_tracking', label: 'Atribuição & Ads' },
                             { id: 'feature_flags', label: 'Parâmetros Globais' },
                             { id: 'engines', label: 'Infra & Modelos' },
                           ].map((sub) => {
@@ -581,37 +607,122 @@ export const AppShell: React.FC<AppShellProps> = ({
           })}
         </div>
 
-        {/* Sidebar Footer: Workspace, Profile, Shortcuts, Logout */}
-        <div className="p-2 border-t border-slate-800 space-y-1.5 shrink-0 bg-[#0B1120]">
-          {/* Workspace Active Indicator */}
-          {!collapsed && (
-            <div className="px-2 py-1.5 bg-slate-800/60 rounded-lg flex items-center justify-between text-[11px] mb-1">
+        {/* Sidebar Footer: Workspace Switcher, WhatsApp Status, AI Autonomy, Profile, Shortcuts, Logout */}
+        <div className="p-2.5 border-t border-slate-800 space-y-2 shrink-0 bg-[#0B1120]">
+          {/* 1. Workspace Switcher (Dark Mode) */}
+          <WorkspaceSwitcher
+            workspaces={workspaces}
+            currentWorkspace={currentWorkspace}
+            onSelectWorkspace={onSelectWorkspace}
+            variant="dark"
+            collapsed={collapsed}
+          />
+
+          {/* 2. WhatsApp Status Pill */}
+          {!collapsed ? (
+            <div
+              className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between text-xs font-semibold ${
+                isChannelPaused
+                  ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
+                  : isChannelOnline
+                  ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60'
+                  : isChannelScanning
+                  ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
+                  : 'bg-rose-950/40 text-rose-300 border-rose-800/60'
+              }`}
+              title={`WhatsApp: ${isChannelOnline ? 'Online' : 'Desconectado'} · (${channelEngine})`}
+            >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="relative flex h-2 w-2">
+                <span className="relative flex h-2 w-2 shrink-0">
                   {isChannelOnline && (
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   )}
                   <span
                     className={`relative inline-flex rounded-full h-2 w-2 ${
                       isChannelPaused
-                        ? 'bg-amber-500'
+                        ? 'bg-amber-400'
                         : isChannelOnline
-                        ? 'bg-emerald-500'
-                        : 'bg-rose-500'
+                        ? 'bg-emerald-400'
+                        : isChannelScanning
+                        ? 'bg-amber-400 animate-pulse'
+                        : 'bg-rose-400'
                     }`}
                   />
                 </span>
-                <span className="text-slate-200 font-medium truncate">
-                  {currentWorkspace.name}
+                <span className="truncate text-[11px]">
+                  {isChannelPaused
+                    ? 'WhatsApp Pausado'
+                    : isChannelOnline
+                    ? 'WhatsApp Online'
+                    : isChannelScanning
+                    ? 'Aguardando QR'
+                    : 'WhatsApp Offline'}
                 </span>
               </div>
-              <span className="text-[9.5px] text-slate-400 font-mono">
+              <span className="text-[9.5px] font-mono opacity-70 shrink-0">
                 {channelEngine}
+              </span>
+            </div>
+          ) : (
+            <div
+              className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center bg-slate-800/60 border border-slate-700/60"
+              title={`WhatsApp: ${isChannelOnline ? 'Online' : 'Desconectado'}`}
+            >
+              <span className="relative flex h-2.5 w-2.5">
+                {isChannelOnline && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                )}
+                <span
+                  className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                    isChannelOnline ? 'bg-emerald-400' : 'bg-rose-400'
+                  }`}
+                />
               </span>
             </div>
           )}
 
-          {/* User Profile & Role Indicator */}
+          {/* 3. AI Autonomy Toggle Switch */}
+          {!collapsed ? (
+            <button
+              type="button"
+              onClick={toggleGlobalAiMode}
+              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                globalAiMode === 'autonomous_24_7'
+                  ? 'bg-[#00A884]/20 hover:bg-[#00A884]/30 text-emerald-300 border-[#00A884]/40'
+                  : 'bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 border-indigo-800/60'
+              }`}
+              title="Alternar entre IA Autônoma 24/7 e Modo Copiloto/Aprendizado"
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                {globalAiMode === 'autonomous_24_7' ? (
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                ) : (
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                )}
+                <span className="truncate text-[11px]">
+                  {globalAiMode === 'autonomous_24_7' ? 'IA 24/7 Ativa' : 'Modo Copiloto'}
+                </span>
+              </div>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase font-mono">
+                {globalAiMode === 'autonomous_24_7' ? 'AUTO' : 'LEARN'}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={toggleGlobalAiMode}
+              className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 text-slate-300 transition-colors cursor-pointer"
+              title={`IA Autonomia: ${globalAiMode === 'autonomous_24_7' ? 'IA 24/7 Ativa' : 'Modo Copiloto'}`}
+            >
+              {globalAiMode === 'autonomous_24_7' ? (
+                <Sparkles className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <ShieldCheck className="w-4 h-4 text-indigo-400" />
+              )}
+            </button>
+          )}
+
+          {/* 4. User Profile & Role Indicator */}
           <div className="relative">
             <button
               onClick={() => {
@@ -619,29 +730,25 @@ export const AppShell: React.FC<AppShellProps> = ({
                   setRoleMenuOpen(!roleMenuOpen);
                 }
               }}
-              className={`w-full flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:ring-2 focus-visible:ring-[#00A884] ${
+              className={`w-full flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-800/80 transition-colors ${
                 collapsed ? 'justify-center' : ''
-              } ${salesOsRuntimeConfig.mode === 'api' ? 'cursor-default' : ''}`}
-              title={
-                salesOsRuntimeConfig.mode === 'api'
-                  ? 'Papel governado pela sessão autenticada do Supabase'
-                  : 'Alternar Papel de Acesso (Modo Demo)'
-              }
+              } ${salesOsRuntimeConfig.mode === 'api' ? 'cursor-default' : 'cursor-pointer'}`}
+              title={userEmail || (role === 'owner' ? 'Owner' : role === 'admin' ? 'Supervisor' : 'Operador')}
             >
-              <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs">
+              <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs">
                 {role === 'owner' ? 'OW' : role === 'admin' ? 'AD' : 'OP'}
               </div>
 
               {!collapsed && (
                 <div className="min-w-0 flex-1 text-left">
-                  <div className="text-xs font-semibold text-slate-200 truncate flex items-center gap-1">
+                  <div className="text-xs font-semibold text-slate-200 truncate flex items-center gap-1.5">
                     <span>Você</span>
-                    <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-indigo-900/60 text-indigo-300 uppercase">
+                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-900/80 text-indigo-300 uppercase">
                       {role === 'owner' ? 'Owner' : role === 'admin' ? 'Supervisor' : 'Operador'}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-400 truncate">
-                    {currentWorkspace.name}
+                  <div className="text-[10.5px] text-slate-400 truncate">
+                    {userEmail || currentWorkspace.name}
                   </div>
                 </div>
               )}
@@ -649,7 +756,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
             {/* Role Switcher Popover (Demo Mode Only) */}
             {roleMenuOpen && salesOsRuntimeConfig.mode !== 'api' && (
-              <div className="absolute bottom-full left-0 mb-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-50 text-xs space-y-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <div className="absolute bottom-full left-0 mb-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-50 text-xs space-y-1 animate-in fade-in slide-in-from-bottom-2 duration-150 text-slate-800">
                 <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-heading">
                   Papel no Workspace (Demo)
                 </div>
@@ -705,11 +812,11 @@ export const AppShell: React.FC<AppShellProps> = ({
             )}
           </div>
 
-          {/* Footer Actions: Help & Logout */}
-          <div className="flex items-center gap-1 pt-1">
+          {/* 5. Footer Actions: Help & Logout */}
+          <div className="flex items-center gap-1 pt-1 border-t border-slate-800/80">
             <button
               onClick={() => setHelpModalOpen(true)}
-              className={`flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-[#00A884] ${
+              className={`flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 text-xs transition-colors cursor-pointer ${
                 collapsed ? 'justify-center' : ''
               }`}
               title="Central de Ajuda & Atalhos"
@@ -718,10 +825,10 @@ export const AppShell: React.FC<AppShellProps> = ({
               {!collapsed && <span>Ajuda & Atalhos</span>}
             </button>
 
-            {!collapsed && (
+            {onSignOut && (
               <button
                 onClick={() => setLogoutModalOpen(true)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-rose-500"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 text-xs transition-colors cursor-pointer"
                 title="Sair do Workspace"
                 aria-label="Sair do Workspace"
               >
@@ -739,7 +846,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       {/* Desktop Persistent Sidebar (232px expanded / 72px collapsed) */}
       <aside
         id="app-persistent-sidebar"
-        className={`hidden lg:flex flex-col h-full max-h-screen bg-[#0F172A] border-r border-slate-800 transition-all duration-200 ease-in-out shrink-0 z-30 overflow-hidden ${
+        className={`hidden lg:flex flex-col h-full max-h-screen bg-[#0B132B] border-r border-slate-800/80 transition-all duration-200 ease-in-out shrink-0 z-30 overflow-hidden ${
           isCollapsed ? 'w-[72px]' : 'w-[232px]'
         }`}
       >
@@ -758,7 +865,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-150"
             onClick={() => setMobileDrawerOpen(false)}
           />
-          <div className="relative flex flex-col w-[260px] bg-[#0F172A] text-white h-full shadow-2xl z-10 animate-in slide-in-from-left duration-200 overflow-hidden">
+          <div className="relative flex flex-col w-[260px] bg-[#0B132B] text-white h-full shadow-2xl z-10 animate-in slide-in-from-left duration-200 overflow-hidden">
             {renderNavContent(true)}
           </div>
         </div>
@@ -766,33 +873,27 @@ export const AppShell: React.FC<AppShellProps> = ({
 
       {/* Main App Workspace */}
       <div className="flex-1 h-full max-h-screen flex flex-col min-w-0 overflow-hidden">
-        {/* Simplified Clean TopBar */}
+        {/* Sleek Compact TopBar (Search + Notifications Only) */}
         <header
           id="app-topbar"
-          className="h-13 bg-white border-b border-slate-200 shrink-0 px-3 sm:px-5 flex items-center justify-between z-20 shadow-2xs"
+          className="h-11 bg-white border-b border-slate-200 shrink-0 px-3 sm:px-4 flex items-center justify-between z-20 shadow-2xs"
         >
-          {/* Left: Mobile Drawer Trigger + Workspace Switcher */}
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          {/* Left: Mobile Drawer Trigger (Mobile Only) */}
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setMobileDrawerOpen(true)}
-              className="lg:hidden p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:ring-2 focus-visible:ring-[#00A884]"
+              className="lg:hidden p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:ring-2 focus-visible:ring-[#00A884]"
               aria-label="Abrir menu de navegação"
             >
               <Menu className="w-5 h-5" />
             </button>
-
-            <WorkspaceSwitcher
-              workspaces={workspaces}
-              currentWorkspace={currentWorkspace}
-              onSelectWorkspace={onSelectWorkspace}
-            />
           </div>
 
           {/* Center: Global Search / Command Palette Trigger (Ctrl+K) */}
-          <div className="hidden md:flex items-center flex-1 max-w-xs mx-4">
+          <div className="flex items-center flex-1 max-w-md mx-auto">
             <button
               onClick={() => setSearchModalOpen(true)}
-              className="w-full flex items-center justify-between px-3 py-1.5 bg-slate-100/90 hover:bg-slate-200/80 border border-slate-200 rounded-lg text-xs text-slate-500 transition-colors shadow-2xs focus-visible:ring-2 focus-visible:ring-[#00A884]"
+              className="w-full flex items-center justify-between px-3 py-1 bg-slate-100/90 hover:bg-slate-200/80 border border-slate-200 rounded-xl text-xs text-slate-500 transition-colors shadow-2xs cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
             >
               <div className="flex items-center gap-2">
                 <Search className="w-3.5 h-3.5 text-slate-400" />
@@ -804,87 +905,12 @@ export const AppShell: React.FC<AppShellProps> = ({
             </button>
           </div>
 
-          {/* Right: WhatsApp Channel Health, Notifications Popover, Role Badge */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* WhatsApp Channel Health Status Pill */}
-            <div
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                isChannelPaused
-                  ? 'bg-amber-50 text-amber-800 border-amber-200'
-                  : isChannelOnline
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : isChannelScanning
-                  ? 'bg-amber-50 text-amber-800 border-amber-200'
-                  : 'bg-rose-50 text-rose-800 border-rose-200'
-              }`}
-              title={`WhatsApp: ${isChannelOnline ? 'Conectado & Online' : isChannelScanning ? 'Aguardando QR Code' : 'Desconectado'} · (${channelEngine})`}
-            >
-              <span className="relative flex h-2 w-2">
-                {isChannelOnline && (
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                )}
-                <span
-                  className={`relative inline-flex rounded-full h-2 w-2 ${
-                    isChannelPaused
-                      ? 'bg-amber-500'
-                      : isChannelOnline
-                      ? 'bg-emerald-500'
-                      : isChannelScanning
-                      ? 'bg-amber-500 animate-pulse'
-                      : 'bg-rose-500'
-                  }`}
-                />
-              </span>
-              <span className="hidden sm:inline">
-                {isChannelPaused
-                  ? 'Pausado'
-                  : isChannelOnline
-                  ? 'WhatsApp Online'
-                  : isChannelScanning
-                  ? 'Aguardando QR'
-                  : 'Desconectado'}
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono hidden md:inline">
-                {isChannelOnline ? '(22ms)' : '(offline)'}
-              </span>
-            </div>
-
-            {/* Global Master Switch for AI Autonomy */}
-            <button
-              onClick={toggleGlobalAiMode}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer shadow-2xs focus-visible:ring-2 ${
-                globalAiMode === 'autonomous_24_7'
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-700 focus-visible:ring-emerald-400'
-                  : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200 focus-visible:ring-indigo-400'
-              }`}
-              title={
-                globalAiMode === 'autonomous_24_7'
-                  ? 'Modo Autônomo 24/7 Ativo: A IA responde mensagens diretamente no WhatsApp em < 30s. Clique para alternar para Copiloto/Aprendizado.'
-                  : 'Modo Aprendizado / Copiloto Ativo: A IA gera rascunhos sem disparar no WhatsApp sem aprovação humana. Clique para ativar Autônomo 24/7.'
-              }
-            >
-              {globalAiMode === 'autonomous_24_7' ? (
-                <>
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-80"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
-                  </span>
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">IA 24/7 Ativa</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-                  <span className="hidden sm:inline">Modo Aprendizado (Copiloto)</span>
-                </>
-              )}
-            </button>
-
-            {/* Notifications Popover */}
+          {/* Right: Notifications Popover (SLA Alerts) */}
+          <div className="flex items-center gap-2 shrink-0">
             <div className="relative">
               <button
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors relative min-h-[36px] min-w-[36px] flex items-center justify-center focus-visible:ring-2 focus-visible:ring-[#00A884]"
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors relative flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
                 title="Notificações e Alertas de SLA"
                 aria-label="Ver notificações de SLA"
               >
@@ -917,7 +943,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                               onChangeTab('agora');
                               setNotificationsOpen(false);
                             }}
-                            className="mt-1 text-[10.5px] font-bold text-rose-700 hover:underline"
+                            className="mt-1 text-[10.5px] font-bold text-rose-700 hover:underline cursor-pointer"
                           >
                             Ir para o Cockpit Agora →
                           </button>
@@ -933,41 +959,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </div>
               )}
             </div>
-
-            {/* Role Switcher Pill in Topbar */}
-            <div className="relative">
-              <button
-                onClick={() => setRoleMenuOpen(!roleMenuOpen)}
-                className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-[#00A884]"
-                title="Alternar Papel de Acesso"
-              >
-                <Shield className="w-3.5 h-3.5 text-indigo-600" />
-                <span className="capitalize">{role === 'owner' ? 'Owner' : role === 'admin' ? 'Supervisor' : 'Operador'}</span>
-              </button>
-            </div>
-
-            {/* Authenticated User Email & Clean SignOut */}
-            {userEmail && (
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
-                <span
-                  className="text-xs text-slate-600 font-medium max-w-[170px] truncate hidden md:inline"
-                  title={userEmail}
-                >
-                  {userEmail}
-                </span>
-                {onSignOut && (
-                  <button
-                    type="button"
-                    onClick={onSignOut}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 transition-colors cursor-pointer"
-                    title="Encerrar sessão com segurança"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Sair</span>
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         </header>
 

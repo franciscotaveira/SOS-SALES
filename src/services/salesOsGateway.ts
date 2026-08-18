@@ -89,11 +89,23 @@ export interface ApiJourney {
   updatedAt: string;
 }
 
+export interface ApiMediaPayload {
+  mediaType: 'image' | 'audio' | 'video' | 'document' | 'ptt' | 'sticker' | 'other';
+  url?: string;
+  mimetype?: string;
+  caption?: string;
+  fileName?: string;
+  fileSize?: number | string;
+  duration?: number;
+  authorOrSpeaker?: string;
+}
+
 export interface ApiMessage {
   id: string;
   direction: 'inbound' | 'outbound';
   senderType: 'customer' | 'ai' | 'operator' | 'system';
   textContent: string | null;
+  mediaPayload?: ApiMediaPayload | null;
   sentAt: string;
 }
 
@@ -266,6 +278,10 @@ export interface SalesOsGateway {
   createNote(workspaceId: string, input: Partial<OperationalNote>): Promise<OperationalNote>;
   updateNote(workspaceId: string, noteId: string, input: Partial<OperationalNote>): Promise<OperationalNote>;
   deleteNote(workspaceId: string, noteId: string): Promise<void>;
+
+  getGhostingOpportunities(workspaceId: string): Promise<any[]>;
+  resurrectJourney(workspaceId: string, journeyId: string): Promise<any | null>;
+  getRetentionOpportunities(workspaceId: string): Promise<any[]>;
 }
 
 const JOURNEYS_STORAGE_KEY = 'sales_os_journeys_v2';
@@ -833,6 +849,18 @@ export class MockSalesOsGateway implements SalesOsGateway {
     await this.sleep(100);
     this.mockNotesList = this.mockNotesList.filter((n) => n.id !== noteId);
   }
+
+  async getGhostingOpportunities(_workspaceId: string): Promise<any[]> {
+    return [];
+  }
+
+  async resurrectJourney(_workspaceId: string, _journeyId: string): Promise<any | null> {
+    return null;
+  }
+
+  async getRetentionOpportunities(_workspaceId: string): Promise<any[]> {
+    return [];
+  }
 }
 
 /**
@@ -1133,6 +1161,16 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     return response.data;
   }
 
+  async transitionJourneyStage(
+    workspaceId: string,
+    journeyId: string,
+    stage: string,
+    reason?: string,
+    idempotencyKey = crypto.randomUUID(),
+  ): Promise<{ journeyId: string; stage: string }> {
+    return this.setJourneyStage(workspaceId, journeyId, stage, reason, idempotencyKey);
+  }
+
   async createFollowUp(
     workspaceId: string,
     journeyId: string,
@@ -1370,6 +1408,40 @@ export class HttpSalesOsGateway implements SalesOsGateway {
 
   async simulateIncomingLeadMessage(journeyId: string, text: string): Promise<Message> {
     throw new Error('Simulation only available in Mock gateway');
+  }
+
+  async getGhostingOpportunities(workspaceId: string): Promise<any[]> {
+    try {
+      const response = await this.request<ApiEnvelope<any[]>>(
+        `/workspaces/${encodeURIComponent(workspaceId)}/ghosting/opportunities`,
+      );
+      return response.data;
+    } catch {
+      return [];
+    }
+  }
+
+  async resurrectJourney(workspaceId: string, journeyId: string): Promise<any | null> {
+    try {
+      const response = await this.request<ApiEnvelope<any>>(
+        `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/resurrect`,
+        { method: 'POST' }
+      );
+      return response.data;
+    } catch {
+      return null;
+    }
+  }
+
+  async getRetentionOpportunities(workspaceId: string): Promise<any[]> {
+    try {
+      const response = await this.request<ApiEnvelope<any[]>>(
+        `/workspaces/${encodeURIComponent(workspaceId)}/retention/opportunities`,
+      );
+      return response.data;
+    } catch {
+      return [];
+    }
   }
 
   private bounded(value: number, min: number, max: number): number {

@@ -30,12 +30,23 @@ export interface CockpitJourney {
   updatedAt: string;
 }
 
-/** Deliberately excludes provider IDs, raw envelopes and media URLs. */
+export interface MessageMediaPayload {
+  mediaType: 'image' | 'audio' | 'video' | 'document' | 'ptt' | 'sticker' | 'other';
+  url?: string;
+  mimetype?: string;
+  caption?: string;
+  fileName?: string;
+  fileSize?: number | string;
+  duration?: number;
+  authorOrSpeaker?: string;
+}
+
 export interface CockpitMessage {
   id: string;
   direction: 'inbound' | 'outbound';
   senderType: 'customer' | 'ai' | 'operator' | 'system';
   textContent: string | null;
+  mediaPayload?: MessageMediaPayload | null;
   sentAt: string;
 }
 

@@ -129,16 +129,20 @@ export class WahaSyncService {
           journeyId = existingJourney.rows[0].id;
           await client.query(`UPDATE public.commercial_journeys SET updated_at = NOW() WHERE id = $1`, [journeyId]);
         } else {
+          // ON CONFLICT handles race conditions from concurrent sync calls
           const insertJourney = await client.query(`
             INSERT INTO public.commercial_journeys (
               id, workspace_id, contact_id, channel_connection_id, status, pipeline_stage,
               total_revenue_minor, currency, started_at, created_at, updated_at
             ) VALUES (
               gen_random_uuid(), $1, $2, $3, 'OPEN', 'NEW', 0, 'BRL', NOW(), NOW(), NOW()
-            ) RETURNING id
+            )
+            ON CONFLICT (workspace_id, contact_id) WHERE status = 'OPEN' DO UPDATE SET updated_at = NOW()
+            RETURNING id
           `, [workspaceId, contactId, channelConnectionId]);
           journeyId = insertJourney.rows[0].id;
         }
+
 
         // Fetch recent messages for this chat
         try {

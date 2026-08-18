@@ -207,7 +207,7 @@ export const MonthlyCalendarView: React.FC<MonthlyCalendarViewProps> = ({
 
             {selectedDayRevenue > 0 && (
               <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
-                R$ {selectedDayRevenue.toFixed(2)}
+                R$ {(Number(selectedDayRevenue) || 0).toFixed(2)}
               </span>
             )}
           </div>
@@ -242,7 +242,7 @@ export const MonthlyCalendarView: React.FC<MonthlyCalendarViewProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between text-[10.5px] text-slate-500 pt-1 border-t border-slate-200/60">
-                    <span className="font-bold text-emerald-700">R$ {apt.serviceValue.toFixed(2)}</span>
+                    <span className="font-bold text-emerald-700">R$ {(Number(apt.serviceValue) || 0).toFixed(2)}</span>
                     <span className="text-slate-400">{apt.operatorName || 'Fila'}</span>
 
                     {apt.journeyId && onGoToCockpit && (

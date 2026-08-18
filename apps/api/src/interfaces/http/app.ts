@@ -91,6 +91,15 @@ export interface AppDependencies {
    * Defaults to false (no proxy trusted).
    */
   trustProxy?: TrustProxyOption;
+  /**
+   * Meta WABA Cloud API webhook verification config. Required to register
+   * the WABA webhook routes. Fails closed with no hardcoded fallback —
+   * source from META_VERIFY_TOKEN / META_APP_SECRET at the composition root.
+   */
+  wabaWebhook?: {
+    verifyToken: string;
+    appSecret: string;
+  };
 }
 
 export function buildApp(dependencies: AppDependencies): FastifyInstance {
@@ -112,7 +121,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     );
   }
 
-  const { secretProvider, wahaAdapter, ingestionGateway, healthProvider } = dependencies;
+  const { secretProvider, wahaAdapter, ingestionGateway, healthProvider, wabaWebhook } = dependencies;
 
   // trustProxy MUST be set explicitly — no implicit fallback to trusting all headers.
   const trustProxy: TrustProxyOption = dependencies.trustProxy ?? false;
@@ -216,7 +225,12 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   app.register(abacatePayRoutes);
   app.register(aiCopilotRoutes);
   app.register(whatsappChannelRoutes);
-  app.register(wabaWebhookPlugin);
+  if (wabaWebhook) {
+    app.register(wabaWebhookPlugin, {
+      verifyToken: wabaWebhook.verifyToken,
+      appSecret: wabaWebhook.appSecret,
+    });
+  }
 
   /**
    * GET /health — Liveness probe.

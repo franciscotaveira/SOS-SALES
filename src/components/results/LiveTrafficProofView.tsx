@@ -334,7 +334,7 @@ const CampaignRow: React.FC<{ campaign: ApiTrafficProofCampaign }> = ({ campaign
           </span>
         ) : (
           <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-mono font-bold text-emerald-800 text-[11px]">
-            {roasVal.toFixed(2)}x
+            {(Number(roasVal) || 0).toFixed(2)}x
           </span>
         )}
       </td>

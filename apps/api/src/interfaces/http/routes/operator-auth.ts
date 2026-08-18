@@ -22,6 +22,7 @@ import { appointmentRoutes } from './appointments.js';
 import { notesRoutes } from './notes.js';
 import { workspaceInitRoutes } from './workspace-init.js';
 import { atlasToolsRoutes } from './atlas-tools.js';
+import { autonomousRevenueRoutes } from './autonomous-revenue-routes.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -151,4 +152,5 @@ export async function operatorAuthRoutes(
     cockpitReadGateway: dependencies.cockpitReadGateway,
     knownFactOperationsGateway: dependencies.knownFactOperationsGateway,
   });
+  app.register(autonomousRevenueRoutes);
 }

@@ -112,6 +112,17 @@ export interface Recommendation {
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 export type MessageSender = 'lead' | 'operator' | 'bot' | 'system';
 
+export interface MessageMediaPayload {
+  mediaType: 'image' | 'audio' | 'video' | 'document' | 'ptt' | 'sticker' | 'other';
+  url?: string;
+  mimetype?: string;
+  caption?: string;
+  fileName?: string;
+  fileSize?: number | string;
+  duration?: number;
+  authorOrSpeaker?: string;
+}
+
 export interface Message {
   id: string;
   journeyId: string;
@@ -121,7 +132,8 @@ export interface Message {
   timestamp: string;
   status: MessageStatus;
   mediaUrl?: string;
-  mediaType?: 'image' | 'audio' | 'document';
+  mediaType?: 'image' | 'audio' | 'document' | 'video';
+  mediaPayload?: MessageMediaPayload | null;
   transcript?: string;
   audioSummary?: string[];
   audioDuration?: string;

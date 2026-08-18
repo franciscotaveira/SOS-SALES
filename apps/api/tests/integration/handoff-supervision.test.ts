@@ -161,7 +161,7 @@ describe('P0.4A — handoff supervision and outbound controls', () => {
 
     const workspaceOn = await asAuthenticated(ownerId, (client) => client.query(
       'SELECT public.set_workspace_outbound_control($1, true, $2, $3) AS result',
-      [workspaceId, 'owner enabled workspace after review', 'workspace-control-on'],
+      [workspaceId, 'owner enabled workspace after review', `workspace-control-on-${randomUUID()}`],
     ));
     expect(workspaceOn.rows[0].result).toMatchObject({ outboundEnabled: true, idempotent: false });
 
@@ -172,7 +172,7 @@ describe('P0.4A — handoff supervision and outbound controls', () => {
 
     await asAuthenticated(ownerId, (client) => client.query(
       'SELECT public.set_channel_outbound_control($1, $2, true, $3, $4)',
-      [workspaceId, channelId, 'owner enabled test channel', 'channel-control-on'],
+      [workspaceId, channelId, 'owner enabled test channel', `channel-control-on-${randomUUID()}`],
     ));
     const fullyEnabled = await query<{ enabled: boolean }>(
       'SELECT public.is_outbound_enabled($1, $2) AS enabled', [workspaceId, channelId],
@@ -181,7 +181,7 @@ describe('P0.4A — handoff supervision and outbound controls', () => {
 
     await asAuthenticated(ownerId, (client) => client.query(
       'SELECT public.set_workspace_outbound_control($1, false, $2, $3)',
-      [workspaceId, 'pause before outbound worker exists', 'workspace-control-off'],
+      [workspaceId, 'pause before outbound worker exists', `workspace-control-off-${randomUUID()}`],
     ));
     const paused = await query<{ enabled: boolean }>(
       'SELECT public.is_outbound_enabled($1, $2) AS enabled', [workspaceId, channelId],

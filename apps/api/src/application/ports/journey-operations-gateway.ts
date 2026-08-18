@@ -1,12 +1,32 @@
 import { AuthenticatedActor } from './operator-authenticator.js';
 
-export const PIPELINE_STAGES = ['NEW', 'CONTACTED', 'QUALIFIED', 'PROPOSAL', 'NEGOTIATION'] as const;
+export const PIPELINE_STAGES = [
+  'NEW',
+  'CONTACTED',
+  'APPROACHED',
+  'QUALIFIED',
+  'QUALIFICADO',
+  'ENGAGED',
+  'PROPOSAL',
+  'PROPOSTA',
+  'NEGOTIATION',
+  'NEGOCIACAO',
+  'FOLLOW_UP',
+  'SCHEDULED',
+  'AGENDADO',
+  'WON',
+  'GANHO',
+  'LOST',
+  'PERDIDO',
+  'CLOSED',
+  'LEAD',
+] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
 export interface SetJourneyStageInput {
   workspaceId: string;
   journeyId: string;
-  stage: PipelineStage;
+  stage: string;
   reason?: string;
   idempotencyKey: string;
 }
@@ -21,7 +41,7 @@ export interface CreateFollowUpInput {
 
 export interface JourneyStageResult {
   journeyId: string;
-  stage: PipelineStage;
+  stage: string;
   idempotent: boolean;
 }
 

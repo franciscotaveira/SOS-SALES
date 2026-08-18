@@ -49,70 +49,125 @@ interface ApiWebhooksManagerProps {
   workspace: Workspace;
 }
 
-const DEFAULT_API_KEYS: Record<string, ApiKeyItem[]> = {
-  'ws-haven-beauty': [
-    {
-      id: 'key-haven-01',
-      name: 'Integração ERP Trinks & Make',
-      tokenPrefix: 'sos_live_haven_98a...',
-      fullToken: 'sos_live_haven_98a72b14e590f11ac89d44e019a',
-      scopes: ['read:conversations', 'write:messages', 'read:contacts'],
-      environment: 'production',
-      createdAt: '2026-02-15T10:00:00Z',
-      lastUsedAt: 'Hoje às 08:30',
-    },
-  ],
-  'ws-sos-sales-official': [
-    {
-      id: 'key-sos-01',
-      name: 'AbacatePay & Data Pipeline',
-      tokenPrefix: 'sos_live_mct_24x...',
-      fullToken: 'sos_live_mct_24xf8912e741c900bb341e9981a',
-      scopes: ['read:conversations', 'write:deals', 'read:metrics', 'export:analytics'],
-      environment: 'production',
-      createdAt: '2026-01-10T08:00:00Z',
-      lastUsedAt: 'Hoje às 08:44',
-    },
-  ],
-};
+export function resolveWorkspaceApiDefaults(wsId: string, wsName?: string): {
+  apiKeys: ApiKeyItem[];
+  webhooks: OutboundWebhookItem[];
+  isMasterAccount: boolean;
+  accountTypeLabel: string;
+} {
+  const normId = (wsId || '').toLowerCase();
+  const normName = (wsName || '').toLowerCase();
 
-const DEFAULT_WEBHOOKS: Record<string, OutboundWebhookItem[]> = {
-  'ws-haven-beauty': [
-    {
-      id: 'wh-haven-01',
-      name: 'Webhook de Novos Agendamentos & Sinal Pix',
-      url: 'https://webhook.site/haven-live-dispatch',
-      secret: 'whsec_haven_secret_9921',
-      events: ['deal.won', 'order.paid', 'message.received'],
-      status: 'active',
-      successRate: '99.8%',
-      lastDelivery: '200 OK (Há 4 min)',
-    },
-  ],
-  'ws-sos-sales-official': [
-    {
-      id: 'wh-sos-01',
-      name: 'Pipeline de Leads Meta CAPI & Fechamentos',
-      url: 'https://webhook.site/sos-sales-live-events',
-      secret: 'whsec_sos_master_2026',
-      events: ['lead.created', 'deal.won', 'sla.breached', 'message.sent'],
-      status: 'active',
-      successRate: '100%',
-      lastDelivery: '200 OK (Há 1 min)',
-    },
-  ],
-};
+  // 1. Haven Escovaria & Esmalteria (Sub-conta Cliente)
+  if (normId.includes('haven') || normName.includes('haven') || normName.includes('escovaria')) {
+    return {
+      isMasterAccount: false,
+      accountTypeLabel: 'Conta de Cliente (Haven Escovaria)',
+      apiKeys: [
+        {
+          id: 'key-haven-01',
+          name: 'Integração ERP Trinks & Make (Haven)',
+          tokenPrefix: 'sos_live_haven_98a...',
+          fullToken: 'sos_live_haven_98a72b14e590f11ac89d44e019a',
+          scopes: ['read:conversations', 'write:messages', 'read:contacts'],
+          environment: 'production',
+          createdAt: '2026-02-15T10:00:00Z',
+          lastUsedAt: 'Hoje às 08:30',
+        },
+      ],
+      webhooks: [
+        {
+          id: 'wh-haven-01',
+          name: 'Webhook de Novos Agendamentos & Sinal Pix (Haven)',
+          url: 'https://webhook.site/haven-live-dispatch',
+          secret: 'whsec_haven_secret_9921',
+          events: ['deal.won', 'order.paid', 'message.received'],
+          status: 'active',
+          successRate: '99.8%',
+          lastDelivery: '200 OK (Há 4 min)',
+        },
+      ],
+    };
+  }
+
+  // 2. Sora Spa (Sub-conta Cliente)
+  if (normId.includes('sora') || normName.includes('sora') || normName.includes('spa')) {
+    return {
+      isMasterAccount: false,
+      accountTypeLabel: 'Conta de Cliente (Sora Spa)',
+      apiKeys: [
+        {
+          id: 'key-sora-01',
+          name: 'Sora Spa · Agendamentos Headspa & Make',
+          tokenPrefix: 'sos_live_sora_51c...',
+          fullToken: 'sos_live_sora_51c8901f4c718a22bc11039d012',
+          scopes: ['read:conversations', 'write:messages', 'read:appointments'],
+          environment: 'production',
+          createdAt: '2026-03-01T10:00:00Z',
+          lastUsedAt: 'Hoje às 07:15',
+        },
+      ],
+      webhooks: [
+        {
+          id: 'wh-sora-01',
+          name: 'Webhook de Atendimentos & Reservas (Sora)',
+          url: 'https://webhook.site/sora-spa-live-dispatch',
+          secret: 'whsec_sora_secret_7741',
+          events: ['deal.won', 'appointment.booked', 'message.received'],
+          status: 'active',
+          successRate: '100%',
+          lastDelivery: '200 OK (Há 12 min)',
+        },
+      ],
+    };
+  }
+
+  // 3. SOS Sales - Matriz Principal / Master Company (Sovereign Core)
+  return {
+    isMasterAccount: true,
+    accountTypeLabel: 'Conta Principal Matriz (SOS Sales Master)',
+    apiKeys: [
+      {
+        id: 'key-sos-01',
+        name: 'SOS Sales · AbacatePay & Master Data Pipeline',
+        tokenPrefix: 'sos_live_mct_24x...',
+        fullToken: 'sos_live_mct_24xf8912e741c900bb341e9981a',
+        scopes: ['read:conversations', 'write:deals', 'read:metrics', 'export:analytics', 'admin:all'],
+        environment: 'production',
+        createdAt: '2026-01-10T08:00:00Z',
+        lastUsedAt: 'Hoje às 08:44',
+      },
+    ],
+    webhooks: [
+      {
+        id: 'wh-sos-01',
+        name: 'Pipeline de Leads Meta CAPI & Fechamentos Master',
+        url: 'https://webhook.site/sos-sales-live-events',
+        secret: 'whsec_sos_master_2026',
+        events: ['lead.created', 'deal.won', 'sla.breached', 'message.sent'],
+        status: 'active',
+        successRate: '100%',
+        lastDelivery: '200 OK (Há 1 min)',
+      },
+    ],
+  };
+}
 
 export const ApiWebhooksManager: React.FC<ApiWebhooksManagerProps> = ({ workspace }) => {
-  const keysStorageKey = `sos_sales_apikeys_${workspace.id}`;
-  const webhooksStorageKey = `sos_sales_webhooks_${workspace.id}`;
+  const defaults = React.useMemo(
+    () => resolveWorkspaceApiDefaults(workspace.id, workspace.name),
+    [workspace.id, workspace.name]
+  );
+
+  const keysStorageKey = `sos_sales_apikeys_v3_${workspace.id}`;
+  const webhooksStorageKey = `sos_sales_webhooks_v3_${workspace.id}`;
 
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>(() => {
     try {
       const saved = localStorage.getItem(keysStorageKey);
       if (saved) return JSON.parse(saved);
     } catch {}
-    return DEFAULT_API_KEYS[workspace.id] || DEFAULT_API_KEYS['ws-haven-beauty'];
+    return defaults.apiKeys;
   });
 
   const [webhooks, setWebhooks] = useState<OutboundWebhookItem[]>(() => {
@@ -120,8 +175,22 @@ export const ApiWebhooksManager: React.FC<ApiWebhooksManagerProps> = ({ workspac
       const saved = localStorage.getItem(webhooksStorageKey);
       if (saved) return JSON.parse(saved);
     } catch {}
-    return DEFAULT_WEBHOOKS[workspace.id] || DEFAULT_WEBHOOKS['ws-haven-beauty'];
+    return defaults.webhooks;
   });
+
+  // Re-sync when switching workspaces in the multi-tenant header dropdown
+  useEffect(() => {
+    try {
+      const savedKeys = localStorage.getItem(keysStorageKey);
+      setApiKeys(savedKeys ? JSON.parse(savedKeys) : defaults.apiKeys);
+
+      const savedWebhooks = localStorage.getItem(webhooksStorageKey);
+      setWebhooks(savedWebhooks ? JSON.parse(savedWebhooks) : defaults.webhooks);
+    } catch {
+      setApiKeys(defaults.apiKeys);
+      setWebhooks(defaults.webhooks);
+    }
+  }, [workspace.id, workspace.name, keysStorageKey, webhooksStorageKey, defaults]);
 
   const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null);
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
@@ -293,6 +362,34 @@ export const ApiWebhooksManager: React.FC<ApiWebhooksManagerProps> = ({ workspac
             <Webhook className="w-3.5 h-3.5" />
             <span>Novo Webhook</span>
           </button>
+        </div>
+      </div>
+
+      {/* Active Tenant Context Banner */}
+      <div className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+        defaults.isMasterAccount
+          ? 'bg-purple-50/70 border-purple-200 text-purple-950'
+          : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+      }`}>
+        <div className="flex items-center gap-2.5">
+          <ShieldCheck className={`w-5 h-5 shrink-0 ${defaults.isMasterAccount ? 'text-purple-600' : 'text-emerald-600'}`} />
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-xs">{workspace.name || 'SOS Sales'}</span>
+              <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
+                defaults.isMasterAccount
+                  ? 'bg-purple-200 text-purple-900 border border-purple-300'
+                  : 'bg-emerald-200 text-emerald-900 border border-emerald-300'
+              }`}>
+                {defaults.accountTypeLabel}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 mt-0.5">
+              {defaults.isMasterAccount
+                ? 'Esta é a conta Matriz Principal do SOS Sales. Suas chaves e webhooks operam as integrações da sua empresa que vende o serviço.'
+                : 'Esta é uma sub-conta isolada de cliente. Nenhuma chave, webhook ou dado desta conta influencia a conta Matriz do SOS Sales.'}
+            </p>
+          </div>
         </div>
       </div>
 

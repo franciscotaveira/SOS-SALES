@@ -19,3 +19,6 @@ supabase/.branches/
 *.key
 *.cert
 .gstack/
+.claude-flow/
+test-results/
+*.db

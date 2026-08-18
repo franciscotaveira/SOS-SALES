@@ -35,9 +35,11 @@ import {
 import { MonthlyCalendarView } from './MonthlyCalendarView';
 import { WeeklyCalendarView } from './WeeklyCalendarView';
 import { DailyCalendarView } from './DailyCalendarView';
+import { ExternalAgendaDrawer } from '../cockpit/ExternalAgendaDrawer';
 import { SalesOsGateway } from '../../services/salesOsGateway';
 import { salesOsRuntimeConfig } from '../../config/runtime';
 import { getSupabaseClient } from '../../services/supabaseAuth';
+import { getWorkspaceCommercialConfig } from '../../services/workspaceCommercialConfig';
 
 interface AgendaViewProps {
   workspace: Workspace;
@@ -50,6 +52,11 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
   onGoToCockpitWithJourney,
   gateway,
 }) => {
+  const commercialConfig = useMemo(() => getWorkspaceCommercialConfig(workspace.id), [workspace.id]);
+  const isHairSalon = (commercialConfig.businessType === 'hair_salon') || (workspace.id || '').toLowerCase().includes('haven') || (workspace.name || '').toLowerCase().includes('haven');
+  const isTrinksClient = (commercialConfig.agendaProviderName || '').toLowerCase().includes('trinks') || (workspace.id || '').toLowerCase().includes('haven');
+  const agendaButtonLabel = commercialConfig.agendaProviderName || (isTrinksClient ? "Grade Trinks (Haven)" : "Grade de Vagas");
+
   const [viewMode, setViewMode] = useState<'list' | 'month' | 'week' | 'day'>('list');
   const [appointments, setAppointments] = useState<CommercialAppointment[]>(() =>
     salesOsRuntimeConfig.mode === 'api' ? [] : mockAppointments
@@ -62,6 +69,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<'today' | 'tomorrow' | 'week' | 'all'>('today');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [externalAgendaDrawerOpen, setExternalAgendaDrawerOpen] = useState(false);
 
   // Form State for new appointment
   const [newLeadName, setNewLeadName] = useState('');
@@ -152,10 +160,12 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
       const matchesStatus = statusFilter === 'all' || apt.status === statusFilter;
 
       let matchesDate = true;
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const tomorrowStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
       if (dateFilter === 'today') {
-        matchesDate = apt.scheduledAt.startsWith('2026-08-15');
+        matchesDate = apt.scheduledAt.startsWith(todayStr) || apt.scheduledAt.startsWith('2026-08-15');
       } else if (dateFilter === 'tomorrow') {
-        matchesDate = apt.scheduledAt.startsWith('2026-08-16');
+        matchesDate = apt.scheduledAt.startsWith(tomorrowStr) || apt.scheduledAt.startsWith('2026-08-16');
       }
 
       return matchesSearch && matchesStatus && matchesDate;
@@ -337,8 +347,18 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
           </div>
 
           <button
+            type="button"
+            onClick={() => setExternalAgendaDrawerOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs shrink-0 cursor-pointer"
+            title={`Consultar horários e integração (${agendaButtonLabel})`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>{agendaButtonLabel}</span>
+          </button>
+
+          <button
             onClick={() => setIsNewModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2 bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold rounded-xl transition-all shadow-xs shrink-0"
+            className="flex items-center gap-2 px-3.5 py-2 bg-[#00a884] hover:bg-[#008069] text-white text-xs font-bold rounded-xl transition-all shadow-xs shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Novo Agendamento</span>
@@ -367,10 +387,10 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
             <DollarSign className="w-4 h-4 text-[#00a884]" />
           </div>
           <div className="text-2xl font-bold text-slate-900 font-mono">
-            R$ {stats.totalRevenue.toFixed(2)}
+            R$ {(Number(stats.totalRevenue) || 0).toFixed(2)}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
-            Ticket médio: R$ {(stats.totalRevenue / (stats.confirmedCount || 1)).toFixed(0)}
+            Ticket médio: R$ {((Number(stats.totalRevenue) || 0) / (stats.confirmedCount || 1)).toFixed(0)}
           </div>
         </div>
 
@@ -601,7 +621,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
                         </span>
                         <span>·</span>
                         <span className="font-mono font-bold text-emerald-700">
-                          R$ {apt.serviceValue.toFixed(2)}
+                          R$ {(Number(apt.serviceValue) || 0).toFixed(2)}
                         </span>
                         <span>·</span>
                         <span className="text-slate-400 flex items-center gap-1">
@@ -805,6 +825,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* External Agenda Trinks Drawer */}
+      <ExternalAgendaDrawer
+        isOpen={externalAgendaDrawerOpen}
+        onClose={() => setExternalAgendaDrawerOpen(false)}
+        workspaceId={workspace.id}
+        workspaceName={workspace.name}
+      />
     </div>
   );
 };

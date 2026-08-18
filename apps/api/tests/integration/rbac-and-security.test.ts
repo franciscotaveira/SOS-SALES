@@ -42,10 +42,10 @@ describe('TX Commercial Core — RBAC, Composite FKs, Secret Isolation & Outbox 
       ON CONFLICT (id) DO NOTHING;
 
       INSERT INTO channel_connection_secrets (
-        channel_connection_id, workspace_id, api_key_vault_secret_id, webhook_vault_secret_id
+        channel_connection_id, workspace_id, secret_kind, secret_payload
       ) VALUES
-      ('${channelAId}', '${workspaceAId}', '51000000-0000-0000-0000-000000000099', '52000000-0000-0000-0000-000000000099')
-      ON CONFLICT (channel_connection_id) DO NOTHING;
+      ('${channelAId}', '${workspaceAId}', 'meta_bearer_token', '{"vault_id": "51000000-0000-0000-0000-000000000099"}'::jsonb)
+      ON CONFLICT (channel_connection_id, secret_kind) DO NOTHING;
     `);
 
     // 4. Create Contacts

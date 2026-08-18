@@ -6,6 +6,9 @@ import {
   CommercialOutcomeRuleViolationError,
   COMMERCIAL_OUTCOME_RESULTS,
 } from '../../../application/ports/commercial-outcome-gateway.js';
+import { CapiClient } from '../../../infrastructure/channels/meta/capi-client.js';
+import { dbPool } from '../../../infrastructure/database/pool.js';
+import { PlaybookEvolutionEngine } from '../../../application/services/playbook-evolution-engine.js';
 
 export interface CommercialOutcomeRouteDependencies {
   commercialOutcomeGateway?: CommercialOutcomeGateway;
@@ -63,6 +66,71 @@ export async function commercialOutcomeRoutes(
         ...(body.data.reason ? { reason: body.data.reason } : {}),
         idempotencyKey: headers.data['idempotency-key'],
       });
+
+      // Closed-Loop Meta CAPI Attribution Dispatch on WON
+      if (data && body.data.result === 'WON') {
+        void (async () => {
+          try {
+            const infoRes = await dbPool.query(
+              `SELECT j.contact_id, c.phone, c.name,
+                      cc.public_config
+               FROM public.commercial_journeys j
+               JOIN public.contacts c ON c.id = j.contact_id
+               LEFT JOIN public.channel_connections cc ON cc.id = j.channel_connection_id
+               WHERE j.id = $1 LIMIT 1`,
+              [params.data.journeyId]
+            );
+            if (infoRes.rows.length > 0) {
+              const row = infoRes.rows[0];
+              const pubConfig = row.public_config || {};
+              const pixelId = pubConfig?.trackingConfig?.pixelId || process.env.META_PIXEL_ID;
+              const accessToken = pubConfig?.trackingConfig?.capiAccessToken || process.env.META_CAPI_ACCESS_TOKEN;
+
+              if (pixelId && accessToken) {
+                const capi = new CapiClient();
+                await capi.sendPurchaseEvent(
+                  {
+                    outcomeId: data.outcomeId,
+                    pixelId,
+                    revenueMinor: body.data.revenueMinor,
+                    currency: 'BRL',
+                    phone: row.phone,
+                    occurredAt: new Date().toISOString(),
+                  },
+                  accessToken
+                );
+              }
+            }
+          } catch (capiErr) {
+            console.warn('[Meta CAPI Closed-Loop Dispatch Error]:', capiErr);
+          }
+        })();
+
+        // Level 5: Hive-Mind Playbook Evolution (Clonador de Melhores Práticas)
+        void (async () => {
+          try {
+            const msgRes = await dbPool.query(
+              `SELECT id, direction, sender_type, text_content, sent_at
+               FROM public.conversation_messages
+               WHERE journey_id = $1 AND workspace_id = $2
+               ORDER BY sent_at ASC`,
+              [params.data.journeyId, params.data.workspaceId]
+            );
+            if (msgRes.rows.length >= 4) {
+              const evolution = new PlaybookEvolutionEngine();
+              await evolution.distillAndEvolve(
+                params.data.workspaceId,
+                params.data.journeyId,
+                body.data.revenueMinor,
+                msgRes.rows
+              );
+            }
+          } catch (playbookErr) {
+            console.warn('[Playbook Evolution Error]:', playbookErr);
+          }
+        })();
+      }
+
       return data === null ? notFound(reply) : { data };
     } catch (error) {
       if (error instanceof CommercialOutcomeConflictError) {

@@ -124,7 +124,7 @@ describe('SOS Sales — Database Schema & Invariants', () => {
     // 3.1 Channel Secret
     const secret = await query('SELECT * FROM channel_connection_secrets WHERE workspace_id = $1', [workspaceId]);
     expect(secret.rowCount).toBe(1);
-    expect(secret.rows[0].api_key_vault_secret_id).toBe('51000000-0000-0000-0000-000000000001');
+    expect(secret.rows[0].secret_kind).toBe('meta_bearer_token');
     expect(secret.rows[0]).not.toHaveProperty('encrypted_api_key');
     expect(secret.rows[0]).not.toHaveProperty('webhook_secret');
 

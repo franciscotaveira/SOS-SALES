@@ -42,50 +42,88 @@ interface TeamManagerProps {
   workspace: Workspace;
 }
 
-const DEFAULT_TEAM_MEMBERS: Record<string, TeamMember[]> = {
-  'ws-haven-beauty': [
-    {
-      id: 'usr-haven-01',
-      name: 'Francisco Rios',
-      email: 'francisco@havenescovaria.com.br',
-      phone: '+55 49 98844-7562',
-      role: 'admin',
-      status: 'online',
-      maxDiscountPercent: 20,
-      assignedQueues: ['Recepção Geral', 'Noivas & Eventos', 'VIP'],
-      createdAt: '2026-01-10T10:00:00Z',
-      lastActiveAt: 'Agora mesmo',
-    },
-    {
-      id: 'usr-haven-02',
-      name: 'Beatriz Vasconcelos',
-      email: 'bia@havenescovaria.com.br',
-      phone: '+55 49 99123-4567',
-      role: 'supervisor',
-      status: 'online',
-      maxDiscountPercent: 15,
-      assignedQueues: ['Recepção Geral', 'Agendamentos Trinks'],
-      createdAt: '2026-02-01T14:00:00Z',
-      lastActiveAt: 'Há 3 min',
-    },
-    {
-      id: 'usr-haven-03',
-      name: 'Camila Ferreira',
-      email: 'camila@havenescovaria.com.br',
-      phone: '+55 49 99876-5432',
-      role: 'operator',
-      status: 'busy',
-      maxDiscountPercent: 10,
-      assignedQueues: ['Escovaria Express', 'Esmalteria'],
-      createdAt: '2026-03-15T09:00:00Z',
-      lastActiveAt: 'Há 12 min',
-    },
-  ],
-  'ws-sos-sales-official': [
+export function resolveWorkspaceTeamDefaults(wsId: string, wsName?: string): TeamMember[] {
+  const normId = (wsId || '').toLowerCase();
+  const normName = (wsName || '').toLowerCase();
+
+  // 1. Haven Escovaria & Esmalteria
+  if (normId.includes('haven') || normName.includes('haven') || normName.includes('escovaria')) {
+    return [
+      {
+        id: 'usr-haven-01',
+        name: 'Francisco Rios',
+        email: 'francisco@havenescovaria.com.br',
+        phone: '+55 49 98844-7562',
+        role: 'admin',
+        status: 'online',
+        maxDiscountPercent: 20,
+        assignedQueues: ['Recepção Geral', 'Noivas & Eventos', 'VIP'],
+        createdAt: '2026-01-10T10:00:00Z',
+        lastActiveAt: 'Agora mesmo',
+      },
+      {
+        id: 'usr-haven-02',
+        name: 'Beatriz Vasconcelos',
+        email: 'bia@havenescovaria.com.br',
+        phone: '+55 49 99123-4567',
+        role: 'supervisor',
+        status: 'online',
+        maxDiscountPercent: 15,
+        assignedQueues: ['Recepção Geral', 'Agendamentos Trinks'],
+        createdAt: '2026-02-01T14:00:00Z',
+        lastActiveAt: 'Há 3 min',
+      },
+      {
+        id: 'usr-haven-03',
+        name: 'Camila Ferreira',
+        email: 'camila@havenescovaria.com.br',
+        phone: '+55 49 99876-5432',
+        role: 'operator',
+        status: 'busy',
+        maxDiscountPercent: 10,
+        assignedQueues: ['Escovaria Express', 'Esmalteria'],
+        createdAt: '2026-03-15T09:00:00Z',
+        lastActiveAt: 'Há 12 min',
+      },
+    ];
+  }
+
+  // 2. Sora Spa
+  if (normId.includes('sora') || normName.includes('sora') || normName.includes('spa')) {
+    return [
+      {
+        id: 'usr-sora-01',
+        name: 'Francisco Rios',
+        email: 'francisco@soraspa.com.br',
+        phone: '+55 49 98844-7562',
+        role: 'admin',
+        status: 'online',
+        maxDiscountPercent: 20,
+        assignedQueues: ['Atendimento VIP', 'Headspa'],
+        createdAt: '2026-01-15T10:00:00Z',
+        lastActiveAt: 'Agora mesmo',
+      },
+      {
+        id: 'usr-sora-02',
+        name: 'Dra. Lilian Terapeuta',
+        email: 'lilian@soraspa.com.br',
+        phone: '+55 49 99123-7788',
+        role: 'supervisor',
+        status: 'online',
+        maxDiscountPercent: 15,
+        assignedQueues: ['Headspa Coreano', 'Massagens Relaxantes'],
+        createdAt: '2026-02-10T14:00:00Z',
+        lastActiveAt: 'Há 5 min',
+      },
+    ];
+  }
+
+  // 3. SOS Sales - Matriz Principal / Sovereign Master
+  return [
     {
       id: 'usr-sos-01',
-      name: 'Francisco Rios',
-      email: 'francisco@iaparavendas.tech',
+      name: 'Francisco Rios (Master)',
+      email: 'franciscotaveira.mkt@gmail.com',
       phone: '+55 49 98844-7562',
       role: 'admin',
       status: 'online',
@@ -96,7 +134,7 @@ const DEFAULT_TEAM_MEMBERS: Record<string, TeamMember[]> = {
     },
     {
       id: 'usr-sos-02',
-      name: 'Sofia SDR',
+      name: 'Sofia SDR (Copilot IA)',
       email: 'sofia.sdr@iaparavendas.tech',
       phone: '+55 49 98844-7560',
       role: 'operator',
@@ -106,8 +144,8 @@ const DEFAULT_TEAM_MEMBERS: Record<string, TeamMember[]> = {
       createdAt: '2026-02-10T11:00:00Z',
       lastActiveAt: 'Há 1 min',
     },
-  ],
-};
+  ];
+}
 
 const ROLE_LABELS: Record<UserRole, { label: string; color: string; desc: string }> = {
   admin: {
@@ -140,15 +178,30 @@ const STATUS_LABELS: Record<UserStatus, { label: string; dot: string }> = {
 };
 
 export const TeamManager: React.FC<TeamManagerProps> = ({ workspace }) => {
-  const storageKey = `sos_sales_team_${workspace.id}`;
+  const defaultMembers = React.useMemo(
+    () => resolveWorkspaceTeamDefaults(workspace.id, workspace.name),
+    [workspace.id, workspace.name]
+  );
+
+  const storageKey = `sos_sales_team_v3_${workspace.id}`;
 
   const [members, setMembers] = useState<TeamMember[]>(() => {
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) return JSON.parse(saved);
     } catch {}
-    return DEFAULT_TEAM_MEMBERS[workspace.id] || DEFAULT_TEAM_MEMBERS['ws-haven-beauty'];
+    return defaultMembers;
   });
+
+  // Re-sync when switching workspaces in the multi-tenant header dropdown
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      setMembers(saved ? JSON.parse(saved) : defaultMembers);
+    } catch {
+      setMembers(defaultMembers);
+    }
+  }, [workspace.id, workspace.name, storageKey, defaultMembers]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);

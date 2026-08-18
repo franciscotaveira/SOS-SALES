@@ -219,7 +219,7 @@ export const ContinuousLearningSection: React.FC<ContinuousLearningSectionProps>
                     <Sparkles className="w-3.5 h-3.5 text-purple-600" /> Fato Aprendido e Vetorizado para o Futuro:
                   </span>
                   <span className="text-[10px] font-mono text-purple-700">
-                    Confiança: {(record.confidenceScore * 100).toFixed(0)}%
+                    Confiança: {(Number(record.confidenceScore || 0) * 100).toFixed(0)}%
                   </span>
                 </div>
                 <p className="font-medium text-xs text-purple-900">{record.learnedFact}</p>

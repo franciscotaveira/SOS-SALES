@@ -88,7 +88,7 @@ export const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
                   <div className="text-sm font-black">{day.dayNum}</div>
                   {totalRevenue > 0 && (
                     <div className={`text-[10px] mt-0.5 font-mono ${day.isToday ? 'text-emerald-100' : 'text-emerald-700'}`}>
-                      R$ {totalRevenue.toFixed(0)}
+                      R$ {(Number(totalRevenue) || 0).toFixed(0)}
                     </div>
                   )}
                 </div>
@@ -117,7 +117,7 @@ export const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
                               {getTime(apt.scheduledAt)}
                             </span>
                             <span className="font-bold text-[10px] text-emerald-700">
-                              R$ {apt.serviceValue.toFixed(0)}
+                              R$ {(Number(apt.serviceValue) || 0).toFixed(0)}
                             </span>
                           </div>
 

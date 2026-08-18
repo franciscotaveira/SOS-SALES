@@ -3,6 +3,8 @@ import { Workspace } from '../../types/cockpit';
 import {
   clientIntelligenceMap,
   mockSosSalesIntelligence,
+  mockHavenIntelligence,
+  mockSoraIntelligence,
 } from '../../data/clientIntelligenceFixtures';
 import { ClientIntelligenceBundle } from '../../types/intelligence';
 import { CompanyProfileSection } from './CompanyProfileSection';
@@ -45,6 +47,46 @@ export type IntelligenceTab =
   | 'company'
   | 'agent';
 
+export function resolveWorkspaceIntelligenceBundle(wsId: string, wsName?: string): ClientIntelligenceBundle {
+  const normId = (wsId || '').toLowerCase();
+  const normName = (wsName || '').toLowerCase();
+
+  if (normId.includes('haven') || normId.includes('escovaria') || normName.includes('haven') || normName.includes('escovaria')) {
+    return {
+      ...mockHavenIntelligence,
+      workspaceId: wsId,
+      companyProfile: {
+        ...mockHavenIntelligence.companyProfile,
+        tradeName: wsName || mockHavenIntelligence.companyProfile.tradeName,
+      },
+    };
+  }
+
+  if (normId.includes('sora') || normId.includes('spa') || normName.includes('sora') || normName.includes('spa')) {
+    return {
+      ...mockSoraIntelligence,
+      workspaceId: wsId,
+      companyProfile: {
+        ...mockSoraIntelligence.companyProfile,
+        tradeName: wsName || mockSoraIntelligence.companyProfile.tradeName,
+      },
+    };
+  }
+
+  if (clientIntelligenceMap[wsId]) {
+    return clientIntelligenceMap[wsId];
+  }
+
+  return {
+    ...mockSosSalesIntelligence,
+    workspaceId: wsId,
+    companyProfile: {
+      ...mockSosSalesIntelligence.companyProfile,
+      tradeName: wsName || mockSosSalesIntelligence.companyProfile.tradeName,
+    },
+  };
+}
+
 export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   currentWorkspace,
   workspaces,
@@ -56,7 +98,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   const activeTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalActiveTab;
   const setActiveTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalActiveTab;
 
-  const STORAGE_KEY = 'sos_sales_intelligence_bundles';
+  const STORAGE_KEY = 'sos_sales_intelligence_bundles_v2';
   const [bundleMap, setBundleMap] = React.useState<Record<string, ClientIntelligenceBundle>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -64,10 +106,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
         return JSON.parse(saved);
       }
     } catch {}
-    return {
-      ...clientIntelligenceMap,
-      [currentWorkspace.id]: mockSosSalesIntelligence,
-    };
+    return clientIntelligenceMap;
   });
 
   React.useEffect(() => {
@@ -77,13 +116,33 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   }, [bundleMap]);
 
   const currentBundle = React.useMemo(() => {
-    return bundleMap[currentWorkspace.id] || {
-      ...mockSosSalesIntelligence,
-      workspaceId: currentWorkspace.id,
-      companyProfile: {
-        ...mockSosSalesIntelligence.companyProfile,
-        tradeName: currentWorkspace.name,
+    const fallback = resolveWorkspaceIntelligenceBundle(currentWorkspace.id, currentWorkspace.name);
+    const existing = bundleMap[currentWorkspace.id];
+    if (!existing) return fallback;
+
+    return {
+      ...fallback,
+      ...existing,
+      companyProfile: { ...fallback.companyProfile, ...(existing.companyProfile || {}) },
+      agentConfig: {
+        ...fallback.agentConfig,
+        ...(existing.agentConfig || {}),
+        safetyGuardrails: Array.isArray(existing.agentConfig?.safetyGuardrails)
+          ? existing.agentConfig.safetyGuardrails
+          : fallback.agentConfig.safetyGuardrails,
       },
+      catalog: Array.isArray(existing.catalog) ? existing.catalog.map((item) => ({
+        ...item,
+        basePrice: Number(item?.basePrice || 0),
+        minPromoPrice: Number(item?.minPromoPrice ?? item?.basePrice ?? 0),
+        tags: Array.isArray(item?.tags) ? item.tags : [],
+        frequentlyAsked: Array.isArray(item?.frequentlyAsked) ? item.frequentlyAsked : [],
+      })) : fallback.catalog,
+      documents: Array.isArray(existing.documents) ? existing.documents : fallback.documents,
+      learningRecords: Array.isArray(existing.learningRecords) ? existing.learningRecords.map((r) => ({
+        ...r,
+        confidenceScore: Number(r?.confidenceScore || 0),
+      })) : fallback.learningRecords,
     };
   }, [bundleMap, currentWorkspace]);
 

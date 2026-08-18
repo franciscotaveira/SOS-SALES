@@ -200,14 +200,14 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
                 <div>
                   <span className="text-[10px] text-slate-400 font-semibold block">Preço Base</span>
                   <span className="font-bold text-slate-900">
-                    R$ {item.basePrice.toFixed(2)}
+                    R$ {(Number(item.basePrice) || 0).toFixed(2)}
                   </span>
                 </div>
 
                 <div>
                   <span className="text-[10px] text-emerald-600 font-semibold block">Alçada Mínima IA</span>
                   <span className="font-bold text-emerald-700">
-                    R$ {item.minPromoPrice.toFixed(2)}
+                    R$ {(Number(item.minPromoPrice ?? item.basePrice) || 0).toFixed(2)}
                   </span>
                 </div>
 
@@ -225,7 +225,12 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
               {/* Tags & WABA Meta Catalog Link */}
               <div className="p-4 pt-2.5 space-y-2">
                 <div className="flex flex-wrap items-center gap-1">
-                  {item.tags.map((tag, idx) => (
+                  {Array.isArray(item.tags) && item.tags.some((t) => typeof t === 'string' && (t.toLowerCase().includes('áudio') || t.toLowerCase().includes('suzana'))) && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                      🎙️ Áudio de Vendas no Vault
+                    </span>
+                  )}
+                  {Array.isArray(item.tags) && item.tags.map((tag, idx) => (
                     <span
                       key={idx}
                       className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium"
@@ -245,14 +250,14 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
                 </div>
 
                 {/* Frequently Asked Snippet */}
-                {item.frequentlyAsked.length > 0 && (
+                {Array.isArray(item.frequentlyAsked) && item.frequentlyAsked.length > 0 && item.frequentlyAsked[0] && (
                   <div className="p-2 rounded-lg bg-amber-50/70 border border-amber-200/60 text-[11px] text-amber-900 space-y-0.5">
                     <span className="font-bold flex items-center gap-1 text-[10px] uppercase text-amber-800">
                       <Sparkles className="w-3 h-3 text-amber-600" /> FAQ do Produto
                     </span>
-                    <p className="font-semibold">{item.frequentlyAsked[0].question}</p>
+                    <p className="font-semibold">{item.frequentlyAsked[0]?.question}</p>
                     <p className="text-amber-800 font-normal italic">
-                      "{item.frequentlyAsked[0].answer}"
+                      "{item.frequentlyAsked[0]?.answer}"
                     </p>
                   </div>
                 )}

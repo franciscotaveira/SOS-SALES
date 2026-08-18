@@ -1,30 +1,65 @@
 import { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { dbPool } from '../../../../infrastructure/database/pool.js';
+import { AttributionService } from '../../../../application/services/attribution-service.js';
+import { IdempotencyGate } from '../../../../infrastructure/cache/idempotency-gate.js';
 
-export const wabaWebhookPlugin: FastifyPluginAsync = async (app: FastifyInstance) => {
-  /**
-   * 1. GET Webhook Verification (Meta Hub Challenge Handshake)
-   */
-  app.get('/api/v1/channels/waba/webhook', async (request: FastifyRequest, reply: FastifyReply) => {
+export interface WabaWebhookPluginOptions {
+  verifyToken: string;
+  appSecret: string;
+}
+
+function safeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+function verifyMetaSignature(rawBody: Buffer, signatureHeader: string | undefined, appSecret: string): boolean {
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false;
+  const providedSignature = signatureHeader.slice('sha256='.length);
+  const computedSignature = createHmac('sha256', appSecret).update(rawBody).digest('hex');
+  return safeCompare(providedSignature, computedSignature);
+}
+
+export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = async (
+  app: FastifyInstance,
+  options: WabaWebhookPluginOptions
+) => {
+  const { verifyToken, appSecret } = options;
+  const idempotencyGate = IdempotencyGate.getInstance();
+
+  const handleVerification = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = request.query as Record<string, string>;
     const mode = query['hub.mode'];
     const token = query['hub.verify_token'];
     const challenge = query['hub.challenge'];
 
-    if (mode === 'subscribe' && token) {
-      // Check if token matches standard or any workspace verifyToken
-      const defaultToken = process.env.META_VERIFY_TOKEN || 'mct_waba_verify_2026';
-      if (token === defaultToken || token.startsWith('mct_')) {
-        return reply.status(200).send(challenge);
-      }
+    if (mode === 'subscribe' && token && safeCompare(token, verifyToken)) {
+      return reply.status(200).send(challenge);
     }
     return reply.status(403).send('Forbidden');
-  });
+  };
+
+  /**
+   * 1. GET Webhook Verification (Meta Hub Challenge Handshake)
+   */
+  app.get('/api/v1/channels/waba/webhook', handleVerification);
+  app.get('/webhooks/waba', handleVerification);
 
   /**
    * 2. POST Webhook Events (Messages, Statuses, Referrals, Interactive Clicks)
    */
-  app.post('/api/v1/channels/waba/webhook', async (request: FastifyRequest, reply: FastifyReply) => {
+  const handleEvents = async (request: FastifyRequest, reply: FastifyReply) => {
+    const rawBody = (request as unknown as { rawBody?: Buffer }).rawBody;
+    const signatureHeader = request.headers['x-hub-signature-256'] as string | undefined;
+
+    if (!rawBody || !verifyMetaSignature(rawBody, signatureHeader, appSecret)) {
+      request.log.warn({ hasRawBody: Boolean(rawBody), hasSignature: Boolean(signatureHeader) }, 'WABA webhook signature verification failed');
+      return reply.status(401).send({ error: 'Invalid signature' });
+    }
+
     const payload = request.body as any;
 
     if (payload?.object !== 'whatsapp_business_account') {
@@ -47,6 +82,14 @@ export const wabaWebhookPlugin: FastifyPluginAsync = async (app: FastifyInstance
           const statusStr = String(statusObj.status || '').toUpperCase();
           const validStatuses = ['SENT', 'DELIVERED', 'READ', 'FAILED', 'REVOKED'];
           const status = validStatuses.includes(statusStr) ? statusStr : 'DELIVERED';
+
+          if (wabaMessageId && statusStr) {
+            const isDup = await idempotencyGate.isDuplicate(`waba:status:${wabaMessageId}:${statusStr}`, 180);
+            if (isDup) {
+              continue;
+            }
+          }
+
           try {
             await dbPool.query(
               `INSERT INTO public.conversation_message_events (
@@ -76,10 +119,19 @@ export const wabaWebhookPlugin: FastifyPluginAsync = async (app: FastifyInstance
         const contacts = value?.contacts || [];
 
         for (const message of messages) {
+          const messageId = message.id;
+
+          if (messageId) {
+            const isDup = await idempotencyGate.isDuplicate(`waba:msg:${messageId}`, 180);
+            if (isDup) {
+              request.log.info({ messageId }, 'Duplicate WABA webhook message ignored by IdempotencyGate');
+              continue;
+            }
+          }
+
           const fromPhone = `+${message.from.replace(/\D/g, '')}`;
           const contactObj = contacts.find((c: any) => c.wa_id === message.from);
           const pushName = contactObj?.profile?.name || fromPhone;
-          const messageId = message.id;
           const timestamp = new Date(Number(message.timestamp) * 1000).toISOString();
 
           // Extract text and interaction
@@ -115,8 +167,8 @@ export const wabaWebhookPlugin: FastifyPluginAsync = async (app: FastifyInstance
           const sourceId = referral?.source_id;
           const headline = referral?.headline;
 
-          // Find matching workspace by channel phoneNumberId or fallback to default
-          let targetWorkspaceId = '11111111-1111-1111-1111-111111111111';
+          // Find matching workspace by channel phoneNumberId or fallback to default workspace
+          let targetWorkspaceId: string | null = null;
           let channelConnectionId: string | null = null;
           try {
             const chanRes = await dbPool.query(
@@ -128,9 +180,18 @@ export const wabaWebhookPlugin: FastifyPluginAsync = async (app: FastifyInstance
             if (chanRes.rows.length > 0) {
               channelConnectionId = chanRes.rows[0].id;
               targetWorkspaceId = chanRes.rows[0].workspace_id;
+            } else {
+              const defaultWs = await dbPool.query(`SELECT id FROM public.workspaces ORDER BY created_at ASC LIMIT 1`);
+              if (defaultWs.rows.length > 0) {
+                targetWorkspaceId = defaultWs.rows[0].id;
+              }
             }
           } catch {
             // fallback
+          }
+
+          if (!targetWorkspaceId) {
+            continue;
           }
 
           if (!channelConnectionId) {
@@ -194,6 +255,28 @@ export const wabaWebhookPlugin: FastifyPluginAsync = async (app: FastifyInstance
               journeyId = newJourney.rows[0].id;
             }
 
+            // Extract and persist Meta Ads CTWA & UTM attribution
+            try {
+              const client = await dbPool.connect();
+              try {
+                const chCfgRes = await client.query('SELECT public_config FROM public.channel_connections WHERE id = $1', [channelConnectionId]);
+                const pubCfg = chCfgRes.rows[0]?.public_config || {};
+                const campaigns = pubCfg?.trackingConfig?.campaigns || [];
+
+                const existingAcq = await client.query('SELECT id FROM public.acquisition_contexts WHERE workspace_id = $1 AND journey_id = $2 LIMIT 1', [targetWorkspaceId, journeyId]);
+                if (existingAcq.rowCount === 0) {
+                  const attr = AttributionService.extractAttribution(textContent, { referral, adId, headline, sourceId }, campaigns);
+                  if (attr) {
+                    await AttributionService.persistAttribution(client, targetWorkspaceId, journeyId, attr, new Date(timestamp));
+                  }
+                }
+              } finally {
+                client.release();
+              }
+            } catch (acqErr) {
+              console.warn('Erro ao processar atribuição WABA:', acqErr);
+            }
+
             // Save referral facts if present
             if (adId || headline) {
               await dbPool.query(
@@ -239,5 +322,8 @@ export const wabaWebhookPlugin: FastifyPluginAsync = async (app: FastifyInstance
     }
 
     return reply.status(200).send({ status: 'ok' });
-  });
+  };
+
+  app.post('/api/v1/channels/waba/webhook', handleEvents);
+  app.post('/webhooks/waba', handleEvents);
 };

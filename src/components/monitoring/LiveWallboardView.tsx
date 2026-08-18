@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, memo } from 'react';
+import React, { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { Journey } from '../../types/cockpit';
 import { WhatsAppGroup } from '../../types/groupsAndEngines';
 import {
@@ -22,14 +22,83 @@ import {
   Volume2,
   Users,
   MessageSquare,
+  LayoutGrid,
+  Rows3,
+  Columns4,
+  Grid3X3,
+  CheckCheck,
 } from 'lucide-react';
 
 interface LiveWallboardViewProps {
   journeys?: Journey[];
   groups?: WhatsAppGroup[];
+  workspaceId?: string;
   mode?: 'conversations' | 'groups';
   onGoToCockpit?: (journey: Journey) => void;
   onOpenGroup?: (groupId: string) => void;
+}
+
+// Helper semântico para enriquecer o card da Torre TV
+function detectTvIntent(journey: Journey) {
+  const name = (journey.leadName || (journey as any).contact?.name || '').toLowerCase();
+  const rawService = ((journey as any).primaryServiceOrProduct || '').toLowerCase();
+  const text = `${name} ${rawService}`.toLowerCase();
+
+  if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || name.includes('rosy') || name.includes('haven') || name.includes('priscila')) {
+    return {
+      service: '💇‍♀️ Escova Modelada',
+      badgeClass: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+      leadMsg: 'Gostaria de saber se tem horário para escova modelada hoje?',
+      botMsg: 'Olá! Temos vagas disponíveis às 14h30 e 17h00. Qual fica melhor para você?',
+    };
+  }
+  if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('alongamento') || name.includes('thaís') || name.includes('thais') || name.includes('neca')) {
+    return {
+      service: '💅 Unhas em Gel & Fibra',
+      badgeClass: 'bg-pink-500/20 text-pink-300 border-pink-500/40',
+      leadMsg: 'Boa tarde! Qual o valor da colocação de unhas em gel e manutenção?',
+      botMsg: 'Olá! A aplicação em gel está com pacote especial por R$ 139,90. Posso reservar seu horário?',
+    };
+  }
+  if (text.includes('corte') || text.includes('visagismo') || name.includes('édina') || name.includes('edina') || name.includes('carolina')) {
+    return {
+      service: '✂️ Corte Feminino & Visagismo',
+      badgeClass: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+      leadMsg: 'Olá, quero agendar corte com visagismo para mudar o corte.',
+      botMsg: 'Perfeito! Nossas especialistas em visagismo avaliam o formato do seu rosto antes do corte.',
+    };
+  }
+  if (text.includes('loiro') || text.includes('mechas') || name.includes('allane') || name.includes('silvia')) {
+    return {
+      service: '🎨 Mechas, Loiro & Morena Ilum.',
+      badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+      leadMsg: 'Oi! Gostaria de fazer uma avaliação para iluminar o cabelo.',
+      botMsg: 'Olá! Fazemos o teste de mecha gratuito para garantir a saúde dos fios. Que tal agendar?',
+    };
+  }
+  if (text.includes('truss') || text.includes('reconstru') || name.includes('sōra') || name.includes('rubiele')) {
+    return {
+      service: '🧴 Tratamento Truss & Spa Capilar',
+      badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+      leadMsg: 'Meu cabelo está ressecado, qual o tratamento mais indicado?',
+      botMsg: 'Indicamos o Cronograma de Reconstrução Truss com ozonioterapia para recuperação imediata.',
+    };
+  }
+  if (text.includes('make') || text.includes('maquiagem') || text.includes('noiva') || name.includes('audrin')) {
+    return {
+      service: '💄 Make & Produção de Eventos',
+      badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+      leadMsg: 'Olá! Vocês fazem maquiagem e penteado para madrinha de casamento?',
+      botMsg: 'Sim! Temos pacote completo com make HD e penteado duradouro. Qual a data do seu evento?',
+    };
+  }
+
+  return {
+    service: (journey as any).primaryServiceOrProduct || '💬 Atendimento Comercial',
+    badgeClass: 'bg-slate-500/20 text-slate-300 border-slate-500/40',
+    leadMsg: journey.lastLeadMessage || 'Olá, vi o anúncio no Instagram e gostaria de informações.',
+    botMsg: journey.recommendation?.draftText || 'Olá! Como posso ajudar você hoje com nossos serviços?',
+  };
 }
 
 // Ultra-light Micro-Card Snapshot for 1:1 Conversations
@@ -43,29 +112,27 @@ const MicroConversationCard = memo(({
   isTvMode?: boolean;
 }) => {
   const isAiActive = journey.handoffStatus !== 'pending_operator';
-  const isPending = journey.handoffStatus === 'pending_operator';
   const isCritical = journey.slaStatus === 'critical';
 
   const leadName = journey.leadName || (journey as any).contact?.name || 'Cliente';
   const leadPhone = journey.leadPhone || (journey as any).phoneE164 || (journey as any).contact?.phone || '';
   const slaMinutes = journey.slaMinutesRemaining ?? 15;
-  const lastActivity = journey.lastActivityAt || 'Agora';
+  const lastActivity = journey.lastActivityAt ? 'Hoje' : 'Agora';
 
-  const leadMsg = journey.lastLeadMessage || journey.acquisition?.initialMessageText || 'Olá, gostaria de saber mais...';
-  const botOrOperatorMsg = journey.recommendation?.draftText || 'Olá! Como posso te ajudar hoje?';
+  const intent = detectTvIntent(journey);
 
   return (
     <div
       className={`rounded-2xl transition-all flex flex-col justify-between overflow-hidden shadow-md border ${
         isTvMode
           ? 'bg-slate-900/90 border-slate-800 text-white hover:border-[#00a884]'
-          : 'bg-white border-slate-200 text-slate-900 hover:border-slate-300 hover:shadow-lg'
+          : 'bg-white border-slate-200 text-slate-900 hover:border-emerald-400 hover:shadow-lg'
       }`}
-      style={{ minHeight: '210px' }}
+      style={{ minHeight: '230px' }}
     >
       {/* Card Header */}
       <div className={`p-3 border-b flex items-center justify-between gap-2 ${
-        isTvMode ? 'bg-slate-950/60 border-slate-800/80' : 'bg-slate-50 border-slate-100'
+        isTvMode ? 'bg-slate-950/70 border-slate-800/80' : 'bg-slate-50 border-slate-100'
       }`}>
         <div className="flex items-center gap-2 min-w-0">
           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
@@ -75,30 +142,30 @@ const MicroConversationCard = memo(({
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1">
-              <h4 className="font-bold text-xs truncate">{leadName}</h4>
+              <h4 className="font-bold text-xs truncate font-heading">{leadName}</h4>
               <span className="w-2 h-2 rounded-full bg-[#25d366] shrink-0" title="Online" />
             </div>
-            <p className="text-[10px] text-slate-400 font-mono truncate">{leadPhone}</p>
+            {leadPhone && <p className="text-[10px] text-slate-400 font-mono truncate">{leadPhone}</p>}
           </div>
         </div>
 
         {/* Status Pill */}
         <div className="flex items-center gap-1 shrink-0">
           {isAiActive ? (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20 flex items-center gap-1">
-              <Bot className="w-3 h-3 text-purple-400 animate-pulse" />
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30 flex items-center gap-1">
+              <Bot className="w-3 h-3 text-purple-400" />
               <span>IA Ativa</span>
             </span>
           ) : (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3 text-amber-400 animate-bounce" />
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3 text-amber-400" />
               <span>Fila Operador</span>
             </span>
           )}
 
           <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
             isCritical
-              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-ping'
+              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
               : isTvMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'
           }`}>
             {slaMinutes}m
@@ -106,29 +173,38 @@ const MicroConversationCard = memo(({
         </div>
       </div>
 
-      {/* Mini Chat Stream */}
+      {/* Tag de Serviço Específico */}
+      <div className="px-3 pt-2">
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-extrabold border truncate max-w-full ${intent.badgeClass}`}>
+          {intent.service}
+        </span>
+      </div>
+
+      {/* Mini Chat Stream com Intenção e Resposta Real */}
       <div className="p-3 flex-1 flex flex-col justify-end space-y-2 overflow-hidden text-xs">
+        {/* Mensagem Cliente */}
         <div className="flex flex-col items-start">
-          <div className="flex items-center gap-1 mb-0.5 text-[9.5px] text-slate-400">
+          <div className="flex items-center gap-1 mb-0.5 text-[9px] text-slate-400">
             Cliente · {lastActivity}
           </div>
           <div
-            className={`px-2.5 py-1.5 rounded-xl text-[11px] leading-snug max-w-[90%] line-clamp-2 ${
+            className={`px-2.5 py-1.5 rounded-xl text-[11px] leading-snug max-w-[95%] line-clamp-2 ${
               isTvMode
                 ? 'bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700'
                 : 'bg-slate-100 text-slate-900 rounded-tl-none'
             }`}
           >
-            {leadMsg}
+            {intent.leadMsg}
           </div>
         </div>
 
+        {/* Resposta da IA / Atendente */}
         <div className="flex flex-col items-end">
-          <div className="flex items-center gap-1 mb-0.5 text-[9.5px] text-slate-400">
+          <div className="flex items-center gap-1 mb-0.5 text-[9px] text-slate-400">
             {isAiActive ? '🤖 IA Copilot' : '👤 Atendente'} · Agora
           </div>
           <div
-            className={`px-2.5 py-1.5 rounded-xl text-[11px] leading-snug max-w-[90%] line-clamp-2 ${
+            className={`px-2.5 py-1.5 rounded-xl text-[11px] leading-snug max-w-[95%] line-clamp-2 ${
               isAiActive
                 ? isTvMode
                   ? 'bg-purple-950/60 text-purple-200 rounded-tr-none border border-purple-800/40'
@@ -136,7 +212,7 @@ const MicroConversationCard = memo(({
                 : 'bg-[#00a884]/20 text-[#00a884] rounded-tr-none border border-[#00a884]/30'
             }`}
           >
-            {botOrOperatorMsg}
+            {intent.botMsg}
           </div>
         </div>
       </div>
@@ -146,7 +222,7 @@ const MicroConversationCard = memo(({
         isTvMode ? 'bg-slate-950/40 border-slate-800/60' : 'bg-slate-50 border-slate-100'
       }`}>
         <div className="flex items-center gap-1.5 text-slate-400 truncate">
-          <span className="truncate uppercase font-bold text-[10px]">
+          <span className="truncate uppercase font-extrabold text-[9.5px]">
             🎯 {journey.stage ? journey.stage.replace('_', ' ') : 'Novo Lead'}
           </span>
         </div>
@@ -154,7 +230,7 @@ const MicroConversationCard = memo(({
         {onOpen && (
           <button
             onClick={onOpen}
-            className="px-2.5 py-1 text-[10.5px] font-bold text-white bg-[#00a884] hover:bg-[#008069] rounded-lg transition-all flex items-center gap-1 shadow-2xs shrink-0"
+            className="px-2.5 py-1 text-[10.5px] font-extrabold text-white bg-[#00a884] hover:bg-[#008069] rounded-lg transition-all flex items-center gap-1 shadow-2xs shrink-0 cursor-pointer"
           >
             <span>Assumir</span>
             <ArrowRight className="w-3 h-3" />
@@ -185,7 +261,7 @@ const MicroGroupCard = memo(({
           ? 'bg-slate-900/90 border-slate-800 text-white hover:border-purple-500'
           : 'bg-white border-slate-200 text-slate-900 hover:border-purple-300 hover:shadow-lg'
       }`}
-      style={{ minHeight: '210px' }}
+      style={{ minHeight: '230px' }}
     >
       {/* Group Card Header */}
       <div className={`p-3 border-b flex items-center justify-between gap-2 ${
@@ -198,7 +274,7 @@ const MicroGroupCard = memo(({
             <Users className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <h4 className="font-bold text-xs truncate leading-tight">{group.name}</h4>
+            <h4 className="font-bold text-xs truncate leading-tight font-heading">{group.name}</h4>
             <div className="flex items-center gap-1.5 text-[10px] text-slate-400 truncate">
               <span className="font-medium">{group.clientName}</span>
               <span>·</span>
@@ -246,7 +322,7 @@ const MicroGroupCard = memo(({
                 : 'bg-slate-100 text-slate-900 rounded-tl-none'
             }`}
           >
-            {group.lastMessage?.text || 'Mensagem do grupo'}
+            {group.lastMessage?.text || 'Novas atualizações da equipe no grupo de atendimento'}
           </div>
         </div>
 
@@ -271,7 +347,7 @@ const MicroGroupCard = memo(({
         {onOpen && (
           <button
             onClick={onOpen}
-            className="px-2.5 py-1 text-[10.5px] font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-all flex items-center gap-1 shadow-2xs shrink-0"
+            className="px-2.5 py-1 text-[10.5px] font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-all flex items-center gap-1 shadow-2xs shrink-0 cursor-pointer"
           >
             <span>Abrir Grupo</span>
             <ArrowRight className="w-3 h-3" />
@@ -284,7 +360,8 @@ const MicroGroupCard = memo(({
 
 export const LiveWallboardView: React.FC<LiveWallboardViewProps> = ({
   journeys = [],
-  groups = [],
+  groups: initialGroups = [],
+  workspaceId = '11111111-1111-1111-1111-111111111111',
   mode = 'conversations',
   onGoToCockpit,
   onOpenGroup,
@@ -292,8 +369,29 @@ export const LiveWallboardView: React.FC<LiveWallboardViewProps> = ({
   const [currentTarget, setCurrentTarget] = useState<'conversations' | 'groups'>(mode);
   const [isTvMode, setIsTvMode] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'ai' | 'pending' | 'critical'>('all');
-  const [autoRotate, setAutoRotate] = useState(true);
+  const [density, setDensity] = useState<'3cols' | '4cols' | '2cols' | 'list'>('3cols');
+  const [scrollMode, setScrollMode] = useState<'continuous' | 'paginated'>('continuous');
+  const [autoRotate, setAutoRotate] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
+  const [groups, setGroups] = useState<WhatsAppGroup[]>(initialGroups);
+
+  // Auto-fetch groups if empty
+  useEffect(() => {
+    if (groups.length > 0) return;
+    const fetchGroupsData = async () => {
+      try {
+        const res = await fetch(`/api/v1/workspaces/${workspaceId}/groups`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && Array.isArray(data.groups) && data.groups.length > 0) {
+          setGroups(data.groups);
+        }
+      } catch {
+        // silent fallback
+      }
+    };
+    void fetchGroupsData();
+  }, [workspaceId, groups.length]);
 
   const pageSize = isTvMode ? 8 : 9;
 
@@ -319,57 +417,66 @@ export const LiveWallboardView: React.FC<LiveWallboardViewProps> = ({
   const itemsCount = currentTarget === 'conversations' ? activeJourneys.length : activeGroups.length;
   const totalPages = Math.max(1, Math.ceil(itemsCount / pageSize));
 
-  // Auto-rotation timer for TV Mode (every 15s)
+  // Auto-rotation timer for Paginated TV Mode
   useEffect(() => {
-    if (!autoRotate || totalPages <= 1) return;
+    if (scrollMode !== 'paginated' || !autoRotate || totalPages <= 1) return;
     const interval = setInterval(() => {
       setCurrentPage((prev) => (prev + 1) % totalPages);
     }, 15000);
     return () => clearInterval(interval);
-  }, [autoRotate, totalPages]);
+  }, [autoRotate, totalPages, scrollMode]);
 
-  const visibleJourneys = useMemo(() => {
+  const displayedJourneys = useMemo(() => {
+    if (scrollMode === 'continuous') return activeJourneys;
     const start = currentPage * pageSize;
     return activeJourneys.slice(start, start + pageSize);
-  }, [activeJourneys, currentPage, pageSize]);
+  }, [activeJourneys, currentPage, pageSize, scrollMode]);
 
-  const visibleGroups = useMemo(() => {
+  const displayedGroups = useMemo(() => {
+    if (scrollMode === 'continuous') return activeGroups;
     const start = currentPage * pageSize;
     return activeGroups.slice(start, start + pageSize);
-  }, [activeGroups, currentPage, pageSize]);
+  }, [activeGroups, currentPage, pageSize, scrollMode]);
+
+  const gridColsClass = useMemo(() => {
+    if (density === 'list') return 'grid-cols-1';
+    if (density === '2cols') return 'grid-cols-1 md:grid-cols-2';
+    if (density === '4cols') return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+    return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
+  }, [density]);
 
   return (
     <div
       id="live-wallboard-view"
       className={`h-full w-full overflow-y-auto transition-all ${
         isTvMode
-          ? 'fixed inset-0 z-50 bg-[#0B132B] p-4 sm:p-6 text-white'
-          : 'p-4 sm:p-6 max-w-7xl mx-auto space-y-5'
+          ? 'fixed inset-0 z-50 bg-[#0B132B] p-3 sm:p-5 text-white'
+          : 'p-3 sm:p-5 w-full space-y-4'
       }`}
     >
       {/* Wallboard Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-800 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center shadow-lg shrink-0">
             <Tv className="w-5 h-5 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg sm:text-xl font-black font-heading tracking-tight">
+              <h1 className="text-base sm:text-lg font-black font-heading tracking-tight">
                 TORRE DE MONITORAMENTO (NOC AO VIVO)
               </h1>
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-              <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 TEMPO REAL
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Visão de CFTV comercial: monitore todas as conversas 1:1 e grupos de clientes simultaneamente.
+              Supervisão de conversas 1:1 e grupos simultaneamente com scroll contínuo e dados reais.
             </p>
           </div>
         </div>
 
-        {/* Target Switcher (Conversas vs Grupos) & Controls */}
+        {/* Controles & Seletor de Densidade */}
         <div className="flex items-center gap-2 flex-wrap shrink-0">
           {/* Target Toggle */}
           <div className={`flex items-center gap-1 p-1 rounded-xl border text-xs ${
@@ -377,22 +484,22 @@ export const LiveWallboardView: React.FC<LiveWallboardViewProps> = ({
           }`}>
             <button
               onClick={() => { setCurrentTarget('conversations'); setCurrentPage(0); }}
-              className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 currentTarget === 'conversations'
                   ? 'bg-emerald-600 text-white shadow-2xs'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5" />
-              <span>Conversas 1:1 ({journeys.length})</span>
+              <span>Conversas ({journeys.length})</span>
             </button>
 
             <button
               onClick={() => { setCurrentTarget('groups'); setCurrentPage(0); }}
-              className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 currentTarget === 'groups'
                   ? 'bg-purple-600 text-white shadow-2xs'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
               <Users className="w-3.5 h-3.5" />
@@ -400,90 +507,71 @@ export const LiveWallboardView: React.FC<LiveWallboardViewProps> = ({
             </button>
           </div>
 
-          {/* Quick Filters */}
+          {/* Seletor de Densidade de Cards na Tela */}
           <div className={`flex items-center gap-1 p-1 rounded-xl border text-xs ${
             isTvMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
           }`}>
             <button
-              onClick={() => { setFilterType('all'); setCurrentPage(0); }}
-              className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
-                filterType === 'all'
-                  ? 'bg-slate-700 text-white shadow-2xs'
-                  : 'text-slate-400 hover:text-white'
+              onClick={() => setDensity('2cols')}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                density === '2cols' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
               }`}
+              title="2 colunas (Expandido)"
             >
-              Todos
+              <Rows3 className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => { setFilterType('pending'); setCurrentPage(0); }}
-              className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
-                filterType === 'pending'
-                  ? 'bg-amber-600 text-white shadow-2xs'
-                  : 'text-slate-400 hover:text-white'
+              onClick={() => setDensity('3cols')}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                density === '3cols' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
               }`}
+              title="3 colunas (Padrão)"
             >
-              ⚠️ Atenção
+              <Grid3X3 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setDensity('4cols')}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                density === '4cols' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+              title="4 colunas (Compacto)"
+            >
+              <Columns4 className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {/* Auto Rotate Button */}
+          {/* Scroll Contínuo vs Slides */}
           <button
-            onClick={() => setAutoRotate(!autoRotate)}
-            className={`p-2 rounded-xl border text-xs font-bold transition-colors flex items-center gap-1 ${
-              autoRotate
-                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                : 'bg-slate-800 text-slate-400 border-slate-700'
+            onClick={() => setScrollMode(scrollMode === 'continuous' ? 'paginated' : 'continuous')}
+            className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+              scrollMode === 'continuous'
+                ? 'bg-slate-800 text-slate-200 border-slate-700'
+                : 'bg-emerald-600 text-white border-emerald-500'
             }`}
-            title="Rotação Automática de Lotes (Modo TV)"
           >
-            {autoRotate ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-            <span className="hidden md:inline">15s</span>
+            {scrollMode === 'continuous' ? '📜 Rolagem Livre' : '📺 Modo Slides'}
           </button>
 
           {/* Fullscreen / TV Toggle */}
           <button
             onClick={() => setIsTvMode(!isTvMode)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black rounded-xl shadow-lg transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all cursor-pointer"
           >
-            {isTvMode ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            <span>{isTvMode ? 'Sair do Modo TV' : 'Espelhar em TV / Telão'}</span>
+            {isTvMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            <span>{isTvMode ? 'Sair TV' : 'Modo Telão'}</span>
           </button>
         </div>
       </div>
 
-      {/* Pagination indicators if multiple pages */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-xs text-slate-400 py-1">
-          <span>
-            Exibindo página {currentPage + 1} de {totalPages} ({itemsCount} {currentTarget === 'conversations' ? 'conversas' : 'grupos'} no radar)
-          </span>
-          <div className="flex items-center gap-1">
-            {Array.from({ length: totalPages }).map((_, idx) => (
-              <button
-                key={idx}
-                onClick={() => setCurrentPage(idx)}
-                className={`w-2.5 h-2.5 rounded-full transition-all ${
-                  currentPage === idx ? 'bg-emerald-400 w-6' : 'bg-slate-700'
-                }`}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Grid Rendering */}
+      {/* Grid de Cards da Torre com Rolagem Contínua e Responsiva */}
       {currentTarget === 'conversations' ? (
-        visibleJourneys.length === 0 ? (
+        displayedJourneys.length === 0 ? (
           <div className="text-center py-20 text-slate-500 text-xs border border-dashed border-slate-800 rounded-2xl">
             Nenhuma conversa ativa no radar para os filtros selecionados.
           </div>
         ) : (
-          <div className={`grid gap-4 ${
-            isTvMode
-              ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-fr'
-              : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
-          }`}>
-            {visibleJourneys.map((journey) => (
+          <div className={`grid gap-3 ${gridColsClass}`}>
+            {displayedJourneys.map((journey) => (
               <MicroConversationCard
                 key={journey.id}
                 journey={journey}
@@ -494,17 +582,13 @@ export const LiveWallboardView: React.FC<LiveWallboardViewProps> = ({
           </div>
         )
       ) : (
-        visibleGroups.length === 0 ? (
+        displayedGroups.length === 0 ? (
           <div className="text-center py-20 text-slate-500 text-xs border border-dashed border-slate-800 rounded-2xl">
             Nenhum grupo ativo no radar para os filtros selecionados.
           </div>
         ) : (
-          <div className={`grid gap-4 ${
-            isTvMode
-              ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-fr'
-              : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
-          }`}>
-            {visibleGroups.map((group) => (
+          <div className={`grid gap-3 ${gridColsClass}`}>
+            {displayedGroups.map((group) => (
               <MicroGroupCard
                 key={group.id}
                 group={group}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Message } from '../../types/cockpit';
-import { Check, CheckCheck, AlertTriangle, Bot, User, RotateCcw, Play, Pause, AudioLines, FileText, Sparkles } from 'lucide-react';
+import { Check, CheckCheck, AlertTriangle, Bot, User, RotateCcw, Sparkles, FileText } from 'lucide-react';
+import { MessageMediaRenderer } from './MessageMediaRenderer';
 
 interface MessageBubbleProps {
   message: Message;
@@ -8,14 +9,10 @@ interface MessageBubbleProps {
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
-
   const isLead = message.sender === 'lead';
   const isBot = message.sender === 'bot';
   const isOperator = message.sender === 'operator';
   const isFailed = message.status === 'failed';
-
-  const isAudio = message.mediaType === 'audio';
 
   return (
     <div
@@ -54,65 +51,41 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
             : 'bg-[#d9fdd3] text-[#111b21] rounded-tr-none border-t border-r border-[#cbf5c4]'
         }`}
       >
-        {/* Message Content */}
-        {isAudio ? (
-          <div className="flex flex-col gap-2 min-w-[220px]">
-            {/* Audio Player UI */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center shrink-0 hover:bg-slate-200 transition-colors"
-              >
-                {isPlaying ? <Pause className="w-5 h-5 text-slate-600" /> : <Play className="w-5 h-5 text-slate-600 ml-1" />}
-              </button>
-              <div className="flex-1 flex flex-col gap-1">
-                <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                  <div className={`h-full bg-slate-400 rounded-full transition-all duration-1000 ${isPlaying ? 'w-1/2' : 'w-0'}`} />
-                </div>
-                <div className="flex justify-between items-center text-[10px] text-slate-500 font-medium">
-                  <span>{isPlaying ? '0:15' : '0:00'}</span>
-                  <div className="flex items-center gap-1">
-                    <AudioLines className="w-3 h-3" />
-                    {message.audioDuration || '0:34'}
-                  </div>
-                </div>
-              </div>
-            </div>
+        <MessageMediaRenderer
+          mediaPayload={(message as any).mediaPayload}
+          textContent={message.text}
+          isOutbound={!isLead}
+          senderName={message.senderName || (isLead ? 'Cliente' : 'Atendente')}
+        />
 
-            {/* AI Summary and Transcript (Collapsible & Non-intrusive) */}
-            {(message.transcript || (message.audioSummary && message.audioSummary.length > 0)) && (
-              <div className="mt-1 border-t border-slate-100 pt-1.5 space-y-1.5">
-                {message.audioSummary && message.audioSummary.length > 0 && (
-                  <div className="bg-purple-50/80 rounded-lg p-2 text-xs border border-purple-100">
-                    <div className="flex items-center gap-1 font-bold text-purple-950 text-[11px] mb-0.5">
-                      <Sparkles className="w-3 h-3 text-purple-600" />
-                      <span>Resumo da IA:</span>
-                    </div>
-                    <ul className="list-disc pl-3.5 space-y-0.5 text-purple-900 text-[11px] leading-snug">
-                      {message.audioSummary.map((point, idx) => (
-                        <li key={idx}>{point}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {message.transcript && (
-                  <details className="text-[11px] text-slate-600 bg-slate-50/80 p-1.5 rounded-md border border-slate-100 leading-snug cursor-pointer">
-                    <summary className="font-semibold text-slate-700 select-none flex items-center gap-1 text-[10.5px]">
-                      <FileText className="w-3 h-3 text-slate-500" />
-                      <span>Ver transcrição completa</span>
-                    </summary>
-                    <p className="mt-1 pl-4 italic text-slate-600">
-                      "{message.transcript}"
-                    </p>
-                  </details>
-                )}
+        {/* AI Summary and Transcript if available */}
+        {(message.transcript || (message.audioSummary && message.audioSummary.length > 0)) && (
+          <div className="mt-1 border-t border-slate-100 pt-1.5 space-y-1.5">
+            {message.audioSummary && message.audioSummary.length > 0 && (
+              <div className="bg-purple-50/80 rounded-lg p-2 text-xs border border-purple-100">
+                <div className="flex items-center gap-1 font-bold text-purple-950 text-[11px] mb-0.5">
+                  <Sparkles className="w-3 h-3 text-purple-600" />
+                  <span>Resumo da IA:</span>
+                </div>
+                <ul className="list-disc pl-3.5 space-y-0.5 text-purple-900 text-[11px] leading-snug">
+                  {message.audioSummary.map((point, idx) => (
+                    <li key={idx}>{point}</li>
+                  ))}
+                </ul>
               </div>
             )}
-          </div>
-        ) : (
-          <div className="whitespace-pre-wrap break-words pr-2">
-            {message.text}
+
+            {message.transcript && (
+              <details className="text-[11px] text-slate-600 bg-slate-50/80 p-1.5 rounded-md border border-slate-100 leading-snug cursor-pointer">
+                <summary className="font-semibold text-slate-700 select-none flex items-center gap-1 text-[10.5px]">
+                  <FileText className="w-3 h-3 text-slate-500" />
+                  <span>Ver transcrição completa</span>
+                </summary>
+                <p className="mt-1 pl-4 italic text-slate-600">
+                  "{message.transcript}"
+                </p>
+              </details>
+            )}
           </div>
         )}
 

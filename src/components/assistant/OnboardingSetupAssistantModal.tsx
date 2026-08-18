@@ -300,13 +300,6 @@ export function OnboardingSetupAssistantModal({
               <Send className="h-4 w-4" />
             </button>
           </form>
-          <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 px-1">
-            <span className="flex items-center gap-1">
-              <Zap className="h-3 w-3 text-emerald-600" />
-              Alimentado por <strong>NVIDIA Nemotron 3.5</strong>
-            </span>
-            <span>Respostas em &lt; 400ms</span>
-          </div>
         </div>
       </div>
     </div>

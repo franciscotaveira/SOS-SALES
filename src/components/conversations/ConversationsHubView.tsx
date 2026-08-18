@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { Journey, OperatorRole, Channel } from '../../types/cockpit';
+import { Journey, OperatorRole, Channel, Workspace } from '../../types/cockpit';
 import { WhatsAppGroup } from '../../types/groupsAndEngines';
 import { AllConversationsView } from './AllConversationsView';
 import { CommercialKanbanView } from '../kanban/CommercialKanbanView';
 import { LiveWallboardView } from '../monitoring/LiveWallboardView';
+import { StartConversationModal } from './StartConversationModal';
 import {
   List,
   Columns3,
   Tv,
   MessageSquare,
+  MessageSquarePlus,
   Sparkles,
 } from 'lucide-react';
 
@@ -17,6 +19,7 @@ interface ConversationsHubViewProps {
   groups?: WhatsAppGroup[];
   channels?: Channel[];
   selectedJourneyId?: string;
+  workspace: Workspace;
   onSelectJourney: (journey: Journey) => void;
   onGoToCockpit: (journey: Journey) => void;
   onOpenGroup?: (groupId: string) => void;
@@ -31,6 +34,7 @@ export const ConversationsHubView: React.FC<ConversationsHubViewProps> = ({
   groups = [],
   channels = [],
   selectedJourneyId,
+  workspace,
   onSelectJourney,
   onGoToCockpit,
   onOpenGroup,
@@ -40,9 +44,11 @@ export const ConversationsHubView: React.FC<ConversationsHubViewProps> = ({
   initialViewMode = 'list',
 }) => {
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'wallboard'>(initialViewMode);
+  const [startModalOpen, setStartModalOpen] = useState(false);
 
   return (
-    <div id="conversations-hub-container" className="h-full w-full flex flex-col overflow-hidden">
+    <>
+      <div id="conversations-hub-container" className="h-full w-full flex flex-col overflow-hidden">
       {/* Top Universal Mode Switcher Bar */}
       <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 shrink-0 shadow-2xs">
         <div className="flex items-center gap-2">
@@ -59,7 +65,19 @@ export const ConversationsHubView: React.FC<ConversationsHubViewProps> = ({
           </div>
         </div>
 
-        {/* 3-Way Mode Toggle */}
+        <div className="flex items-center gap-2">
+          {/* Nova Conversa Button */}
+          <button
+            id="start-new-conversation-btn"
+            onClick={() => setStartModalOpen(true)}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+          >
+            <MessageSquarePlus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Nova Conversa</span>
+            <span className="sm:hidden">+</span>
+          </button>
+
+          {/* 3-Way Mode Toggle */}
         <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
           <button
             id="switch-view-list-btn"
@@ -99,6 +117,7 @@ export const ConversationsHubView: React.FC<ConversationsHubViewProps> = ({
             <Tv className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Torre TV (NOC)</span>
           </button>
+          </div>
         </div>
       </div>
 
@@ -140,5 +159,17 @@ export const ConversationsHubView: React.FC<ConversationsHubViewProps> = ({
         )}
       </div>
     </div>
+
+      {/* Start Conversation Modal */}
+      <StartConversationModal
+        workspace={workspace}
+        isOpen={startModalOpen}
+        onClose={() => setStartModalOpen(false)}
+        onConversationStarted={(j) => {
+          setStartModalOpen(false);
+          onGoToCockpit(j as Journey);
+        }}
+      />
+    </>
   );
 };

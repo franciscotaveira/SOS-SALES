@@ -1,6 +1,7 @@
 import { ChannelWebhookAdapter } from '../ports/channel-webhook-adapter.js';
 import { WebhookSecretProvider } from '../ports/webhook-secret-provider.js';
 import { InboundIngestionGateway } from '../ports/inbound-ingestion-gateway.js';
+import { IdempotencyGate } from '../../infrastructure/cache/idempotency-gate.js';
 
 export interface IngestWahaWebhookInput {
   channelConnectionId: string;
@@ -19,11 +20,16 @@ export interface IngestWahaWebhookOutput {
 }
 
 export class IngestWahaWebhookUseCase {
+  private readonly idempotencyGate: IdempotencyGate;
+
   constructor(
     private readonly secretProvider: WebhookSecretProvider,
     private readonly adapter: ChannelWebhookAdapter,
-    private readonly ingestionGateway: InboundIngestionGateway
-  ) {}
+    private readonly ingestionGateway: InboundIngestionGateway,
+    idempotencyGate?: IdempotencyGate
+  ) {
+    this.idempotencyGate = idempotencyGate || IdempotencyGate.getInstance();
+  }
 
   public async execute(input: IngestWahaWebhookInput): Promise<IngestWahaWebhookOutput> {
     const {
@@ -58,8 +64,24 @@ export class IngestWahaWebhookUseCase {
       throw error;
     }
 
-    // 3. Extract stable provider event ID and metadata (Typed InvalidWebhookPayloadError carries statusCode 400, unexpected bugs stay generic)
+    // 3. Extract stable provider event ID and metadata
     const event = this.adapter.extractEvent(rawBody);
+
+    // Fast-path Idempotency Check: if providerEventId has already been seen in the current TTL window
+    if (event.providerEventId) {
+      const isMemoryDuplicate = await this.idempotencyGate.isDuplicate(
+        `waha:event:${channelConnectionId}:${event.providerEventId}`,
+        120
+      );
+      if (isMemoryDuplicate) {
+        return {
+          status: 'ACCEPTED',
+          inboundEventId: `dedup_${event.providerEventId}`,
+          workspaceId: '',
+          isDuplicate: true,
+        };
+      }
+    }
 
     // If x-webhook-request-id was supplied in the request headers, preserve it inside rawPayload for tracing
     const payloadToPersist = { ...event.rawPayload };

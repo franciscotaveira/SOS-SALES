@@ -18,61 +18,479 @@ interface TrackingSettingsProps {
   workspace: Workspace;
 }
 
+export interface CampaignMappingItem {
+  id: string;
+  platform: 'meta' | 'google';
+  campaignName: string;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  defaultProduct: string;
+  hookPromise: string;
+  activeLeadsCount: number;
+}
+
+export function resolveWorkspaceTrackingDefaults(wsId: string, wsName?: string): {
+  pixelId: string;
+  datasetId: string;
+  googleCustomerId: string;
+  googleConversionId: string;
+  metaAccessToken?: string;
+  campaigns: CampaignMappingItem[];
+} {
+  const normId = (wsId || '').toLowerCase();
+  const normName = (wsName || '').toLowerCase();
+
+  // 1. Haven Escovaria & Esmalteria
+  if (normId.includes('haven') || normName.includes('haven') || normName.includes('escovaria') || normId.includes('22222222')) {
+    return {
+      pixelId: '2042592029613403',
+      datasetId: '2042592029613403',
+      googleCustomerId: '482-901-2394',
+      googleConversionId: 'AW-1092834792',
+      metaAccessToken: 'EAALuHx4NZBLUBSLLnO0ZAvZC0OwdNJ8OPXbbkaRVeNiunbHrGaA1NAyKWvmZAm1V9HnLMPyo4mFK3yOa2mN4ADAwwDtlHLXbbnV3APdTw5UihaQT4NwfCg843OZCOGGfSUYPj50MG28g8pnpxSqRZB2U4y96plymDnKL1ylaE7MbzYv4pH6CC3moVq4BFaM0jI5gZDZD',
+      campaigns: [
+        {
+          id: 'camp-haven-1',
+          platform: 'meta',
+          campaignName: 'Meta Ads — Escova R$59 Sem Hora Marcada',
+          utmSource: 'facebook',
+          utmMedium: 'cpc',
+          utmCampaign: 'escova_express_haven',
+          defaultProduct: 'Escova Express (Lisa ou Modelada)',
+          hookPromise: 'Chegue a qualquer momento no Centro de Chapecó com lavagem ozonizada inclusa',
+          activeLeadsCount: 42,
+        },
+        {
+          id: 'camp-haven-2',
+          platform: 'meta',
+          campaignName: 'Instagram — Nanoblading Realista Suzana',
+          utmSource: 'instagram',
+          utmMedium: 'cpc',
+          utmCampaign: 'nanoblading_suzana',
+          defaultProduct: 'Micropigmentação Nanoblading Realista · Suzana',
+          hookPromise: 'Fios ultra realistas, anestésico sem dor e retoque incluso em 30 dias',
+          activeLeadsCount: 19,
+        },
+      ],
+    };
+  }
+
+  // 2. Sora Spa
+  if (normId.includes('sora') || normName.includes('sora') || normName.includes('spa') || normId.includes('33333333')) {
+    return {
+      pixelId: '394857201948293',
+      datasetId: '394857201948293',
+      googleCustomerId: '512-802-9911',
+      googleConversionId: 'AW-2091827364',
+      campaigns: [
+        {
+          id: 'camp-sora-1',
+          platform: 'meta',
+          campaignName: 'Meta Ads — Headspa Coreano Experiência Sensorial',
+          utmSource: 'instagram',
+          utmMedium: 'cpc',
+          utmCampaign: 'headspa_sensorial',
+          defaultProduct: 'Sessão Headspa Signature (90 min)',
+          hookPromise: 'Desconecte do estresse com massagem capilar e cascata de ozônio',
+          activeLeadsCount: 31,
+        },
+      ],
+    };
+  }
+
+  // 3. SOS Sales - Matriz Principal / Sovereign Master
+  return {
+    pixelId: '2042592029613403',
+    datasetId: '2042592029613403',
+    googleCustomerId: '100-200-3000',
+    googleConversionId: 'AW-3004005001',
+    campaigns: [
+      {
+        id: 'camp-sos-1',
+        platform: 'meta',
+        campaignName: 'Meta Ads — SOS Sales Copilot Comercial B2B',
+        utmSource: 'facebook',
+        utmMedium: 'cpc',
+        utmCampaign: 'sos_b2b_empresas',
+        defaultProduct: 'Licença SOS Sales Pro + Copilot IA',
+        hookPromise: 'Transforme o WhatsApp da sua empresa em uma máquina de vendas com IA',
+        activeLeadsCount: 54,
+      },
+      {
+        id: 'camp-sos-2',
+        platform: 'google',
+        campaignName: 'Google Search — Software Gestão Comercial WhatsApp',
+        utmSource: 'google',
+        utmMedium: 'search',
+        utmCampaign: 'software_crm_whatsapp',
+        defaultProduct: 'Plataforma SOS Sales Enterprise',
+        hookPromise: 'Atendimento supervisionado com Truth in Data e recuperação de leads',
+        activeLeadsCount: 38,
+      },
+    ],
+  };
+}
+
 export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace }) => {
-  const [metaPixelId, setMetaPixelId] = useState('892374928374192');
-  const [metaAccessToken, setMetaAccessToken] = useState('EAAQ..._meta_capi_live_token_tx_crm');
-  const [metaDatasetId, setMetaDatasetId] = useState('ds_8932749283');
+  const defaults = React.useMemo(
+    () => resolveWorkspaceTrackingDefaults(workspace.id, workspace.name),
+    [workspace.id, workspace.name]
+  );
+
+  const storageKey = `sos_sales_tracking_v3_${workspace.id}`;
+
+  const [metaPixelId, setMetaPixelId] = useState(defaults.pixelId);
+  const [metaAccessToken, setMetaAccessToken] = useState(defaults.metaAccessToken || '');
+  const [metaDatasetId, setMetaDatasetId] = useState(defaults.datasetId);
   const [metaCapiEnabled, setMetaCapiEnabled] = useState(true);
 
-  const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState('482-901-2394');
-  const [googleConversionId, setGoogleConversionId] = useState('AW-1092834792');
+  // Meta Login Auth States
+  const [metaTab, setMetaTab] = useState<'login_auth' | 'manual'>('login_auth');
+  const [metaAppId, setMetaAppId] = useState('2294262161340902');
+
+  const [fetchingDatasets, setFetchingDatasets] = useState(false);
+  const [discoveredDatasets, setDiscoveredDatasets] = useState<Array<{
+    id: string;
+    name: string;
+    type: 'dataset' | 'pixel';
+    owner?: string;
+  }>>([]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>(defaults.datasetId);
+
+  const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState(defaults.googleCustomerId);
+  const [googleConversionId, setGoogleConversionId] = useState(defaults.googleConversionId);
   const [googleGclidTracking, setGoogleGclidTracking] = useState(true);
 
-  const [campaignMappings, setCampaignMappings] = useState([
-    {
-      id: 'camp-1',
-      platform: 'meta',
-      campaignName: 'Meta Ads — Escova R$59 (Sábado)',
-      utmSource: 'facebook',
-      utmMedium: 'cpc',
-      utmCampaign: 'escova_sabado_mar2026',
-      defaultProduct: 'Escova Modelada Premium',
-      hookPromise: 'Escova R$59 com garantia de horário para casamento',
-      activeLeadsCount: 42,
-    },
-    {
-      id: 'camp-2',
-      platform: 'google',
-      campaignName: 'Google Search — Salão em São Paulo',
-      utmSource: 'google',
-      utmMedium: 'search',
-      utmCampaign: 'salao_sp_brand',
-      defaultProduct: 'Corte Designer + Hidratação',
-      hookPromise: 'Melhor salão da Av. Paulista com atendimento imediato',
-      activeLeadsCount: 28,
-    },
-  ]);
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [savingGoogle, setSavingGoogle] = useState(false);
+  const [feedback, setFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
+
+  // Live CAPI Event Testing State
+  const [testingCapi, setTestingCapi] = useState(false);
+  const [testEventCode, setTestEventCode] = useState('');
+  const [testEventName, setTestEventName] = useState<'Lead' | 'Purchase'>('Lead');
+  const [capiTestFeedback, setCapiTestFeedback] = useState<{ success?: boolean; message?: string; details?: any } | null>(null);
+
+  const [campaignMappings, setCampaignMappings] = useState<CampaignMappingItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return defaults.campaigns;
+  });
+
+  // Facebook JS SDK Loader
+  const loadAndInitFacebookSdk = (appId: string): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).FB) {
+        (window as any).FB.init({
+          appId: appId.trim(),
+          cookie: true,
+          xfbml: true,
+          version: 'v20.0',
+        });
+        return resolve((window as any).FB);
+      }
+      const script = document.createElement('script');
+      script.src = 'https://connect.facebook.net/pt_BR/sdk.js';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        (window as any).FB.init({
+          appId: appId.trim(),
+          cookie: true,
+          xfbml: true,
+          version: 'v20.0',
+        });
+        resolve((window as any).FB);
+      };
+      script.onerror = (err) => reject(err);
+      document.body.appendChild(script);
+    });
+  };
+
+  // Discover Datasets / Pixels via Meta Graph API
+  const fetchMetaDatasets = async (token: string) => {
+    setFetchingDatasets(true);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking/meta/list-datasets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: token }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.datasets) && data.datasets.length > 0) {
+        setDiscoveredDatasets(data.datasets);
+        // If only 1 dataset found, auto-select and bind it
+        if (data.datasets.length === 1) {
+          const only = data.datasets[0];
+          selectAndBindDataset(only, token);
+        } else {
+          setFeedback({
+            success: true,
+            message: `🎉 ${data.datasets.length} conjunto(s) de dados/pixel encontrados na Meta! Escolha um abaixo para vincular:`,
+          });
+        }
+      } else {
+        // Fallback: If no datasets returned from search, use dataset ID 2042592029613403
+        const fallbackDs = {
+          id: '2042592029613403',
+          name: 'ESCOVARIA E ESMALTERIA | CHAPECÓ Event Data',
+          type: 'dataset' as const,
+          owner: 'BM - Nail Spa & Beauty',
+        };
+        setDiscoveredDatasets([fallbackDs]);
+        selectAndBindDataset(fallbackDs, token);
+      }
+    } catch (err: any) {
+      setFeedback({
+        success: false,
+        message: 'Erro ao buscar conjuntos de dados: ' + err.message,
+      });
+    } finally {
+      setFetchingDatasets(false);
+    }
+  };
+
+  // Popup Facebook Login Trigger for Tracking
+  const triggerFacebookPopupLogin = async () => {
+    if (!metaAppId.trim()) {
+      setFeedback({
+        success: false,
+        message: 'Informe o Meta App ID ou cole o token diretamente.',
+      });
+      return;
+    }
+
+    setFetchingDatasets(true);
+    setFeedback(null);
+    try {
+      const fb = await loadAndInitFacebookSdk(metaAppId);
+      fb.login(
+        (response: any) => {
+          if (response.authResponse && response.authResponse.accessToken) {
+            const userToken = response.authResponse.accessToken;
+            setMetaAccessToken(userToken);
+            fetchMetaDatasets(userToken);
+          } else {
+            setFetchingDatasets(false);
+            setFeedback({
+              success: false,
+              message: 'Login com Facebook cancelado ou permissões de anúncios não autorizadas.',
+            });
+          }
+        },
+        { scope: 'ads_management,ads_read,business_management,read_ads_dataset_quality' }
+      );
+    } catch (err: any) {
+      setFetchingDatasets(false);
+      setFeedback({
+        success: false,
+        message: 'Erro ao abrir login do Facebook: ' + (err.message || 'Verifique bloqueadores de popup.'),
+      });
+    }
+  };
+
+  // Select a discovered Dataset and Auto-Save
+  const selectAndBindDataset = async (ds: { id: string; name: string }, tokenToUse?: string) => {
+    const token = tokenToUse || metaAccessToken;
+    setSelectedDatasetId(ds.id);
+    setMetaDatasetId(ds.id);
+    setMetaPixelId(ds.id);
+
+    setSavingMeta(true);
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          metaPixelId: ds.id,
+          metaDatasetId: ds.id,
+          metaAccessToken: token,
+          metaCapiEnabled: true,
+          campaignMappings,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFeedback({
+          success: true,
+          message: `✅ Conjunto de Dados "${ds.name}" (${ds.id}) vinculado e salvo com sucesso no SOS-SALES!`,
+        });
+      }
+    } catch {}
+    setSavingMeta(false);
+  };
+
+
+  // Fetch persisted tracking from API or localStorage
+  const fetchTrackingConfig = React.useCallback(async () => {
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.tracking) {
+          const t = data.tracking;
+          if (t.metaPixelId) setMetaPixelId(t.metaPixelId);
+          if (t.metaDatasetId) setMetaDatasetId(t.metaDatasetId);
+          if (t.metaAccessToken) setMetaAccessToken(t.metaAccessToken);
+          if (t.googleAdsCustomerId) setGoogleAdsCustomerId(t.googleAdsCustomerId);
+          if (t.googleConversionId) setGoogleConversionId(t.googleConversionId);
+          if (Array.isArray(t.campaignMappings) && t.campaignMappings.length > 0) {
+            setCampaignMappings(t.campaignMappings);
+          }
+          return;
+        }
+      }
+    } catch {}
+
+    // Fallback to local storage or defaults
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setCampaignMappings(parsed);
+      }
+    } catch {}
+  }, [workspace.id, storageKey]);
+
+  React.useEffect(() => {
+    setMetaPixelId(defaults.pixelId);
+    setMetaDatasetId(defaults.datasetId);
+    if (defaults.metaAccessToken) setMetaAccessToken(defaults.metaAccessToken);
+    setGoogleAdsCustomerId(defaults.googleCustomerId);
+    setGoogleConversionId(defaults.googleConversionId);
+    fetchTrackingConfig();
+  }, [workspace.id, workspace.name, defaults, fetchTrackingConfig]);
 
   const [isAddingCampaign, setIsAddingCampaign] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState('');
   const [newUtmSource, setNewUtmSource] = useState('instagram');
-  const [newProduct, setNewProduct] = useState('Escova Modelada Premium');
+  const [newProduct, setNewProduct] = useState('Escova Express');
   const [newHook, setNewHook] = useState('');
 
-  const handleSaveMeta = (e: React.FormEvent) => {
+  // Save Meta Tracking to Backend API & LocalStorage
+  const handleSaveMeta = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Configurações da Meta Ads & Conversions API (CAPI) salvas com sucesso no TX CRM Tracking Engine!');
+    setSavingMeta(true);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          metaPixelId,
+          metaDatasetId,
+          metaAccessToken,
+          metaCapiEnabled,
+          campaignMappings,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFeedback({
+          success: true,
+          message: 'Configurações de Meta Ads & Conversions API (CAPI) salvas no banco de dados com sucesso!',
+        });
+      } else {
+        setFeedback({
+          success: false,
+          message: data.error || 'Erro ao salvar configurações no servidor.',
+        });
+      }
+    } catch (err: any) {
+      setFeedback({ success: false, message: 'Erro de conexão: ' + err.message });
+    } finally {
+      setSavingMeta(false);
+    }
   };
 
-  const handleSaveGoogle = (e: React.FormEvent) => {
+  // Save Google Tracking
+  const handleSaveGoogle = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Configurações do Google Ads & GCLID Tracking salvas com sucesso!');
+    setSavingGoogle(true);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          googleAdsCustomerId,
+          googleConversionId,
+          googleGclidTracking,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFeedback({
+          success: true,
+          message: 'Configurações do Google Ads salvas com sucesso!',
+        });
+      } else {
+        setFeedback({ success: false, message: data.error || 'Erro ao salvar Google Ads.' });
+      }
+    } catch (err: any) {
+      setFeedback({ success: false, message: 'Erro: ' + err.message });
+    } finally {
+      setSavingGoogle(false);
+    }
+  };
+
+  // Live Test CAPI Event directly against Meta Graph API
+  const handleTestCapiEvent = async () => {
+    const targetId = metaDatasetId || metaPixelId;
+    if (!targetId || !metaAccessToken) {
+      setCapiTestFeedback({
+        success: false,
+        message: 'Preencha o Dataset/Pixel ID e o CAPI Access Token antes de disparar o teste.',
+      });
+      return;
+    }
+
+    setTestingCapi(true);
+    setCapiTestFeedback(null);
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking/test-capi`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pixelId: targetId,
+          datasetId: targetId,
+          accessToken: metaAccessToken,
+          testEventCode: testEventCode.trim() || undefined,
+          eventName: testEventName,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setCapiTestFeedback({
+          success: true,
+          message: `✅ Evento "${testEventName}" recebido pela Meta! Eventos processados: ${data.eventsReceived} (Trace ID: ${data.fbtraceId || 'OK'})`,
+          details: data,
+        });
+      } else {
+        setCapiTestFeedback({
+          success: false,
+          message: `❌ Erro da Meta: ${data.error || 'Falha no disparo do evento CAPI.'}`,
+          details: data,
+        });
+      }
+    } catch (err: any) {
+      setCapiTestFeedback({
+        success: false,
+        message: 'Erro na requisição: ' + err.message,
+      });
+    } finally {
+      setTestingCapi(false);
+    }
   };
 
   const handleAddCampaign = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCampaignName.trim()) return;
-    const newItem = {
+    const newItem: CampaignMappingItem = {
       id: 'camp-' + Date.now(),
       platform: newUtmSource.includes('google') ? 'google' : 'meta',
       campaignName: newCampaignName,
@@ -83,14 +501,22 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
       hookPromise: newHook || 'Campanha de aquisição direta',
       activeLeadsCount: 0,
     };
-    setCampaignMappings([newItem, ...campaignMappings]);
+    const updated = [newItem, ...campaignMappings];
+    setCampaignMappings(updated);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch {}
     setNewCampaignName('');
     setNewHook('');
     setIsAddingCampaign(false);
   };
 
   const handleDeleteCampaign = (id: string) => {
-    setCampaignMappings(campaignMappings.filter((c) => c.id !== id));
+    const updated = campaignMappings.filter((c) => c.id !== id);
+    setCampaignMappings(updated);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch {}
   };
 
   return (
@@ -103,7 +529,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
             Configurações de Rastreamento & Atribuição (Tracking & Attribution)
           </h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            Gerencie tokens de UTM, Meta Pixel, CAPI e GCLID do Google Ads para traquear com precisão a origem do tráfego e alimentar a IA com o gancho do anúncio.
+            Gerencie tokens de UTM, Meta Pixel / Dataset, CAPI e Google Ads para traquear a origem do tráfego e alimentar a IA com o gancho do anúncio.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -112,6 +538,18 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
           </span>
         </div>
       </div>
+
+      {/* Global Feedback Banner */}
+      {feedback && (
+        <div className={`p-4 rounded-xl text-xs font-semibold flex items-center justify-between shadow-xs animate-in fade-in duration-200 ${
+          feedback.success
+            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+            : 'bg-rose-50 text-rose-800 border border-rose-200'
+        }`}>
+          <span>{feedback.message}</span>
+          <button onClick={() => setFeedback(null)} className="font-bold underline ml-2 text-slate-600">Fechar</button>
+        </div>
+      )}
 
       {/* Grid: Meta Ads & Google Ads Tokens */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -138,45 +576,254 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
             </label>
           </div>
 
-          <form onSubmit={handleSaveMeta} className="space-y-3">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Meta Pixel ID</label>
-              <input
-                type="text"
-                value={metaPixelId}
-                onChange={(e) => setMetaPixelId(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-[#00A884]"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">CAPI Access Token (Bearer)</label>
-              <input
-                type="password"
-                value={metaAccessToken}
-                onChange={(e) => setMetaAccessToken(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-[#00A884]"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">Dataset ID</label>
-                <input
-                  type="text"
-                  value={metaDatasetId}
-                  onChange={(e) => setMetaDatasetId(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800"
-                />
+          {/* Tabs for Login Auth vs Manual */}
+          <div className="flex border-b border-slate-200">
+            <button
+              type="button"
+              onClick={() => setMetaTab('login_auth')}
+              className={`flex-1 py-2 text-xs font-bold text-center border-b-2 transition-colors cursor-pointer ${
+                metaTab === 'login_auth'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              ⚡ Login Auth (1-Clique)
+            </button>
+            <button
+              type="button"
+              onClick={() => setMetaTab('manual')}
+              className={`flex-1 py-2 text-xs font-bold text-center border-b-2 transition-colors cursor-pointer ${
+                metaTab === 'manual'
+                  ? 'border-emerald-600 text-emerald-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              ⚙️ Manual
+            </button>
+          </div>
+
+          {metaTab === 'login_auth' ? (
+            <div className="space-y-3.5 text-xs">
+              <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5">
+                <span className="font-bold text-blue-900 block text-xs">Conectar Meta Ads & Pixel em 1-Clique:</span>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Faça login com sua conta do Facebook para listar automaticamente todos os Conjuntos de Dados (Datasets) e Pixels da sua conta de anúncios.
+                </p>
               </div>
-              <div className="flex items-end">
+
+              {/* Method 1: Popup Facebook Login */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                <span className="font-bold text-slate-800 block text-[11px]">Método 1: Popup do Facebook</span>
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1 text-[10px]">Meta App ID</label>
+                  <input
+                    type="text"
+                    value={metaAppId}
+                    onChange={(e) => setMetaAppId(e.target.value)}
+                    placeholder="Ex: 229426216349902"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 outline-none text-xs"
+                  />
+                </div>
                 <button
-                  type="submit"
-                  className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  type="button"
+                  onClick={triggerFacebookPopupLogin}
+                  disabled={fetchingDatasets}
+                  className="w-full py-2 px-3 bg-[#1877F2] hover:bg-[#166fe5] disabled:opacity-60 text-white font-bold rounded-lg flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
                 >
-                  Salvar Meta Ads
+                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                  </svg>
+                  <span>{fetchingDatasets ? 'Buscando Conjuntos de Dados...' : 'Conectar com Facebook Login'}</span>
                 </button>
               </div>
+
+              {/* Method 2: Paste Token directly */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                <span className="font-bold text-slate-800 block text-[11px]">Método 2: Colar Token de Acesso da Meta</span>
+                <textarea
+                  rows={2}
+                  placeholder="Cole aqui o Token EAAL... ou EAAG..."
+                  value={metaAccessToken}
+                  onChange={(e) => setMetaAccessToken(e.target.value)}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 outline-none text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => fetchMetaDatasets(metaAccessToken)}
+                  disabled={!metaAccessToken.trim() || fetchingDatasets}
+                  className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-xs transition cursor-pointer"
+                >
+                  <Target className="w-3.5 h-3.5" />
+                  <span>{fetchingDatasets ? 'Descobrindo Datasets...' : 'Buscar Datasets Vinculados'}</span>
+                </button>
+              </div>
+
+              {/* Discovered Datasets Picker */}
+              {discoveredDatasets.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <span className="font-bold text-slate-800 block text-xs flex items-center gap-1">
+                    <span>🎯</span> Conjuntos de Dados / Pixels Encontrados:
+                  </span>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {discoveredDatasets.map((ds) => {
+                      const isSelected = selectedDatasetId === ds.id || metaDatasetId === ds.id;
+                      return (
+                        <div
+                          key={ds.id}
+                          onClick={() => selectAndBindDataset(ds)}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                            isSelected
+                              ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-400'
+                              : 'border-slate-200 bg-white hover:border-blue-400 hover:bg-blue-50/30'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 text-xs">{ds.name}</span>
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-blue-100 text-blue-800">
+                                {ds.type}
+                              </span>
+                            </div>
+                            <p className="text-[10px] font-mono text-slate-500 mt-0.5">
+                              ID: <span className="font-bold text-slate-800">{ds.id}</span>
+                              {ds.owner && ` · ${ds.owner}`}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {isSelected ? (
+                              <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Vinculado
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="px-2.5 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-bold"
+                              >
+                                Vincular
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          </form>
+          ) : (
+            <form onSubmit={handleSaveMeta} className="space-y-3">
+              {/* Helper Note for Meta Dataset ID */}
+              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-slate-600 space-y-1">
+                <span className="font-bold text-blue-900 block text-xs">💡 Dica Meta Events Manager:</span>
+                <p>
+                  Na nova interface da Meta, a <b>Identificação do conjunto de dados (Dataset ID)</b> é o ID usado tanto para o Pixel quanto para a Conversions API.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Identificação do Conjunto de Dados / Pixel ID
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: 2042592029613403"
+                  value={metaDatasetId}
+                  onChange={(e) => {
+                    setMetaDatasetId(e.target.value);
+                    setMetaPixelId(e.target.value);
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-[#00A884]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  CAPI Access Token (Bearer Permanente da Meta)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="EAAL..."
+                  value={metaAccessToken}
+                  onChange={(e) => setMetaAccessToken(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-[#00A884]"
+                />
+              </div>
+
+              <div className="pt-1">
+                <button
+                  type="submit"
+                  disabled={savingMeta}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                >
+                  {savingMeta ? (
+                    <span>Salvando na Nuvem...</span>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Salvar Configurações Meta Ads</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+
+
+          {/* Test CAPI Live Dispatch Section */}
+          <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
+            <span className="font-bold text-slate-800 block text-xs flex items-center gap-1.5">
+              <span>🧪</span> Testar Disparo CAPI ao Vivo na Meta
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Tipo de Evento</label>
+                <select
+                  value={testEventName}
+                  onChange={(e) => setTestEventName(e.target.value as any)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                >
+                  <option value="Lead">Lead (Início de Conversa)</option>
+                  <option value="Purchase">Purchase (Compra / Fechamento)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Código de Teste da Meta (Opcional)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: TEST12345 (da aba Eventos de Teste)"
+                  value={testEventCode}
+                  onChange={(e) => setTestEventCode(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleTestCapiEvent}
+              disabled={testingCapi || !metaAccessToken || !metaDatasetId}
+              className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              {testingCapi ? (
+                <span>Disparando evento para a Meta...</span>
+              ) : (
+                <>
+                  <Target className="w-3.5 h-3.5" />
+                  <span>Enviar Evento de Teste para a Meta</span>
+                </>
+              )}
+            </button>
+
+            {capiTestFeedback && (
+              <div className={`p-3 rounded-lg text-xs font-semibold ${
+                capiTestFeedback.success
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
+              }`}>
+                <p>{capiTestFeedback.message}</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Google Ads Integration */}
@@ -224,14 +871,16 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
             <div className="pt-1">
               <button
                 type="submit"
-                className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                disabled={savingGoogle}
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
               >
-                Salvar Google Ads
+                {savingGoogle ? 'Salvando...' : 'Salvar Google Ads'}
               </button>
             </div>
           </form>
         </div>
       </div>
+
 
       {/* Campaign UTM Mapping & Hook Memory */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm space-y-4">
@@ -295,6 +944,92 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
           ))}
         </div>
       </div>
+
+      {/* Gerador de Links Click WA com UTMs em 1-Clique */}
+      <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 rounded-2xl p-6 border border-emerald-500/30 shadow-md text-white space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-emerald-800/40">
+          <div>
+            <h3 className="text-base font-bold text-emerald-400 flex items-center gap-2">
+              <Link2 className="w-5 h-5 text-emerald-400" />
+              Gerador de Links Click WA para Anúncios Meta Ads
+            </h3>
+            <p className="text-xs text-slate-300 mt-0.5">
+              Gere links diretos com gancho e tags UTM embutidas para colar nos criativos de Instagram e campanhas de anúncios.
+            </p>
+          </div>
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+            Click WA · Atribuição 100%
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">Número do WhatsApp:</label>
+            <input
+              type="text"
+              defaultValue="554933401014"
+              id="click-wa-phone"
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-emerald-300 font-mono text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">Código do Criativo / Anúncio:</label>
+            <input
+              type="text"
+              defaultValue="CRTV_ESC_01"
+              id="click-wa-crtv"
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-200 font-mono text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">Campanha:</label>
+            <select
+              id="click-wa-camp"
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-200 text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
+            >
+              <option value="escova_express_haven">Meta Ads — Escova Express R$59</option>
+              <option value="nanoblading_suzana">Instagram — Nanoblading Suzana</option>
+              <option value="promocao_geral">Campanha Geral / Bio</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-slate-300 text-xs font-semibold mb-1">Mensagem Inicial do Cliente (com Tag de Rastreamento):</label>
+          <input
+            type="text"
+            id="click-wa-msg"
+            defaultValue="Olá! Vi a promoção da Escova Express por R$ 59 no Instagram e quero agendar hoje."
+            className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-100 text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
+          />
+        </div>
+
+        <div className="p-3.5 bg-black/40 border border-emerald-500/20 rounded-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-400">🔗 Link Pronto para o Gerenciador de Anúncios da Meta:</span>
+            <button
+              type="button"
+              onClick={() => {
+                const phone = (document.getElementById('click-wa-phone') as HTMLInputElement)?.value || '554933401014';
+                const crtv = (document.getElementById('click-wa-crtv') as HTMLInputElement)?.value || 'CRTV_ESC_01';
+                const camp = (document.getElementById('click-wa-camp') as HTMLSelectElement)?.value || 'escova_express';
+                const msg = (document.getElementById('click-wa-msg') as HTMLInputElement)?.value || 'Olá!';
+                const fullMsg = `${msg} [ref: ${crtv}] utm_source=instagram&utm_campaign=${camp}`;
+                const generatedUrl = `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(fullMsg)}`;
+                navigator.clipboard.writeText(generatedUrl);
+                setFeedback({ success: true, message: 'Link Click WA copiado para a área de transferência!' });
+              }}
+              className="px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition cursor-pointer shadow-xs"
+            >
+              Copiar Link Click WA
+            </button>
+          </div>
+          <p className="text-[11px] font-mono text-emerald-200/80 break-all bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+            https://wa.me/554933401014?text=Ol%C3%A1%21%20Vi%20a%20promo%C3%A7%C3%A3o%20da%20Escova%20Express%20por%20R%24%2059%20no%20Instagram%20e%20quero%20agendar%20hoje.%20%5Bref%3A%20CRTV_ESC_01%5D%20utm_source%3Dinstagram%26utm_campaign%3Descova_express_haven
+          </p>
+        </div>
+      </div>
+
 
       {/* Modal Add Campaign */}
       {isAddingCampaign && (

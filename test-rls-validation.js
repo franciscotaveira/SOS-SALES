@@ -1,8 +1,13 @@
-import pg from 'pg';
+import dotenv from './apps/api/node_modules/dotenv/lib/main.js';
+import pg from './apps/api/node_modules/pg/lib/index.js';
+dotenv.config();
+if (!process.env.DATABASE_URL) {
+  dotenv.config({ path: '.env.production' });
+}
 const { Pool } = pg;
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL || process.env.SUPABASE_DB_URL,
   ssl: { rejectUnauthorized: false },
 });
 

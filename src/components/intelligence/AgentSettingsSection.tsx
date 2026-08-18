@@ -609,12 +609,12 @@ export const AgentSettingsSection: React.FC<AgentSettingsSectionProps> = ({
                   </h4>
                 </div>
                 <span className="text-[10px] text-rose-700 font-semibold">
-                  {activeProfile.safetyGuardrails.length} regras ativas
+                  {(activeProfile?.safetyGuardrails || []).length} regras ativas
                 </span>
               </div>
 
               <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-                {activeProfile.safetyGuardrails.map((guardrail, idx) => (
+                {(activeProfile?.safetyGuardrails || []).map((guardrail, idx) => (
                   <div
                     key={idx}
                     className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200 text-slate-700"

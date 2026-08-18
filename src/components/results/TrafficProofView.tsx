@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TrafficProofStats, SalesOsGateway } from '../../services/salesOsGateway';
 import { Journey, Workspace } from '../../types/cockpit';
 import { useFeatureFlags } from '../../contexts/FeatureFlagContext';
@@ -18,6 +18,12 @@ import {
   FileSpreadsheet,
   History,
   Lock,
+  Link2,
+  Copy,
+  Check,
+  Megaphone,
+  Plus,
+  Share2,
 } from 'lucide-react';
 
 interface TrafficProofViewProps {
@@ -35,9 +41,27 @@ export const TrafficProofView: React.FC<TrafficProofViewProps> = ({
   const [isLoading, setIsLoading] = React.useState(true);
   const { isFeatureEnabled, currentRole } = useFeatureFlags();
 
+  // Link Builder State
+  const [linkPhone, setLinkPhone] = useState('554933401014');
+  const [linkCrtv, setLinkCrtv] = useState('CRTV_ESC_01');
+  const [linkCamp, setLinkCamp] = useState('escova_express_haven');
+  const [linkMsg, setLinkMsg] = useState('Olá! Vi o anúncio da Escova Express por R$ 59 no Instagram e quero agendar hoje.');
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
   const showFinancialMetrics = isFeatureEnabled('financial_metrics');
   const showRoasDeepAnalytics = isFeatureEnabled('roas_deep_analytics');
   const showAuditTrail = isFeatureEnabled('audit_trail');
+
+  const generatedLink = React.useMemo(() => {
+    const fullMsg = `${linkMsg} [ref: ${linkCrtv}] utm_source=instagram&utm_campaign=${linkCamp}`;
+    return `https://wa.me/${linkPhone.replace(/\D/g, '')}?text=${encodeURIComponent(fullMsg)}`;
+  }, [linkPhone, linkCrtv, linkCamp, linkMsg]);
+
+  const handleCopyLink = (urlToCopy: string, label: string = 'Link Click WA') => {
+    navigator.clipboard.writeText(urlToCopy);
+    setCopyFeedback(`${label} copiado com sucesso!`);
+    setTimeout(() => setCopyFeedback(null), 3000);
+  };
 
   React.useEffect(() => {
     let isMounted = true;
@@ -97,7 +121,7 @@ export const TrafficProofView: React.FC<TrafficProofViewProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
             <h1 className="text-xl font-bold text-slate-900">
-              Prova de Resultado Comercial & ROAS
+              Central de Campanhas & Anúncios (Click WA)
             </h1>
             {currentRole === 'owner' && (
               <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
@@ -107,7 +131,7 @@ export const TrafficProofView: React.FC<TrafficProofViewProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Atribuição ponta a ponta: Anúncio Meta CTWA ➔ Atendimento Humano ➔ Faturamento Real
+            Gerador de Links de Anúncios, Atribuição ponta a ponta Meta Ads ➔ WhatsApp e Retorno Financeiro Real (ROAS).
           </p>
         </div>
 
@@ -122,6 +146,99 @@ export const TrafficProofView: React.FC<TrafficProofViewProps> = ({
             <span className="text-slate-500">Unidade:</span>
             <span className="font-bold text-slate-800">{workspace.name}</span>
           </div>
+        </div>
+      </div>
+
+      {/* Copy Feedback Toast */}
+      {copyFeedback && (
+        <div className="p-3 bg-emerald-500 text-slate-950 font-bold text-xs rounded-xl shadow-md flex items-center justify-between animate-in fade-in duration-200">
+          <span className="flex items-center gap-1.5">
+            <Check className="w-4 h-4" /> {copyFeedback}
+          </span>
+          <button onClick={() => setCopyFeedback(null)} className="underline text-xs">Fechar</button>
+        </div>
+      )}
+
+      {/* Gerador de Links Click WA & Criativos (Destaque Topo) */}
+      <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 rounded-2xl p-5 border border-emerald-500/30 shadow-md text-white space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-emerald-800/40">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <Link2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-emerald-400">
+                Gerador de Links Click WA para Anúncios
+              </h3>
+              <p className="text-[11px] text-slate-300">
+                Gere o link codificado com tags de rastreamento para colar no Gerenciador de Anúncios da Meta ou no Instagram.
+              </p>
+            </div>
+          </div>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+            Atribuição Automática Ativa
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1 text-[11px]">Número do WhatsApp:</label>
+            <input
+              type="text"
+              value={linkPhone}
+              onChange={(e) => setLinkPhone(e.target.value)}
+              className="w-full px-3 py-1.5 bg-slate-800/90 border border-slate-700 rounded-xl text-emerald-300 font-mono text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1 text-[11px]">Código do Criativo / Anúncio:</label>
+            <input
+              type="text"
+              value={linkCrtv}
+              onChange={(e) => setLinkCrtv(e.target.value)}
+              placeholder="Ex: CRTV_ESC_01"
+              className="w-full px-3 py-1.5 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-200 font-mono text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1 text-[11px]">Campanha:</label>
+            <select
+              value={linkCamp}
+              onChange={(e) => setLinkCamp(e.target.value)}
+              className="w-full px-3 py-1.5 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-200 text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
+            >
+              <option value="escova_express_haven">Meta Ads — Escova Express R$59</option>
+              <option value="nanoblading_suzana">Instagram — Nanoblading Suzana</option>
+              <option value="promocao_geral">Campanha Geral / Bio</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-slate-300 text-[11px] font-semibold mb-1">Mensagem Inicial do Cliente (com Tag de Rastreamento):</label>
+          <input
+            type="text"
+            value={linkMsg}
+            onChange={(e) => setLinkMsg(e.target.value)}
+            className="w-full px-3 py-1.5 bg-slate-800/90 border border-slate-700 rounded-xl text-slate-100 text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
+          />
+        </div>
+
+        <div className="p-3 bg-black/40 border border-emerald-500/20 rounded-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-400">🔗 Link de Anúncio Gerado:</span>
+            <button
+              type="button"
+              onClick={() => handleCopyLink(generatedLink)}
+              className="px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition cursor-pointer shadow-xs flex items-center gap-1"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copiar Link Click WA</span>
+            </button>
+          </div>
+          <p className="text-[11px] font-mono text-emerald-200/80 break-all bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+            {generatedLink}
+          </p>
         </div>
       </div>
 
@@ -153,7 +270,7 @@ export const TrafficProofView: React.FC<TrafficProofViewProps> = ({
         {/* CTWA Spend */}
         <div className="cockpit-panel p-4">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Investimento Mídia (CTWA)</span>
+            <span className="text-xs font-bold uppercase tracking-wider">Investimento Meta Ads (Click WA)</span>
             <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
               <Target className="w-4 h-4" />
             </div>
@@ -197,25 +314,28 @@ export const TrafficProofView: React.FC<TrafficProofViewProps> = ({
             </div>
           </div>
           <div className="text-2xl font-bold text-slate-900 font-mono">
-            {stats.slaAdherenceRate}%
+            {(Number(stats.slaAdherenceRate) || 0).toFixed(0)}%
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            Tempo médio 1ª resposta: <strong>{stats.avgFirstResponseMinutes} min</strong>
+          <div className="text-[11px] text-purple-700 font-medium mt-1">
+            Tempo médio: {(Number(stats.avgFirstResponseMinutes) || 0).toFixed(0)} min
           </div>
         </div>
       </div>
 
-      {/* Campaigns Table Breakdown */}
-      <div className="cockpit-panel overflow-hidden">
-        <div className="cockpit-panel-header px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-slate-700" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              Desempenho por Campanha Meta Ads (CTWA)
+      {/* Campaign Performance Table */}
+      <div className="cockpit-panel p-5 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-emerald-600" />
+              Desempenho por Campanha & Anúncio
             </h3>
+            <p className="text-xs text-slate-500">
+              Mapeamento de criativos, volume de leads, conversões e links de tráfego.
+            </p>
           </div>
-          <span className="text-[11px] text-slate-500 font-mono">
-            Atualizado em tempo real
+          <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+            {stats.campaigns?.length || 0} Campanhas Ativas
           </span>
         </div>
 
@@ -225,43 +345,59 @@ export const TrafficProofView: React.FC<TrafficProofViewProps> = ({
               <tr>
                 <th className="px-4 py-3">Campanha / Criativo</th>
                 <th className="px-4 py-3 text-right">Leads</th>
-                <th className="px-4 py-3 text-right">Gasto CTWA</th>
+                <th className="px-4 py-3 text-right">Gasto</th>
                 <th className="px-4 py-3 text-right">Conversões</th>
                 <th className="px-4 py-3 text-right">Receita Gerada</th>
                 <th className="px-4 py-3 text-right">Taxa Conv.</th>
+                <th className="px-4 py-3 text-center">Link de Anúncio</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
-              {(stats.campaigns || []).map((camp, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="px-4 py-3.5 font-semibold text-slate-900">
-                    {camp.campaignName}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono">{camp.leadsCount}</td>
-                  <td className="px-4 py-3.5 text-right font-mono text-slate-600">
-                    {showFinancialMetrics ? (
-                      `R$ ${camp.spendBrl.toFixed(2)}`
-                    ) : (
-                      <span className="text-slate-400">Restrito</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono font-bold text-emerald-700">
-                    {camp.conversionsCount}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900">
-                    {showFinancialMetrics ? (
-                      `R$ ${camp.revenueBrl.toFixed(2)}`
-                    ) : (
-                      <span className="text-slate-400">Restrito</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5 text-right">
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-blue-50 text-blue-800 border border-blue-200">
-                      {camp.conversionRate.toFixed(1)}%
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {(stats.campaigns || []).map((camp, idx) => {
+                const rowLink = `https://wa.me/${linkPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá! Vi a campanha "${camp.campaignName}" e quero agendar. [ref: CRTV_0${idx + 1}] utm_source=instagram&utm_campaign=${camp.campaignName.toLowerCase().replace(/\s+/g, '_')}`)}`;
+                return (
+                  <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-4 py-3.5 font-semibold text-slate-900">
+                      <div>{camp.campaignName}</div>
+                      <span className="text-[10px] font-mono text-slate-400">CRTV_0{idx + 1}</span>
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-mono">{camp.leadsCount}</td>
+                    <td className="px-4 py-3.5 text-right font-mono text-slate-600">
+                      {showFinancialMetrics ? (
+                        `R$ ${(Number(camp.spendBrl) || 0).toFixed(2)}`
+                      ) : (
+                        <span className="text-slate-400">Restrito</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-mono font-bold text-emerald-700">
+                      {camp.conversionsCount}
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900">
+                      {showFinancialMetrics ? (
+                        `R$ ${(Number(camp.revenueBrl) || 0).toFixed(2)}`
+                      ) : (
+                        <span className="text-slate-400">Restrito</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                        {(Number(camp.conversionRate) || 0).toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyLink(rowLink, `Link da Campanha "${camp.campaignName}"`)}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 text-slate-700 font-bold rounded-md text-[11px] transition cursor-pointer inline-flex items-center gap-1 border border-slate-200"
+                        title="Copiar link com tags desta campanha"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>Copiar Link</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

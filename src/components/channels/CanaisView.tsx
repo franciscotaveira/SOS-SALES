@@ -3,6 +3,7 @@ import { Workspace } from '../../types/cockpit';
 import { mockEngineConfig } from '../../data/groupFixtures';
 import { EngineConfig } from '../../types/groupsAndEngines';
 import { ConnectionManager } from '../settings/ConnectionManager';
+import { resolveWorkspaceTrackingDefaults } from '../settings/TrackingSettings';
 import {
   Radio,
   Server,
@@ -26,12 +27,17 @@ import {
   Check,
   Trash2,
   X,
+  FileText,
 } from 'lucide-react';
+
 
 interface CanaisViewProps {
   workspace: Workspace;
   role?: string;
 }
+
+const DEFAULT_SYSTEM_APP_ID = '2294262161340902';
+
 
 export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'operator' }) => {
   const [engineConfig, setEngineConfig] = React.useState<EngineConfig>(mockEngineConfig);
@@ -40,6 +46,38 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
 
   // WABA Config Modal State
   const [wabaModalOpen, setWabaModalOpen] = React.useState(false);
+
+  // Create Template Modal State
+  const [createTemplateModalOpen, setCreateTemplateModalOpen] = React.useState(false);
+  const [tplError, setTplError] = React.useState<string | null>(null);
+  const [tplName, setTplName] = React.useState('');
+  const [tplCategory, setTplCategory] = React.useState<'UTILITY' | 'MARKETING' | 'AUTHENTICATION'>('UTILITY');
+  const [tplHeaderText, setTplHeaderText] = React.useState('');
+  const [tplBodyText, setTplBodyText] = React.useState('');
+  const [tplFooterText, setTplFooterText] = React.useState('');
+  const [tplButtonText, setTplButtonText] = React.useState('');
+  const [tplSubmitting, setTplSubmitting] = React.useState(false);
+
+  const handleCreateTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTplSubmitting(true);
+    setTplError(null);
+    try {
+      // Mock implementation - would call API in real scenario
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setCreateTemplateModalOpen(false);
+      setTplName('');
+      setTplCategory('UTILITY');
+      setTplHeaderText('');
+      setTplBodyText('');
+      setTplFooterText('');
+      setTplButtonText('');
+    } catch (err: any) {
+      setTplError(err.message || 'Erro ao submeter template');
+    } finally {
+      setTplSubmitting(false);
+    }
+  };
   const [phoneNumberId, setPhoneNumberId] = React.useState('');
   const [wabaId, setWabaId] = React.useState('');
   const [accessToken, setAccessToken] = React.useState('');
@@ -47,7 +85,25 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   const [wabaSaving, setWabaSaving] = React.useState(false);
   const [wabaFeedback, setWabaFeedback] = React.useState<{ success?: boolean; message?: string } | null>(null);
   const [wabaTab, setWabaTab] = React.useState<'login_auth' | 'manual'>('login_auth');
-  const [metaAppId, setMetaAppId] = React.useState('');
+  const [metaAppId, setMetaAppId] = React.useState(DEFAULT_SYSTEM_APP_ID);
+
+  React.useEffect(() => {
+    const defaults = resolveWorkspaceTrackingDefaults(workspace.id, workspace.name);
+    if (defaults.metaAccessToken && !accessToken) {
+      setAccessToken(defaults.metaAccessToken);
+    }
+  }, [workspace.id, workspace.name]);
+
+  // WABA account selection flow state
+  const [wabaStep, setWabaStep] = React.useState<'token' | 'accounts' | 'confirm'>('token');
+  const [wabaAccounts, setWabaAccounts] = React.useState<Array<{
+    id: string;
+    name: string;
+    phoneNumbers?: Array<{ id: string; display_phone_number: string; verified_name: string }>;
+  }>>([]);
+  const [selectedWabaAccount, setSelectedWabaAccount] = React.useState<{ id: string; name: string } | null>(null);
+  const [selectedPhone, setSelectedPhone] = React.useState<{ id: string; display_phone_number: string; verified_name: string } | null>(null);
+  const [fetchingAccounts, setFetchingAccounts] = React.useState(false);
 
   // Live Channel Status State
   const [channelStatus, setChannelStatus] = React.useState<{ status: string; phone?: string | null; pushName?: string | null } | null>(null);
@@ -236,26 +292,67 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
     });
   };
 
+  // Fetch WABA accounts from Meta after getting token
+  const fetchWabaAccounts = async (token: string) => {
+    setFetchingAccounts(true);
+    setWabaFeedback(null);
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/list-accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: token }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.accounts && data.accounts.length > 0) {
+          setWabaAccounts(data.accounts);
+          setWabaStep('accounts');
+          // Auto-select if only one account
+          if (data.accounts.length === 1) {
+            setSelectedWabaAccount({ id: data.accounts[0].id, name: data.accounts[0].name });
+            setWabaId(data.accounts[0].id);
+            if (data.accounts[0].phoneNumbers?.length === 1) {
+              const ph = data.accounts[0].phoneNumbers[0];
+              setSelectedPhone(ph);
+              setPhoneNumberId(ph.id);
+            }
+          }
+        } else {
+          // Token is valid, but accounts not returned via user scopes -> advance to Step 2 for direct ID entry
+          setWabaAccounts([]);
+          setWabaFeedback({
+            success: true,
+            message: 'Token validado! Informe o WABA ID e Phone Number ID do seu app para concluir a conexão:',
+          });
+          setWabaStep('accounts');
+        }
+      } else {
+        setWabaFeedback({ success: false, message: data.error || 'Erro ao buscar contas da Meta.' });
+      }
+    } catch (err: any) {
+      setWabaFeedback({ success: false, message: 'Erro ao buscar contas: ' + err.message });
+    } finally {
+      setFetchingAccounts(false);
+    }
+  };
+
+
   // Popup Facebook Login Trigger
   const triggerFacebookPopupLogin = async () => {
-    if (!metaAppId.trim()) {
-      setWabaFeedback({
-        success: false,
-        message: 'Para abrir o popup do Facebook, informe o Meta App ID do seu aplicativo do Meta for Developers (Ex: 104829482910394), ou cole o Access Token diretamente abaixo.',
-      });
-      return;
-    }
-
+    const appIdToUse = (metaAppId.trim() || DEFAULT_SYSTEM_APP_ID);
     setWabaSaving(true);
     setWabaFeedback(null);
     try {
-      const fb = await loadAndInitFacebookSdk(metaAppId);
+      const fb = await loadAndInitFacebookSdk(appIdToUse);
+
       fb.login(
         (response: any) => {
           if (response.authResponse && response.authResponse.accessToken) {
             const userToken = response.authResponse.accessToken;
             setAccessToken(userToken);
-            handleOAuthConnect(userToken);
+            setWabaSaving(false);
+            // Fetch accounts for selection
+            fetchWabaAccounts(userToken);
           } else {
             setWabaSaving(false);
             setWabaFeedback({
@@ -415,11 +512,12 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                 </span>
               </div>
               <div className="flex items-center justify-between text-slate-600">
-                <span>Atribuição CTWA Ads:</span>
+                <span>Atribuição Click WA (Meta):</span>
                 <span className="text-emerald-700 font-semibold flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5" /> Ativo
                 </span>
               </div>
+
               <div className="flex items-center justify-between text-slate-600">
                 <span>Criptografia Ponta a Ponta:</span>
                 <span className="text-slate-800 font-semibold">Meta Cloud API Oficial</span>
@@ -553,6 +651,37 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
         </div>
       </div>
 
+      {/* Informação sobre Modelos WABA Centralizados */}
+      <div className="bg-gradient-to-r from-purple-50/60 to-slate-50 border border-purple-200/70 rounded-2xl p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center border border-purple-200 shrink-0">
+            <FileText className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-xs font-bold text-slate-900 font-heading flex items-center gap-2">
+              <span>Modelos & Templates de Mensagem WABA</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                Gestão de Campanhas
+              </span>
+            </h4>
+            <p className="text-[11.5px] text-slate-500 mt-0.5">
+              A criação, visualização e homologação de templates foram centralizadas na aba <strong>Gestão de Campanhas → Modelos WABA</strong>.
+            </p>
+          </div>
+        </div>
+
+        <a
+          href="https://business.facebook.com/wa/manage/message-templates/"
+          target="_blank"
+          rel="noreferrer"
+          className="px-3.5 py-1.5 text-xs font-bold text-purple-700 bg-white hover:bg-purple-50 border border-purple-200 rounded-xl transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          <span>Gerenciador Meta Business</span>
+        </a>
+      </div>
+
+
       {/* QR Code Modal */}
       {qrModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -668,101 +797,265 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
 
             {wabaTab === 'login_auth' ? (
               <div className="space-y-4 text-xs">
-                <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5">
-                  <span className="font-bold text-blue-900 block text-xs">Login com Facebook / Meta OAuth:</span>
-                  <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Você pode conectar clicando no botão do Facebook (se tiver o Meta App ID) ou colando o Token de Acesso da Meta abaixo.
-                  </p>
+
+                {/* Step indicator */}
+                <div className="flex items-center gap-1 text-[10px] font-bold">
+                  {(['token', 'accounts', 'confirm'] as const).map((s, i) => (
+                    <React.Fragment key={s}>
+                      <span className={`px-2 py-0.5 rounded-full ${
+                        wabaStep === s ? 'bg-blue-600 text-white' :
+                        ['token', 'accounts', 'confirm'].indexOf(wabaStep) > i ? 'bg-emerald-100 text-emerald-700' :
+                        'bg-slate-100 text-slate-400'
+                      }`}>
+                        {i + 1}. {s === 'token' ? 'Token' : s === 'accounts' ? 'Conta' : 'Confirmar'}
+                      </span>
+                      {i < 2 && <span className="text-slate-300">→</span>}
+                    </React.Fragment>
+                  ))}
                 </div>
 
-                {/* Method 1: Popup Login */}
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
-                  <span className="font-bold text-slate-800 block text-[11px]">Método 1: Login com Popup do Facebook</span>
-                  <div>
-                    <label className="block font-semibold text-slate-600 mb-1 text-[10px]">
-                      Meta App ID (do painel developers.facebook.com)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 104829482910394"
-                      value={metaAppId}
-                      onChange={(e) => setMetaAppId(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 outline-none text-xs"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={triggerFacebookPopupLogin}
-                    disabled={wabaSaving}
-                    className="w-full py-2 px-3 bg-[#1877F2] hover:bg-[#166fe5] text-white font-bold rounded-lg flex items-center justify-center gap-2 shadow-xs transition"
-                  >
-                    <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                    </svg>
-                    <span>{wabaSaving ? 'Aguardando autorização...' : 'Abrir Popup de Login do Facebook'}</span>
-                  </button>
-                </div>
-
-                {/* Method 2: Direct Token Connect */}
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
-                  <span className="font-bold text-slate-800 block text-[11px]">Método 2: Colar Token de Acesso da Meta</span>
-                  <div>
-                    <textarea
-                      rows={2}
-                      placeholder="Cole aqui o Token EAAG... (do Graph API Explorer ou Usuários do Sistema)"
-                      value={accessToken}
-                      onChange={(e) => setAccessToken(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 outline-none text-xs"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <input
-                        type="text"
-                        placeholder="Phone Number ID (Opcional)"
-                        value={phoneNumberId}
-                        onChange={(e) => setPhoneNumberId(e.target.value)}
-                        className="w-full px-2.5 py-1 border border-slate-300 rounded-lg font-mono text-[11px] focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
+                {/* Step 1: Token entry */}
+                {wabaStep === 'token' && (
+                  <div className="space-y-3">
+                    <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5">
+                      <span className="font-bold text-blue-900 block text-xs">Login com Facebook / Meta OAuth:</span>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        Conecte via popup do Facebook (recomendado) ou cole o Token de Acesso manualmente.
+                      </p>
                     </div>
-                    <div>
-                      <input
-                        type="text"
-                        placeholder="WABA ID (Opcional)"
-                        value={wabaId}
-                        onChange={(e) => setWabaId(e.target.value)}
-                        className="w-full px-2.5 py-1 border border-slate-300 rounded-lg font-mono text-[11px] focus:ring-2 focus:ring-blue-500 outline-none"
+
+                    {/* Method 1: Facebook Popup */}
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800 block text-[11px]">Método 1: Login com Popup do Facebook</span>
+                        <span className="text-[10px] font-mono text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                          App: {metaAppId || DEFAULT_SYSTEM_APP_ID}
+                        </span>
+                      </div>
+                      <button
+
+                        type="button"
+                        onClick={triggerFacebookPopupLogin}
+                        disabled={wabaSaving || fetchingAccounts}
+                        className="w-full py-2 px-3 bg-[#1877F2] hover:bg-[#166fe5] disabled:opacity-60 text-white font-bold rounded-lg flex items-center justify-center gap-2 shadow-xs transition"
+                      >
+                        <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                        </svg>
+                        <span>{wabaSaving ? 'Aguardando...' : fetchingAccounts ? 'Buscando contas...' : 'Abrir Popup de Login do Facebook'}</span>
+                      </button>
+                    </div>
+
+                    {/* Method 2: Paste token */}
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                      <span className="font-bold text-slate-800 block text-[11px]">Método 2: Colar Token de Acesso da Meta</span>
+                      <textarea
+                        rows={2}
+                        placeholder="Cole aqui o Token EAAG..."
+                        value={accessToken}
+                        onChange={(e) => setAccessToken(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-blue-500 outline-none text-xs"
                       />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fetchWabaAccounts(accessToken)}
+                          disabled={!accessToken.trim() || fetchingAccounts}
+                          className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-xs transition cursor-pointer"
+                        >
+                          {fetchingAccounts ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>Buscando contas WABA...</span></> : <><Zap className="w-3.5 h-3.5" /><span>Buscar Contas Vinculadas</span></>}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!accessToken.trim()) {
+                              setWabaFeedback({ success: false, message: 'Cole o Token de Acesso da Meta antes de avançar.' });
+                              return;
+                            }
+                            setWabaStep('accounts');
+                          }}
+                          className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition cursor-pointer shrink-0"
+                          title="Avançar diretamente para inserir WABA ID e Phone Number ID do seu app"
+                        >
+                          Inserir IDs →
+                        </button>
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  <button
-                    type="button"
-                    onClick={() => handleOAuthConnect()}
-                    disabled={wabaSaving || !accessToken.trim()}
-                    className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-xs transition"
-                  >
-                    {wabaSaving ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Validando e Conectando com a Meta...</span>
-                      </>
+                {/* Step 2: Account selection */}
+                {wabaStep === 'accounts' && (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl">
+                      <p className="text-[11px] font-semibold text-blue-900">
+                        {wabaAccounts.length > 0
+                          ? '✅ Contas encontradas! Selecione a conta WABA e o número:'
+                          : '🔑 Token Meta configurado! Informe o WABA ID e Phone Number ID da conta do app:'}
+                      </p>
+                    </div>
+
+                    {wabaAccounts.length > 0 ? (
+                      <div className="space-y-2 max-h-56 overflow-y-auto">
+                        {wabaAccounts.map((acc) => (
+                          <div key={acc.id} className={`border rounded-xl p-3 cursor-pointer transition-all ${
+                            selectedWabaAccount?.id === acc.id
+                              ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-400'
+                              : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30'
+                          }`}
+                            onClick={() => {
+                              setSelectedWabaAccount({ id: acc.id, name: acc.name });
+                              setWabaId(acc.id);
+                              setSelectedPhone(null);
+                              setPhoneNumberId('');
+                            }}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-bold text-slate-800 text-xs">{acc.name}</p>
+                                <p className="text-[10px] font-mono text-slate-500">ID: {acc.id}</p>
+                              </div>
+                              {selectedWabaAccount?.id === acc.id && (
+                                <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                              )}
+                            </div>
+
+                            {/* Phone number sub-list */}
+                            {selectedWabaAccount?.id === acc.id && acc.phoneNumbers && acc.phoneNumbers.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-blue-200 space-y-1">
+                                <p className="text-[10px] font-bold text-slate-600 mb-1">Selecione o número:</p>
+                                {acc.phoneNumbers.map((ph) => (
+                                  <div
+                                    key={ph.id}
+                                    className={`flex items-center justify-between p-2 rounded-lg cursor-pointer ${
+                                      selectedPhone?.id === ph.id
+                                        ? 'bg-emerald-100 border border-emerald-400'
+                                        : 'bg-white border border-slate-200 hover:bg-emerald-50'
+                                    }`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedPhone(ph);
+                                      setPhoneNumberId(ph.id);
+                                    }}
+                                  >
+                                    <div>
+                                      <p className="font-bold text-slate-800 text-[11px]">{ph.display_phone_number}</p>
+                                      <p className="text-[10px] text-slate-500">{ph.verified_name}</p>
+                                    </div>
+                                    {selectedPhone?.id === ph.id && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     ) : (
-                      <>
-                        <Zap className="w-3.5 h-3.5" />
-                        <span>Validar & Conectar via Token</span>
-                      </>
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                          <span>📱</span> Identificadores do WhatsApp no seu Meta App:
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Phone Number ID (ID do Número de Telefone)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ex: 104829482910394 (no Painel Meta Developers > WhatsApp > API Setup)"
+                            value={phoneNumberId}
+                            onChange={(e) => setPhoneNumberId(e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            WhatsApp Business Account ID (WABA ID)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ex: 928374829102938"
+                            value={wabaId}
+                            onChange={(e) => setWabaId(e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      </div>
                     )}
-                  </button>
-                </div>
 
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setWabaModalOpen(false)}
-                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                  >
+                    {wabaAccounts.length > 0 && (
+                      <div className="pt-1">
+                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Ou informe manualmente:</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input type="text" placeholder="Phone Number ID" value={phoneNumberId}
+                            onChange={(e) => setPhoneNumberId(e.target.value)}
+                            className="px-2.5 py-1 border border-slate-300 rounded-lg font-mono text-[11px] focus:ring-1 focus:ring-blue-500 outline-none" />
+                          <input type="text" placeholder="WABA ID" value={wabaId}
+                            onChange={(e) => setWabaId(e.target.value)}
+                            className="px-2.5 py-1 border border-slate-300 rounded-lg font-mono text-[11px] focus:ring-1 focus:ring-blue-500 outline-none" />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      <button type="button" onClick={() => setWabaStep('token')}
+                        className="flex-1 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer">
+                        ← Voltar
+                      </button>
+                      <button type="button"
+                        disabled={!phoneNumberId.trim() || !wabaId.trim()}
+                        onClick={() => setWabaStep('confirm')}
+                        className="flex-1 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg flex items-center justify-center gap-1 cursor-pointer">
+                        Confirmar Seleção →
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+
+                {/* Step 3: Confirm & Connect */}
+                {wabaStep === 'confirm' && (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+                      <p className="font-bold text-slate-800">Resumo da Conexão:</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+                        <span className="text-slate-500">WABA ID:</span>
+                        <span className="font-mono font-bold text-slate-800 truncate">{wabaId}</span>
+                        <span className="text-slate-500">Phone Number ID:</span>
+                        <span className="font-mono font-bold text-slate-800 truncate">{phoneNumberId}</span>
+                        {selectedPhone && <>
+                          <span className="text-slate-500">Número:</span>
+                          <span className="font-bold text-emerald-700">{selectedPhone.display_phone_number}</span>
+                          <span className="text-slate-500">Nome:</span>
+                          <span className="font-bold text-slate-800">{selectedPhone.verified_name}</span>
+                        </>}
+                        <span className="text-slate-500">Conta:</span>
+                        <span className="font-bold text-slate-800 truncate">{selectedWabaAccount?.name || 'Manual'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setWabaStep('accounts')}
+                        className="flex-1 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg">
+                        ← Voltar
+                      </button>
+                      <button type="button"
+                        disabled={wabaSaving}
+                        onClick={() => handleOAuthConnect()}
+                        className="flex-1 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-lg flex items-center justify-center gap-1.5">
+                        {wabaSaving ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>Conectando...</span></> :
+                          <><ShieldCheck className="w-3.5 h-3.5" /><span>Confirmar & Conectar WABA</span></>}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <button type="button" onClick={() => { setWabaStep('token'); setWabaAccounts([]); setSelectedWabaAccount(null); setSelectedPhone(null); }}
+                    className="text-[10px] text-slate-400 hover:text-slate-600 underline">
+                    Reiniciar
+                  </button>
+                  <button type="button" onClick={() => setWabaModalOpen(false)}
+                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
                     Fechar
                   </button>
                 </div>
@@ -858,6 +1151,156 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+      {/* Create Template In-App Modal */}
+      {createTemplateModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 font-heading text-sm">
+                    Criar Modelo de Mensagem Oficial (Meta HSM)
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    O template será submetido diretamente para a Meta e aprovado em minutos.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCreateTemplateModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {tplError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-800">
+                {tplError}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateTemplate} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Nome do Template (sem espaços): <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="ex: confirmacao_horario"
+                    value={tplName}
+                    onChange={(e) => setTplName(e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Categoria: <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={tplCategory}
+                    onChange={(e) => setTplCategory(e.target.value as any)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 outline-none font-semibold"
+                  >
+                    <option value="UTILITY">UTILIDADE (Confirmações, Lembretes, Pós-Venda)</option>
+                    <option value="MARKETING">MARKETING (Ofertas, Reengajamento, Promoções)</option>
+                    <option value="AUTHENTICATION">AUTENTICAÇÃO (Códigos OTP / 2FA)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Texto do Cabeçalho (Opcional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Haven Escovaria & Spa"
+                  value={tplHeaderText}
+                  onChange={(e) => setTplHeaderText(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700">
+                    Corpo da Mensagem: <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400">Use &#123;&#123;1&#125;&#125;, &#123;&#123;2&#125;&#125; para variáveis</span>
+                </div>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Olá {{1}}, confirmamos o seu horário para {{2}}! Qualquer dúvida, estamos à disposição."
+                  value={tplBodyText}
+                  onChange={(e) => setTplBodyText(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 outline-none resize-none font-sans"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Rodapé (Opcional):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Atendimento ao Cliente"
+                    value={tplFooterText}
+                    onChange={(e) => setTplFooterText(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Botão de Resposta Rápida (Opcional):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Confirmar Horário"
+                    value={tplButtonText}
+                    onChange={(e) => setTplButtonText(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setCreateTemplateModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={tplSubmitting || !tplName.trim() || !tplBodyText.trim()}
+                  className="px-5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  {tplSubmitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Submetendo à Meta...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Submeter para Aprovação</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

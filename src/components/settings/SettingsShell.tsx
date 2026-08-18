@@ -3,10 +3,10 @@ import { Workspace } from '../../types/cockpit';
 import { mockEngineConfig } from '../../data/groupFixtures';
 import { ConnectionManager } from './ConnectionManager';
 import { FeatureFlagManager } from './FeatureFlagManager';
-import { TrackingSettings } from './TrackingSettings';
 import { CanaisView } from '../channels/CanaisView';
 import { TeamManager } from './TeamManager';
 import { ApiWebhooksManager } from './ApiWebhooksManager';
+import { LtvConfigManager } from './LtvConfigManager';
 import {
   ShieldCheck,
   Info,
@@ -43,7 +43,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
 }) => {
   const [engineConfig, setEngineConfig] = React.useState(mockEngineConfig);
   const [internalSubTab, setInternalSubTab] = React.useState<
-    'team' | 'api_webhooks' | 'channels' | 'ads_tracking' | 'feature_flags' | 'engines'
+    'team' | 'api_webhooks' | 'channels' | 'ltv_matrix' | 'feature_flags' | 'engines'
   >('team');
 
   const activeSubTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalSubTab;
@@ -59,19 +59,34 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
     { id: 'team', label: 'Equipe & Usuários', icon: Users, badge: 'Multi-Tenant' },
     { id: 'api_webhooks', label: 'API & Webhooks', icon: Code2, badge: 'Integrações' },
     { id: 'channels', label: 'Canais de WhatsApp', icon: Smartphone },
-    { id: 'ads_tracking', label: 'Atribuição & Ads', icon: Megaphone },
+    { id: 'ltv_matrix', label: 'Matriz LTV & Retenção', icon: Sparkles, badge: 'Level 5' },
     { id: 'feature_flags', label: 'Parâmetros Globais', icon: Sliders },
     { id: 'engines', label: 'Modelos & Infra', icon: Server },
   ];
+
+  const isMaster =
+    !workspace.id?.toLowerCase().includes('haven') &&
+    !workspace.id?.toLowerCase().includes('sora') &&
+    !workspace.name?.toLowerCase().includes('haven') &&
+    !workspace.name?.toLowerCase().includes('sora');
 
   return (
     <div id="settings-shell-view" className="h-full overflow-y-auto w-full p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       {/* Top Header */}
       <div className="pb-3 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 font-heading">
-            Configurações da Conta & Sistema
-          </h1>
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-xl font-bold text-slate-900 font-heading">
+              Configurações da Conta
+            </h1>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold border ${
+              isMaster
+                ? 'bg-purple-100 text-purple-900 border-purple-200'
+                : 'bg-emerald-100 text-emerald-900 border-emerald-200'
+            }`}>
+              {isMaster ? '🛡️ Matriz Sovereign (SOS Sales)' : `🏢 Cliente: ${workspace.name || 'Sub-conta'}`}
+            </span>
+          </div>
           <p className="text-xs text-slate-500">
             Gerenciamento de equipe multi-usuário, chaves de API, webhooks de saída, WhatsApp e atribuição de tráfego.
           </p>
@@ -112,7 +127,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
 
       {activeSubTab === 'channels' && <CanaisView workspace={workspace} />}
 
-      {activeSubTab === 'ads_tracking' && <TrackingSettings workspace={workspace} />}
+      {activeSubTab === 'ltv_matrix' && <LtvConfigManager workspace={workspace} />}
 
       {activeSubTab === 'feature_flags' && <FeatureFlagManager workspace={workspace} />}
 

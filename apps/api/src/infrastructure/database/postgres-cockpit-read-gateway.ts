@@ -8,6 +8,7 @@ import {
   CursorPage,
 } from '../../application/ports/cockpit-read-gateway.js';
 import { AuthenticatedActor } from '../../application/ports/operator-authenticator.js';
+import { analyzeConversationDossier } from '../../application/services/cognitive-analyzer.js';
 import { dbPool } from './pool.js';
 
 type PgConnector = Pick<Pool, 'connect'>;
@@ -219,7 +220,7 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
           (
             SELECT COALESCE(json_agg(m), '[]'::json)
             FROM (
-              SELECT id, direction, sender_type, text_content, sent_at
+              SELECT id, direction, sender_type, text_content, media_payload, sent_at
               FROM public.conversation_messages
               WHERE workspace_id = j.workspace_id AND journey_id = j.id
               ORDER BY sent_at DESC, id DESC
@@ -296,13 +297,62 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
       const handoff = row.handoff as Record<string, unknown> | null;
       const outcome = row.outcome as Record<string, unknown> | null;
 
+      // Realtime Cognitive Enrichment
+      const parsedMessages = messagesList.map((m: any) => ({
+        id: m.id,
+        direction: m.direction,
+        senderType: m.sender_type,
+        textContent: m.text_content,
+        sentAt: m.sent_at,
+      }));
+      const inferred = analyzeConversationDossier(parsedMessages, row.contact_name);
+
+      const finalService = row.primary_service_or_product || (inferred.confidenceService > 0.5 ? inferred.primaryServiceOrProduct : 'Atendimento Geral');
+      const finalStage = row.pipeline_stage || inferred.suggestedStage;
+
+      const finalAcquisitions = acquisitionsList.length > 0
+        ? acquisitionsList.map((item: any) => ({
+            id: String(item.id), source: String(item.source),
+            campaignId: item.campaign_id as string | null,
+            campaignName: item.campaign_name as string | null,
+            adSetId: item.ad_set_id as string | null,
+            adId: item.ad_id as string | null,
+            creativeCode: item.creative_code as string | null,
+            offerHook: item.offer_hook as string | null,
+            entryMessage: item.entry_message as string | null,
+            confidence: String(item.confidence),
+            occurredAt: new Date(item.occurred_at as Date).toISOString(),
+          }))
+        : [{
+            id: 'inferred-acq',
+            source: inferred.originType,
+            campaignId: null,
+            campaignName: inferred.campaignName,
+            adSetId: null,
+            adId: null,
+            creativeCode: null,
+            offerHook: inferred.offerHook || null,
+            entryMessage: inferred.entryMessage || null,
+            confidence: '0.90',
+            occurredAt: new Date(row.started_at).toISOString(),
+          }];
+
+      const finalFacts = factsList.length > 0
+        ? factsList.map((fact: any) => ({
+            id: String(fact.id), key: String(fact.key), value: fact.value,
+            source: String(fact.source), confidence: Number(fact.confidence),
+            confirmedByCustomer: Boolean(fact.confirmed_by_customer),
+            observedAt: new Date(fact.observed_at as Date).toISOString(),
+          }))
+        : inferred.knownFacts;
+
       return {
         journey: {
           id: row.id,
           contactId: row.contact_id,
           status: row.status,
-          pipelineStage: row.pipeline_stage,
-          primaryServiceOrProduct: row.primary_service_or_product,
+          pipelineStage: finalStage,
+          primaryServiceOrProduct: finalService,
           totalRevenueMinor: Number(row.total_revenue_minor),
           currency: row.currency,
           startedAt: new Date(row.started_at).toISOString(),
@@ -319,30 +369,15 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
               }
             : null,
         },
-        acquisitionContexts: acquisitionsList.map((item: any) => ({
-          id: String(item.id), source: String(item.source),
-          campaignId: item.campaign_id as string | null,
-          campaignName: item.campaign_name as string | null,
-          adSetId: item.ad_set_id as string | null,
-          adId: item.ad_id as string | null,
-          creativeCode: item.creative_code as string | null,
-          offerHook: item.offer_hook as string | null,
-          entryMessage: item.entry_message as string | null,
-          confidence: String(item.confidence),
-          occurredAt: new Date(item.occurred_at as Date).toISOString(),
-        })),
+        acquisitionContexts: finalAcquisitions,
         // Query is DESC for a bounded "latest N" read; reverse only for the
         // user-facing chronological conversation order.
         messages: messagesList.reverse().map((message: any) => ({
           id: message.id, direction: message.direction, senderType: message.sender_type,
-          textContent: message.text_content, sentAt: new Date(message.sent_at).toISOString(),
+          textContent: message.text_content, mediaPayload: message.media_payload || null,
+          sentAt: new Date(message.sent_at).toISOString(),
         })),
-        knownFacts: factsList.map((fact: any) => ({
-          id: String(fact.id), key: String(fact.key), value: fact.value,
-          source: String(fact.source), confidence: Number(fact.confidence),
-          confirmedByCustomer: Boolean(fact.confirmed_by_customer),
-          observedAt: new Date(fact.observed_at as Date).toISOString(),
-        })),
+        knownFacts: finalFacts,
         decisionState: state ? {
           currentStage: String(state.current_stage), stageConfidence: Number(state.stage_confidence),
           primaryFriction: state.primary_friction as string | null,

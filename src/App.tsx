@@ -22,18 +22,14 @@ const CockpitView = React.lazy(() => import('./components/cockpit/CockpitView').
 const AllConversationsView = React.lazy(() => import('./components/conversations/AllConversationsView').then(({ AllConversationsView }) => ({ default: AllConversationsView })));
 const ConversationsHubView = React.lazy(() => import('./components/conversations/ConversationsHubView').then(({ ConversationsHubView }) => ({ default: ConversationsHubView })));
 const GroupsHubView = React.lazy(() => import('./components/groups/GroupsHubView').then(({ GroupsHubView }) => ({ default: GroupsHubView })));
-const TrafficProofView = React.lazy(() => import('./components/results/TrafficProofView').then(({ TrafficProofView }) => ({ default: TrafficProofView })));
-const LiveTrafficProofView = React.lazy(() => import('./components/results/LiveTrafficProofView').then(({ LiveTrafficProofView }) => ({ default: LiveTrafficProofView })));
-const ResultsHubView = React.lazy(() => import('./components/results/ResultsHubView').then(({ ResultsHubView }) => ({ default: ResultsHubView })));
-import type { ResultsSubTab } from './components/results/ResultsHubView';
-const ManagerDashboardView = React.lazy(() => import('./components/dashboard/ManagerDashboardView').then(({ ManagerDashboardView }) => ({ default: ManagerDashboardView })));
+import { ResultsHubView, ResultsSubTab } from './components/results/ResultsHubView';
 const SettingsShell = React.lazy(() => import('./components/settings/SettingsShell').then(({ SettingsShell }) => ({ default: SettingsShell })));
 const LiveSettingsView = React.lazy(() => import('./components/settings/LiveSettingsView').then(({ LiveSettingsView }) => ({ default: LiveSettingsView })));
 const CommercialKanbanView = React.lazy(() => import('./components/kanban/CommercialKanbanView').then(({ CommercialKanbanView }) => ({ default: CommercialKanbanView })));
-const LiveCommercialKanbanView = React.lazy(() => import('./components/kanban/LiveCommercialKanbanView').then(({ LiveCommercialKanbanView }) => ({ default: LiveCommercialKanbanView })));
-const LiveConversationsView = React.lazy(() => import('./components/conversations/LiveConversationsView').then(({ LiveConversationsView }) => ({ default: LiveConversationsView })));
+import { LiveCommercialKanbanView } from './components/kanban/LiveCommercialKanbanView';
+import { LiveConversationsView } from './components/conversations/LiveConversationsView';
 const AgendaView = React.lazy(() => import('./components/agenda/AgendaView').then(({ AgendaView }) => ({ default: AgendaView })));
-const NotesView = React.lazy(() => import('./components/notes/NotesView').then(({ NotesView }) => ({ default: NotesView })));
+import { NotesView } from './components/notes/NotesView';
 import { SalesAiPlaybookView } from './components/intelligence/SalesAiPlaybookView';
 import { QaSimulatorView } from './components/intelligence/QaSimulatorView';
 import { WorkspaceInitModal } from './components/workspace/WorkspaceInitModal';
@@ -209,108 +205,120 @@ function AppContent({
       )}>
 
       {activeTab === 'agora' && (
-        isAuthenticatedApiMode && salesOsGateway instanceof HttpSalesOsGateway ? (
-          <LiveCockpitView
-            workspaceId={currentWorkspace.id}
-            selectedJourneyId={selectedJourneyId}
-            onSelectedJourneyChange={setSelectedJourneyId}
-            gateway={salesOsGateway}
-          />
-        ) : (
-          <CockpitView
-            workspace={currentWorkspace}
-            gateway={salesOsGateway}
-            journeys={journeys}
-            selectedJourneyId={selectedJourneyId}
-            onSelectJourney={(j) => setSelectedJourneyId(j.id)}
-            onUpdateJourney={handleUpdateJourney}
-            onViewAllConversations={() => setActiveTab('conversas')}
-            role={role}
-            currentOperatorId={currentOperatorId}
-            currentOperatorName={currentOperatorName}
-          />
-        )
+        <TabErrorBoundary tabName="Cockpit de Atendimento (Agora)">
+          {isAuthenticatedApiMode && salesOsGateway instanceof HttpSalesOsGateway ? (
+            <LiveCockpitView
+              workspaceId={currentWorkspace.id}
+              selectedJourneyId={selectedJourneyId}
+              onSelectedJourneyChange={setSelectedJourneyId}
+              gateway={salesOsGateway}
+            />
+          ) : (
+            <CockpitView
+              workspace={currentWorkspace}
+              gateway={salesOsGateway}
+              journeys={journeys}
+              selectedJourneyId={selectedJourneyId}
+              onSelectJourney={(j) => setSelectedJourneyId(j.id)}
+              onUpdateJourney={handleUpdateJourney}
+              onViewAllConversations={() => setActiveTab('conversas')}
+              role={role}
+              currentOperatorId={currentOperatorId}
+              currentOperatorName={currentOperatorName}
+            />
+          )}
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'kanban' && (
-        isAuthenticatedApiMode ? (
-          <LiveCommercialKanbanView
-            workspaceId={currentWorkspace.id}
-            gateway={salesOsGateway}
-            onSelectJourney={(journeyId) => {
-              setSelectedJourneyId(journeyId);
-              setActiveTab('agora');
-            }}
-            onSwitchToCockpit={() => setActiveTab('agora')}
-          />
-        ) : (
-          <ConversationsHubView
-            journeys={journeys}
-            groups={agencyGroups}
-            channels={currentWorkspace.channels}
-            selectedJourneyId={selectedJourneyId}
-            onSelectJourney={(j) => setSelectedJourneyId(j.id)}
-            onGoToCockpit={(j) => {
-              setSelectedJourneyId(j.id);
-              setActiveTab('agora');
-            }}
-            onOpenGroup={() => setActiveTab('grupos')}
-            onUpdateJourney={handleUpdateJourney}
-            currentOperatorId={currentOperatorId}
-            role={role}
-            initialViewMode="kanban"
-          />
-        )
+        <TabErrorBoundary tabName="Kanban Comercial">
+          {isAuthenticatedApiMode ? (
+            <LiveCommercialKanbanView
+              workspaceId={currentWorkspace.id}
+              gateway={salesOsGateway}
+              onSelectJourney={(journeyId) => {
+                setSelectedJourneyId(journeyId);
+                setActiveTab('agora');
+              }}
+              onSwitchToCockpit={() => setActiveTab('agora')}
+            />
+          ) : (
+            <ConversationsHubView
+              journeys={journeys}
+              groups={agencyGroups}
+              channels={currentWorkspace.channels}
+              workspace={currentWorkspace}
+              selectedJourneyId={selectedJourneyId}
+              onSelectJourney={(j) => setSelectedJourneyId(j.id)}
+              onGoToCockpit={(j) => {
+                setSelectedJourneyId(j.id);
+                setActiveTab('agora');
+              }}
+              onOpenGroup={() => setActiveTab('grupos')}
+              onUpdateJourney={handleUpdateJourney}
+              currentOperatorId={currentOperatorId}
+              role={role}
+              initialViewMode="kanban"
+            />
+          )}
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'conversas' && (
-        isAuthenticatedApiMode ? (
-          <LiveConversationsView
-            workspaceId={currentWorkspace.id}
-            workspace={currentWorkspace}
-            gateway={salesOsGateway}
-            onJourneySelect={(journeyId) => {
-              setSelectedJourneyId(journeyId);
-              setActiveTab('agora');
-            }}
-            onSwitchToCockpit={() => setActiveTab('agora')}
-          />
-        ) : (
-          <ConversationsHubView
-            journeys={journeys}
-            groups={agencyGroups}
-            channels={currentWorkspace.channels}
-            selectedJourneyId={selectedJourneyId}
-            onSelectJourney={(j) => setSelectedJourneyId(j.id)}
-            onGoToCockpit={(j) => {
-              setSelectedJourneyId(j.id);
-              setActiveTab('agora');
-            }}
-            onOpenGroup={() => setActiveTab('grupos')}
-            onUpdateJourney={handleUpdateJourney}
-            currentOperatorId={currentOperatorId}
-            role={role}
-            initialViewMode="list"
-          />
-        )
+        <TabErrorBoundary tabName="Conversas & Funil">
+          {isAuthenticatedApiMode ? (
+            <LiveConversationsView
+              workspaceId={currentWorkspace.id}
+              workspace={currentWorkspace}
+              gateway={salesOsGateway}
+              onJourneySelect={(journeyId) => {
+                setSelectedJourneyId(journeyId);
+                setActiveTab('agora');
+              }}
+              onSwitchToCockpit={() => setActiveTab('agora')}
+            />
+          ) : (
+            <ConversationsHubView
+              journeys={journeys}
+              groups={agencyGroups}
+              channels={currentWorkspace.channels}
+              workspace={currentWorkspace}
+              selectedJourneyId={selectedJourneyId}
+              onSelectJourney={(j) => setSelectedJourneyId(j.id)}
+              onGoToCockpit={(j) => {
+                setSelectedJourneyId(j.id);
+                setActiveTab('agora');
+              }}
+              onOpenGroup={() => setActiveTab('grupos')}
+              onUpdateJourney={handleUpdateJourney}
+              currentOperatorId={currentOperatorId}
+              role={role}
+              initialViewMode="list"
+            />
+          )}
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'agenda' && (
-        <AgendaView
-          workspace={currentWorkspace}
-          gateway={salesOsGateway}
-          onGoToCockpitWithJourney={(journeyId) => {
-            setSelectedJourneyId(journeyId);
-            setActiveTab('agora');
-          }}
-        />
+        <TabErrorBoundary tabName="Agenda Comercial">
+          <AgendaView
+            workspace={currentWorkspace}
+            gateway={salesOsGateway}
+            onGoToCockpitWithJourney={(journeyId) => {
+              setSelectedJourneyId(journeyId);
+              setActiveTab('agora');
+            }}
+          />
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'anotacoes' && (
-        <NotesView
-          workspace={currentWorkspace}
-          gateway={salesOsGateway}
-        />
+        <TabErrorBoundary tabName="Anotações & Insights">
+          <NotesView
+            workspace={currentWorkspace}
+            gateway={salesOsGateway}
+          />
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'grupos' && isFeatureEnabled('agency_groups') && (
@@ -343,51 +351,49 @@ function AppContent({
       )}
 
       {activeTab === 'playbook' && (
-        <SalesAiPlaybookView
-          currentWorkspace={currentWorkspace}
-          workspaces={workspaces}
-          onSelectWorkspace={onSelectWorkspace}
-          activeSubTab={intelligenceSubTab}
-          onChangeSubTab={setIntelligenceSubTab}
-        />
+        <TabErrorBoundary tabName="Inteligência & Agentes">
+          <SalesAiPlaybookView
+            currentWorkspace={currentWorkspace}
+            workspaces={workspaces}
+            onSelectWorkspace={onSelectWorkspace}
+            activeSubTab={intelligenceSubTab}
+            onChangeSubTab={setIntelligenceSubTab}
+          />
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'simulador' && (
-        <QaSimulatorView
-          currentWorkspace={currentWorkspace}
-          onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
-          onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
-          isNetworkErrorForced={isNetworkErrorForced}
-        />
+        <TabErrorBoundary tabName="Simulador QA">
+          <QaSimulatorView
+            currentWorkspace={currentWorkspace}
+            onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
+            onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
+            isNetworkErrorForced={isNetworkErrorForced}
+          />
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'configuracoes' && (
-        <SettingsShell
-          workspace={currentWorkspace}
-          activeSubTab={settingsSubTab}
-          onChangeSubTab={setSettingsSubTab}
-        />
+        <TabErrorBoundary tabName="Configurações">
+          <SettingsShell
+            workspace={currentWorkspace}
+            activeSubTab={settingsSubTab}
+            onChangeSubTab={setSettingsSubTab}
+          />
+        </TabErrorBoundary>
       )}
       </React.Suspense>
 
-        {/* Botão Flutuante Atlas IA: Assistente de Configuração do SOS Sales */}
+        {/* Botão Flutuante Atlas IA: Assistente Circular */}
         <div className="fixed bottom-6 right-6 z-50">
           <button
             onClick={() => setIsAssistantOpen(true)}
-            className="flex items-center gap-3 rounded-full bg-slate-950 text-white px-4.5 py-3 shadow-2xl shadow-slate-950/70 hover:shadow-emerald-950/50 hover:scale-105 transition-all duration-200 border-2 border-emerald-500 group cursor-pointer"
-            style={{ backgroundColor: '#020617', color: '#ffffff' }}
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-[#020617] text-white shadow-2xl shadow-slate-950/80 hover:scale-110 active:scale-95 transition-all duration-200 border-2 border-emerald-500 group cursor-pointer relative"
+            title="Atlas Copilot IA - Assistente de Configuração"
+            aria-label="Abrir Atlas Copilot IA"
           >
-            <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-white shadow-inner shrink-0">
-              <Bot className="h-4.5 w-4.5 text-white" />
-              <span className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 border-2 border-slate-950 animate-pulse" />
-            </div>
-            <div className="text-left pr-1.5">
-              <p className="text-xs font-bold leading-tight flex items-center gap-1.5 text-white">
-                Atlas Copilot IA
-                <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-              </p>
-              <p className="text-[10.5px] text-emerald-400 font-semibold leading-tight mt-0.5">Orquestrador & Setup</p>
-            </div>
+            <Bot className="h-6 w-6 text-emerald-400 group-hover:text-white transition-colors" />
+            <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 animate-pulse" />
           </button>
         </div>
 
@@ -422,8 +428,42 @@ function OperationalApp({
     salesOsRuntimeConfig.mode === 'api' ? [] : mockAgencyGroups
   ));
   const [selectedJourneyId, setSelectedJourneyId] = React.useState<string | undefined>(undefined);
+  // Clean URL Routing sync for SPAs (/agora, /conversas, /inteligencia, etc.)
+  const pathToTab = React.useCallback((pathname: string): NavigationTab | null => {
+    const clean = pathname.replace(/^\//, '').toLowerCase().split('/')[0];
+    if (clean === 'agora' || clean === '') return 'agora';
+    if (clean === 'conversas' || clean === 'funil' || clean === 'kanban') return 'conversas';
+    if (clean === 'grupos') return 'grupos';
+    if (clean === 'agenda') return 'agenda';
+    if (clean === 'anotacoes') return 'anotacoes';
+    if (clean === 'resultados' || clean === 'roi' || clean === 'analytics') return 'resultados';
+    if (clean === 'inteligencia' || clean === 'playbook') return 'playbook';
+    if (clean === 'simulador') return 'simulador';
+    if (clean === 'configuracoes' || clean === 'config' || clean === 'settings') return 'configuracoes';
+    return null;
+  }, []);
+
+  const tabToPath = (tab: NavigationTab): string => {
+    switch (tab) {
+      case 'agora': return '/agora';
+      case 'conversas': return '/conversas';
+      case 'kanban': return '/conversas';
+      case 'grupos': return '/grupos';
+      case 'agenda': return '/agenda';
+      case 'anotacoes': return '/anotacoes';
+      case 'resultados': return '/resultados';
+      case 'analytics': return '/resultados';
+      case 'playbook': return '/inteligencia';
+      case 'simulador': return '/simulador';
+      case 'configuracoes': return '/configuracoes';
+      default: return '/agora';
+    }
+  };
+
   const [activeTab, setActiveTab] = React.useState<NavigationTab>(() => {
     try {
+      const fromPath = pathToTab(window.location.pathname);
+      if (fromPath) return fromPath;
       const saved = localStorage.getItem('sos_active_tab') as NavigationTab;
       const validTabs: NavigationTab[] = [
         'agora',
@@ -447,13 +487,30 @@ function OperationalApp({
     return 'agora';
   });
 
+  // Sync activeTab with URL bar & history
   React.useEffect(() => {
     try {
       localStorage.setItem('sos_active_tab', activeTab);
+      const targetPath = tabToPath(activeTab);
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState(null, '', targetPath);
+      }
     } catch {
       // ignore
     }
   }, [activeTab]);
+
+  // Handle browser Back/Forward buttons
+  React.useEffect(() => {
+    const handlePopState = () => {
+      const tab = pathToTab(window.location.pathname);
+      if (tab) {
+        setActiveTab(tab);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [pathToTab]);
 
   const [role, setRole] = React.useState<OperatorRole>('operator');
   const [currentOperatorId] = React.useState('op-01');
