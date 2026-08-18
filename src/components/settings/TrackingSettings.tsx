@@ -12,6 +12,8 @@ import {
   Tag,
   Key,
   HelpCircle,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 
 interface TrackingSettingsProps {
@@ -171,6 +173,44 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   const [testEventCode, setTestEventCode] = useState('');
   const [testEventName, setTestEventName] = useState<'Lead' | 'Purchase'>('Lead');
   const [capiTestFeedback, setCapiTestFeedback] = useState<{ success?: boolean; message?: string; details?: any } | null>(null);
+
+  // Retroactive Reconciliation State
+  const [isReconciling, setIsReconciling] = useState(false);
+  const [reconcileResult, setReconcileResult] = useState<{
+    success?: boolean;
+    message?: string;
+    reconciledCount?: number;
+    totalAttributedRevenueBrl?: string;
+    campaignBreakdown?: Record<string, { leads: number; revenueMinor: number }>;
+  } | null>(null);
+
+  const handleRunRetroactiveReconciliation = async () => {
+    setIsReconciling(true);
+    setReconcileResult(null);
+    try {
+      const response = await fetch(`/api/v1/workspaces/${workspace.id}/tracking/reconcile-retroactive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forceRescan: true, limit: 300 }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setReconcileResult(data);
+      } else {
+        setReconcileResult({
+          success: false,
+          message: data.error || 'Falha ao processar reconciliação retroativa.',
+        });
+      }
+    } catch (err: any) {
+      setReconcileResult({
+        success: false,
+        message: err.message || 'Erro de conexão ao reconciliar histórico.',
+      });
+    } finally {
+      setIsReconciling(false);
+    }
+  };
 
   const [campaignMappings, setCampaignMappings] = useState<CampaignMappingItem[]>(() => {
     try {
@@ -943,6 +983,72 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Scanner de Reconciliação & Traqueamento Retroativo */}
+      <div className="bg-gradient-to-br from-purple-950 via-slate-900 to-slate-950 rounded-2xl p-6 border border-purple-500/30 shadow-md text-white space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-purple-800/40">
+          <div>
+            <h3 className="text-base font-bold text-purple-400 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-purple-400" />
+              Scanner de Traqueamento & Atribuição Retroativa
+            </h3>
+            <p className="text-xs text-slate-300 mt-0.5">
+              Escaneia todo o histórico de conversas do WhatsApp do cliente, detecta ganchos de anúncios e reconcilia retroativamente com vendas fechadas.
+            </p>
+          </div>
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
+            Arma de Vendas 1x1 · Auditoria Histórica
+          </span>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-900/80 rounded-xl border border-purple-500/20">
+          <div className="space-y-1">
+            <span className="text-xs font-bold text-slate-200">Reconciliar Leads e Vendas Históricas</span>
+            <p className="text-[11px] text-slate-400">
+              Cruza as primeiras mensagens de cada conversa com as campanhas mapeadas e atualiza o relatório de ROI real.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={isReconciling}
+            onClick={handleRunRetroactiveReconciliation}
+            className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shrink-0 shadow-sm"
+          >
+            {isReconciling ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Escaneando Histórico...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                <span>⚡ Reconciliar Histórico Retroativo</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {reconcileResult && (
+          <div className="p-4 bg-purple-900/30 border border-purple-500/30 rounded-xl space-y-2 text-xs animate-in fade-in duration-200">
+            <div className="flex items-center justify-between font-bold text-purple-300">
+              <span>{reconcileResult.message}</span>
+              {reconcileResult.totalAttributedRevenueBrl && (
+                <span className="text-emerald-400 font-mono">R$ {reconcileResult.totalAttributedRevenueBrl} atribuídos</span>
+              )}
+            </div>
+            {reconcileResult.campaignBreakdown && Object.keys(reconcileResult.campaignBreakdown).length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-purple-500/20">
+                {Object.entries(reconcileResult.campaignBreakdown).map(([camp, data]: any) => (
+                  <div key={camp} className="p-2 bg-slate-950/60 rounded-lg border border-purple-500/10 flex justify-between items-center">
+                    <span className="text-slate-300 font-mono text-[11px] truncate max-w-[200px]">{camp}</span>
+                    <span className="font-bold text-purple-200 shrink-0">{data.leads} leads</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Gerador de Links Click WA com UTMs em 1-Clique */}

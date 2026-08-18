@@ -1994,6 +1994,106 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       client.release();
     }
   });
+
+  // 12.6. Retroactive Attribution Reconciliation & Batch History Scan
+  app.post('/api/v1/workspaces/:workspaceId/tracking/reconcile-retroactive', async (request: FastifyRequest<{
+    Params: { workspaceId: string };
+    Body?: {
+      limit?: number;
+      forceRescan?: boolean;
+    };
+  }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    const { limit = 200, forceRescan = false } = request.body || {};
+
+    const client = await dbPool.connect();
+    try {
+      // 1. Fetch campaigns config
+      const chRes = await client.query(
+        'SELECT public_config FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1',
+        [workspaceId]
+      );
+      const pubCfg = chRes.rows[0]?.public_config || {};
+      const campaigns = pubCfg?.trackingConfig?.campaigns || [];
+
+      // 2. Fetch journeys that either don't have acquisition_contexts or need rescan
+      const journeysQuery = forceRescan
+        ? `SELECT j.id, j.status, j.total_revenue_minor, j.started_at 
+           FROM public.commercial_journeys j 
+           WHERE j.workspace_id = $1 
+           ORDER BY j.created_at DESC LIMIT $2`
+        : `SELECT j.id, j.status, j.total_revenue_minor, j.started_at 
+           FROM public.commercial_journeys j 
+           WHERE j.workspace_id = $1 
+             AND NOT EXISTS (
+               SELECT 1 FROM public.acquisition_contexts ac WHERE ac.journey_id = j.id
+             )
+           ORDER BY j.created_at DESC LIMIT $2`;
+
+      const journeysRes = await client.query(journeysQuery, [workspaceId, limit]);
+      const journeys = journeysRes.rows;
+
+      let reconciledCount = 0;
+      let totalAttributedRevenueMinor = 0;
+      const campaignBreakdown: Record<string, { leads: number; revenueMinor: number }> = {};
+
+      for (const j of journeys) {
+        // Fetch first inbound message
+        const msgRes = await client.query(
+          `SELECT text_content, sent_at, provider_message_id 
+           FROM public.conversation_messages 
+           WHERE journey_id = $1 AND direction = 'inbound' 
+           ORDER BY sent_at ASC LIMIT 1`,
+          [j.id]
+        );
+
+        if (msgRes.rowCount && msgRes.rowCount > 0) {
+          const firstMsg = msgRes.rows[0];
+          const attr = AttributionService.extractAttribution(
+            firstMsg.text_content,
+            {},
+            campaigns
+          );
+
+          if (attr) {
+            await AttributionService.persistAttribution(
+              client,
+              workspaceId,
+              j.id,
+              attr,
+              firstMsg.sent_at || j.started_at || new Date()
+            );
+
+            reconciledCount++;
+            const rev = Number(j.total_revenue_minor || 0);
+            totalAttributedRevenueMinor += rev;
+
+            const campKey = attr.campaignName || 'Campanha Desconhecida';
+            if (!campaignBreakdown[campKey]) {
+              campaignBreakdown[campKey] = { leads: 0, revenueMinor: 0 };
+            }
+            campaignBreakdown[campKey].leads += 1;
+            campaignBreakdown[campKey].revenueMinor += rev;
+          }
+        }
+      }
+
+      return {
+        success: true,
+        workspaceId,
+        scannedJourneysCount: journeys.length,
+        reconciledCount,
+        totalAttributedRevenueMinor,
+        totalAttributedRevenueBrl: (totalAttributedRevenueMinor / 100).toFixed(2),
+        campaignBreakdown,
+        message: `Reconciliação retroativa concluída com sucesso! ${reconciledCount} leads atribuídos retroativamente a anúncios.`,
+      };
+    } catch (err: any) {
+      return reply.status(500).send({ success: false, error: err.message });
+    } finally {
+      client.release();
+    }
+  });
 }
 
 
