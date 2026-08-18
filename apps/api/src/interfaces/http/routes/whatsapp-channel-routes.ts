@@ -1003,7 +1003,7 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       } else {
         const newCh = await client.query(`
           INSERT INTO public.channel_connections (id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at)
-          VALUES (gen_random_uuid(), $1, 'waha', '554933401014', 'WhatsApp Web', '{"engine":"WAHA"}', 'CONNECTED', NOW(), NOW())
+          VALUES (gen_random_uuid(), $1, 'waha', '', 'WhatsApp Web', '{"engine":"WAHA"}', 'CONNECTED', NOW(), NOW())
           RETURNING id
         `, [workspaceId]);
         channelConnectionId = newCh.rows[0].id;
@@ -1920,7 +1920,7 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       } else {
         const newCh = await client.query(`
           INSERT INTO public.channel_connections (id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at)
-          VALUES (gen_random_uuid(), $1, 'waha', '554933401014', 'WhatsApp Web', '{"engine":"WAHA"}', 'CONNECTED', NOW(), NOW())
+          VALUES (gen_random_uuid(), $1, 'waha', '', 'WhatsApp Web', '{"engine":"WAHA"}', 'CONNECTED', NOW(), NOW())
           RETURNING id
         `, [workspaceId]);
         channelConnectionId = newCh.rows[0].id;
