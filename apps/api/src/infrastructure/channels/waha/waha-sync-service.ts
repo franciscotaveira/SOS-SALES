@@ -37,15 +37,17 @@ export class WahaSyncService {
       });
       const sessions = (await meRes.json().catch(() => [])) as Array<{ name: string; status: string; me?: any }>;
       const currentSession = Array.isArray(sessions)
-        ? (sessions.find((s) => s.name === sessionName && s.status === 'WORKING') ||
-           sessions.find((s) => s.name === sessionName) ||
-           sessions.find((s) => s.status === 'WORKING') ||
-           sessions[0] ||
-           null)
+        ? sessions.find((s) => s.name === sessionName)
         : null;
-      const actualSessionName = currentSession?.name || sessionName;
-      const phoneNumber = currentSession?.me?.id ? currentSession.me.id.split('@')[0] : (currentSession?.name || '5549991234567');
-      const channelName = currentSession?.me?.pushName ? `WhatsApp (${currentSession.me.pushName})` : `WhatsApp (${actualSessionName})`;
+
+      if (!currentSession || currentSession.status !== 'WORKING') {
+        console.log(`[WahaSyncService] Session "${sessionName}" for workspace ${workspaceId} is not WORKING (status: ${currentSession?.status || 'NOT_FOUND'}). Skipping sync.`);
+        return { syncedContacts: 0, syncedMessages: 0, channelConnectionId: '' };
+      }
+
+      const actualSessionName = currentSession.name;
+      const phoneNumber = currentSession.me?.id ? currentSession.me.id.split('@')[0] : (currentSession.name || '');
+      const channelName = currentSession.me?.pushName ? `WhatsApp (${currentSession.me.pushName})` : `WhatsApp (${actualSessionName})`;
 
       let channelConnectionId: string;
       const existing = await client.query('SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1', [workspaceId]);
