@@ -122,18 +122,25 @@ export const NotesView: React.FC<NotesViewProps> = ({ workspace, gateway }) => {
       try {
         await gateway.updateNote(workspace.id, noteId, { pinned: newPinned });
       } catch {
-        // revert on failure
+        // Revert on failure
+        setNotes((prev) =>
+          prev.map((n) => (n.id === noteId ? { ...n, pinned: !newPinned } : n))
+        );
       }
     }
   };
 
   const handleDeleteNote = async (noteId: string) => {
+    const noteToDelete = notes.find((n) => n.id === noteId);
     setNotes((prev) => prev.filter((n) => n.id !== noteId));
     if (gateway?.deleteNote) {
       try {
         await gateway.deleteNote(workspace.id, noteId);
       } catch {
-        // revert on failure
+        // Revert on failure
+        if (noteToDelete) {
+          setNotes((prev) => [noteToDelete, ...prev]);
+        }
       }
     }
   };

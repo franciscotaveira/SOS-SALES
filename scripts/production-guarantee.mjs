@@ -53,11 +53,15 @@ async function runProductionGuarantee() {
   console.log('--- PILAR 2: AUTENTICAÇÃO OFICIAL & JWT ACTOR ---');
   let token = null;
   let operatorId = null;
-  try {
+    const email = process.env.OPERATOR_EMAIL;
+    const password = process.env.OPERATOR_PASSWORD;
+    if (!email || !password) {
+      throw new Error('OPERATOR_EMAIL and OPERATOR_PASSWORD environment variables are required.');
+    }
     const loginRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ email: 'franciscotaveira.mkt@gmail.com', password: 'Ntr*82469356' }),
+      body: JSON.stringify({ email, password }),
     });
     const loginData = await loginRes.json();
     token = loginData.access_token;

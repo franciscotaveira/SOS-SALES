@@ -24,14 +24,14 @@ export const mockWorkspaces: Workspace[] = [
     name: 'Haven Escovaria & Esmalteria',
     slug: 'haven-escovaria-esmalteria',
     businessType: 'hair_salon',
-    tagline: 'Cabelo modelado em 40 minutos, unhas impecáveis e atendimento concierge 24/7.',
-    activeOperatorCount: 4,
+    tagline: 'A Haven nasceu para transformar pequenos momentos em experiências de autocuidado.',
+    activeOperatorCount: 50,
     tier: 'standard',
     channels: [
       {
         id: 'chan-haven-whatsapp',
         name: 'WhatsApp Haven Concierge 24/7',
-        phoneNumber: '+55 49 99123-4567',
+        phoneNumber: '+55 49 98837-0054',
         health: 'connected',
         wabaAccountId: 'waba_haven_official',
       },

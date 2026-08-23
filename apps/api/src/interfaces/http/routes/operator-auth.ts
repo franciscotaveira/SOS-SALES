@@ -152,5 +152,7 @@ export async function operatorAuthRoutes(
     cockpitReadGateway: dependencies.cockpitReadGateway,
     knownFactOperationsGateway: dependencies.knownFactOperationsGateway,
   });
-  app.register(autonomousRevenueRoutes);
+  app.register(autonomousRevenueRoutes, {
+    workspaceDirectory: dependencies.workspaceDirectory,
+  });
 }

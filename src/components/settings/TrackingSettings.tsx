@@ -44,13 +44,14 @@ export function resolveWorkspaceTrackingDefaults(wsId: string, wsName?: string):
   const normName = (wsName || '').toLowerCase();
 
   // 1. Haven Escovaria & Esmalteria
-  if (normId.includes('haven') || normName.includes('haven') || normName.includes('escovaria') || normId.includes('22222222')) {
+  if (normId === '22222222-2222-2222-2222-222222222222' || normName === 'haven' || normName === 'haven escovaria & esmalteria') {
     return {
       pixelId: '2042592029613403',
       datasetId: '2042592029613403',
       googleCustomerId: '482-901-2394',
       googleConversionId: 'AW-1092834792',
-      metaAccessToken: 'EAALuHx4NZBLUBSLLnO0ZAvZC0OwdNJ8OPXbbkaRVeNiunbHrGaA1NAyKWvmZAm1V9HnLMPyo4mFK3yOa2mN4ADAwwDtlHLXbbnV3APdTw5UihaQT4NwfCg843OZCOGGfSUYPj50MG28g8pnpxSqRZB2U4y96plymDnKL1ylaE7MbzYv4pH6CC3moVq4BFaM0jI5gZDZD',
+      // Provider credentials are never shipped in the browser bundle.
+      metaAccessToken: '',
       campaigns: [
         {
           id: 'camp-haven-1',
@@ -79,7 +80,7 @@ export function resolveWorkspaceTrackingDefaults(wsId: string, wsName?: string):
   }
 
   // 2. Sora Spa
-  if (normId.includes('sora') || normName.includes('sora') || normName.includes('spa') || normId.includes('33333333')) {
+  if (normId === '33333333-3333-3333-3333-333333333333' || normName === 'sora' || normName === 'sora spa') {
     return {
       pixelId: '',
       datasetId: '',
@@ -350,7 +351,6 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
           const t = data.tracking;
           if (t.metaPixelId) setMetaPixelId(t.metaPixelId);
           if (t.metaDatasetId) setMetaDatasetId(t.metaDatasetId);
-          if (t.metaAccessToken) setMetaAccessToken(t.metaAccessToken);
           if (t.googleAdsCustomerId) setGoogleAdsCustomerId(t.googleAdsCustomerId);
           if (t.googleConversionId) setGoogleConversionId(t.googleConversionId);
           if (Array.isArray(t.campaignMappings) && t.campaignMappings.length > 0) {

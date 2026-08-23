@@ -3,10 +3,13 @@
  * Provides tenant-isolated settings for ERP/Agenda provider, Pix keys, addresses, and customizable macros.
  */
 
+export type AgendaProviderType = 'google_calendar' | 'trinks' | 'calendly' | 'avec' | 'simples_agenda' | 'custom';
+
 export interface WorkspaceCommercialConfig {
   workspaceId: string;
   businessName: string;
   businessType: 'hair_salon' | 'clinic' | 'consulting' | 'b2b_sales' | 'auto_film' | 'general';
+  agendaProviderType?: AgendaProviderType;
   agendaProviderName: string;
   agendaUrl?: string;
   pixKey: string;
@@ -20,6 +23,39 @@ export interface WorkspaceCommercialConfig {
 }
 
 const STORAGE_PREFIX = 'sos_workspace_commercial_config_';
+
+export const AGENDA_PROVIDER_PRESETS: Record<AgendaProviderType, { label: string; defaultUrl: string; placeholder: string }> = {
+  google_calendar: {
+    label: 'Google Agenda',
+    defaultUrl: 'https://calendar.google.com/calendar/u/0/r',
+    placeholder: 'https://calendar.google.com/calendar/u/0/r ou link de agendamento',
+  },
+  trinks: {
+    label: 'Trinks',
+    defaultUrl: 'https://www.trinks.com/havenescovaria/admin',
+    placeholder: 'https://www.trinks.com/seusalao/admin',
+  },
+  calendly: {
+    label: 'Calendly',
+    defaultUrl: 'https://calendly.com',
+    placeholder: 'https://calendly.com/sua-empresa',
+  },
+  avec: {
+    label: 'Avec / Beauty Date',
+    defaultUrl: 'https://avec.me',
+    placeholder: 'https://avec.me/seusalao',
+  },
+  simples_agenda: {
+    label: 'Simples Agenda',
+    defaultUrl: 'https://simplesagenda.com.br',
+    placeholder: 'https://app.simplesagenda.com.br',
+  },
+  custom: {
+    label: 'Agenda Própria / Web',
+    defaultUrl: 'https://agenda.iaparavendas.tech',
+    placeholder: 'https://sua-agenda.com.br',
+  },
+};
 
 export function getWorkspaceCommercialConfig(workspaceId: string): WorkspaceCommercialConfig {
   const safeId = (workspaceId || 'default').toLowerCase();
@@ -41,7 +77,8 @@ export function getWorkspaceCommercialConfig(workspaceId: string): WorkspaceComm
       workspaceId,
       businessName: 'Haven Escovaria & Esmalteria',
       businessType: 'hair_salon',
-      agendaProviderName: 'Trinks',
+      agendaProviderType: 'trinks',
+      agendaProviderName: 'Trinks (Haven)',
       agendaUrl: 'https://www.trinks.com/havenescovaria/admin',
       pixKey: 'pix@havenescovaria.com.br',
       pixReceiverName: 'Haven Escovaria Eireli',
@@ -71,13 +108,14 @@ export function getWorkspaceCommercialConfig(workspaceId: string): WorkspaceComm
     };
   }
 
-  // Universal default for other clients
+  // Universal default for other clients (Google Agenda as default)
   return {
     workspaceId,
     businessName: 'SOS Sales Comercial',
     businessType: 'general',
-    agendaProviderName: 'Agenda & Vagas',
-    agendaUrl: 'https://agenda.iaparavendas.tech',
+    agendaProviderType: 'google_calendar',
+    agendaProviderName: 'Google Agenda',
+    agendaUrl: 'https://calendar.google.com/calendar/u/0/r',
     pixKey: 'pix@salesos.com.br',
     pixReceiverName: 'SOS Sales Inteligência Comercial',
     businessAddress: 'Brasil',
@@ -99,8 +137,8 @@ export function getWorkspaceCommercialConfig(workspaceId: string): WorkspaceComm
       },
       {
         id: 'localizacao',
-        label: '📍 Endereço & Contato',
-        template: 'Atendemos com hora marcada e suporte completo. Gostaria de agendar uma demonstração ou atendimento presencial, {{nome}}?',
+        label: '📍 Localização & Rota',
+        template: 'Estamos à disposição para te receber! Segue o link com nossa localização no mapa.',
       },
     ],
   };
@@ -110,10 +148,11 @@ export function saveWorkspaceCommercialConfig(
   workspaceId: string,
   config: WorkspaceCommercialConfig
 ): void {
-  const safeId = (workspaceId || 'default').toLowerCase();
+  const safeId = (workspaceId || config.workspaceId || 'default').toLowerCase();
   try {
     localStorage.setItem(`${STORAGE_PREFIX}${safeId}`, JSON.stringify(config));
   } catch (e) {
     console.error('Error saving commercial config to storage:', e);
   }
 }
+

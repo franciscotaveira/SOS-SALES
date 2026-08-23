@@ -51,7 +51,7 @@ export const HistoricalDiagnosisSection: React.FC<HistoricalDiagnosisSectionProp
   return (
     <div id="historical-diagnosis-section" className="space-y-6">
       {/* Top Banner: 1 Year Mining Overview */}
-      <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-purple-950 text-white border border-purple-900/40 rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-[var(--sos-surface)] border-[var(--sos-border)] rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1.5 max-w-2xl">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-300 flex items-center justify-center border border-purple-500/30">

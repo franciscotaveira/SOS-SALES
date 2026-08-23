@@ -225,8 +225,8 @@ describe('TX Commercial Core — P0.3B Production Runtime Contracts & Separation
       expect(response.statusCode).toBe(200);
       const json = JSON.parse(response.payload);
       expect(json.status).toBe('ok');
-      expect(json.system).toBe('TX Commercial Core');
-      expect(json.version).toBe('1.0.0');
+      expect(json.system).toBe('SOS Sales Commercial Core');
+      expect(json.version).toBe('2.0.0');
       expect(json.timestamp).toBeDefined();
       // Must NOT leak database/redis details in pure liveness probe
       expect(json.database).toBeUndefined();

@@ -28,6 +28,19 @@ export interface InferredFact {
   observedAt: string;
 }
 
+export interface CriticalGap {
+  id: string;
+  question: string;
+  impact: string;
+}
+
+export interface SmallestNextMove {
+  actionTitle: string;
+  draftText: string;
+  rationale: string;
+  microCommitmentGoal: string;
+}
+
 export interface InferredDossier {
   primaryServiceOrProduct: string;
   confidenceService: number;
@@ -37,10 +50,13 @@ export interface InferredDossier {
   offerHook?: string;
   entryMessage?: string;
   knownFacts: InferredFact[];
+  criticalGaps: CriticalGap[];
   suggestedStage: 'LEAD' | 'QUALIFICADO' | 'PROPOSTA' | 'NEGOCIACAO' | 'GANHO';
   stageReason: string;
   primaryFriction?: string;
   frictionEvidence?: string;
+  antiRegressionRule: string;
+  smallestNextMove: SmallestNextMove;
   suggestedAction?: string;
   suggestedDraftText?: string;
 }
@@ -150,7 +166,7 @@ export function analyzeConversationDossier(
     originType = 'META_ADS';
     originLabel = 'Anúncio WhatsApp (Meta Ads / Instagram)';
     campaignName = 'Campanha Instagram / Meta Ads';
-    offerHook = 'Oferta Especial de Recepção';
+    offerHook = 'Oferta Especial de Recepção (50% OFF na Aplicação)';
   }
 
   // 2. EXTRAÇÃO SEMÂNTICA DO SERVIÇO SOLICITADO
@@ -162,7 +178,6 @@ export function analyzeConversationDossier(
     for (const kw of pattern.keywords) {
       if (allTextLower.includes(kw)) {
         score += pattern.weight;
-        // Se a cliente mencionou na primeira mensagem, dá peso extra
         if (firstInboundLower.includes(kw)) {
           score += 10;
         }
@@ -216,15 +231,15 @@ export function analyzeConversationDossier(
     stageReason = 'Cliente em conversa ativa com a equipe/atendente.';
   }
 
-  // 4. EXTRAÇÃO DE FATOS CONHECIDOS (Dossiê)
+  // 4. EXTRAÇÃO DE FATOS CONHECIDOS (EKO - Certezas Confirmadas)
   const knownFacts: InferredFact[] = [];
   const now = new Date().toISOString();
 
   if (highestScore > 0) {
     knownFacts.push({
       id: 'fact-service-interest',
-      key: 'Interesse Principal',
-      value: `Solicitou atendimento para ${matchedService}`,
+      key: 'Serviço Solicitado',
+      value: matchedService,
       source: 'Conversa WhatsApp',
       confidence: confidenceService,
       confirmedByCustomer: true,
@@ -232,34 +247,23 @@ export function analyzeConversationDossier(
     });
   }
 
-  if (customerMsgs.length > 0) {
-    const snippet = customerMsgs[customerMsgs.length - 1].text;
+  if (offerHook) {
     knownFacts.push({
-      id: 'fact-last-intent',
-      key: 'Última Mensagem do Lead',
-      value: `"${snippet.length > 80 ? snippet.slice(0, 80) + '...' : snippet}"`,
-      source: 'Mensagem do Cliente',
+      id: 'fact-offer-hook',
+      key: 'Gancho de Anúncio',
+      value: offerHook,
+      source: 'Meta Ads Attribution',
       confidence: 0.95,
       confirmedByCustomer: true,
       observedAt: now,
     });
   }
 
-  knownFacts.push({
-    id: 'fact-origin-channel',
-    key: 'Canal de Entrada',
-    value: originLabel,
-    source: 'Rastreamento de Origem',
-    confidence: 0.90,
-    confirmedByCustomer: false,
-    observedAt: now,
-  });
-
   if (hasNegotiationSignal) {
     knownFacts.push({
       id: 'fact-scheduling-intent',
-      key: 'Disponibilidade / Horário',
-      value: 'Lead em negociação de dia e horário para atendimento',
+      key: 'Disponibilidade',
+      value: 'Lead com intenção de vir esta semana',
       source: 'Análise de Diálogo',
       confidence: 0.88,
       confirmedByCustomer: true,
@@ -267,30 +271,64 @@ export function analyzeConversationDossier(
     });
   }
 
-  // 5. FRICÇÕES & AÇÃO RECOMENDADA
+  // 5. LACUNAS CRÍTICAS DE CONHECIMENTO (EKO - O que falta saber para fechar)
+  const criticalGaps: CriticalGap[] = [];
+  if (!allTextLower.includes('manhã') && !allTextLower.includes('tarde') && !allTextLower.includes('noite') && !hasWonSignal) {
+    criticalGaps.push({
+      id: 'gap-period',
+      question: 'Qual período de preferência?',
+      impact: 'Necessário para consultar vagas na Agenda Trinks',
+    });
+  }
+  if (!allTextLower.includes('comprimento') && !allTextLower.includes('curto') && !allTextLower.includes('longo') && matchedService.includes('Capilar')) {
+    criticalGaps.push({
+      id: 'gap-hair-length',
+      question: 'Qual o comprimento do cabelo?',
+      impact: 'Define o tempo exato de bancada e o valor final',
+    });
+  }
+
+  // 6. FRICÇÕES & OBJEÇÕES
   let primaryFriction: string | undefined = undefined;
   let frictionEvidence: string | undefined = undefined;
 
   if (allTextLower.includes('caro') || allTextLower.includes('desconto') || allTextLower.includes('parcela')) {
     primaryFriction = 'Sensibilidade a Preço / Orçamento';
-    frictionEvidence = 'Cliente consultou condições de pagamento ou valores.';
+    frictionEvidence = 'Cliente consultou condições de pagamento ou valores parcelados.';
   } else if (allTextLower.includes('lotado') || allTextLower.includes('sem horário') || allTextLower.includes('outro dia')) {
     primaryFriction = 'Disponibilidade de Agenda';
     frictionEvidence = 'Conciliação de horário com a rotina do cliente.';
   }
 
-  let suggestedAction = 'Apresentar opções de horários e conduzir para agendamento.';
-  let suggestedDraftText = `Olá ${contactName ? contactName.split(' ')[0] : ''}! Temos horários disponíveis hoje e amanhã para ${matchedService}. Qual período fica melhor para você: manhã ou tarde?`;
+  // 7. REGRA DE ANTI-REGRESSÃO COGNITIVA
+  let antiRegressionRule = 'Proibido reiniciar com "Olá, como posso ajudar?". Conecte diretamente à oferta ativa.';
+  if (matchedService && matchedService !== 'Interesse Geral / Atendimento Comercial') {
+    antiRegressionRule = `Cliente já solicitou ${matchedService}. Não pergunte qual serviço deseja. Apresente horários ou condições.`;
+  }
 
-  if (suggestedStage === 'QUALIFICADO') {
-    suggestedAction = `Confirmar o serviço de ${matchedService} e ofertar horários disponíveis.`;
-    suggestedDraftText = `Olá ${contactName ? contactName.split(' ')[0] : ''}! Fazemos ${matchedService} sim! Você gostaria de agendar para hoje ou prefere outro dia desta semana?`;
-  } else if (suggestedStage === 'PROPOSTA') {
-    suggestedAction = 'Conduzir para a escolha de horário após apresentação de valores.';
-    suggestedDraftText = `Qual horário fica mais confortável para você vir fazer seu atendimento?`;
-  } else if (suggestedStage === 'NEGOCIACAO') {
-    suggestedAction = 'Fechar a reserva do horário e enviar dados de confirmação.';
-    suggestedDraftText = `Perfeito! Posso reservar esse horário para você? Me confirme apenas seu nome completo por gentileza!`;
+  // 8. MENOR PRÓXIMO MOVIMENTO & SUGESTÃO TÁTICA (TESE v2)
+  const firstName = contactName ? contactName.split(' ')[0] : 'tudo bem';
+  let smallestNextMove: SmallestNextMove = {
+    actionTitle: 'Ofertar 2 Opções de Horário Fechadas',
+    draftText: `Olá ${firstName}! Temos horários livres amanhã às 14h ou às 17h para ${matchedService}. Qual desses fica melhor para você?`,
+    rationale: 'Reduz o atrito cognitivo do cliente escolhendo entre 2 opções simples.',
+    microCommitmentGoal: 'Definir o período do atendimento.',
+  };
+
+  if (suggestedStage === 'NEGOCIACAO') {
+    smallestNextMove = {
+      actionTitle: 'Conquistar Microcompromisso de Reserva',
+      draftText: `Perfeito ${firstName}! Posso garantir sua vaga amanhã às 15h? Me envie seu nome completo para bloquear na agenda!`,
+      rationale: 'Cliente já negociou o dia. Travar a vaga antes que esfrie.',
+      microCommitmentGoal: 'Bloquear horário na Agenda Trinks.',
+    };
+  } else if (suggestedStage === 'GANHO') {
+    smallestNextMove = {
+      actionTitle: 'Enviar Dados de Pagamento / Sinal',
+      draftText: `Show ${firstName}! Agendamento confirmado! Segue nossa chave Pix CNPJ: 12.345.678/0001-90 para a taxa de reserva. Até breve!`,
+      rationale: 'Agendamento concluído. Confirmar com chave Pix para garantir presença.',
+      microCommitmentGoal: 'Garantir comparecimento com sinal Pix.',
+    };
   }
 
   return {
@@ -302,11 +340,14 @@ export function analyzeConversationDossier(
     offerHook,
     entryMessage,
     knownFacts,
+    criticalGaps,
     suggestedStage,
     stageReason,
     primaryFriction,
     frictionEvidence,
-    suggestedAction,
-    suggestedDraftText,
+    antiRegressionRule,
+    smallestNextMove,
+    suggestedAction: smallestNextMove.actionTitle,
+    suggestedDraftText: smallestNextMove.draftText,
   };
 }

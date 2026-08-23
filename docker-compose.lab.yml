@@ -8,8 +8,8 @@ services:
       dockerfile: Dockerfile.lab.web
       args:
         VITE_SOS_API_URL: /api/v1
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-https://yiiuebhyqixzluguxsqi.supabase.co}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-sb_publishable_4Mq9Nya3JTrs7OuqkjSa9g_Bs3g1Dgt}
+        VITE_SUPABASE_URL: ${LAB_SUPABASE_URL:-http://localhost:55431}
+        VITE_SUPABASE_ANON_KEY: ${LAB_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
     container_name: sos-sales-lab-web
     restart: unless-stopped
     ports:
@@ -21,29 +21,45 @@ services:
 
   # ---------------------------------------------------------------------------
   # API BACKEND LAB (PORT 4335)
+  # Conecta ao Supabase Local Completo (PostgreSQL + Auth + JWKS + RLS na porta 55432 / 55431)
   # ---------------------------------------------------------------------------
   api-lab:
     build:
       context: .
       dockerfile: Dockerfile.api
+      args:
+        APP_ENV: lab
     container_name: sos-sales-lab-api
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "4335:4334"
     environment:
       - NODE_ENV=development
+      - APP_ENV=lab
       - PORT=4334
       - HOST=0.0.0.0
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:54322/postgres}
+      - PUBLIC_API_URL=http://api-lab:4334
+      - LAB_DATABASE_URL=${LAB_DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:55432/postgres}
+      - LAB_SUPABASE_URL=${LAB_SUPABASE_URL:-http://host.docker.internal:55431}
+      - LAB_SUPABASE_ANON_KEY=${LAB_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
+      - LAB_SUPABASE_JWKS_URL=${LAB_SUPABASE_JWKS_URL:-http://host.docker.internal:55431/auth/v1/.well-known/jwks.json}
+      - LAB_SUPABASE_JWT_ISSUER=${LAB_SUPABASE_JWT_ISSUER:-http://127.0.0.1:55431/auth/v1}
       - REDIS_URL=redis://redis-lab:6379
-      - SUPABASE_URL=${VITE_SUPABASE_URL:-https://yiiuebhyqixzluguxsqi.supabase.co}
-      - SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-sb_publishable_4Mq9Nya3JTrs7OuqkjSa9g_Bs3g1Dgt}
       - WAHA_BASE_URL=http://waha-lab:3000
+      - WAHA_API_KEY=${LAB_WAHA_API_KEY:-mct_sos_waha_lab_secret_2026}
+      - META_VERIFY_TOKEN=${LAB_META_VERIFY_TOKEN:-lab_verify_token_stub}
+      - META_APP_SECRET=${LAB_META_APP_SECRET:-lab_app_secret_stub_32chars_min}
     depends_on:
       redis-lab:
         condition: service_healthy
     networks:
-      - sos-lab-network
+      sos-lab-network:
+        aliases:
+          - api-lab
+          - sos-sales-api
+          - sos-sales-lab-api
 
   # ---------------------------------------------------------------------------
   # REDIS LAB
@@ -73,8 +89,13 @@ services:
     ports:
       - "3005:3000"
     environment:
-      - WAHA_WEBHOOK_URL=http://api-lab:4334/webhooks/waha
+      - WAHA_API_KEY=${LAB_WAHA_API_KEY:-mct_sos_waha_lab_secret_2026}
+      - WHATSAPP_HOOK_URL=http://api-lab:4334/api/v1/channels/waha/webhook
+      - WHATSAPP_HOOK_EVENTS=message,message.any,session.status
+      - WHATSAPP_HOOK_CUSTOM_HEADERS=x-api-key:mct_sos_waha_lab_secret_2026
+      - WAHA_WEBHOOK_URL=http://api-lab:4334/api/v1/channels/waha/webhook
       - WAHA_WEBHOOK_EVENTS=message,message.any,session.status
+      - WAHA_WEBHOOK_CUSTOM_HEADERS=x-api-key:mct_sos_waha_lab_secret_2026
       - WAHA_WORKER_CONCURRENCY=5
       - WAHA_ZIP_LOGS=false
     networks:

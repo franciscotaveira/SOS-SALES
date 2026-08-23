@@ -29,7 +29,7 @@ export class MetaMarketingApiClient {
   private readonly baseUrl: string;
 
   constructor(config?: MetaMarketingApiClientConfig) {
-    this.defaultAccessToken = config?.defaultAccessToken || process.env.META_SYSTEM_USER_TOKEN;
+    this.defaultAccessToken = config?.defaultAccessToken;
     this.apiVersion = config?.apiVersion || 'v20.0';
     this.baseUrl = config?.baseUrl || 'https://graph.facebook.com';
   }

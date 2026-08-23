@@ -41,10 +41,11 @@ function isFollowUpResult(value: unknown): value is FollowUpResult {
 
 function toDbStage(stage: string): string {
   const s = stage.toUpperCase().trim();
-  if (s === 'LEAD' || s === 'NEW' || s === 'CONTACTED') return 'NEW';
+  if (s === 'LEAD' || s === 'NEW') return 'NEW';
+  if (s === 'CONTACTED' || s === 'CONTATADO') return 'CONTACTED';
   if (s === 'QUALIFIED' || s === 'QUALIFICADO' || s === 'APPROACHED' || s === 'ENGAGED') return 'QUALIFIED';
   if (s === 'PROPOSAL' || s === 'PROPOSTA') return 'PROPOSAL';
-  if (s === 'NEGOTIATION' || s === 'NEGOCIACAO' || s === 'FOLLOW_UP' || s === 'SCHEDULED' || s === 'AGENDADO' || s === 'WON' || s === 'GANHO' || s === 'CLOSED') return 'NEGOTIATION';
+  if (s === 'NEGOTIATION' || s === 'NEGOCIACAO' || s === 'FOLLOW_UP' || s === 'SCHEDULED' || s === 'AGENDADO') return 'NEGOTIATION';
   return 'NEW';
 }
 

@@ -67,15 +67,57 @@ const BADGE_SIZE_MAP = {
   xl: 'w-3.5 h-3.5 bottom-1 right-1',
 };
 
+const avatarCache = new Map<string, string | null>();
+
 export const ContactAvatar: React.FC<ContactAvatarProps> = ({
   name,
   phone,
-  avatarUrl,
+  avatarUrl: initialAvatarUrl,
   size = 'md',
   showOnlineBadge = false,
   className = '',
 }) => {
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(() => {
+    if (initialAvatarUrl) return initialAvatarUrl;
+    if (phone) {
+      const clean = phone.replace(/\D/g, '');
+      return avatarCache.get(clean) || null;
+    }
+    return null;
+  });
   const [imageError, setImageError] = useState(false);
+
+  React.useEffect(() => {
+    if (initialAvatarUrl) {
+      setAvatarUrl(initialAvatarUrl);
+      return;
+    }
+    if (!phone) return;
+
+    const clean = phone.replace(/\D/g, '');
+    if (!clean) return;
+
+    if (avatarCache.has(clean)) {
+      setAvatarUrl(avatarCache.get(clean) || null);
+      return;
+    }
+
+    // Auto-fetch profile picture from WAHA backend
+    fetch(`/api/v1/workspaces/11111111-1111-1111-1111-111111111111/contacts/${clean}/profile-picture`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.url) {
+          avatarCache.set(clean, data.url);
+          setAvatarUrl(data.url);
+        } else {
+          avatarCache.set(clean, null);
+        }
+      })
+      .catch(() => {
+        avatarCache.set(clean, null);
+      });
+  }, [initialAvatarUrl, phone]);
+
   const seed = name || phone || 'contact';
   const gradient = getDeterministicGradient(seed);
   const initials = getInitials(name, phone);

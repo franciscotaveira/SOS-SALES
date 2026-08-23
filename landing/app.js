@@ -80,46 +80,69 @@ document.addEventListener('DOMContentLoaded', () => {
     bubble.className = 'p-3.5 rounded-2xl bg-[#DCFCE7] border border-green-200 text-slate-900 ml-6 shadow-sm animate-fadeIn';
     bubble.innerHTML = `
       <div class="flex items-center justify-between text-[10px] text-green-800 font-bold mb-1">
-        <span>Você (Atendente Comercial)</span>
+        <span>Você (Via Meta Cloud API Oficial)</span>
         <span class="text-green-700 flex items-center gap-1 font-mono">14:41 <span class="text-blue-600 font-bold">✓✓</span></span>
       </div>
       <p class="leading-relaxed text-xs text-slate-800">${lead.copilot}</p>
     `;
     chatBox.appendChild(bubble);
     chatBox.scrollTop = chatBox.scrollHeight;
-    showNotification('✓ Resposta enviada com sucesso no WhatsApp!');
+    showNotification('✓ Resposta oficial WABA enviada com entrega garantida!');
   });
 
-  // PIX button
+  // Native WABA Pix button
   document.getElementById('sim-btn-pix')?.addEventListener('click', () => {
     const lead = LEADS_DATA[selectedLead];
     const chatBox = document.getElementById('sim-chat-box');
     if (!chatBox) return;
 
     const bubble = document.createElement('div');
-    bubble.className = 'p-3.5 rounded-2xl bg-white border border-slate-200 text-slate-900 ml-6 font-mono text-[11px] shadow-sm animate-fadeIn';
+    bubble.className = 'p-4 rounded-2xl bg-white border-2 border-emerald-500 text-slate-900 ml-6 shadow-md animate-fadeIn';
     bubble.innerHTML = `
-      <div class="flex items-center justify-between text-[10px] text-green-700 font-bold mb-1">
-        <span>⚡ Chave PIX Dinâmica (${lead.val})</span>
-        <span class="text-slate-400 font-mono">14:41</span>
+      <div class="flex items-center justify-between text-[10px] text-emerald-800 font-bold pb-2 border-b border-slate-100">
+        <span class="flex items-center gap-1">💳 Cobrança Pix Nativa Meta</span>
+        <span class="text-emerald-700 font-mono">14:41 • WABA</span>
       </div>
-      <div class="bg-slate-50 p-2.5 rounded-xl text-slate-700 break-all select-all border border-slate-200 text-[10px]">
-        00020126580014br.gov.bcb.pix0136mct-sos-sales-pix-20265204000053039865802BR
+      <div class="mt-2.5">
+        <div class="text-xs font-bold text-slate-900">${lead.company} — ${lead.facts[0]?.replace('🎯 ', '') || 'Serviço Exclusivo'}</div>
+        <div class="text-lg font-display font-black text-emerald-600 mt-0.5">${lead.val}</div>
       </div>
-      <div class="mt-2 flex items-center justify-between text-[10px] text-slate-500 font-sans">
-        <span>Gateway: AbacatePay (Taxa R$ 0,80)</span>
-        <span class="text-green-600 font-bold">Aguardando Pagamento</span>
+      <div class="mt-3 flex gap-2">
+        <button class="flex-1 py-2 bg-emerald-600 text-white rounded-xl font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs">
+          <span>Copiar Código Pix</span>
+        </button>
+        <button class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-[11px]">
+          Detalhes
+        </button>
+      </div>
+      <div class="mt-2 text-[10px] text-slate-400 flex items-center justify-between font-sans">
+        <span>Padrão Banco Central</span>
+        <span class="text-emerald-600 font-bold">● Aguardando Pagamento</span>
       </div>
     `;
     chatBox.appendChild(bubble);
     chatBox.scrollTop = chatBox.scrollHeight;
-    showNotification('⚡ Chave PIX gerada no chat com taxa de R$ 0,80');
+    showNotification('⚡ Cartão Pix Nativo WABA gerado com botão de 1 clique!');
   });
 
   // Won button
   document.getElementById('sim-btn-won')?.addEventListener('click', () => {
     const lead = LEADS_DATA[selectedLead];
-    showNotification(`🏆 Venda de ${lead.val} fechada! Evento Purchase enviado ao Meta CAPI.`);
+    const chatBox = document.getElementById('sim-chat-box');
+    if (chatBox) {
+      const bubble = document.createElement('div');
+      bubble.className = 'p-3 rounded-2xl bg-emerald-900 text-white ml-6 shadow-md text-xs animate-fadeIn';
+      bubble.innerHTML = `
+        <div class="flex items-center justify-between text-[10px] text-emerald-300 font-bold mb-1">
+          <span>🎉 Pagamento Confirmado via Webhook</span>
+          <span class="font-mono">14:42</span>
+        </div>
+        <p class="text-[11px] text-emerald-100 font-medium">Pix de <strong>${lead.val}</strong> recebido. Pedido alterado para <strong>GANHO</strong> e evento <strong>Purchase</strong> disparado no Meta CAPI!</p>
+      `;
+      chatBox.appendChild(bubble);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+    showNotification(`🏆 Venda de ${lead.val} confirmada! Meta CAPI otimizado com sucesso.`);
   });
 });
 

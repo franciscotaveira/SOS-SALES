@@ -763,7 +763,9 @@ function AuthenticatedApp() {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
+  const [resetMessage, setResetMessage] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isResetting, setIsResetting] = React.useState(false);
 
   if (auth.isLoading) {
     return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-sm text-slate-200">Validando sessão segura…</div>;
@@ -773,6 +775,7 @@ function AuthenticatedApp() {
     const submit = async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       setError(null);
+      setResetMessage(null);
       setIsSubmitting(true);
       try {
         await auth.signInWithPassword(email, password);
@@ -780,6 +783,24 @@ function AuthenticatedApp() {
         setError(signInError instanceof Error ? signInError.message : 'Não foi possível iniciar a sessão.');
       } finally {
         setIsSubmitting(false);
+      }
+    };
+
+    const handleForgotPassword = async () => {
+      if (!email || !email.includes('@')) {
+        setError('Por favor, digite seu e-mail corporativo acima para redefinir a senha.');
+        return;
+      }
+      setError(null);
+      setResetMessage(null);
+      setIsResetting(true);
+      try {
+        await auth.resetPasswordForEmail(email);
+        setResetMessage(`E-mail de redefinição enviado para ${email}. Verifique sua caixa de entrada!`);
+      } catch (resetErr) {
+        setError(resetErr instanceof Error ? resetErr.message : 'Falha ao solicitar redefinição de senha.');
+      } finally {
+        setIsResetting(false);
       }
     };
 
@@ -816,9 +837,19 @@ function AuthenticatedApp() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Senha de Acesso
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Senha de Acesso
+                </label>
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={isResetting}
+                  className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer disabled:opacity-50"
+                >
+                  {isResetting ? 'Enviando link…' : 'Esqueceu a senha?'}
+                </button>
+              </div>
               <input
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -833,6 +864,12 @@ function AuthenticatedApp() {
             {error && (
               <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-800 font-medium leading-relaxed">
                 ⚠️ {error}
+              </div>
+            )}
+
+            {resetMessage && (
+              <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-800 font-medium leading-relaxed">
+                ✅ {resetMessage}
               </div>
             )}
 

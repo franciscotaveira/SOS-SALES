@@ -35,7 +35,7 @@ import {
 import { MonthlyCalendarView } from './MonthlyCalendarView';
 import { WeeklyCalendarView } from './WeeklyCalendarView';
 import { DailyCalendarView } from './DailyCalendarView';
-import { ExternalAgendaDrawer } from '../cockpit/ExternalAgendaDrawer';
+import { ExternalAgendaDrawer, getExternalAgendaConfig } from '../cockpit/ExternalAgendaDrawer';
 import { SalesOsGateway } from '../../services/salesOsGateway';
 import { salesOsRuntimeConfig } from '../../config/runtime';
 import { getSupabaseClient } from '../../services/supabaseAuth';
@@ -53,9 +53,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
   gateway,
 }) => {
   const commercialConfig = useMemo(() => getWorkspaceCommercialConfig(workspace.id), [workspace.id]);
+  const externalAgendaConfig = useMemo(() => getExternalAgendaConfig(workspace.id), [workspace.id]);
   const isHairSalon = (commercialConfig.businessType === 'hair_salon') || (workspace.id || '').toLowerCase().includes('haven') || (workspace.name || '').toLowerCase().includes('haven');
-  const isTrinksClient = (commercialConfig.agendaProviderName || '').toLowerCase().includes('trinks') || (workspace.id || '').toLowerCase().includes('haven');
-  const agendaButtonLabel = commercialConfig.agendaProviderName || (isTrinksClient ? "Grade Trinks (Haven)" : "Grade de Vagas");
+  const agendaButtonLabel = externalAgendaConfig.providerLabel || commercialConfig.agendaProviderName || "Google Agenda & Vagas";
 
   const [viewMode, setViewMode] = useState<'list' | 'month' | 'week' | 'day'>('list');
   const [appointments, setAppointments] = useState<CommercialAppointment[]>(() =>
@@ -453,7 +453,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
                       <span className="font-bold text-slate-900 truncate">
                         {alarm.leadName}
                       </span>
-                      <span className="text-[10px] font-mono font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">
+                      <span className="text-xs font-mono font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">
                         {alarm.triggerAt.split('T')[1]?.substring(0, 5) || 'Hoje'}
                       </span>
                     </div>
@@ -463,13 +463,13 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px]">
-                    <span className="text-slate-400 font-mono text-[10px]">
+                    <span className="text-slate-400 font-mono text-xs">
                       {alarm.leadPhone}
                     </span>
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => handleCompleteAlarm(alarm.id)}
-                        className="px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:text-emerald-700 bg-slate-50 hover:bg-emerald-50 rounded border border-slate-200 transition-colors"
+                        className="px-2 py-0.5 text-xs font-bold text-slate-600 hover:text-emerald-700 bg-slate-50 hover:bg-emerald-50 rounded border border-slate-200 transition-colors"
                         title="Marcar como concluído"
                       >
                         ✓ Feito
@@ -477,7 +477,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
                       {onGoToCockpitWithJourney && (
                         <button
                           onClick={() => onGoToCockpitWithJourney(alarm.journeyId)}
-                          className="px-2 py-0.5 text-[10px] font-bold text-white bg-[#00a884] hover:bg-[#008069] rounded transition-colors flex items-center gap-1"
+                          className="px-2 py-0.5 text-xs font-bold text-white bg-[#00a884] hover:bg-[#008069] rounded transition-colors flex items-center gap-1"
                         >
                           <span>Atender</span>
                           <ArrowRight className="w-2.5 h-2.5" />
@@ -594,7 +594,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
                 >
                   <div className="flex items-start sm:items-center gap-3.5 min-w-0">
                     <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex flex-col items-center justify-center shrink-0 shadow-xs">
-                      <span className="text-[10px] font-bold text-emerald-400 uppercase">
+                      <span className="text-xs font-bold text-emerald-400 uppercase">
                         {dateFormatted === '2026-08-15' ? 'HOJE' : dateFormatted === '2026-08-16' ? 'DOM' : 'DATA'}
                       </span>
                       <span className="text-xs font-black font-mono">
@@ -609,7 +609,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
                         </h4>
                         {getStatusBadge(apt.status)}
                         {apt.source === 'bot_ai' && (
-                          <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-100 px-1.5 py-0.2 rounded font-semibold flex items-center gap-1">
+                          <span className="text-xs text-purple-700 bg-purple-50 border border-purple-100 px-1.5 py-0.2 rounded font-semibold flex items-center gap-1">
                             <Bot className="w-2.5 h-2.5 text-purple-600" /> IA Copilot
                           </span>
                         )}

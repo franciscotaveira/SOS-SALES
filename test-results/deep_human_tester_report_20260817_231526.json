@@ -1,0 +1,159 @@
+{
+  "timestamp": "2026-08-17T23:13:09.706022",
+  "url": "http://localhost:3000",
+  "tests": [
+    {
+      "name": "Nav: Cockpit",
+      "status": "passed",
+      "details": "View loaded, 261 chars",
+      "screenshot": "test-results/screenshots/nav_cockpit_231320.png"
+    },
+    {
+      "name": "Nav: Conversas",
+      "status": "passed",
+      "details": "View loaded, 261 chars",
+      "screenshot": "test-results/screenshots/nav_conversas_231323.png"
+    },
+    {
+      "name": "Nav: Agenda",
+      "status": "warning",
+      "details": "Button not found: text=Agenda",
+      "screenshot": null
+    },
+    {
+      "name": "Nav: Grupos",
+      "status": "warning",
+      "details": "Button not found: text=Grupos",
+      "screenshot": null
+    },
+    {
+      "name": "Nav: Resultados",
+      "status": "warning",
+      "details": "Button not found: text=Resultados",
+      "screenshot": null
+    },
+    {
+      "name": "Nav: Intelig\u00eancia",
+      "status": "warning",
+      "details": "Button not found: text=Intelig\u00eancia",
+      "screenshot": null
+    },
+    {
+      "name": "Nav: Configura\u00e7\u00f5es",
+      "status": "warning",
+      "details": "Button not found: text=Configura\u00e7\u00f5es",
+      "screenshot": null
+    },
+    {
+      "name": "Cockpit: Content sections",
+      "status": "warning",
+      "details": "Minimal structured content: 261 chars",
+      "screenshot": "test-results/screenshots/cockpit_deep_231326.png"
+    },
+    {
+      "name": "Conversas: Content sections",
+      "status": "passed",
+      "details": "Content detected via text: 261 chars",
+      "screenshot": "test-results/screenshots/conversas_deep_231331.png"
+    },
+    {
+      "name": "Agenda: Content sections",
+      "status": "failed",
+      "details": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"text=Agenda\").first\n",
+      "screenshot": null
+    },
+    {
+      "name": "Grupos: Content sections",
+      "status": "failed",
+      "details": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"text=Grupos\").first\n",
+      "screenshot": null
+    },
+    {
+      "name": "Resultados: Content sections",
+      "status": "failed",
+      "details": "Locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"text=Resultados\").first\n",
+      "screenshot": null
+    },
+    {
+      "name": "Intelig\u00eancia: Content sections",
+      "status": "passed",
+      "details": "Content detected via text: 3298 chars",
+      "screenshot": "test-results/screenshots/inteligencia_deep_231517.png"
+    },
+    {
+      "name": "Configura\u00e7\u00f5es: Content sections",
+      "status": "passed",
+      "details": "Content detected via text: 1702 chars",
+      "screenshot": "test-results/screenshots/configuracoes_deep_231521.png"
+    },
+    {
+      "name": "Modal: WABA Connection",
+      "status": "warning",
+      "details": "Button clicked but no modal detected",
+      "screenshot": "test-results/screenshots/modal_waba_231525.png"
+    },
+    {
+      "name": "Accessibility: Images with alt",
+      "status": "passed",
+      "details": "Images without alt: 0",
+      "screenshot": null
+    },
+    {
+      "name": "Accessibility: Buttons labeled",
+      "status": "passed",
+      "details": "Buttons without accessible name: 0",
+      "screenshot": null
+    },
+    {
+      "name": "Performance: DOM Content Loaded",
+      "status": "passed",
+      "details": "0ms",
+      "screenshot": null
+    },
+    {
+      "name": "Performance: Load Complete",
+      "status": "passed",
+      "details": "0ms",
+      "screenshot": null
+    }
+  ],
+  "console_errors": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "location": {
+        "url": "http://localhost:3000/favicon.ico",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 ()",
+      "location": {
+        "url": "https://yiiuebhyqixzluguxsqi.supabase.co/auth/v1/token?grant_type=password",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    }
+  ],
+  "screenshots": [
+    "test-results/screenshots/nav_cockpit_231320.png",
+    "test-results/screenshots/nav_conversas_231323.png",
+    "test-results/screenshots/cockpit_deep_231326.png",
+    "test-results/screenshots/conversas_deep_231331.png",
+    "test-results/screenshots/inteligencia_deep_231517.png",
+    "test-results/screenshots/configuracoes_deep_231521.png",
+    "test-results/screenshots/modal_waba_231525.png"
+  ],
+  "summary": {
+    "total": 19,
+    "passed": 9,
+    "failed": 3,
+    "warnings": 7
+  }
+}

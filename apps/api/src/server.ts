@@ -36,7 +36,10 @@ import { CompositeDependencyHealthProvider } from './infrastructure/health/compo
 import { createProductionRuntimeFromEnvironment } from './infrastructure/runtime/production-runtime.js';
 import { Redis } from 'ioredis';
 
+import { validateLabEnvironmentIsolation } from './infrastructure/security/lab-environment-guard.js';
+
 dotenv.config();
+validateLabEnvironmentIsolation();
 
 export interface RuntimeDependencies {
   secretProvider: WebhookSecretProvider;
@@ -156,10 +159,10 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
   const lidIdentityResolver = wahaBaseUrl && wahaApiKey
     ? new WahaLidIdentityResolver({ baseUrl: wahaBaseUrl, apiKey: wahaApiKey })
     : undefined;
-  const jwtIssuer = process.env.SUPABASE_JWT_ISSUER?.trim();
-  const jwksUrl = process.env.SUPABASE_JWKS_URL?.trim();
+  const jwtIssuer = (process.env.LAB_SUPABASE_JWT_ISSUER || process.env.SUPABASE_JWT_ISSUER)?.trim();
+  const jwksUrl = (process.env.LAB_SUPABASE_JWKS_URL || process.env.SUPABASE_JWKS_URL)?.trim();
   if (Boolean(jwtIssuer) !== Boolean(jwksUrl)) {
-    throw new Error('SUPABASE_JWT_ISSUER and SUPABASE_JWKS_URL must be configured together');
+    throw new Error('SUPABASE_JWT_ISSUER (or LAB_SUPABASE_JWT_ISSUER) and SUPABASE_JWKS_URL (or LAB_SUPABASE_JWKS_URL) must be configured together');
   }
   const authenticator = jwtIssuer && jwksUrl
     ? new SupabaseJwtAuthenticator({
@@ -257,7 +260,7 @@ async function startComposedServer(
   const port = options.port ?? Number(process.env.PORT || 4334);
   const host = options.host ?? process.env.HOST ?? '0.0.0.0';
 
-  const isCustomOrTestRuntime = process.env.NODE_ENV === 'test' || Boolean(options.runtime) || Boolean(options.runtimeFactory) || Boolean(process.env.SOS_SALES_RUNTIME_FACTORY);
+  const isCustomOrTestRuntime = process.env.NODE_ENV === 'test' || Boolean(options.runtime) || Boolean(process.env.SOS_SALES_RUNTIME_FACTORY);
   const metaVerifyToken = process.env.META_VERIFY_TOKEN?.trim() || (isCustomOrTestRuntime ? 'test_verify_token' : '');
   const metaAppSecret = process.env.META_APP_SECRET?.trim() || (isCustomOrTestRuntime ? 'test_app_secret' : '');
   if (!metaVerifyToken || !metaAppSecret) {
@@ -300,7 +303,7 @@ async function startComposedServer(
   let outboundWorker: WahaOutboundWorker | undefined;
   if (runtime.outboundDispatchGateway) {
     const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim() || 'http://sos-sales-waha:3000';
-    const wahaApiKey = process.env.WAHA_API_KEY?.trim() || 'mct_sos_waha_master_2026';
+    const wahaApiKey = process.env.WAHA_API_KEY?.trim() || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
     const outboundAdapter = new WahaOutboundAdapter({ endpoint: wahaBaseUrl, apiKey: wahaApiKey });
     outboundWorker = new WahaOutboundWorker({
       dispatchGateway: runtime.outboundDispatchGateway,

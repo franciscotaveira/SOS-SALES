@@ -79,14 +79,15 @@ export class PostgresWorkspaceProvisioningGateway implements WorkspaceProvisioni
       );
       const membership = memResult.rows[0];
 
-      // 4. Create default channel connection (WAHA DISCONNECTED)
+      // 4. Create default channel connection (WAHA DISCONNECTED with dedicated session)
+      const sessionName = `ws_${ws.id.replace(/-/g, '')}`;
       const chanResult = await client.query<{ id: string }>(
         `INSERT INTO public.channel_connections (
            workspace_id, provider, phone_number, name, status, public_config
          ) VALUES (
            $1, 'waha', 'pending', 'WhatsApp Principal (WAHA)', 'DISCONNECTED', $2
          ) RETURNING id`,
-        [ws.id, JSON.stringify({ autoCreated: true, session: 'default' })],
+        [ws.id, JSON.stringify({ autoCreated: true, session: sessionName })],
       );
       const channel = chanResult.rows[0];
 

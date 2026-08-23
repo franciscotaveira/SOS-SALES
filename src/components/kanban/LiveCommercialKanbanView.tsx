@@ -57,28 +57,28 @@ const SALON_PIPELINES: PipelineDefinition[] = [
         id: 'LEAD',
         title: '1. Novos Leads',
         subtitle: 'Sem contato / Aguardando',
-        badgeBg: 'bg-blue-100',
-        badgeText: 'text-blue-800',
-        headerBorder: 'border-blue-200',
-        accentColor: 'border-l-blue-500',
+        badgeBg: 'bg-[var(--sos-operational-subtle)]',
+        badgeText: 'text-[var(--sos-operational)]',
+        headerBorder: 'border-[var(--sos-operational)]',
+        accentColor: 'border-l-[var(--sos-operational)]',
       },
       {
         id: 'QUALIFICADO',
         title: '2. Qualificados',
         subtitle: 'Fatos e dor mapeados',
-        badgeBg: 'bg-purple-100',
-        badgeText: 'text-purple-800',
-        headerBorder: 'border-purple-200',
-        accentColor: 'border-l-purple-500',
+        badgeBg: 'bg-[var(--sos-ai-subtle)]',
+        badgeText: 'text-[var(--sos-ai)]',
+        headerBorder: 'border-[var(--sos-ai)]',
+        accentColor: 'border-l-[var(--sos-ai)]',
       },
       {
         id: 'PROPOSTA',
         title: '3. Proposta',
         subtitle: 'Valores ou catálogo enviado',
-        badgeBg: 'bg-amber-100',
-        badgeText: 'text-amber-800',
-        headerBorder: 'border-amber-200',
-        accentColor: 'border-l-amber-500',
+        badgeBg: 'bg-[var(--sos-warning-subtle)]',
+        badgeText: 'text-[var(--sos-warning)]',
+        headerBorder: 'border-[var(--sos-warning)]',
+        accentColor: 'border-l-[var(--sos-warning)]',
       },
       {
         id: 'NEGOCIACAO',
@@ -93,10 +93,10 @@ const SALON_PIPELINES: PipelineDefinition[] = [
         id: 'GANHO',
         title: '5. Fechados (Ganho)',
         subtitle: 'Agendado / Venda confirmada',
-        badgeBg: 'bg-emerald-100',
-        badgeText: 'text-emerald-800',
-        headerBorder: 'border-emerald-200',
-        accentColor: 'border-l-emerald-500',
+        badgeBg: 'bg-[var(--sos-action-subtle)]',
+        badgeText: 'text-[var(--sos-action)]',
+        headerBorder: 'border-[var(--sos-action)]',
+        accentColor: 'border-l-[var(--sos-action)]',
       },
     ],
   },
@@ -109,28 +109,28 @@ const SALON_PIPELINES: PipelineDefinition[] = [
         id: 'LEAD',
         title: '1. Novo Lead',
         subtitle: 'Primeiro contato WhatsApp',
-        badgeBg: 'bg-blue-100',
-        badgeText: 'text-blue-800',
-        headerBorder: 'border-blue-200',
-        accentColor: 'border-l-blue-500',
+        badgeBg: 'bg-[var(--sos-operational-subtle)]',
+        badgeText: 'text-[var(--sos-operational)]',
+        headerBorder: 'border-[var(--sos-operational)]',
+        accentColor: 'border-l-[var(--sos-operational)]',
       },
       {
         id: 'QUALIFICADO',
         title: '2. Tipo de Cabelo',
         subtitle: 'Tamanho e curvatura mapeados',
-        badgeBg: 'bg-purple-100',
-        badgeText: 'text-purple-800',
-        headerBorder: 'border-purple-200',
-        accentColor: 'border-l-purple-500',
+        badgeBg: 'bg-[var(--sos-ai-subtle)]',
+        badgeText: 'text-[var(--sos-ai)]',
+        headerBorder: 'border-[var(--sos-ai)]',
+        accentColor: 'border-l-[var(--sos-ai)]',
       },
       {
         id: 'PROPOSTA',
         title: '3. Protocolo Indicado',
         subtitle: 'Escova Express ou Tratamento',
-        badgeBg: 'bg-amber-100',
-        badgeText: 'text-amber-800',
-        headerBorder: 'border-amber-200',
-        accentColor: 'border-l-amber-500',
+        badgeBg: 'bg-[var(--sos-warning-subtle)]',
+        badgeText: 'text-[var(--sos-warning)]',
+        headerBorder: 'border-[var(--sos-warning)]',
+        accentColor: 'border-l-[var(--sos-warning)]',
       },
       {
         id: 'NEGOCIACAO',
@@ -145,10 +145,10 @@ const SALON_PIPELINES: PipelineDefinition[] = [
         id: 'GANHO',
         title: '5. Agendamento Fechado',
         subtitle: 'Horário reservado com sucesso',
-        badgeBg: 'bg-emerald-100',
-        badgeText: 'text-emerald-800',
-        headerBorder: 'border-emerald-200',
-        accentColor: 'border-l-emerald-500',
+        badgeBg: 'bg-[var(--sos-action-subtle)]',
+        badgeText: 'text-[var(--sos-action)]',
+        headerBorder: 'border-[var(--sos-action)]',
+        accentColor: 'border-l-[var(--sos-action)]',
       },
     ],
   },
@@ -161,10 +161,10 @@ const SALON_PIPELINES: PipelineDefinition[] = [
         id: 'LEAD',
         title: '1. Dúvida / Contato',
         subtitle: 'Interesse em unhas',
-        badgeBg: 'bg-blue-100',
-        badgeText: 'text-blue-800',
-        headerBorder: 'border-blue-200',
-        accentColor: 'border-l-blue-500',
+        badgeBg: 'bg-[var(--sos-operational-subtle)]',
+        badgeText: 'text-[var(--sos-operational)]',
+        headerBorder: 'border-[var(--sos-operational)]',
+        accentColor: 'border-l-[var(--sos-operational)]',
       },
       {
         id: 'QUALIFICADO',
@@ -179,10 +179,10 @@ const SALON_PIPELINES: PipelineDefinition[] = [
         id: 'PROPOSTA',
         title: '3. Tabela & Pacote',
         subtitle: 'Valores de aplicação/manutenção',
-        badgeBg: 'bg-amber-100',
-        badgeText: 'text-amber-800',
-        headerBorder: 'border-amber-200',
-        accentColor: 'border-l-amber-500',
+        badgeBg: 'bg-[var(--sos-warning-subtle)]',
+        badgeText: 'text-[var(--sos-warning)]',
+        headerBorder: 'border-[var(--sos-warning)]',
+        accentColor: 'border-l-[var(--sos-warning)]',
       },
       {
         id: 'NEGOCIACAO',
@@ -197,10 +197,10 @@ const SALON_PIPELINES: PipelineDefinition[] = [
         id: 'GANHO',
         title: '5. Procedimento Agendado',
         subtitle: 'Horário confirmado no sistema',
-        badgeBg: 'bg-emerald-100',
-        badgeText: 'text-emerald-800',
-        headerBorder: 'border-emerald-200',
-        accentColor: 'border-l-emerald-500',
+        badgeBg: 'bg-[var(--sos-action-subtle)]',
+        badgeText: 'text-[var(--sos-action)]',
+        headerBorder: 'border-[var(--sos-action)]',
+        accentColor: 'border-l-[var(--sos-action)]',
       },
     ],
   },
@@ -222,19 +222,19 @@ const SALON_PIPELINES: PipelineDefinition[] = [
         id: 'QUALIFICADO',
         title: '2. Briefing da Produção',
         subtitle: 'Make, Penteado e Madrinhas',
-        badgeBg: 'bg-purple-100',
-        badgeText: 'text-purple-800',
-        headerBorder: 'border-purple-200',
-        accentColor: 'border-l-purple-500',
+        badgeBg: 'bg-[var(--sos-ai-subtle)]',
+        badgeText: 'text-[var(--sos-ai)]',
+        headerBorder: 'border-[var(--sos-ai)]',
+        accentColor: 'border-l-[var(--sos-ai)]',
       },
       {
         id: 'PROPOSTA',
         title: '3. Proposta Personalizada',
         subtitle: 'Pacote Dia da Noiva enviado',
-        badgeBg: 'bg-amber-100',
-        badgeText: 'text-amber-800',
-        headerBorder: 'border-amber-200',
-        accentColor: 'border-l-amber-500',
+        badgeBg: 'bg-[var(--sos-warning-subtle)]',
+        badgeText: 'text-[var(--sos-warning)]',
+        headerBorder: 'border-[var(--sos-warning)]',
+        accentColor: 'border-l-[var(--sos-warning)]',
       },
       {
         id: 'NEGOCIACAO',
@@ -249,10 +249,10 @@ const SALON_PIPELINES: PipelineDefinition[] = [
         id: 'GANHO',
         title: '5. Contrato Assinado',
         subtitle: 'Data e equipe reservadas',
-        badgeBg: 'bg-emerald-100',
-        badgeText: 'text-emerald-800',
-        headerBorder: 'border-emerald-200',
-        accentColor: 'border-l-emerald-500',
+        badgeBg: 'bg-[var(--sos-action-subtle)]',
+        badgeText: 'text-[var(--sos-action)]',
+        headerBorder: 'border-[var(--sos-action)]',
+        accentColor: 'border-l-[var(--sos-action)]',
       },
     ],
   },
@@ -268,28 +268,28 @@ const UNIVERSAL_PIPELINES: PipelineDefinition[] = [
         id: 'LEAD',
         title: '1. Novos Leads',
         subtitle: 'Primeiro contato / Aguardando',
-        badgeBg: 'bg-blue-100',
-        badgeText: 'text-blue-800',
-        headerBorder: 'border-blue-200',
-        accentColor: 'border-l-blue-500',
+        badgeBg: 'bg-[var(--sos-operational-subtle)]',
+        badgeText: 'text-[var(--sos-operational)]',
+        headerBorder: 'border-[var(--sos-operational)]',
+        accentColor: 'border-l-[var(--sos-operational)]',
       },
       {
         id: 'QUALIFICADO',
         title: '2. Qualificados',
         subtitle: 'Perfil e interesse confirmados',
-        badgeBg: 'bg-purple-100',
-        badgeText: 'text-purple-800',
-        headerBorder: 'border-purple-200',
-        accentColor: 'border-l-purple-500',
+        badgeBg: 'bg-[var(--sos-ai-subtle)]',
+        badgeText: 'text-[var(--sos-ai)]',
+        headerBorder: 'border-[var(--sos-ai)]',
+        accentColor: 'border-l-[var(--sos-ai)]',
       },
       {
         id: 'PROPOSTA',
         title: '3. Proposta Enviada',
         subtitle: 'Orçamento ou catálogo em análise',
-        badgeBg: 'bg-amber-100',
-        badgeText: 'text-amber-800',
-        headerBorder: 'border-amber-200',
-        accentColor: 'border-l-amber-500',
+        badgeBg: 'bg-[var(--sos-warning-subtle)]',
+        badgeText: 'text-[var(--sos-warning)]',
+        headerBorder: 'border-[var(--sos-warning)]',
+        accentColor: 'border-l-[var(--sos-warning)]',
       },
       {
         id: 'NEGOCIACAO',
@@ -304,10 +304,10 @@ const UNIVERSAL_PIPELINES: PipelineDefinition[] = [
         id: 'GANHO',
         title: '5. Venda Fechada',
         subtitle: 'Contrato / Pagamento confirmado',
-        badgeBg: 'bg-emerald-100',
-        badgeText: 'text-emerald-800',
-        headerBorder: 'border-emerald-200',
-        accentColor: 'border-l-emerald-500',
+        badgeBg: 'bg-[var(--sos-action-subtle)]',
+        badgeText: 'text-[var(--sos-action)]',
+        headerBorder: 'border-[var(--sos-action)]',
+        accentColor: 'border-l-[var(--sos-action)]',
       },
     ],
   },
@@ -329,19 +329,19 @@ const UNIVERSAL_PIPELINES: PipelineDefinition[] = [
         id: 'QUALIFICADO',
         title: '2. Mensagem Enviada',
         subtitle: 'Campanha de reativação disparada',
-        badgeBg: 'bg-blue-100',
-        badgeText: 'text-blue-800',
-        headerBorder: 'border-blue-200',
-        accentColor: 'border-l-blue-500',
+        badgeBg: 'bg-[var(--sos-operational-subtle)]',
+        badgeText: 'text-[var(--sos-operational)]',
+        headerBorder: 'border-[var(--sos-operational)]',
+        accentColor: 'border-l-[var(--sos-operational)]',
       },
       {
         id: 'PROPOSTA',
         title: '3. Respondeu / Interesse',
         subtitle: 'Retomou contato comercial',
-        badgeBg: 'bg-amber-100',
-        badgeText: 'text-amber-800',
-        headerBorder: 'border-amber-200',
-        accentColor: 'border-l-amber-500',
+        badgeBg: 'bg-[var(--sos-warning-subtle)]',
+        badgeText: 'text-[var(--sos-warning)]',
+        headerBorder: 'border-[var(--sos-warning)]',
+        accentColor: 'border-l-[var(--sos-warning)]',
       },
       {
         id: 'NEGOCIACAO',
@@ -356,10 +356,10 @@ const UNIVERSAL_PIPELINES: PipelineDefinition[] = [
         id: 'GANHO',
         title: '5. Reativado com Sucesso',
         subtitle: 'Nova compra realizada',
-        badgeBg: 'bg-emerald-100',
-        badgeText: 'text-emerald-800',
-        headerBorder: 'border-emerald-200',
-        accentColor: 'border-l-emerald-500',
+        badgeBg: 'bg-[var(--sos-action-subtle)]',
+        badgeText: 'text-[var(--sos-action)]',
+        headerBorder: 'border-[var(--sos-action)]',
+        accentColor: 'border-l-[var(--sos-action)]',
       },
     ],
   },
@@ -602,29 +602,29 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   const conversionRate = filtered.length > 0 ? Math.round((wonCount / filtered.length) * 100) : 0;
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/50 text-slate-900 p-2 sm:p-4 overflow-hidden w-full space-y-3">
+    <div className="flex flex-col h-full bg-[var(--sos-canvas)] text-[var(--sos-ink)] p-2 sm:p-3 overflow-hidden w-full space-y-2.5">
       {/* Header com Seletor de Pipelines & Controles */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200 shrink-0">
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pb-2.5 border-b border-[var(--sos-border)] shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5">
           <div>
-            <h1 className="text-xl font-bold text-slate-950 font-heading tracking-tight flex items-center gap-2">
-              <Columns3 className="w-5 h-5 text-emerald-600" /> Funil Comercial Ao Vivo
+            <h1 className="text-lg font-bold text-[var(--sos-ink)] font-heading tracking-tight flex items-center gap-2">
+              <Columns3 className="w-4.5 h-4.5 text-[var(--sos-action)]" /> Funil Comercial Ao Vivo
             </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-[var(--sos-muted)] mt-0.5">
               Supervisão de fluxos por serviço com movimentação rápida de etapas.
             </p>
           </div>
 
           {/* Seletor de Pipeline Multi-Funil Dinâmico */}
-          <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+          <div className="flex items-center gap-1 bg-[var(--sos-surface)] p-1 rounded-lg border border-[var(--sos-border)] shadow-2xs">
             {availablePipelines.map((pipe) => (
               <button
                 key={pipe.id}
                 onClick={() => setActivePipelineId(pipe.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                className={`px-2.5 py-0.5 rounded-md text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
                   activePipelineId === pipe.id
-                    ? 'bg-slate-900 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                    ? 'bg-[var(--sos-ink)] text-white shadow-2xs'
+                    : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-border)]'
                 }`}
               >
                 <span>{pipe.icon}</span>
@@ -634,97 +634,97 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-[var(--sos-muted)] absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar no funil..."
-              className="pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors w-48 sm:w-56 shadow-2xs"
+              className="pl-8 pr-2.5 py-1.5 bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-lg text-xs text-[var(--sos-ink)] placeholder-[var(--sos-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--sos-action)]/20 focus:border-[var(--sos-action)] transition-colors w-44 sm:w-52 shadow-2xs"
             />
           </div>
 
           <button
             type="button"
             onClick={() => setIsStartModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer shrink-0"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--sos-action)] hover:bg-[var(--sos-action-hover)] text-white rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer shrink-0"
             title="Iniciar Nova Conversa WhatsApp"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3 h-3" />
             <span>Novo Lead</span>
           </button>
 
           <button
             onClick={() => fetchJourneys()}
             disabled={loading}
-            className="p-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-slate-600 hover:text-slate-900 transition-colors shadow-2xs cursor-pointer"
+            className="p-1.5 bg-[var(--sos-surface)] hover:bg-[var(--sos-border)] border border-[var(--sos-border)] rounded-lg text-[var(--sos-muted)] hover:text-[var(--sos-ink)] transition-colors shadow-2xs cursor-pointer"
             title="Atualizar funil"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* KPI Ribbon Financeiro do Funil */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
-        <div className="bg-white border border-slate-200 p-2.5 rounded-xl flex items-center justify-between shadow-2xs">
+      {/* KPI Ribbon Financeiro do Funil - compact */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+        <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] p-2 rounded-lg flex items-center justify-between shadow-2xs">
           <div>
-            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Pipeline Ativo</span>
-            <span className="text-sm font-extrabold text-slate-900 font-mono">
+            <span className="text-xs uppercase font-bold text-[var(--sos-muted)] block tracking-wider">Pipeline Ativo</span>
+            <span className="text-sm font-extrabold text-[var(--sos-ink)] font-mono">
               R$ {totalPipelineValue.toLocaleString('pt-BR')}
             </span>
           </div>
-          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-border)] text-[var(--sos-muted)]">
             {filtered.length} leads
           </span>
         </div>
 
-        <div className="bg-white border border-emerald-200/80 p-2.5 rounded-xl flex items-center justify-between shadow-2xs">
+        <div className="bg-[var(--sos-surface)] border border-[var(--sos-action)]/30 p-2 rounded-lg flex items-center justify-between shadow-2xs">
           <div>
-            <span className="text-[10px] uppercase font-bold text-emerald-600 block tracking-wider">Fechados (Ganho)</span>
-            <span className="text-sm font-extrabold text-emerald-700 font-mono">
+            <span className="text-xs uppercase font-bold text-[var(--sos-action)] block tracking-wider">Fechados (Ganho)</span>
+            <span className="text-sm font-extrabold text-[var(--sos-action)] font-mono">
               R$ {wonValue.toLocaleString('pt-BR')}
             </span>
           </div>
-          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-action-subtle)] text-[var(--sos-action)] border border-[var(--sos-action)]/30">
             {wonCount} ganhos
           </span>
         </div>
 
-        <div className="bg-white border border-slate-200 p-2.5 rounded-xl flex items-center justify-between shadow-2xs">
+        <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] p-2 rounded-lg flex items-center justify-between shadow-2xs">
           <div>
-            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Taxa de Conversão</span>
-            <span className="text-sm font-extrabold text-purple-700 font-mono">
+            <span className="text-xs uppercase font-bold text-[var(--sos-muted)] block tracking-wider">Taxa de Conversão</span>
+            <span className="text-sm font-extrabold text-[var(--sos-ai)] font-mono">
               {conversionRate}%
             </span>
           </div>
-          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-800">
+          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)]">
             Funil Geral
           </span>
         </div>
 
-        <div className="bg-white border border-slate-200 p-2.5 rounded-xl flex items-center justify-between shadow-2xs">
+        <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] p-2 rounded-lg flex items-center justify-between shadow-2xs">
           <div>
-            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Média por Lead</span>
-            <span className="text-sm font-extrabold text-blue-700 font-mono">
+            <span className="text-xs uppercase font-bold text-[var(--sos-muted)] block tracking-wider">Média por Lead</span>
+            <span className="text-sm font-extrabold text-[var(--sos-operational)] font-mono">
               R$ {filtered.length > 0 ? Math.round(totalPipelineValue / filtered.length) : 0}
             </span>
           </div>
-          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800">
+          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-operational-subtle)] text-[var(--sos-operational)]">
             Ticket Médio
           </span>
         </div>
       </div>
 
       {error && (
-        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2 shrink-0">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+        <div className="p-2.5 rounded-lg bg-[var(--sos-danger-subtle)] border border-[var(--sos-danger)]/30 text-xs text-[var(--sos-danger)] flex items-center gap-2 shrink-0">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-[var(--sos-danger)]" />
           <span>{error}</span>
           <button
             onClick={() => fetchJourneys()}
-            className="ml-auto underline font-bold cursor-pointer hover:text-rose-900"
+            className="ml-auto underline font-bold cursor-pointer hover:text-[var(--sos-danger-hover)]"
           >
             Tentar novamente
           </button>
@@ -732,7 +732,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
       )}
 
       {/* Kanban Board Grid - Largura Total */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 flex-1 min-h-0 overflow-x-auto">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-2.5 flex-1 min-h-0 overflow-x-auto">
         {columnsData.map((col, colIdx) => {
           const isDragOver = dragOverColId === col.id;
 
@@ -742,44 +742,51 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
               onDragOver={(e) => handleDragOver(col.id, e)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(col.id, e)}
-              className={`flex flex-col bg-slate-100/80 border rounded-2xl overflow-hidden min-w-[250px] shadow-2xs transition-all ${
+              className={`flex flex-col bg-[var(--sos-border)]/30 border rounded-xl overflow-hidden min-w-[240px] shadow-2xs transition-all ${
                 isDragOver
-                  ? 'border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/40'
-                  : 'border-slate-200/90'
+                  ? 'border-[var(--sos-action)] ring-2 ring-[var(--sos-action)]/20 bg-[var(--sos-action-subtle)]'
+                  : 'border-[var(--sos-border)]'
               }`}
             >
               {/* Column Header */}
-              <div className={`p-3 border-b ${col.headerBorder} bg-white flex items-center justify-between`}>
+              <div className={`p-2.5 border-b bg-[var(--sos-surface)] flex items-center justify-between ${col.headerBorder}`}>
                 <div className="min-w-0">
-                  <span className="font-bold text-xs text-slate-900 block font-heading truncate">{col.title}</span>
-                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                  <span className="font-bold text-xs text-[var(--sos-ink)] block font-heading truncate">{col.title}</span>
+                  <div className="flex items-center gap-1.5 text-[10px] text-[var(--sos-muted)]">
                     <span className="truncate">{col.subtitle}</span>
                     <span>•</span>
-                    <span className="font-mono font-bold text-slate-700">R$ {col.totalColValue}</span>
+                    <span className="font-mono font-bold text-[var(--sos-muted)]">R$ {col.totalColValue}</span>
                   </div>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${col.badgeBg} ${col.badgeText} shrink-0`}>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${col.badgeBg} ${col.badgeText} shrink-0`}>
                   {col.items.length}
                 </span>
               </div>
 
               {/* Cards List */}
-              <div className="flex-1 p-2 space-y-2 overflow-y-auto min-h-0">
+              <div className="flex-1 p-1.5 space-y-1.5 overflow-y-auto min-h-0">
                 {loading ? (
                   <div className="space-y-2 pt-2">
-                    <div className="h-20 bg-white rounded-xl animate-pulse" />
-                    <div className="h-20 bg-white rounded-xl animate-pulse" />
+                    <div className="h-18 bg-[var(--sos-surface)] rounded-lg animate-pulse" />
+                    <div className="h-18 bg-[var(--sos-surface)] rounded-lg animate-pulse" />
                   </div>
                 ) : col.items.length === 0 ? (
-                  <div className="h-32 flex flex-col items-center justify-center text-center p-3 text-slate-400">
-                    <span className="text-[11px] font-medium">Nenhum lead nesta etapa</span>
+                  <div className="h-28 flex flex-col items-center justify-center text-center p-2.5 text-[var(--sos-muted)]">
+                    <span className="text-[10.5px] font-medium">Nenhum lead nesta etapa</span>
                   </div>
                 ) : (
                   col.items.map((journey) => {
                     const isUpdating = updatingId === journey.id;
                     const isBeingDragged = draggedJourneyId === journey.id;
+                    const title = journey.contactName || (journey.contactPhone ? `Contato +${journey.contactPhone}` : 'Novo Lead');
                     const serviceInfo = detectKanbanService(journey, isHairSalon);
-                    const title = journey.contactName || (journey.contactPhone ? `Cliente ${journey.contactPhone.slice(-4)}` : 'Lead Sem Nome');
+                    const isHot = (journey.pipelineStage === 'PROPOSAL' || journey.pipelineStage === 'NEGOTIATION' || (journey as any).slaState === 'OVERDUE' || serviceInfo.tag.includes('Mechas') || serviceInfo.tag.includes('Truss'));
+                    const isWarm = (journey.pipelineStage === 'QUALIFIED' || journey.pipelineStage === 'LEAD');
+                    const leadBadge = isHot
+                      ? { label: '🔥 Quente', bg: 'bg-amber-100 text-amber-900 border-amber-300' }
+                      : isWarm
+                        ? { label: '⚡ Negociação', bg: 'bg-blue-100 text-blue-900 border-blue-300' }
+                        : { label: '❄️ Frio', bg: 'bg-slate-100 text-slate-700 border-slate-300' };
 
                     return (
                       <div
@@ -790,12 +797,12 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                           onSelectJourney?.(journey.id);
                           onSwitchToCockpit?.();
                         }}
-                        className={`p-3 bg-white border border-slate-200 border-l-4 ${col.accentColor} rounded-xl transition-all cursor-grab active:cursor-grabbing relative group hover:border-emerald-500 hover:shadow-xs space-y-2 ${
+                        className={`p-2.5 bg-[var(--sos-surface)] border border-[var(--sos-border)] border-l-3 ${col.accentColor} rounded-lg transition-all cursor-grab active:cursor-grabbing relative group hover:border-[var(--sos-action)] hover:shadow-xs space-y-1.5 ${
                           isBeingDragged ? 'opacity-40 scale-95' : ''
                         } ${isUpdating ? 'animate-pulse' : ''}`}
                       >
-                        {/* Linha 1: Avatar + Nome + Origem */}
-                        <div className="flex items-start gap-2">
+                        {/* Linha 1: Avatar + Nome + Preço */}
+                        <div className="flex items-start gap-1.5">
                           <ContactAvatar
                             name={journey.contactName}
                             phone={journey.contactPhone}
@@ -804,58 +811,58 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                           />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-1">
-                              <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
+                              <p className="text-xs font-bold text-[var(--sos-ink)] group-hover:text-[var(--sos-action)] transition-colors truncate">
                                 {title}
                               </p>
-                              <span className="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono shrink-0">
+                              <span className="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold bg-[var(--sos-action-subtle)] text-[var(--sos-action)] border border-[var(--sos-action)]/30 font-mono shrink-0">
                                 {serviceInfo.price}
                               </span>
                             </div>
                             {journey.contactPhone && (
-                              <p className="text-[10px] text-slate-400 font-mono truncate">
+                              <p className="text-[9.5px] text-[var(--sos-muted)] font-mono truncate">
                                 {journey.contactPhone}
                               </p>
                             )}
                           </div>
                         </div>
 
-                        {/* Linha 2: Tag de Serviço Colorida */}
+                        {/* Linha 2: Tag de Serviço + Badge de Potencial IA */}
                         <div className="flex items-center justify-between gap-1">
-                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold border truncate max-w-[80%] shadow-2xs ${serviceInfo.bg}`}>
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-bold border truncate max-w-[60%] shadow-2xs ${serviceInfo.bg}`}>
                             {serviceInfo.tag}
                           </span>
-                          <span className="text-[9px] font-extrabold px-1 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                            Click WA
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${leadBadge.bg}`}>
+                            {leadBadge.label}
                           </span>
                         </div>
 
                         {/* Linha 3: Card Footer + Controles de Avanço Rápido */}
-                        <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 text-[10px] text-slate-400">
+                        <div className="flex items-center justify-between pt-1 border-t border-[var(--sos-border)]/50 text-[9.5px] text-[var(--sos-muted)]">
                           <div className="flex items-center gap-1 font-medium">
-                            <Clock className="w-3 h-3 text-slate-400" />
+                            <Clock className="w-2.5 h-2.5 text-[var(--sos-muted)]" />
                             <span>Hoje</span>
                           </div>
 
                           {/* Fast Move Buttons */}
-                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                             {colIdx > 0 && (
                               <button
                                 disabled={isUpdating}
                                 onClick={(e) => handleStageMove(journey, 'prev', e)}
-                                className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
+                                className="p-0.75 hover:bg-[var(--sos-border)]/50 rounded text-[var(--sos-muted)] hover:text-[var(--sos-ink)] transition-colors cursor-pointer"
                                 title="Voltar etapa"
                               >
-                                <ArrowLeft className="w-3 h-3" />
+                                <ArrowLeft className="w-2.5 h-2.5" />
                               </button>
                             )}
                             {colIdx < activePipeline.columns.length - 1 && (
                               <button
                                 disabled={isUpdating}
                                 onClick={(e) => handleStageMove(journey, 'next', e)}
-                                className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
+                                className="p-0.75 hover:bg-[var(--sos-border)]/50 rounded text-[var(--sos-muted)] hover:text-[var(--sos-ink)] transition-colors cursor-pointer"
                                 title="Avançar etapa"
                               >
-                                <ArrowRight className="w-3 h-3" />
+                                <ArrowRight className="w-2.5 h-2.5" />
                               </button>
                             )}
                           </div>

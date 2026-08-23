@@ -337,20 +337,20 @@ export const AgentSettingsSection: React.FC<AgentSettingsSectionProps> = ({
   return (
     <form onSubmit={handleSave} className="space-y-6 animate-in fade-in duration-200">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-2xl p-5 border border-slate-800 text-white flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+      <div className="bg-[var(--sos-surface)] border-[var(--sos-border)] rounded-2xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-purple-600/30 border border-purple-400/40 text-purple-300 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-[var(--sos-background)] border-[var(--sos-border)] text-[var(--sos-operational)] flex items-center justify-center">
               <Bot className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-base font-bold font-heading flex items-center gap-2">
                 <span>Equipe de Robôs Especialistas</span>
-                <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-purple-500/20 text-purple-300 border border-purple-400/30 font-bold">
+                <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-[var(--sos-surface)]/20 text-[var(--sos-success)] font-bold border-[var(--sos-border)]/30">
                   Especialistas Dedicados
                 </span>
               </h2>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-[var(--sos-muted)]">
                 Cada robô tem uma função clara (atender anúncio, fechar venda, marcar horário ou proteger contra descontos não autorizados).
               </p>
             </div>

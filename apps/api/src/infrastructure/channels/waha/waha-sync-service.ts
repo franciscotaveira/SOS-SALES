@@ -2,7 +2,7 @@ import { dbPool } from '../../database/pool.js';
 import crypto from 'node:crypto';
 
 const WAHA_BASE_URL = process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000';
-const WAHA_API_KEY = process.env.WAHA_API_KEY || 'mct_sos_waha_master_2026';
+const WAHA_API_KEY = process.env.WAHA_API_KEY || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
 
 function extractChatId(c: any): string {
   if (!c) return '';

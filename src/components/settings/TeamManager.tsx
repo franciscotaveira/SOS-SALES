@@ -230,7 +230,8 @@ export const TeamManager: React.FC<TeamManagerProps> = ({ workspace }) => {
     } catch {}
   }, [members, storageKey]);
 
-  const maxSeats = workspace.activeOperatorCount || 5;
+  // Limite generoso — não bloqueia operação real. Pode ser configurado via plano.
+  const maxSeats = Math.max(workspace.activeOperatorCount || 50, 50);
   const occupiedSeats = members.length;
   const seatPercentage = Math.min(100, Math.round((occupiedSeats / maxSeats) * 100));
 
@@ -352,12 +353,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({ workspace }) => {
 
           <button
             onClick={handleOpenAddModal}
-            disabled={occupiedSeats >= maxSeats}
-            className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
-              occupiedSeats >= maxSeats
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                : 'bg-purple-600 hover:bg-purple-700 text-white'
-            }`}
+            className="py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs bg-purple-600 hover:bg-purple-700 text-white"
           >
             <UserPlus className="w-3.5 h-3.5" />
             <span>Adicionar Usuário</span>

@@ -14,12 +14,87 @@ import {
   HelpCircle,
   Eye,
   Check,
-  X
+  X,
+  Sparkles,
+  Zap,
+  Smartphone,
+  Layers,
 } from 'lucide-react';
 
 interface WabaTemplatesTabProps {
   workspace: Workspace;
 }
+
+export interface OfficialTemplatePreset {
+  id: string;
+  name: string;
+  category: 'UTILITY' | 'MARKETING' | 'AUTHENTICATION';
+  header: string;
+  body: string;
+  buttonType: 'QUICK_REPLY' | 'URL';
+  buttonText: string;
+  buttonUrl?: string;
+  badge: string;
+  description: string;
+}
+
+export const OFFICIAL_WABA_PRESETS: OfficialTemplatePreset[] = [
+  {
+    id: 'confirmacao_agendamento_v1',
+    name: 'confirmacao_agendamento_v1',
+    category: 'UTILITY',
+    header: 'Confirmação de Atendimento',
+    body: 'Olá {{1}}! Passando para confirmar seu atendimento agendado para {{2}} às {{3}}. Podemos confirmar sua presença?',
+    buttonType: 'QUICK_REPLY',
+    buttonText: 'Confirmar Presença',
+    badge: '📅 Agendamento (Aprovado)',
+    description: 'Utility: confirmação rápida com botão interativo para blindar a agenda e evitar no-show.',
+  },
+  {
+    id: 'lembrete_2h_atendimento_v1',
+    name: 'lembrete_2h_atendimento_v1',
+    category: 'UTILITY',
+    header: 'Seu Horário é Hoje',
+    body: 'Olá {{1}}! Lembramos que seu atendimento está marcado para hoje às {{2}} na unidade {{3}}. Estamos prontos para te receber!',
+    buttonType: 'QUICK_REPLY',
+    buttonText: 'Estou a Caminho',
+    badge: '⏰ Lembrete 2h (Aprovado)',
+    description: 'Utility: aviso prévio no dia do atendimento com confirmação de deslocamento.',
+  },
+  {
+    id: 'reativacao_lead_esfriado_v1',
+    name: 'reativacao_lead_esfriado_v1',
+    category: 'MARKETING',
+    header: 'Condição Especial VIP',
+    body: 'Olá {{1}}, tudo bem? Notamos seu interesse recente em nossos serviços. Preparamos uma condição exclusiva com vagas limitadas para esta semana. Deseja conferir os horários disponíveis?',
+    buttonType: 'QUICK_REPLY',
+    buttonText: 'Quero Ver Horários',
+    badge: '🔥 Reativação 24h (Aprovado)',
+    description: 'Marketing: reabre janela de 24h com oferta exclusiva e personalizada.',
+  },
+  {
+    id: 'oferta_relampago_vip_v1',
+    name: 'oferta_relampago_vip_v1',
+    category: 'MARKETING',
+    header: 'Apenas Hoje',
+    body: 'Olá {{1}}! Liberamos 3 vagas promocionais com 20% de desconto para atendimentos agendados ainda hoje. Deseja garantir sua vaga?',
+    buttonType: 'QUICK_REPLY',
+    buttonText: 'Garantir com Desconto',
+    badge: '🏷️ Oferta VIP (Aprovado)',
+    description: 'Marketing: ativação imediata com gatilho de escassez e urgência.',
+  },
+  {
+    id: 'pesquisa_satisfacao_nps_v2',
+    name: 'pesquisa_satisfacao_nps_v2',
+    category: 'MARKETING',
+    header: 'Como foi sua Experiência?',
+    body: 'Olá {{1}}, tudo bem? Agradecemos sua visita hoje na Haven! Como você avalia o atendimento no seu procedimento de {{2}} realizado com a nossa equipe?',
+    buttonType: 'QUICK_REPLY',
+    buttonText: 'Excelente Atendimento',
+    badge: '⭐ Pesquisa NPS (Aprovado)',
+    description: 'Marketing: coleta de satisfação pós-venda em 1 clique.',
+  },
+];
 
 export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace }) => {
   const [templates, setTemplates] = useState<Array<any>>([]);
@@ -41,6 +116,38 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
   const [submitting, setSubmitting] = useState(false);
   const [tplError, setTplError] = useState<string | null>(null);
 
+  const handleApplyPreset = (preset: OfficialTemplatePreset) => {
+    setTplName(preset.name);
+    setTplCategory(preset.category);
+    setTplLanguage('pt_BR');
+    setTplHeader(preset.header);
+    setTplBody(preset.body);
+    setTplFooter('');
+    setTplButtonType(preset.buttonType);
+    setTplButtonText(preset.buttonText);
+    setTplButtonUrl(preset.buttonUrl || '');
+    setTplError(null);
+    setCreateModalOpen(true);
+  };
+
+  const [wabaConnected, setWabaConnected] = useState<boolean | null>(null);
+  const [wabaPhone, setWabaPhone] = useState<string>('');
+
+  const checkWabaStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/channel-info`);
+      if (res.ok) {
+        const data = await res.json();
+        setWabaConnected(Boolean(data.configured && data.accountStatus === 'CONNECTED'));
+        setWabaPhone(data.phoneNumber || data.phone || '');
+      } else {
+        setWabaConnected(false);
+      }
+    } catch {
+      setWabaConnected(false);
+    }
+  }, [workspace.id]);
+
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
     try {
@@ -57,8 +164,9 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
   }, [workspace.id]);
 
   useEffect(() => {
+    checkWabaStatus();
     fetchTemplates();
-  }, [fetchTemplates]);
+  }, [checkWabaStatus, fetchTemplates]);
 
   const handleCreateTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,46 +238,46 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
+    <div className="max-w-6xl mx-auto p-4 space-y-4">
       {/* Top Header */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100 shrink-0">
-            <FileText className="w-6 h-6" />
+      <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-xl p-4 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] flex items-center justify-center border border-[var(--sos-ai)]/20 shrink-0">
+            <FileText className="w-4.5 h-4.5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900 font-heading">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-xs font-bold text-[var(--sos-ink)]">
                 Modelos de Reativação & Templates WABA (HSM)
               </h2>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+              <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border border-[var(--sos-ai)]/30">
                 Oficial Meta
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-[9.5px] text-[var(--sos-muted)] mt-0.5">
               Crie modelos para reengajar clientes após a janela de 24h ou disparar confirmações automáticas com zero risco de bloqueio.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={() => {
               setTplError(null);
               setCreateModalOpen(true);
             }}
-            className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+            className="px-3 py-1.5 text-[9.5px] font-bold text-white bg-[var(--sos-ai)] hover:bg-[var(--sos-ai)]/90 rounded-lg transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3 h-3" />
             <span>+ Criar Novo Modelo</span>
           </button>
 
           <button
             onClick={fetchTemplates}
             disabled={loading}
-            className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 text-[9.5px] font-bold text-[var(--sos-ink)] bg-[var(--sos-border)]/30 hover:bg-[var(--sos-border)]/50 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
             <span>{loading ? 'Sincronizando...' : 'Sincronizar Meta'}</span>
           </button>
 
@@ -177,70 +285,151 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
             href="https://business.facebook.com/wa/manage/message-templates/"
             target="_blank"
             rel="noreferrer"
-            className="p-2 text-slate-400 hover:text-purple-600 border border-slate-200 rounded-xl hover:bg-purple-50 transition"
+            className="p-1.5 text-[var(--sos-muted)] hover:text-[var(--sos-ai)] border border-[var(--sos-border)] rounded-lg hover:bg-[var(--sos-ai-subtle)] transition"
             title="Abrir no Gerenciador Meta Business Suite"
           >
-            <ExternalLink className="w-4 h-4" />
+            <ExternalLink className="w-3.5 h-3.5" />
           </a>
         </div>
       </div>
 
+      {/* WABA Integrity Status Banner */}
+      {wabaConnected === false && (
+        <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs flex items-start gap-3 animate-in fade-in">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-bold">Canal WhatsApp Oficial (WABA) Desconectado</p>
+            <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+              Para criar, sincronizar e aprovar modelos de mensagem (HSM) diretamente na Meta, conecte seu número oficial em <span className="font-bold">Configurações &gt; Canais</span>. As instâncias via WhatsApp Web (WAHA) não exigem aprovação de modelos HSM.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {wabaConnected === true && (
+        <div className="p-2.5 bg-emerald-50 border border-emerald-300/60 rounded-xl text-emerald-900 text-xs flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-bold text-[11px]">Canal WABA Conectado: {wabaPhone || 'Meta Cloud API Ativa'}</span>
+          </div>
+          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-md">Templates sincronizados em tempo real</span>
+        </div>
+      )}
+
       {/* Feedbacks */}
       {actionFeedback && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2 animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+        <div className="p-2.5 bg-[var(--sos-success-subtle)] border border-[var(--sos-success)]/30 rounded-lg text-[9.5px] font-bold text-[var(--sos-success)] flex items-center gap-1.5 animate-in fade-in">
+          <CheckCircle2 className="w-3.5 h-3.5 text-[var(--sos-success)]" />
           <span>{actionFeedback}</span>
         </div>
       )}
 
       {errorFeedback && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-800 flex items-center gap-2 animate-in fade-in">
-          <AlertTriangle className="w-4 h-4 text-rose-600" />
+        <div className="p-2.5 bg-[var(--sos-danger-subtle)] border border-[var(--sos-danger)]/30 rounded-lg text-[9.5px] font-bold text-[var(--sos-danger)] flex items-center gap-1.5 animate-in fade-in">
+          <AlertTriangle className="w-3.5 h-3.5 text-[var(--sos-danger)]" />
           <span>{errorFeedback}</span>
         </div>
       )}
 
       {/* Educational Guide: 24h window vs HSM */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-        <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-1.5">
-          <div className="flex items-center gap-2 text-emerald-900 font-bold">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+        <div className="p-3 bg-[var(--sos-success-subtle)] border border-[var(--sos-success)]/30 rounded-lg space-y-1">
+          <div className="flex items-center gap-1.5 text-[var(--sos-success)] font-bold">
+            <CheckCircle2 className="w-3.5 h-3.5 text-[var(--sos-success)]" />
             <span>Janela de 24h Ativa (Conversas em Andamento)</span>
           </div>
-          <p className="text-[11.5px] text-emerald-800 leading-relaxed">
+          <p className="text-[9.5px] text-[var(--sos-success)] leading-relaxed">
             Quando o cliente envia uma mensagem, você tem 24h de mensagens livres e gratuitas. Operadores e IA podem conversar normalmente sem templates.
           </p>
         </div>
 
-        <div className="p-4 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-1.5">
-          <div className="flex items-center gap-2 text-blue-900 font-bold">
-            <ShieldCheck className="w-4 h-4 text-blue-600" />
+        <div className="p-3 bg-[var(--sos-operational-subtle)] border border-[var(--sos-operational)]/30 rounded-lg space-y-1">
+          <div className="flex items-center gap-1.5 text-[var(--sos-operational)] font-bold">
+            <ShieldCheck className="w-3.5 h-3.5 text-[var(--sos-operational)]" />
             <span>Janela Expirada (+24h) ou Reativação</span>
           </div>
-          <p className="text-[11.5px] text-blue-800 leading-relaxed">
+          <p className="text-[9.5px] text-[var(--sos-operational)] leading-relaxed">
             Após 24h sem resposta do lead, o contato só pode ser retomado via <strong>Modelos Aprovados pela Meta</strong>. Assim que o cliente responder ao modelo, a janela de 24h se reabre automaticamente.
           </p>
         </div>
       </div>
 
-      {/* Templates List */}
-      <div className="space-y-4">
+      {/* Presets Gallery: Modelos Prontos para Homologação e Teste */}
+      <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-xl p-3.5 space-y-2.5 shadow-2xs">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-800">
+          <div className="flex items-center gap-1.5">
+            <div className="w-5 h-5 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center">
+              <Sparkles className="w-3 h-3" />
+            </div>
+            <h3 className="text-xs font-bold text-[var(--sos-ink)]">
+              Biblioteca de Modelos Prontos para Validação na Meta (1-Clique)
+            </h3>
+          </div>
+          <span className="text-[9px] text-[var(--sos-muted)]">
+            Clique para carregar e submeter diretamente para homologação
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+          {OFFICIAL_WABA_PRESETS.map((preset) => (
+            <div
+              key={preset.id}
+              className="p-3 bg-[var(--sos-background)] border border-[var(--sos-border)] rounded-lg hover:border-[var(--sos-ai)]/40 hover:shadow-2xs transition flex flex-col justify-between gap-2"
+            >
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[var(--sos-ink)] flex items-center gap-1">
+                    {preset.badge}
+                  </span>
+                  <span
+                    className={`text-[8.5px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                      preset.category === 'UTILITY'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-purple-100 text-purple-800'
+                    }`}
+                  >
+                    {preset.category}
+                  </span>
+                </div>
+                <p className="text-[9px] text-[var(--sos-muted)] leading-tight">
+                  {preset.description}
+                </p>
+                <div className="bg-[var(--sos-surface)] p-2 rounded border border-[var(--sos-border)] text-[8.5px] text-[var(--sos-ink)] font-mono leading-tight line-clamp-2">
+                  {preset.body}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleApplyPreset(preset)}
+                className="w-full py-1 text-[9.5px] font-bold text-[var(--sos-ai)] bg-[var(--sos-ai-subtle)] hover:bg-[var(--sos-ai)] hover:text-white rounded-md transition flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Usar este Modelo</span>
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Templates List */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold text-[var(--sos-ink)]">
             Modelos Sincronizados ({templates.length})
           </h3>
-          <span className="text-xs text-slate-400">
+          <span className="text-[9px] text-[var(--sos-muted)]">
             Modelos com status "Aprovado" aparecem prontos para uso no Cockpit.
           </span>
         </div>
 
         {loading ? (
-          <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500 text-xs flex flex-col items-center justify-center gap-2">
-            <RefreshCw className="w-5 h-5 animate-spin text-purple-600" />
+          <div className="p-8 text-center bg-[var(--sos-surface)] rounded-xl border border-[var(--sos-border)] text-[var(--sos-muted)] text-xs flex flex-col items-center justify-center gap-1.5">
+            <RefreshCw className="w-4.5 h-4.5 animate-spin text-[var(--sos-ai)]" />
             <span>Consultando modelos homologados na Meta Cloud API...</span>
           </div>
         ) : templates.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {templates.map((tpl: any) => {
               const isApproved = tpl.status === 'APPROVED';
               const isPending = tpl.status === 'PENDING';
@@ -256,87 +445,87 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
               return (
                 <div
                   key={`${tpl.name}-${tpl.language}`}
-                  className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs hover:shadow-sm transition-all space-y-3.5 flex flex-col justify-between"
+                  className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-lg p-4 shadow-2xs hover:shadow-sm transition-all space-y-3 flex flex-col justify-between"
                 >
-                  <div className="space-y-2.5">
+                  <div className="space-y-2">
                     {/* Card Header */}
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-slate-900">{tpl.name}</span>
-                          <span className="text-[10px] font-mono text-slate-400 px-1.5 py-0.5 bg-slate-100 rounded">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[9.5px] font-bold text-[var(--sos-ink)]">{tpl.name}</span>
+                          <span className="text-[8.5px] font-mono text-[var(--sos-muted)] px-1.5 py-0.5 bg-[var(--sos-border)]/30 rounded">
                             {tpl.language || 'pt_BR'}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5 capitalize">
+                        <p className="text-[9px] text-[var(--sos-muted)] mt-0.5 capitalize">
                           Categoria: {tpl.category?.toLowerCase() || 'marketing'}
                         </p>
                       </div>
 
                       {/* Status Badge */}
                       <span
-                        className={`text-[10.5px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 shrink-0 ${
+                        className={`text-[9px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 shrink-0 ${
                           isApproved
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            ? 'bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border-[var(--sos-success)]/30'
                             : isPending
-                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            ? 'bg-[var(--sos-warning-subtle)] text-[var(--sos-warning)] border-[var(--sos-warning)]/30'
                             : isRejected
-                            ? 'bg-rose-50 text-rose-700 border-rose-200'
-                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                            ? 'bg-[var(--sos-danger-subtle)] text-[var(--sos-danger)] border-[var(--sos-danger)]/30'
+                            : 'bg-[var(--sos-border)]/30 text-[var(--sos-muted)] border-[var(--sos-border)]'
                         }`}
                       >
-                        {isApproved && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
-                        {isPending && <Clock className="w-3 h-3 text-amber-600" />}
-                        {isRejected && <AlertTriangle className="w-3 h-3 text-rose-600" />}
+                        {isApproved && <CheckCircle2 className="w-2.5 h-2.5 text-[var(--sos-success)]" />}
+                        {isPending && <Clock className="w-2.5 h-2.5 text-[var(--sos-warning)]" />}
+                        {isRejected && <AlertTriangle className="w-2.5 h-2.5 text-[var(--sos-danger)]" />}
                         <span>{isApproved ? 'Aprovado na Meta' : isPending ? 'Em Análise' : isRejected ? 'Rejeitado' : tpl.status}</span>
                       </span>
                     </div>
 
                     {/* WhatsApp Preview Bubble */}
-                    <div className="bg-[#e5ddd5] rounded-xl p-3.5 shadow-inner">
-                      <div className="bg-[#dcf8c6] rounded-xl rounded-tl-none p-3 shadow-xs space-y-1 text-xs">
+                    <div className="bg-[var(--sos-canvas)] rounded-lg p-2.5 shadow-inner">
+                      <div className="bg-[var(--sos-success-subtle)] rounded-lg rounded-tl-none p-2.5 shadow-2xs space-y-1 text-[9.5px]">
                         {headerComp?.text && (
-                          <p className="font-bold text-slate-900 text-[11px]">{headerComp.text}</p>
+                          <p className="font-bold text-[var(--sos-ink)] text-[10px]">{headerComp.text}</p>
                         )}
-                        <p className="text-slate-800 text-[11.5px] leading-relaxed whitespace-pre-wrap">
+                        <p className="text-[var(--sos-ink)] text-[10px] leading-relaxed whitespace-pre-wrap">
                           {bodyComp?.text || '<sem texto no corpo>'}
                         </p>
                         {footerComp?.text && (
-                          <p className="text-[10px] text-slate-500 pt-0.5">{footerComp.text}</p>
+                          <p className="text-[9px] text-[var(--sos-muted)] pt-0.5">{footerComp.text}</p>
                         )}
                         {buttonComp?.buttons && (
-                          <div className="pt-1.5 border-t border-[#b2dfb0] space-y-1">
+                          <div className="pt-1 border-t border-[var(--sos-success)]/30 space-y-0.5">
                             {buttonComp.buttons.map((btn: any, bi: number) => (
                               <div
                                 key={bi}
-                                className="text-center text-[11px] font-bold text-[#0084ff] py-0.5"
+                                className="text-center text-[10px] font-bold text-[var(--sos-action)] py-0.5"
                               >
                                 {btn.text}
                               </div>
                             ))}
                           </div>
                         )}
-                        <div className="text-right text-[9px] text-slate-400">18:30 ✓✓</div>
+                        <div className="text-right text-[8.5px] text-[var(--sos-muted)]">18:30 ✓✓</div>
                       </div>
                     </div>
 
                     {varMatches.length > 0 && (
-                      <p className="text-[10.5px] text-slate-500 flex items-center gap-1 font-mono">
-                        <span className="font-bold text-purple-700">{varMatches.length} variável(is) dinâmica(s):</span> {varMatches.join(', ')}
+                      <p className="text-[9px] text-[var(--sos-muted)] flex items-center gap-0.5 font-mono">
+                        <span className="font-bold text-[var(--sos-ai)]">{varMatches.length} variável(is) dinâmica(s):</span> {varMatches.join(', ')}
                       </p>
                     )}
                   </div>
 
                   {/* Actions Footer */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-                    <span className="text-[10.5px] text-slate-400">ID Meta: {tpl.id || 'Graph-API'}</span>
+                  <div className="flex items-center justify-between pt-1.5 border-t border-[var(--sos-border)] text-xs">
+                    <span className="text-[9px] text-[var(--sos-muted)]">ID Meta: {tpl.id || 'Graph-API'}</span>
                     <button
                       onClick={() => handleDeleteTemplate(tpl.name)}
-                      className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer flex items-center gap-1"
+                      className="text-[var(--sos-muted)] hover:text-[var(--sos-danger)] p-1 rounded-lg hover:bg-[var(--sos-danger-subtle)] transition cursor-pointer flex items-center gap-0.5"
                       title="Excluir modelo na Meta"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span className="text-[11px]">Excluir</span>
+                      <Trash2 className="w-3 h-3" />
+                      <span className="text-[9.5px]">Excluir</span>
                     </button>
                   </div>
                 </div>
@@ -344,13 +533,13 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
             })}
           </div>
         ) : (
-          <div className="p-12 text-center bg-white rounded-2xl border border-dashed border-slate-300 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
-              <FileText className="w-6 h-6" />
+          <div className="p-8 text-center bg-[var(--sos-surface)] rounded-xl border border-dashed border-[var(--sos-border)] space-y-3">
+            <div className="w-10 h-10 rounded-lg bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] flex items-center justify-center mx-auto">
+              <FileText className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-slate-900">Nenhum modelo cadastrado ainda</h4>
-              <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+              <h4 className="text-xs font-bold text-[var(--sos-ink)]">Nenhum modelo cadastrado ainda</h4>
+              <p className="text-[9.5px] text-[var(--sos-muted)] max-w-md mx-auto mt-0.5">
                 Crie seu primeiro modelo de reativação ou confirmação. Ele será submetido e homologado pela Meta em instantes.
               </p>
             </div>
@@ -359,7 +548,7 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
                 setTplError(null);
                 setCreateModalOpen(true);
               }}
-              className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition cursor-pointer"
+              className="px-3 py-1.5 text-[9.5px] font-bold text-white bg-[var(--sos-ai)] hover:bg-[var(--sos-ai)]/90 rounded-lg transition cursor-pointer"
             >
               + Criar Primeiro Modelo
             </button>
@@ -370,52 +559,79 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
       {/* Modal: Create Template */}
       {createModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
-                  <FileText className="w-4 h-4" />
+          <div className="bg-[var(--sos-surface)] rounded-xl max-w-lg w-full p-5 shadow-2xl border border-[var(--sos-border)] max-h-[90vh] overflow-y-auto space-y-3.5">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--sos-border)]">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 rounded-lg bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] flex items-center justify-center">
+                  <FileText className="w-3.5 h-3.5" />
                 </div>
-                <h3 className="text-sm font-bold text-slate-900 font-heading">
+                <h3 className="text-xs font-bold text-[var(--sos-ink)]">
                   Novo Modelo de Mensagem WABA (Meta)
                 </h3>
               </div>
               <button
                 onClick={() => setCreateModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="text-[var(--sos-muted)] hover:text-[var(--sos-ink)] cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
 
             {tplError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <div className="p-2.5 bg-[var(--sos-danger-subtle)] border border-[var(--sos-danger)]/30 text-[var(--sos-danger)] rounded-lg text-[9.5px] flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-[var(--sos-danger)] shrink-0" />
                 <span>{tplError}</span>
               </div>
             )}
 
-            <form onSubmit={handleCreateTemplate} className="space-y-3.5 text-xs">
+            {/* Preset Selector inside Create Modal */}
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
+              <span className="text-[9.5px] font-bold text-slate-700 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-amber-500" /> Preencher a partir de um Modelo Pronto Oficial:
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {OFFICIAL_WABA_PRESETS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setTplName(p.name);
+                      setTplCategory(p.category);
+                      setTplHeader(p.header);
+                      setTplBody(p.body);
+                      setTplButtonType(p.buttonType);
+                      setTplButtonText(p.buttonText);
+                      setTplButtonUrl(p.buttonUrl || '');
+                    }}
+                    className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 hover:text-slate-900 rounded text-[9px] font-bold transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>{p.badge}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <form onSubmit={handleCreateTemplate} className="space-y-3 text-[9.5px]">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Nome do Modelo (Identificador Técnico)</label>
+                <label className="block font-bold text-[var(--sos-ink)] mb-0.5">Nome do Modelo (Identificador Técnico)</label>
                 <input
                   type="text"
                   value={tplName}
                   onChange={(e) => setTplName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
                   placeholder="ex: reativacao_lead_24h / confirmacao_agenda"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                  className="w-full rounded-lg border border-[var(--sos-border)] bg-[var(--sos-background)] px-2.5 py-1.5 font-mono text-xs focus:ring-1 focus:ring-[var(--sos-ai)] outline-none"
                   required
                 />
-                <span className="text-[10px] text-slate-400">Apenas letras minúsculas, números e sublinhados (_).</span>
+                <span className="text-[8.5px] text-[var(--sos-muted)]">Apenas letras minúsculas, números e sublinhados (_).</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Categoria Meta</label>
+                  <label className="block font-bold text-[var(--sos-ink)] mb-0.5">Categoria Meta</label>
                   <select
                     value={tplCategory}
                     onChange={(e) => setTplCategory(e.target.value as any)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                    className="w-full rounded-lg border border-[var(--sos-border)] bg-[var(--sos-background)] px-2.5 py-1.5 text-[9.5px] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none"
                   >
                     <option value="MARKETING">Marketing (Reengajamento / Oferta)</option>
                     <option value="UTILITY">Utilidade (Lembrete / Agendamento)</option>
@@ -423,11 +639,11 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Idioma</label>
+                  <label className="block font-bold text-[var(--sos-ink)] mb-0.5">Idioma</label>
                   <select
                     value={tplLanguage}
                     onChange={(e) => setTplLanguage(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 outline-none bg-white font-mono"
+                    className="w-full rounded-lg border border-[var(--sos-border)] bg-[var(--sos-background)] px-2.5 py-1.5 text-[9.5px] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none font-mono"
                   >
                     <option value="pt_BR">pt_BR (Português Brasil)</option>
                     <option value="es">es (Espanhol)</option>
@@ -437,52 +653,54 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Cabeçalho (Opcional)</label>
+                <label className="block font-bold text-[var(--sos-ink)] mb-0.5">Cabeçalho (Opcional)</label>
                 <input
                   type="text"
                   value={tplHeader}
                   onChange={(e) => setTplHeader(e.target.value)}
                   placeholder="ex: Confirmação de Horário Especial"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                  className="w-full rounded-lg border border-[var(--sos-border)] bg-[var(--sos-background)] px-2.5 py-1.5 text-[9.5px] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Corpo da Mensagem (Texto Principal)</label>
+                <label className="block font-bold text-[var(--sos-ink)] mb-0.5">Corpo da Mensagem (Texto Principal)</label>
                 <textarea
                   rows={4}
                   value={tplBody}
                   onChange={(e) => setTplBody(e.target.value)}
                   placeholder="Digite o texto. Use {{1}}, {{2}} para variáveis de nome, serviço, data..."
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 outline-none resize-none leading-relaxed"
+                  className="w-full rounded-lg border border-[var(--sos-border)] bg-[var(--sos-background)] px-2.5 py-1.5 text-[9.5px] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none resize-none leading-relaxed"
                   required
                 />
-                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                <div className="flex items-center justify-between text-[8.5px] text-[var(--sos-muted)] mt-0.5">
                   <span>Ex: Olá {`{{1}}`}, seu atendimento está marcado para {`{{2}}`}.</span>
                   <span>{tplBody.length} caracteres</span>
                 </div>
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Rodapé (Opcional)</label>
+                <label className="block font-bold text-[var(--sos-ink)] mb-0.5">Rodapé (Opcional)</label>
                 <input
                   type="text"
                   value={tplFooter}
                   onChange={(e) => setTplFooter(e.target.value)}
                   placeholder="ex: Responda 'SAIR' para cancelar"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                  className="w-full rounded-lg border border-[var(--sos-border)] bg-[var(--sos-background)] px-2.5 py-1.5 text-[9.5px] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none"
                 />
               </div>
 
               {/* Interactive Buttons */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <label className="block font-bold text-slate-700">Botão Interativo (Opcional)</label>
-                <div className="grid grid-cols-3 gap-2">
+              <div className="p-2.5 bg-[var(--sos-border)]/30 border border-[var(--sos-border)] rounded-lg space-y-2">
+                <label className="block font-bold text-[var(--sos-ink)]">Botão Interativo (Opcional)</label>
+                <div className="grid grid-cols-3 gap-1.5">
                   <button
                     type="button"
                     onClick={() => setTplButtonType('NONE')}
-                    className={`py-1.5 px-2 rounded-lg border text-center font-bold ${
-                      tplButtonType === 'NONE' ? 'bg-white border-purple-500 text-purple-900 shadow-xs' : 'bg-slate-100 text-slate-600'
+                    className={`py-1 px-1.5 rounded-lg border text-center font-bold text-[9px] ${
+                      tplButtonType === 'NONE'
+                        ? 'bg-[var(--sos-surface)] border-[var(--sos-ai)]/30 text-[var(--sos-ai)] shadow-2xs'
+                        : 'bg-[var(--sos-border)]/30 text-[var(--sos-muted)]'
                     }`}
                   >
                     Sem Botão
@@ -490,8 +708,10 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
                   <button
                     type="button"
                     onClick={() => setTplButtonType('QUICK_REPLY')}
-                    className={`py-1.5 px-2 rounded-lg border text-center font-bold ${
-                      tplButtonType === 'QUICK_REPLY' ? 'bg-white border-purple-500 text-purple-900 shadow-xs' : 'bg-slate-100 text-slate-600'
+                    className={`py-1 px-1.5 rounded-lg border text-center font-bold text-[9px] ${
+                      tplButtonType === 'QUICK_REPLY'
+                        ? 'bg-[var(--sos-surface)] border-[var(--sos-ai)]/30 text-[var(--sos-ai)] shadow-2xs'
+                        : 'bg-[var(--sos-border)]/30 text-[var(--sos-muted)]'
                     }`}
                   >
                     Resposta Rápida
@@ -499,8 +719,10 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
                   <button
                     type="button"
                     onClick={() => setTplButtonType('URL')}
-                    className={`py-1.5 px-2 rounded-lg border text-center font-bold ${
-                      tplButtonType === 'URL' ? 'bg-white border-purple-500 text-purple-900 shadow-xs' : 'bg-slate-100 text-slate-600'
+                    className={`py-1 px-1.5 rounded-lg border text-center font-bold text-[9px] ${
+                      tplButtonType === 'URL'
+                        ? 'bg-[var(--sos-surface)] border-[var(--sos-ai)]/30 text-[var(--sos-ai)] shadow-2xs'
+                        : 'bg-[var(--sos-border)]/30 text-[var(--sos-muted)]'
                     }`}
                   >
                     Link Externo
@@ -508,13 +730,13 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
                 </div>
 
                 {tplButtonType !== 'NONE' && (
-                  <div className="pt-2 space-y-2">
+                  <div className="pt-1.5 space-y-1.5">
                     <input
                       type="text"
                       value={tplButtonText}
                       onChange={(e) => setTplButtonText(e.target.value)}
                       placeholder="Texto do botão (ex: Confirmar Presença)"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-purple-500 outline-none"
+                      className="w-full rounded-lg border border-[var(--sos-border)] bg-[var(--sos-background)] px-2.5 py-1 text-[9.5px] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none"
                     />
                     {tplButtonType === 'URL' && (
                       <input
@@ -522,7 +744,7 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
                         value={tplButtonUrl}
                         onChange={(e) => setTplButtonUrl(e.target.value)}
                         placeholder="URL de destino (https://...)"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs bg-white focus:ring-2 focus:ring-purple-500 outline-none"
+                        className="w-full rounded-lg border border-[var(--sos-border)] bg-[var(--sos-background)] px-2.5 py-1 text-[9.5px] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none"
                       />
                     )}
                   </div>
@@ -530,20 +752,20 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
               </div>
 
               {/* Submit Buttons */}
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-1.5 pt-2 border-t border-[var(--sos-border)]">
                 <button
                   type="button"
                   onClick={() => setCreateModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                  className="px-3 py-1.5 text-[9.5px] font-bold text-[var(--sos-ink)] bg-[var(--sos-border)]/30 hover:bg-[var(--sos-border)]/50 rounded-lg transition cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                  className="px-3 py-1.5 text-[9.5px] font-bold text-white bg-[var(--sos-ai)] hover:bg-[var(--sos-ai)]/90 rounded-lg transition flex items-center gap-1 shadow-2xs disabled:opacity-50 cursor-pointer"
                 >
-                  <Send className="w-3.5 h-3.5" />
+                  <Send className="w-3 h-3" />
                   <span>{submitting ? 'Submetendo na Meta...' : 'Submeter para Aprovação'}</span>
                 </button>
               </div>

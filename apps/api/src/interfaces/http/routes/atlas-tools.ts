@@ -5,13 +5,9 @@ import { KnownFactOperationsGateway } from '../../../application/ports/known-fac
 import { dbPool } from '../../../infrastructure/database/pool.js';
 
 const WAHA_BASE_URL = process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000';
-const WAHA_API_KEY = process.env.WAHA_API_KEY || 'mct_sos_waha_master_2026';
+const WAHA_API_KEY = process.env.WAHA_API_KEY || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
 
-function getSessionName(workspaceId: string): string {
-  if (workspaceId.includes('haven') || workspaceId.includes('22222222')) return 'haven';
-  if (workspaceId.includes('sora') || workspaceId.includes('33333333')) return 'sora';
-  return 'default';
-}
+import { getSessionName } from './whatsapp-channel-routes.js';
 
 export interface AtlasToolsRouteDependencies {
   cockpitReadGateway?: CockpitReadGateway;
@@ -194,6 +190,9 @@ export async function atlasToolsRoutes(
     if (!params.success) return reply.code(422).send({ statusCode: 422, error: 'Unprocessable Entity', message: 'Invalid workspaceId' });
 
     const sessionName = getSessionName(params.data.workspaceId);
+    if (!sessionName) {
+      return reply.code(404).send({ statusCode: 404, error: 'Not Found', message: 'Workspace não encontrado' });
+    }
     const session = await fetchWahaSessionStatus(sessionName);
 
     if (!session) {
@@ -232,7 +231,7 @@ export async function atlasToolsRoutes(
     const params = workspaceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(422).send({ statusCode: 422, error: 'Unprocessable Entity', message: 'Invalid workspaceId' });
 
-    const isHaven = params.data.workspaceId.includes('haven') || params.data.workspaceId.includes('22222222');
+    const isHaven = params.data.workspaceId === '22222222-2222-2222-2222-222222222222';
 
     return {
       workspaceId: params.data.workspaceId,

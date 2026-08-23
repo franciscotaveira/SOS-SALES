@@ -6,7 +6,6 @@ import { FeatureFlagManager } from './FeatureFlagManager';
 import { CanaisView } from '../channels/CanaisView';
 import { TeamManager } from './TeamManager';
 import { ApiWebhooksManager } from './ApiWebhooksManager';
-import { LtvConfigManager } from './LtvConfigManager';
 import {
   ShieldCheck,
   Info,
@@ -43,7 +42,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
 }) => {
   const [engineConfig, setEngineConfig] = React.useState(mockEngineConfig);
   const [internalSubTab, setInternalSubTab] = React.useState<
-    'team' | 'api_webhooks' | 'channels' | 'ltv_matrix' | 'feature_flags' | 'engines'
+    'team' | 'api_webhooks' | 'channels' | 'feature_flags' | 'engines'
   >('team');
 
   const activeSubTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalSubTab;
@@ -59,7 +58,6 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
     { id: 'team', label: 'Equipe & Usuários', icon: Users, badge: 'Multi-Tenant' },
     { id: 'api_webhooks', label: 'API & Webhooks', icon: Code2, badge: 'Integrações' },
     { id: 'channels', label: 'Canais de WhatsApp', icon: Smartphone },
-    { id: 'ltv_matrix', label: 'Matriz LTV & Retenção', icon: Sparkles, badge: 'Level 5' },
     { id: 'feature_flags', label: 'Parâmetros Globais', icon: Sliders },
     { id: 'engines', label: 'Modelos & Infra', icon: Server },
   ];
@@ -126,8 +124,6 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
       {activeSubTab === 'api_webhooks' && <ApiWebhooksManager workspace={workspace} />}
 
       {activeSubTab === 'channels' && <CanaisView workspace={workspace} />}
-
-      {activeSubTab === 'ltv_matrix' && <LtvConfigManager workspace={workspace} />}
 
       {activeSubTab === 'feature_flags' && <FeatureFlagManager workspace={workspace} />}
 

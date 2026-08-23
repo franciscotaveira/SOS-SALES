@@ -4,6 +4,7 @@
 
 # 1. Landing Page Oficial (Vendas + Demo Interativa)
 iaparavendas.tech, www.iaparavendas.tech {
+    encode zstd gzip
     root * /var/www/landing
     try_files {path} /index.html
     file_server
@@ -11,30 +12,42 @@ iaparavendas.tech, www.iaparavendas.tech {
 
 # 2. Aplicação CRM & API Fastify
 crm.iaparavendas.tech, sos.mct.com.br {
-    # Backend API e Swagger
-    handle /api/* {
-        reverse_proxy sos-sales-api:4334
-    }
+    encode zstd gzip
 
-    handle /webhooks/* {
-        reverse_proxy sos-sales-api:4334
-    }
+    route {
+        # ─── P0 EDGE CONTAINMENT: Bloqueio Incondicional Total no Edge ─────────
+        # 1. Bloqueia mutações destrutivas incondicionalmente para TODOS os métodos HTTP
+        @blocked_destructive path_regexp ^.*/channels/whatsapp/(logout|clear-history)
+        respond @blocked_destructive "Forbidden: Destructive operation disabled during containment" 403
 
-    handle /health {
-        reverse_proxy sos-sales-api:4334
-    }
+        # 2. Bloqueia endpoints com PII e configurações sensíveis para TODOS os métodos HTTP (inclui GET, HEAD, OPTIONS, POST, etc.)
+        @blocked_sensitive_pii path_regexp ^/api/v1/workspaces/[^/]+/(contacts|tracking|reports|channels/waba/channel-info|channels/whatsapp/status)
+        respond @blocked_sensitive_pii "Forbidden: Workspace endpoint disabled during containment" 403
 
-    handle /ready {
-        reverse_proxy sos-sales-api:4334
-    }
+        # 3. Bloqueia plugins mutáveis encontrados no bundle implantado sem JWT,
+        # membership ou RBAC. O bloqueio é deliberadamente independente do método
+        # para impedir bypass por HEAD/OPTIONS e permanece até o redeploy autenticado.
+        @blocked_unguarded_plugins path_regexp ^(?:/api/v1/billing/abacatepay/charges|/api/v1/workspaces/[^/]+/channels/(?:messenger/(?:links|nlp/enable|welcome-screen)|instagram/icebreakers|comments/private-reply(?:-config)?)|/api/v1/workspaces/[^/]+/journeys/[^/]+/bot/(?:pause|resume))$
+        respond @blocked_unguarded_plugins "Forbidden: Operational plugin disabled during containment" 403
 
-    handle /docs* {
-        reverse_proxy sos-sales-api:4334
-    }
+        # Backend API e Swagger
+        reverse_proxy /api/* sos-sales-api:4334
+        reverse_proxy /webhooks/* sos-sales-api:4334
+        reverse_proxy /version sos-sales-api:4334
+        reverse_proxy /health sos-sales-api:4334
+        reverse_proxy /ready sos-sales-api:4334
+        reverse_proxy /docs* sos-sales-api:4334
 
-    # Frontend Single Page App
-    handle {
+        # Static Assets Cache
+        @assets path /assets/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+        file_server @assets {
+            root /var/www/html
+        }
+
+        # Frontend Single Page App
         root * /var/www/html
+        header Cache-Control "no-cache, no-store, must-revalidate"
         try_files {path} /index.html
         file_server
     }
@@ -42,28 +55,28 @@ crm.iaparavendas.tech, sos.mct.com.br {
 
 # 3. Acesso direto por IP (HTTP)
 :80 {
-    handle /api/* {
-        reverse_proxy sos-sales-api:4334
-    }
+    encode zstd gzip
 
-    handle /webhooks/* {
-        reverse_proxy sos-sales-api:4334
-    }
+    route {
+        # Bloqueio de IP direto incondicional para TODOS os métodos em rotas críticas e sensíveis
+        @ip_blocked path_regexp ^(?:/api/v1/billing/abacatepay/charges|/api/v1/workspaces/[^/]+/(?:contacts|tracking|reports|channels/waba/channel-info|channels/whatsapp/status|channels/whatsapp/logout|channels/whatsapp/clear-history|channels/messenger/(?:links|nlp/enable|welcome-screen)|channels/instagram/icebreakers|channels/comments/private-reply(?:-config)?|journeys/[^/]+/bot/(?:pause|resume)))$
+        respond @ip_blocked "Forbidden: Direct IP access not permitted" 403
 
-    handle /health {
-        reverse_proxy sos-sales-api:4334
-    }
+        reverse_proxy /api/* sos-sales-api:4334
+        reverse_proxy /webhooks/* sos-sales-api:4334
+        reverse_proxy /version sos-sales-api:4334
+        reverse_proxy /health sos-sales-api:4334
+        reverse_proxy /ready sos-sales-api:4334
+        reverse_proxy /docs* sos-sales-api:4334
 
-    handle /ready {
-        reverse_proxy sos-sales-api:4334
-    }
+        @assets path /assets/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+        file_server @assets {
+            root /var/www/html
+        }
 
-    handle /docs* {
-        reverse_proxy sos-sales-api:4334
-    }
-
-    handle {
         root * /var/www/html
+        header Cache-Control "no-cache, no-store, must-revalidate"
         try_files {path} /index.html
         file_server
     }

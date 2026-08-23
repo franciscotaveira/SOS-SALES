@@ -48,10 +48,10 @@ export type IntelligenceTab =
   | 'agent';
 
 export function resolveWorkspaceIntelligenceBundle(wsId: string, wsName?: string): ClientIntelligenceBundle {
-  const normId = (wsId || '').toLowerCase();
-  const normName = (wsName || '').toLowerCase();
+  const normId = (wsId || '').toLowerCase().trim();
+  const normName = (wsName || '').toLowerCase().trim();
 
-  if (normId.includes('haven') || normId.includes('escovaria') || normName.includes('haven') || normName.includes('escovaria')) {
+  if (normId === '22222222-2222-2222-2222-222222222222' || normName === 'haven' || normName === 'haven escovaria & esmalteria') {
     return {
       ...mockHavenIntelligence,
       workspaceId: wsId,
@@ -62,7 +62,7 @@ export function resolveWorkspaceIntelligenceBundle(wsId: string, wsName?: string
     };
   }
 
-  if (normId.includes('sora') || normId.includes('spa') || normName.includes('sora') || normName.includes('spa')) {
+  if (normId === '33333333-3333-3333-3333-333333333333' || normName === 'sora' || normName === 'sora spa') {
     return {
       ...mockSoraIntelligence,
       workspaceId: wsId,
@@ -157,36 +157,36 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   };
 
   return (
-    <div id="client-agent-hub-view" className="h-full overflow-y-auto w-full p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+    <div id="client-agent-hub-view" className="h-full overflow-y-auto w-full p-3 sm:p-4 max-w-7xl mx-auto space-y-4">
       {/* Top Client Header & Quick Switcher */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#00A884] to-emerald-700 text-white flex items-center justify-center font-bold text-lg shadow-md shrink-0">
+      <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-xl p-3 sm:p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-[var(--sos-ai)]/20 text-[var(--sos-ai)] flex items-center justify-center font-bold text-base shadow-2xs shrink-0">
             {currentWorkspace.name.substring(0, 2).toUpperCase()}
           </div>
 
           <div className="min-w-0 space-y-0.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg font-bold text-slate-900 font-heading truncate">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h1 className="text-sm font-bold text-[var(--sos-ink)] font-heading truncate">
                 {currentWorkspace.name}
               </h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-purple-600" /> Agente IA Dedicado
+              <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border border-[var(--sos-ai)]/30 flex items-center gap-1">
+                <Sparkles className="w-2.5 h-2.5 text-[var(--sos-ai)]" /> Agente IA Dedicado
               </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> WhatsApp Oficial Conectado
+              <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border border-[var(--sos-success)]/30 flex items-center gap-1">
+                <CheckCircle2 className="w-2.5 h-2.5 text-[var(--sos-success)]" /> WhatsApp Oficial Conectado
               </span>
             </div>
 
-            <p className="text-xs text-slate-500 truncate">
+            <p className="text-[9.5px] text-[var(--sos-muted)] truncate">
               {currentBundle.companyProfile.tagline || currentWorkspace.tagline}
             </p>
           </div>
         </div>
 
         {/* Client Workspace Selector */}
-        <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
-          <label className="text-xs font-semibold text-slate-500 whitespace-nowrap hidden sm:inline">
+        <div className="flex items-center gap-1.5 shrink-0 self-start md:self-center">
+          <label className="text-xs font-semibold text-[var(--sos-muted)] whitespace-nowrap hidden sm:inline">
             Configurações do Cliente:
           </label>
           <div className="relative">
@@ -196,15 +196,15 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
                 const target = workspaces.find((w) => w.id === e.target.value);
                 if (target) onSelectWorkspace(target);
               }}
-              className="appearance-none pl-3 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#00A884] cursor-pointer"
+              className="appearance-none pl-2.5 pr-7 py-1.5 bg-[var(--sos-background)] border border-[var(--sos-border)] rounded-lg text-[9.5px] font-bold text-[var(--sos-ink)] focus:outline-none focus:ring-1 focus:ring-[var(--sos-ai)] cursor-pointer"
             >
               {workspaces.map((ws) => (
                 <option key={ws.id} value={ws.id}>
-                  🏢 {ws.name}
+                  {ws.name}
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3 h-3 text-[var(--sos-muted)] absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
       </div>

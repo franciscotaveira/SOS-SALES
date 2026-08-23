@@ -1,9 +1,9 @@
 import crypto from 'node:crypto';
 
-const SUPABASE_URL = 'https://yiiuebhyqixzluguxsqi.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpaXVlYmh5cWl4emx1Z3V4c3FpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3MzE3NTMsImV4cCI6MjEwMjMwNzc1M30.XObsvr-y26SODG2UjnDm1kB0dt_BeYVCkMH88B_SOuA';
-const API_BASE = 'https://crm.iaparavendas.tech/api/v1';
-const WS_ID = '11111111-1111-1111-1111-111111111111'; // SOS Sales Oficial
+const SUPABASE_URL = process.env.SUPABASE_URL?.trim() || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY?.trim() || '';
+const API_BASE = process.env.API_BASE?.trim() || '';
+const WS_ID = process.env.WORKSPACE_ID?.trim() || '';
 
 const results = [];
 
@@ -14,6 +14,28 @@ function record(section, testName, passed, details = {}) {
 }
 
 async function runMasterValidation() {
+  if (process.env.AUDIT_ALLOW_MUTATIONS !== 'true') {
+    throw new Error('Refusing to run mutating master validation. Set AUDIT_ALLOW_MUTATIONS=true only for an approved isolated target.');
+  }
+  if (process.env.AUDIT_TARGET !== 'approved-isolated') {
+    throw new Error('Refusing to run mutating master validation without AUDIT_TARGET=approved-isolated.');
+  }
+  const requiredTargetVariables = [
+    ['SUPABASE_URL', SUPABASE_URL],
+    ['SUPABASE_ANON_KEY', SUPABASE_ANON_KEY],
+    ['API_BASE', API_BASE],
+    ['WORKSPACE_ID', WS_ID],
+  ];
+  const missing = requiredTargetVariables.filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length > 0) {
+    throw new Error(`Refusing to run mutating master validation without explicit ${missing.join(', ')}.`);
+  }
+  const safeHosts = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+  const targetHosts = [new URL(SUPABASE_URL).hostname, new URL(API_BASE).hostname];
+  if (targetHosts.some((host) => !safeHosts.has(host))) {
+    throw new Error('Mutating master validation is restricted to an approved isolated local target.');
+  }
+
   console.log('===============================================================');
   console.log('🚀 MASTER GOAL VALIDATION: SOS SALES COMPLETE PLATFORM AUDIT');
   console.log('===============================================================\n');
@@ -25,10 +47,15 @@ async function runMasterValidation() {
   let token = null;
   let userId = null;
   try {
+    const email = process.env.OPERATOR_EMAIL;
+    const password = process.env.OPERATOR_PASSWORD;
+    if (!email || !password) {
+      throw new Error('OPERATOR_EMAIL and OPERATOR_PASSWORD environment variables are required.');
+    }
     const loginRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ email: 'franciscotaveira.mkt@gmail.com', password: 'Ntr*82469356' }),
+      body: JSON.stringify({ email, password }),
     });
     const loginData = await loginRes.json();
     if (loginRes.ok && loginData.access_token) {
@@ -192,6 +219,7 @@ async function runMasterValidation() {
     const res = await apiFetch(`/workspaces/${WS_ID}/appointments`, {
       method: 'POST',
       body: JSON.stringify({
+        workspaceId: WS_ID,
         leadName: 'Audit Lead VIP',
         leadPhone: '+554999998888',
         serviceName: 'Consultoria SOS Sales Premium',
@@ -368,6 +396,7 @@ async function runMasterValidation() {
     const res = await apiFetch('/billing/abacatepay/charges', {
       method: 'POST',
       body: JSON.stringify({
+        workspaceId: WS_ID,
         customerName: 'Francisco Taveira',
         customerPhone: '+554999998888',
         customerEmail: 'franciscotaveira.mkt@gmail.com',
@@ -384,10 +413,11 @@ async function runMasterValidation() {
   // -------------------------------------------------------------
   console.log('\n--- 9. SYSTEM HEALTH & READINESS PROBES ---');
   {
-    const livenessRes = await apiFetch('https://crm.iaparavendas.tech/health');
+    const healthBase = new URL(API_BASE).origin;
+    const livenessRes = await apiFetch(`${healthBase}/health`);
     record('Health', 'GET Liveness Probe (/health)', livenessRes.status === 200, { status: livenessRes.status });
 
-    const readyRes = await apiFetch('https://crm.iaparavendas.tech/ready');
+    const readyRes = await apiFetch(`${healthBase}/ready`);
     record('Health', 'GET Readiness Probe (/ready)', readyRes.status === 200, { status: readyRes.status, data: readyRes.data });
   }
 

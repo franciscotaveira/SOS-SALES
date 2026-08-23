@@ -57,31 +57,31 @@ export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
   return (
     <form onSubmit={handleSave} className="space-y-6 animate-in fade-in duration-200">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-xl p-5 border border-slate-800 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-lg p-3 sm:p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-[#00A884]" />
-            <h2 className="text-lg font-bold font-heading">{profile.tradeName}</h2>
-            <span className="text-[10px] bg-emerald-950 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-800 flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3" /> WhatsApp Oficial Conectado
+          <div className="flex items-center gap-1.5">
+            <Building2 className="w-9 h-9 text-[var(--sos-success)]" />
+            <h2 className="text-base font-bold font-heading">{profile.tradeName}</h2>
+            <span className="text-[8.5px] bg-[var(--sos-success)]/20 text-[var(--sos-success)] font-bold px-1.5 py-0.5 rounded-full border border-[var(--sos-success)]/30 flex items-center gap-1">
+              <ShieldCheck className="w-2.5 h-2.5" /> WhatsApp Oficial Conectado
             </span>
           </div>
-          <p className="text-xs text-slate-300 max-w-2xl">{profile.tagline}</p>
+          <p className="text-[9.5px] text-[var(--sos-muted)] max-w-2xl">{profile.tagline}</p>
         </div>
 
         <button
           type="submit"
           id="btn-save-company-profile"
-          className="flex items-center justify-center gap-1.5 px-4 py-2 bg-[#00A884] hover:bg-[#008f6f] text-white rounded-lg text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+          className="flex items-center justify-center gap-1 px-2.5 py-1.5 bg-[var(--sos-success)] hover:bg-[var(--sos-success)]/90 text-[var(--sos-background)] rounded-lg text-[9px] font-bold transition-all shadow-2xs shrink-0 cursor-pointer"
         >
           {saved ? (
             <>
-              <Check className="w-4 h-4" />
+              <Check className="w-3 h-3" />
               <span>Salvo com Sucesso!</span>
             </>
           ) : (
             <>
-              <Save className="w-4 h-4" />
+              <Save className="w-3 h-3" />
               <span>Salvar Dados Oficiais</span>
             </>
           )}

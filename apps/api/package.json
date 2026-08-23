@@ -1,13 +1,15 @@
 {
   "name": "sos-sales-api",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Sistema Operacional de Continuidade Comercial e Navegação de Vendas",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "dev:waha": "tsx watch src/local-waha.ts",
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup src/index.ts --format esm --dts && node scripts/generate-release-manifest.mjs",
+    "build:lab": "APP_ENV=lab tsup src/index.ts --format esm --dts && APP_ENV=lab node scripts/generate-release-manifest.mjs",
+    "build:prod": "APP_ENV=production tsup src/index.ts --format esm --dts && APP_ENV=production node scripts/generate-release-manifest.mjs",
     "start": "node dist/index.js",
     "generate:openapi": "tsx scripts/generate-openapi.ts",
     "infra:up": "npx supabase start && docker compose up -d sos-redis",
@@ -16,13 +18,13 @@
     "waha:down": "docker compose stop sos-waha",
     "db:reset": "npx supabase db reset",
     "db:wait": "tsx scripts/db-wait.ts",
-    "check": "tsc --noEmit && vitest run --no-file-parallelism",
+    "check": "tsc --noEmit && npm run test",
     "check:fresh": "npm run db:reset && npm run db:wait && npm run check",
-    "test": "vitest run --no-file-parallelism",
-    "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration --no-file-parallelism",
-    "test:coverage": "vitest run --coverage --no-file-parallelism",
-    "test:watch": "vitest"
+    "test": "APP_ENV=test DATABASE_URL=${TEST_DATABASE_URL:-postgresql://postgres:postgres@localhost:55432/postgres} vitest run --no-file-parallelism --test-timeout=20000 && node scripts/cleanup-test-fixtures.mjs",
+    "test:unit": "APP_ENV=test vitest run tests/unit",
+    "test:integration": "APP_ENV=test DATABASE_URL=${TEST_DATABASE_URL:-postgresql://postgres:postgres@localhost:55432/postgres} vitest run tests/integration --no-file-parallelism --test-timeout=20000 && node scripts/cleanup-test-fixtures.mjs",
+    "test:coverage": "APP_ENV=test DATABASE_URL=${TEST_DATABASE_URL:-postgresql://postgres:postgres@localhost:55432/postgres} vitest run --coverage --no-file-parallelism --test-timeout=20000 && node scripts/cleanup-test-fixtures.mjs",
+    "test:watch": "APP_ENV=test vitest"
   },
   "keywords": [
     "crm",

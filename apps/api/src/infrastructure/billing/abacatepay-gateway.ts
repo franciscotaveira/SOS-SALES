@@ -51,14 +51,7 @@ export class AbacatePayGateway {
    */
   public async createBilling(input: CreateAbacateChargeInput): Promise<AbacateChargeOutput> {
     if (!this.isConfigured()) {
-      // Retorna simulação estruturada se a chave ainda não estiver configurada no ambiente
-      return {
-        billingId: `sim_bill_${Date.now()}`,
-        url: `https://abacatepay.com/pay/sim_${Date.now()}`,
-        status: 'PENDING',
-        amount: input.product.priceInCents,
-        pixCopiaECola: `00020126580014br.gov.bcb.pix0136mct-sos-sales-pix-20265204000053039865405${(input.product.priceInCents / 100).toFixed(2)}5802BR`,
-      };
+      throw new Error('AbacatePay is not configured');
     }
 
     const payload = {

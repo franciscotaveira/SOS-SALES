@@ -73,24 +73,39 @@ export async function commercialOutcomeRoutes(
           try {
             const infoRes = await dbPool.query(
               `SELECT j.contact_id, c.phone, c.name,
-                      cc.public_config
+                      cc.public_config,
+                      cs.secret_payload
                FROM public.commercial_journeys j
                JOIN public.contacts c ON c.id = j.contact_id
                LEFT JOIN public.channel_connections cc ON cc.id = j.channel_connection_id
-               WHERE j.id = $1 LIMIT 1`,
-              [params.data.journeyId]
+               LEFT JOIN LATERAL (
+                 SELECT secret_payload
+                 FROM public.channel_connection_secrets
+                 WHERE channel_connection_id = cc.id
+                   AND secret_kind IN ('meta_capi_token', 'meta_bearer_token')
+                 ORDER BY CASE WHEN secret_kind = 'meta_capi_token' THEN 1 ELSE 2 END
+                 LIMIT 1
+               ) cs ON true
+               WHERE j.id = $1 AND j.workspace_id = $2
+               LIMIT 1`,
+              [params.data.journeyId, params.data.workspaceId]
             );
             if (infoRes.rows.length > 0) {
               const row = infoRes.rows[0];
               const pubConfig = row.public_config || {};
-              const pixelId = pubConfig?.trackingConfig?.pixelId || process.env.META_PIXEL_ID;
-              const accessToken = pubConfig?.trackingConfig?.capiAccessToken || process.env.META_CAPI_ACCESS_TOKEN;
+              const secretPayload = row.secret_payload || {};
+              const pixelId = pubConfig?.metaPixelId
+                || pubConfig?.meta_capi_pixel_id
+                || pubConfig?.trackingConfig?.pixelId;
+              const accessToken = secretPayload?.accessToken;
 
               if (pixelId && accessToken) {
                 const capi = new CapiClient();
                 await capi.sendPurchaseEvent(
                   {
                     outcomeId: data.outcomeId,
+                    workspaceId: params.data.workspaceId,
+                    journeyId: params.data.journeyId,
                     pixelId,
                     revenueMinor: body.data.revenueMinor,
                     currency: 'BRL',

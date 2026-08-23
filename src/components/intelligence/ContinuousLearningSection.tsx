@@ -70,7 +70,7 @@ export const ContinuousLearningSection: React.FC<ContinuousLearningSectionProps>
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-xl p-5 border border-slate-800 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-[var(--sos-surface)] border-[var(--sos-border)] rounded-xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-emerald-400" />
@@ -81,7 +81,7 @@ export const ContinuousLearningSection: React.FC<ContinuousLearningSectionProps>
               <Award className="w-3 h-3" /> Auto-Evolução Ativa
             </span>
           </div>
-          <p className="text-xs text-slate-300 max-w-3xl">
+          <p className="text-xs text-[var(--sos-muted)] max-w-3xl">
             Toda vez que um operador humano edita ou aprimora uma sugestão do robô, o sistema aprende o padrão e gera um novo fato curado, elevando progressivamente a assertividade das vendas.
           </p>
         </div>

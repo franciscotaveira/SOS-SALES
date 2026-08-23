@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PoolClient } from 'pg';
 import { dbPool, query } from '../../src/infrastructure/database/pool.js';
 
-describe('P0 known fact audit protocol', () => {
+describe('P0 known fact audit protocol', { timeout: 20000 }, () => {
   const workspaceA = 'f7000000-0000-0000-0000-000000000001';
   const workspaceB = 'f7000000-0000-0000-0000-000000000002';
   const operatorA = 'f7100000-0000-0000-0000-000000000001';

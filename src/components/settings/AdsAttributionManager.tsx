@@ -21,10 +21,10 @@ interface AdsAttributionManagerProps {
 }
 
 export const AdsAttributionManager: React.FC<AdsAttributionManagerProps> = ({ workspace }) => {
-  const [metaPixelId, setMetaPixelId] = useState('892374928374192');
-  const [metaAccessToken, setMetaAccessToken] = useState('EAAQ..._meta_capi_live_token_tx_crm');
-  const [metaDatasetId, setMetaDatasetId] = useState('ds_8932749283');
-  const [metaCapiEnabled, setMetaCapiEnabled] = useState(true);
+  const [metaPixelId, setMetaPixelId] = useState('');
+  const [metaAccessToken, setMetaAccessToken] = useState('');
+  const [metaDatasetId, setMetaDatasetId] = useState('');
+  const [metaCapiEnabled, setMetaCapiEnabled] = useState(false);
 
   const [googleAdsCustomerId, setGoogleAdsCustomerId] = useState('482-901-2394');
   const [googleConversionId, setGoogleConversionId] = useState('AW-1092834792');

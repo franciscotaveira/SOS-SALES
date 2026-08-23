@@ -29,13 +29,13 @@ import {
   HelpCircle,
   LogOut,
   Shield,
+  ShieldCheck,
+  Sparkles,
   ArrowRight,
   Lock,
   PieChart,
   CalendarDays,
   BookOpen,
-  Sparkles,
-  ShieldCheck,
   Megaphone,
 } from 'lucide-react';
 
@@ -254,7 +254,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           label: 'Agora',
           icon: Flame,
           badge: pendingPrioritiesCount > 0 ? pendingPrioritiesCount : undefined,
-          badgeColor: 'bg-rose-500 text-white',
+          badgeColor: 'bg-[#DC2626] text-white',
           visible: true,
         },
         {
@@ -268,7 +268,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           label: 'Grupos',
           icon: Users,
           badge: pendingGroupsCount > 0 ? pendingGroupsCount : undefined,
-          badgeColor: 'bg-amber-500 text-white',
+          badgeColor: 'bg-[#D97706] text-white',
           visible: showGroups,
         },
         {
@@ -286,27 +286,25 @@ export const AppShell: React.FC<AppShellProps> = ({
       ],
     },
     {
-      title: 'GESTÃO',
-      items: [
-        {
-          id: 'resultados',
-          label: 'Gestão de Campanhas',
-          icon: Megaphone,
-          visible: showTrafficProof,
-          tag: 'Marketing',
-        },
-      ],
-    },
+            title: 'GESTÃO',
+            items: [
+              {
+                id: 'resultados',
+                label: 'Gestão de Campanhas',
+                icon: Megaphone,
+                visible: showTrafficProof,
+              },
+            ],
+          },
     {
       title: 'INTELIGÊNCIA',
       items: [
         {
-          id: 'playbook',
-          label: 'Inteligência',
-          icon: Bot,
-          visible: true,
-          tag: !isAdmin ? 'Leitura' : undefined,
-        },
+                id: 'playbook',
+                label: 'Inteligência',
+                icon: Bot,
+                visible: true,
+              },
         {
           id: 'simulador',
           label: 'Simulador',
@@ -334,19 +332,25 @@ export const AppShell: React.FC<AppShellProps> = ({
   };
 
   // Filter items for search palette
-  const searchableItems = [
-    { id: 'agora' as NavigationTab, label: 'Cockpit Agora (Prioridades)', icon: Flame, section: 'Operação' },
-    { id: 'conversas' as NavigationTab, label: 'Todas as Conversas 1:1', icon: MessageSquare, section: 'Operação' },
-    { id: 'kanban' as NavigationTab, label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação' },
-    { id: 'agenda' as NavigationTab, label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação' },
-    { id: 'anotacoes' as NavigationTab, label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação' },
-    { id: 'analytics' as NavigationTab, label: 'Analytics & ROI da IA', icon: PieChart, section: 'Gestão' },
-    { id: 'resultados' as NavigationTab, label: 'Resultados & Proof of Traffic', icon: BarChart3, section: 'Gestão' },
-    { id: 'grupos' as NavigationTab, label: 'Grupos', icon: Users, section: 'Gestão' },
-    { id: 'playbook' as NavigationTab, label: 'Sales AI Playbook & Políticas', icon: Bot, section: 'Inteligência' },
-    { id: 'simulador' as NavigationTab, label: 'Simulador de QA & Estresse', icon: Zap, section: 'Inteligência' },
-    { id: 'configuracoes' as NavigationTab, label: 'Configurações do Workspace', icon: Settings, section: 'Sistema' },
-  ].filter((item) =>
+  const searchableItems = ([
+    { id: 'agora', label: 'Cockpit Agora (Prioridades)', icon: Flame, section: 'Operação' },
+    { id: 'conversas', label: 'Todas as Conversas 1:1', icon: MessageSquare, section: 'Operação' },
+    { id: 'kanban', label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação' },
+    { id: 'agenda', label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação' },
+    { id: 'anotacoes', label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação' },
+    { id: 'resultados', label: 'Analytics & ROI da IA', icon: PieChart, section: 'Gestão', subTab: 'analytics' },
+    { id: 'resultados', label: 'Resultados & Proof of Traffic', icon: BarChart3, section: 'Gestão', subTab: 'proof' },
+    { id: 'grupos', label: 'Grupos WhatsApp', icon: Users, section: 'Gestão' },
+    { id: 'playbook', label: 'Sales AI Playbook & Políticas', icon: Bot, section: 'Inteligência' },
+    { id: 'simulador', label: 'Simulador de QA & Estresse', icon: Zap, section: 'Inteligência' },
+    { id: 'configuracoes', label: 'Configurações do Workspace', icon: Settings, section: 'Sistema' },
+  ] satisfies Array<{
+    id: NavigationTab;
+    label: string;
+    icon: React.ElementType;
+    section: string;
+    subTab?: string;
+  }>).filter((item) =>
     item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
     item.section.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -364,17 +368,17 @@ export const AppShell: React.FC<AppShellProps> = ({
               className="w-10 h-10 mx-auto rounded-xl bg-[#001f18] border border-[#00a884]/40 flex items-center justify-center cursor-pointer group hover:border-[#00a884] transition-colors"
               title="Expandir barra lateral"
             >
-              <span className="text-[#00A884] font-black text-xs font-mono group-hover:scale-105 transition-transform">SOS</span>
+              <Flame className="w-5 h-5 text-[#00A884] group-hover:scale-105 transition-transform" />
             </button>
           ) : (
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-[#001f18] border border-[#00a884]/40 flex items-center justify-center shrink-0">
-                  <span className="text-[#00A884] font-black text-xs font-mono">SOS</span>
+                  <Flame className="w-4 h-4 text-[#00A884]" />
                 </div>
-                <div>
-                  <div className="text-white font-black text-xs tracking-wider leading-none font-heading">SOS SALES</div>
-                  <div className="text-[#00A884] text-[8.5px] font-bold tracking-widest leading-none mt-1 uppercase">SISTEMA OPERACIONAL</div>
+                <div className="min-w-0">
+                  <div className="text-white font-black text-xs tracking-wider leading-none font-heading truncate">SOS Sales</div>
+                  <div className="text-[#00A884] text-xs font-medium tracking-wider leading-none mt-0.5 uppercase">Operacional</div>
                 </div>
               </div>
               {!isMobile && (
@@ -411,12 +415,12 @@ export const AppShell: React.FC<AppShellProps> = ({
             return (
               <div key={section.title} className="space-y-1">
                 {!collapsed ? (
-                  <div className="px-2.5 py-1 text-[10px] font-bold tracking-wider text-slate-400 uppercase font-heading">
-                    {section.title}
-                  </div>
-                ) : (
-                  <div className="h-px bg-slate-800/80 my-2 mx-1" />
-                )}
+                              <div className="px-2.5 py-1.5 text-xs font-bold tracking-wider text-slate-400 uppercase font-heading">
+                                {section.title}
+                              </div>
+                            ) : (
+                              <div className="h-px bg-slate-800/80 my-2 mx-1" />
+                            )}
 
                 {visibleItems.map((item) => {
                   const isActive = activeTab === item.id;
@@ -443,7 +447,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                   ? 'text-white'
                                   : 'text-slate-400 hover:text-white hover:bg-white/5'
                               }`
-                            : `gap-3 py-2 px-2.5 rounded-xl text-xs font-semibold ${
+                            : `gap-2 py-1.5 px-2.5 rounded-xl text-xs font-semibold ${
                                 isActive
                                   ? 'text-white'
                                   : 'text-slate-300 hover:text-white hover:bg-white/5'
@@ -470,7 +474,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                         {/* Numeric Notification Badge */}
                         {item.badge !== undefined && (
                           <span
-                            className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
                               item.badgeColor || 'bg-slate-700 text-slate-200'
                             } ${collapsed ? 'absolute -top-1 -right-1 ring-2 ring-[#0B132B]' : ''}`}
                           >
@@ -481,11 +485,11 @@ export const AppShell: React.FC<AppShellProps> = ({
 
                       {/* Subcategories for Playbook / Inteligência */}
                       {item.id === 'playbook' && isActive && !collapsed && (
-                        <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
+                        <div className="mt-1 pl-6 bg-slate-800/30 space-y-0.5">
                           {[
                             { id: 'thesis', label: 'Personalidade & Tom de Voz' },
                             { id: 'diagnosis', label: 'Diagnóstico de 1 Ano' },
-                            { id: 'catalog', label: 'Tabela de Preços & Serviços' },
+                            { id: 'catalog', label: 'Catálogo de Produtos & Preços (WABA)' },
                             { id: 'knowledge', label: 'Documentos & Regras' },
                             { id: 'learning', label: 'Ajustes da Equipe (Aprendizado)' },
                             { id: 'company', label: 'Dados da Empresa & WhatsApp' },
@@ -500,7 +504,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                   onChangeTab('playbook');
                                   onChangeIntelligenceSubTab?.(sub.id);
                                 }}
-                                className={`w-full text-left px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                                className={`w-full text-left px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                                   isSubActive ? 'bg-slate-800 text-[#00A884] font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                                 }`}
                               >
@@ -513,7 +517,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
                       {/* Subcategories for Grupos */}
                       {item.id === 'grupos' && isActive && !collapsed && (
-                        <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
+                        <div className="mt-1 pl-6 bg-slate-800/30 space-y-0.5">
                           {[
                             { id: 'conversations', label: 'Conversas nos Grupos' },
                             { id: 'monitor', label: 'Monitor de Saúde & Alertas' },
@@ -529,7 +533,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                   onChangeTab('grupos');
                                   onChangeGroupSubTab?.(sub.id);
                                 }}
-                                className={`w-full text-left px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                                className={`w-full text-left px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                                   isSubActive ? 'bg-slate-800 text-[#00A884] font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                                 }`}
                               >
@@ -542,10 +546,11 @@ export const AppShell: React.FC<AppShellProps> = ({
 
                       {/* Subcategories for Gestão de Campanhas */}
                       {item.id === 'resultados' && isActive && !collapsed && (
-                        <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
+                        <div className="mt-1 pl-6 bg-slate-800/30 space-y-0.5">
                           {[
                             { id: 'analytics', label: 'Analytics & ROI' },
                             { id: 'traffic_proof', label: 'Anúncios & CTWA' },
+                            { id: 'broadcast', label: 'Disparo em Massa (Broadcast)' },
                             { id: 'campaign_links', label: 'Links & QR Code' },
                             { id: 'waba_templates', label: 'Modelos WABA' },
                             { id: 'tracking', label: 'Traqueamento' },
@@ -559,7 +564,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                   onChangeTab('resultados');
                                   onChangeResultsSubTab?.(sub.id as any);
                                 }}
-                                className={`w-full text-left px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                                className={`w-full text-left px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                                   isSubActive ? 'bg-slate-800 text-[#00A884] font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                                 }`}
                               >
@@ -572,7 +577,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
                       {/* Subcategories for Configurações */}
                       {item.id === 'configuracoes' && isActive && !collapsed && (
-                        <div className="ml-4 mt-1 pl-2 border-l border-slate-800 space-y-1">
+                        <div className="mt-1 pl-6 bg-slate-800/30 rounded-r-lg space-y-0.5">
                           {[
                             { id: 'team', label: 'Equipe & Usuários' },
                             { id: 'api_webhooks', label: 'API & Webhooks' },
@@ -589,7 +594,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                                   onChangeTab('configuracoes');
                                   onChangeSettingsSubTab?.(sub.id);
                                 }}
-                                className={`w-full text-left px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                                className={`w-full text-left px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                                   isSubActive ? 'bg-slate-800 text-[#00A884] font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                                 }`}
                               >
@@ -607,234 +612,250 @@ export const AppShell: React.FC<AppShellProps> = ({
           })}
         </div>
 
-        {/* Sidebar Footer: Workspace Switcher, WhatsApp Status, AI Autonomy, Profile, Shortcuts, Logout */}
-        <div className="p-2.5 border-t border-slate-800 space-y-2 shrink-0 bg-[#0B1120]">
-          {/* 1. Workspace Switcher (Dark Mode) */}
-          <WorkspaceSwitcher
-            workspaces={workspaces}
-            currentWorkspace={currentWorkspace}
-            onSelectWorkspace={onSelectWorkspace}
-            variant="dark"
-            collapsed={collapsed}
-          />
+        {/* Sidebar Footer: Grouped — Conexão & Conta */}
+        <div className="p-2.5 border-t border-slate-800 space-y-3 shrink-0 bg-[#0B1120]">
+          {/* Grupo 1: Conexão — Workspace + WhatsApp Status */}
+          <div className="space-y-2">
+            {/* 1. Workspace Switcher (Dark Mode) */}
+            <WorkspaceSwitcher
+              workspaces={workspaces}
+              currentWorkspace={currentWorkspace}
+              onSelectWorkspace={onSelectWorkspace}
+              variant="dark"
+              collapsed={collapsed}
+            />
 
-          {/* 2. WhatsApp Status Pill */}
-          {!collapsed ? (
-            <div
-              className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between text-xs font-semibold ${
-                isChannelPaused
-                  ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
-                  : isChannelOnline
-                  ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60'
-                  : isChannelScanning
-                  ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
-                  : 'bg-rose-950/40 text-rose-300 border-rose-800/60'
-              }`}
-              title={`WhatsApp: ${isChannelOnline ? 'Online' : 'Desconectado'} · (${channelEngine})`}
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="relative flex h-2 w-2 shrink-0">
+            {/* 2. WhatsApp Status Pill */}
+            {!collapsed ? (
+              <div
+                className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between text-xs font-semibold ${
+                  isChannelPaused
+                    ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
+                    : isChannelOnline
+                    ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60'
+                    : isChannelScanning
+                    ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
+                    : 'bg-rose-950/40 text-rose-300 border-rose-800/60'
+                }`}
+                title={`WhatsApp: ${isChannelOnline ? 'Online' : 'Desconectado'} · (${channelEngine})`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    {isChannelOnline && (
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    )}
+                    <span
+                      className={`relative inline-flex rounded-full h-2 w-2 ${
+                        isChannelPaused
+                          ? 'bg-amber-400'
+                          : isChannelOnline
+                          ? 'bg-emerald-400'
+                          : isChannelScanning
+                          ? 'bg-amber-400 animate-pulse'
+                          : 'bg-rose-400'
+                      }`}
+                    />
+                  </span>
+                  <span className="truncate text-xs">
+                    {isChannelPaused
+                      ? 'WhatsApp Pausado'
+                      : isChannelOnline
+                      ? 'WhatsApp Online'
+                      : isChannelScanning
+                      ? 'Aguardando QR'
+                      : 'WhatsApp Offline'}
+                  </span>
+                </div>
+                <span className="text-[9px] font-mono opacity-70 shrink-0">
+                  {channelEngine}
+                </span>
+              </div>
+            ) : (
+              <div
+                className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center bg-slate-800/60 border border-slate-700/60"
+                title={`WhatsApp: ${isChannelOnline ? 'Online' : 'Desconectado'}`}
+              >
+                <span className="relative flex h-2.5 w-2.5">
                   {isChannelOnline && (
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   )}
                   <span
-                    className={`relative inline-flex rounded-full h-2 w-2 ${
-                      isChannelPaused
-                        ? 'bg-amber-400'
-                        : isChannelOnline
-                        ? 'bg-emerald-400'
-                        : isChannelScanning
-                        ? 'bg-amber-400 animate-pulse'
-                        : 'bg-rose-400'
+                    className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                      isChannelOnline ? 'bg-emerald-400' : 'bg-rose-400'
                     }`}
                   />
                 </span>
-                <span className="truncate text-[11px]">
-                  {isChannelPaused
-                    ? 'WhatsApp Pausado'
-                    : isChannelOnline
-                    ? 'WhatsApp Online'
-                    : isChannelScanning
-                    ? 'Aguardando QR'
-                    : 'WhatsApp Offline'}
-                </span>
-              </div>
-              <span className="text-[9.5px] font-mono opacity-70 shrink-0">
-                {channelEngine}
-              </span>
-            </div>
-          ) : (
-            <div
-              className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center bg-slate-800/60 border border-slate-700/60"
-              title={`WhatsApp: ${isChannelOnline ? 'Online' : 'Desconectado'}`}
-            >
-              <span className="relative flex h-2.5 w-2.5">
-                {isChannelOnline && (
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                )}
-                <span
-                  className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                    isChannelOnline ? 'bg-emerald-400' : 'bg-rose-400'
-                  }`}
-                />
-              </span>
-            </div>
-          )}
-
-          {/* 3. AI Autonomy Toggle Switch */}
-          {!collapsed ? (
-            <button
-              type="button"
-              onClick={toggleGlobalAiMode}
-              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                globalAiMode === 'autonomous_24_7'
-                  ? 'bg-[#00A884]/20 hover:bg-[#00A884]/30 text-emerald-300 border-[#00A884]/40'
-                  : 'bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 border-indigo-800/60'
-              }`}
-              title="Alternar entre IA Autônoma 24/7 e Modo Copiloto/Aprendizado"
-            >
-              <div className="flex items-center gap-1.5 min-w-0">
-                {globalAiMode === 'autonomous_24_7' ? (
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                ) : (
-                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                )}
-                <span className="truncate text-[11px]">
-                  {globalAiMode === 'autonomous_24_7' ? 'IA 24/7 Ativa' : 'Modo Copiloto'}
-                </span>
-              </div>
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase font-mono">
-                {globalAiMode === 'autonomous_24_7' ? 'AUTO' : 'LEARN'}
-              </span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={toggleGlobalAiMode}
-              className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 text-slate-300 transition-colors cursor-pointer"
-              title={`IA Autonomia: ${globalAiMode === 'autonomous_24_7' ? 'IA 24/7 Ativa' : 'Modo Copiloto'}`}
-            >
-              {globalAiMode === 'autonomous_24_7' ? (
-                <Sparkles className="w-4 h-4 text-emerald-400" />
-              ) : (
-                <ShieldCheck className="w-4 h-4 text-indigo-400" />
-              )}
-            </button>
-          )}
-
-          {/* 4. User Profile & Role Indicator */}
-          <div className="relative">
-            <button
-              onClick={() => {
-                if (salesOsRuntimeConfig.mode !== 'api') {
-                  setRoleMenuOpen(!roleMenuOpen);
-                }
-              }}
-              className={`w-full flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-800/80 transition-colors ${
-                collapsed ? 'justify-center' : ''
-              } ${salesOsRuntimeConfig.mode === 'api' ? 'cursor-default' : 'cursor-pointer'}`}
-              title={userEmail || (role === 'owner' ? 'Owner' : role === 'admin' ? 'Supervisor' : 'Operador')}
-            >
-              <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs">
-                {role === 'owner' ? 'OW' : role === 'admin' ? 'AD' : 'OP'}
-              </div>
-
-              {!collapsed && (
-                <div className="min-w-0 flex-1 text-left">
-                  <div className="text-xs font-semibold text-slate-200 truncate flex items-center gap-1.5">
-                    <span>Você</span>
-                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-900/80 text-indigo-300 uppercase">
-                      {role === 'owner' ? 'Owner' : role === 'admin' ? 'Supervisor' : 'Operador'}
-                    </span>
-                  </div>
-                  <div className="text-[10.5px] text-slate-400 truncate">
-                    {userEmail || currentWorkspace.name}
-                  </div>
-                </div>
-              )}
-            </button>
-
-            {/* Role Switcher Popover (Demo Mode Only) */}
-            {roleMenuOpen && salesOsRuntimeConfig.mode !== 'api' && (
-              <div className="absolute bottom-full left-0 mb-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-50 text-xs space-y-1 animate-in fade-in slide-in-from-bottom-2 duration-150 text-slate-800">
-                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-heading">
-                  Papel no Workspace (Demo)
-                </div>
-
-                <button
-                  onClick={() => {
-                    onChangeRole('operator');
-                    setRoleMenuOpen(false);
-                  }}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-md flex items-center justify-between transition-colors ${
-                    role === 'operator' ? 'bg-indigo-50 text-indigo-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <div>
-                    <div className="font-semibold">Operador</div>
-                    <div className="text-[10px] text-slate-500 font-normal">Foco no atendimento diário</div>
-                  </div>
-                  {role === 'operator' && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
-                </button>
-
-                <button
-                  onClick={() => {
-                    onChangeRole('admin');
-                    setRoleMenuOpen(false);
-                  }}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-md flex items-center justify-between transition-colors ${
-                    role === 'admin' ? 'bg-indigo-50 text-indigo-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <div>
-                    <div className="font-semibold">Supervisor / Gestor</div>
-                    <div className="text-[10px] text-slate-500 font-normal">Monitoramento e Playbook</div>
-                  </div>
-                  {role === 'admin' && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
-                </button>
-
-                <button
-                  onClick={() => {
-                    onChangeRole('owner');
-                    setRoleMenuOpen(false);
-                  }}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-md flex items-center justify-between transition-colors ${
-                    role === 'owner' ? 'bg-indigo-50 text-indigo-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <div>
-                    <div className="font-semibold">Owner (Dono)</div>
-                    <div className="text-[10px] text-slate-500 font-normal">Acesso total & financeiro</div>
-                  </div>
-                  {role === 'owner' && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
-                </button>
               </div>
             )}
           </div>
 
-          {/* 5. Footer Actions: Help & Logout */}
-          <div className="flex items-center gap-1 pt-1 border-t border-slate-800/80">
-            <button
-              onClick={() => setHelpModalOpen(true)}
-              className={`flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 text-xs transition-colors cursor-pointer ${
-                collapsed ? 'justify-center' : ''
-              }`}
-              title="Central de Ajuda & Atalhos"
-            >
-              <HelpCircle className="w-3.5 h-3.5 shrink-0" />
-              {!collapsed && <span>Ajuda & Atalhos</span>}
-            </button>
+          {/* Divider forte entre grupos */}
+          <div className="h-px bg-slate-800/80 my-1" />
 
-            {onSignOut && (
+          {/* Grupo 2: Conta — IA + Perfil + Ações */}
+          <div className="space-y-2">
+            {/* 3. AI Autonomy Toggle Switch — With mode indicator */}
+            {!collapsed ? (
               <button
-                onClick={() => setLogoutModalOpen(true)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 text-xs transition-colors cursor-pointer"
-                title="Sair do Workspace"
-                aria-label="Sair do Workspace"
+                type="button"
+                onClick={toggleGlobalAiMode}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                  globalAiMode === 'autonomous_24_7'
+                    ? 'bg-[#00A884]/20 hover:bg-[#00A884]/30 text-emerald-300 border-[#00A884]/40'
+                    : 'bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 border-indigo-800/60'
+                }`}
+                title="Alternar entre IA Autônoma 24/7 e Modo Copiloto/Aprendizado"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {globalAiMode === 'autonomous_24_7' ? (
+                    <Sparkles className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                  ) : (
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-indigo-400" />
+                  )}
+                  <span className="truncate text-xs">
+                    {globalAiMode === 'autonomous_24_7' ? 'IA 24/7 Ativa' : 'Modo Copiloto'}
+                  </span>
+                </div>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                  globalAiMode === 'autonomous_24_7'
+                    ? 'bg-emerald-500/30 text-emerald-300 border-emerald-500/50'
+                    : 'bg-indigo-500/30 text-indigo-300 border-indigo-500/50'
+                }`}>
+                  {globalAiMode === 'autonomous_24_7' ? 'AUTO' : 'LEARN'}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={toggleGlobalAiMode}
+                className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 text-slate-300 transition-colors cursor-pointer"
+                title={`IA Autonomia: ${globalAiMode === 'autonomous_24_7' ? 'IA 24/7 Ativa (AUTO)' : 'Modo Copiloto (LEARN)'}`}
+              >
+                {globalAiMode === 'autonomous_24_7' ? (
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4 text-indigo-400" />
+                )}
               </button>
             )}
+
+            {/* 4. User Profile & Role Indicator — Compact with visible role badge */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  if (salesOsRuntimeConfig.mode !== 'api') {
+                    setRoleMenuOpen(!roleMenuOpen);
+                  }
+                }}
+                className={`w-full flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-800/80 transition-colors ${
+                  collapsed ? 'justify-center' : ''
+                } ${salesOsRuntimeConfig.mode === 'api' ? 'cursor-default' : 'cursor-pointer'}`}
+                title={userEmail || (role === 'owner' ? 'Owner' : role === 'admin' ? 'Supervisor' : 'Operador')}
+              >
+                <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 shadow-xs">
+                  {role === 'owner' ? 'OW' : role === 'admin' ? 'AD' : 'OP'}
+                </div>
+
+                {!collapsed && (
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-xs font-semibold text-slate-200 truncate">
+                        {userEmail || currentWorkspace.name}
+                      </div>
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 whitespace-nowrap ${
+                        role === 'owner'
+                          ? 'bg-amber-500/30 text-amber-300 border-amber-500/50'
+                          : role === 'admin'
+                          ? 'bg-indigo-500/30 text-indigo-300 border-indigo-500/50'
+                          : 'bg-slate-500/30 text-slate-300 border-slate-500/50'
+                      }`}>
+                        {role === 'owner' ? 'OWNER' : role === 'admin' ? 'ADMIN' : 'OPERADOR'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </button>
+
+              {/* Role Switcher Popover (Demo Mode Only — hidden by default, enable via localStorage or ?demo=true) */}
+              {roleMenuOpen && salesOsRuntimeConfig.mode !== 'api' && typeof window !== 'undefined' && (localStorage.getItem('sos_show_demo_role_menu') === 'true' || new URLSearchParams(window.location.search).get('demo') === 'true') && (
+                <div className="absolute bottom-full left-0 mb-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-50 text-xs space-y-1 animate-in fade-in slide-in-from-bottom-2 duration-150 text-slate-800">
+                  <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-heading">
+                    Papel no Workspace (Demo)
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      onChangeRole('operator');
+                      setRoleMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-md flex items-center justify-between transition-colors ${
+                      role === 'operator' ? 'bg-indigo-50 text-indigo-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-semibold">Operador</div>
+                      <div className="text-[10px] text-slate-500 font-normal">Foco no atendimento diário</div>
+                    </div>
+                    {role === 'operator' && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onChangeRole('admin');
+                      setRoleMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-md flex items-center justify-between transition-colors ${
+                      role === 'admin' ? 'bg-indigo-50 text-indigo-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-semibold">Supervisor / Gestor</div>
+                      <div className="text-[10px] text-slate-500 font-normal">Monitoramento e Playbook</div>
+                    </div>
+                    {role === 'admin' && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onChangeRole('owner');
+                      setRoleMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-md flex items-center justify-between transition-colors ${
+                      role === 'owner' ? 'bg-indigo-50 text-indigo-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-semibold">Owner (Dono)</div>
+                      <div className="text-[10px] text-slate-500 font-normal">Acesso total & financeiro</div>
+                    </div>
+                    {role === 'owner' && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 5. Footer Actions: Help & Logout — Icons Only, Right Aligned */}
+            <div className="flex items-center justify-end gap-1 pt-1 border-t border-slate-800/80">
+              <button
+                onClick={() => setHelpModalOpen(true)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-colors cursor-pointer"
+                title="Atalhos: ⌘K"
+                aria-label="Atalhos"
+              >
+                <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+              </button>
+
+              {onSignOut && (
+                <button
+                  onClick={() => setLogoutModalOpen(true)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                  title="Sair do Workspace"
+                  aria-label="Sair do Workspace"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -890,16 +911,16 @@ export const AppShell: React.FC<AppShellProps> = ({
           </div>
 
           {/* Center: Global Search / Command Palette Trigger (Ctrl+K) */}
-          <div className="flex items-center flex-1 max-w-md mx-auto">
+          <div className="flex items-center flex-1 max-w-[400px] mx-auto">
             <button
               onClick={() => setSearchModalOpen(true)}
-              className="w-full flex items-center justify-between px-3 py-1 bg-slate-100/90 hover:bg-slate-200/80 border border-slate-200 rounded-xl text-xs text-slate-500 transition-colors shadow-2xs cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
+              className="w-full h-9 flex items-center justify-between px-3 bg-slate-100/90 hover:bg-slate-200/80 border border-slate-200 rounded-xl text-xs text-slate-500 transition-colors shadow-2xs cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
             >
               <div className="flex items-center gap-2">
                 <Search className="w-3.5 h-3.5 text-slate-400" />
-                <span>Buscar conversas, grupos...</span>
+                <span>Buscar leads, grupos, comandos...</span>
               </div>
-              <kbd className="text-[10px] font-mono bg-white border border-slate-300 rounded px-1.5 py-0.2 text-slate-500 font-semibold shadow-2xs">
+              <kbd className="text-[10px] font-mono bg-white border border-slate-300 rounded px-1.5 py-0.5 text-slate-500 font-semibold shadow-2xs">
                 ⌘K
               </kbd>
             </button>
@@ -910,7 +931,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             <div className="relative">
               <button
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors relative flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
+                className="h-9 p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors relative flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
                 title="Notificações e Alertas de SLA"
                 aria-label="Ver notificações de SLA"
               >
@@ -924,7 +945,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-50 text-xs space-y-2 animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                     <span className="font-bold text-slate-900 font-heading">Alertas de Atendimento</span>
-                    <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-semibold">
+                    <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold">
                       {pendingPrioritiesCount} ativos
                     </span>
                   </div>
@@ -1005,12 +1026,15 @@ export const AppShell: React.FC<AppShellProps> = ({
                   const Icon = item.icon;
                   return (
                     <button
-                      key={item.id}
+                      key={`${item.id}-${item.subTab || 'main'}`}
                       onClick={() => {
                         onChangeTab(item.id);
+                        if (item.subTab && item.id === 'resultados') {
+                          onChangeResultsSubTab?.(item.subTab);
+                        }
                         setSearchModalOpen(false);
                       }}
-                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 text-slate-700 font-medium transition-colors"
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 text-slate-700 font-medium transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-2.5">
                         <Icon className="w-4 h-4 text-slate-500" />
@@ -1123,10 +1147,12 @@ export const AppShell: React.FC<AppShellProps> = ({
                 Cancelar
               </button>
               <button
+                id="logout-confirm-btn"
                 onClick={() => {
                   setLogoutModalOpen(false);
+                  onSignOut?.();
                 }}
-                className="flex-1 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-colors shadow-xs"
+                className="flex-1 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-colors shadow-xs cursor-pointer"
               >
                 Confirmar Saída
               </button>

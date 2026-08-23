@@ -378,7 +378,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                   <h3 className="font-bold text-sm text-[#111b21]">
                     Disparo de Comunicado em Lote para Grupos
                   </h3>
-                  <p className="text-[11px] text-[#667781]">
+                  <p className="text-xs text-[#667781]">
                     Envie avisos simultâneos para os grupos de clientes da agência
                   </p>
                 </div>
@@ -429,11 +429,11 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
 
               {/* Engagement Segmentation Filter */}
               <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                <div className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
                   <span>Filtro de Engajamento Comportamental:</span>
-                  <span className="text-[10px] text-purple-700 font-mono">IA Scoring Ativo</span>
+                  <span className="text-xs text-purple-700 font-mono">IA Scoring Ativo</span>
                 </div>
-                <div className="flex flex-wrap gap-2 text-[11px]">
+                <div className="flex flex-wrap gap-2 text-xs">
                   <label className="flex items-center gap-1.5 cursor-pointer">
                     <input type="checkbox" defaultChecked className="rounded accent-[#00a884]" />
                     <span className="text-slate-700">Apenas Alta Atividade (&gt;80%)</span>
@@ -599,18 +599,26 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
             <div>
               <div className="font-bold text-xs text-[#111b21] flex items-center gap-2">
                 <span>Resumo Inteligente SOS: Monitoramento de {groups.length} grupos</span>
-                <span className="text-[10px] bg-white text-[#00a884] border border-[#00a884]/30 px-2 py-0.2 rounded-full font-bold">
+                <span className="text-xs bg-white text-[#00a884] border border-[#00a884]/30 px-2 py-0.2 rounded-full font-bold">
                   IA Copilot
                 </span>
               </div>
-              <p className="text-[11px] text-[#54656f]">
+              <p className="text-xs text-[#54656f]">
                 {groups.length > 0
                   ? `${groups.filter(g => (g.unreadCount || 0) > 0 || g.healthStatus === 'pending_action').length} grupos com mensagens ou pendências recentes.`
                   : "Nenhum grupo ativo no momento."}
               </p>
             </div>
           </div>
-          <button className="text-[#54656f] hover:text-[#111b21] p-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsDigestOpen(!isDigestOpen);
+            }}
+            className="text-[#54656f] hover:text-[#111b21] p-1 cursor-pointer"
+            aria-label={isDigestOpen ? 'Recolher resumo inteligente' : 'Expandir resumo inteligente'}
+          >
             {isDigestOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
         </div>
@@ -626,14 +634,14 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                 <div className="flex items-center justify-between font-bold text-[#111b21] text-[11.5px]">
                   <span className="truncate max-w-[170px]">{grp.name}</span>
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                    className={`text-xs px-1.5 py-0.2 rounded font-mono ${
                       (grp.unreadCount || 0) > 0 ? 'bg-amber-100 text-amber-800 font-bold' : 'bg-emerald-50 text-emerald-700'
                     }`}
                   >
                     {(grp.unreadCount || 0) > 0 ? `${grp.unreadCount} novas` : 'Ativo'}
                   </span>
                 </div>
-                <p className="text-[11px] text-[#54656f] line-clamp-2">
+                <p className="text-xs text-[#54656f] line-clamp-2">
                   {grp.lastMessage?.text ? `${grp.lastMessage.sender}: ${grp.lastMessage.text}` : 'Grupo sincronizado e monitorado via WAHA/WABA.'}
                 </p>
               </div>
@@ -698,7 +706,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
 
             {/* Client Account Filter */}
             <div className="flex items-center gap-2 pt-0.5">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-[#54656f] shrink-0">
+              <label className="text-xs font-bold uppercase tracking-wider text-[#54656f] shrink-0">
                 Cliente:
               </label>
               <select
@@ -718,7 +726,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
             </div>
 
             {/* Filter pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto text-[11px] pb-0.5">
+            <div className="flex items-center gap-1.5 overflow-x-auto text-xs pb-0.5">
               <button
                 onClick={() => setCategoryFilter('all')}
                 className={`px-2.5 py-1 rounded-lg font-bold shrink-0 transition-colors ${
@@ -801,7 +809,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                               <Pin className="w-3 h-3 text-[#00a884] shrink-0 fill-[#00a884]" />
                             )}
                           </div>
-                          <span className="text-[11px] text-[#667781] block truncate">
+                          <span className="text-xs text-[#667781] block truncate">
                             {grp.clientName}
                           </span>
                         </div>
@@ -820,7 +828,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                         </span>
 
                         {!isResolved && (grp.unreadCount || 0) > 0 && (
-                          <span className="bg-[#25d366] text-white font-bold text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center">
+                          <span className="bg-[#25d366] text-white font-bold text-xs w-4.5 h-4.5 rounded-full flex items-center justify-center">
                             {grp.unreadCount}
                           </span>
                         )}
@@ -836,7 +844,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                     </div>
 
                     {/* Footer: Tags & Milestone */}
-                    <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-[#f0f2f5] text-[10px]">
+                    <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-[#f0f2f5] text-xs">
                       <div className="flex items-center gap-1 text-[#8696a0] truncate max-w-[200px]">
                         <Clock className="w-3 h-3" />
                         <span>{grp.lastMessage?.timestamp || 'Hoje'}</span>
@@ -1039,7 +1047,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                               />
                             ))}
                           </div>
-                          <span className="text-[11px] font-mono text-[#667781]">0:28</span>
+                          <span className="text-xs font-mono text-[#667781]">0:28</span>
                         </div>
                         <div className="text-[10.5px] text-[#667781] bg-amber-50 p-1.5 rounded border border-amber-200/60">
                           🤖 <b>Transcrição IA:</b> <i>"Oi equipe, conseguimos dar um foco no sábado para os atendimentos de noiva? Valeu!"</i>
@@ -1151,7 +1159,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                       <div className="font-bold text-purple-900">
                         Próximo Marco: {selectedGroup.nextMilestone || 'Alinhamento Semanal'}
                       </div>
-                      <div className="text-purple-700 text-[11px]">
+                      <div className="text-purple-700 text-xs">
                         Responsável: {selectedGroup.assignedManagerName}
                       </div>
                     </div>
@@ -1165,7 +1173,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                       <div className="font-bold text-[#111b21]">
                         Monitoramento de Mensagens & Handoff do Bot
                       </div>
-                      <div className="text-[#667781] text-[11px]">
+                      <div className="text-[#667781] text-xs">
                         Garantir que nenhum lead fique mais de 5 minutos sem resposta no WhatsApp.
                       </div>
                     </div>

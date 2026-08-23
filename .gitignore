@@ -20,5 +20,7 @@ supabase/.branches/
 *.cert
 .gstack/
 .claude-flow/
-test-results/
 *.db
+*.rvf
+*.rvf.lock
+backups/
