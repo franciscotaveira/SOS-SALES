@@ -31,6 +31,7 @@ import { KnownFactOperationsGateway } from './application/ports/known-fact-opera
 import { AppointmentGateway } from './application/ports/appointment-gateway.js';
 import { NotesGateway } from './application/ports/notes-gateway.js';
 import { WorkspaceProvisioningGateway } from './application/ports/workspace-provisioning-gateway.js';
+import { WabaChannelInfoGateway } from './application/ports/waba-channel-info-gateway.js';
 import { PostgresWorkspaceProvisioningGateway } from './infrastructure/database/postgres-workspace-provisioning-gateway.js';
 import { CompositeDependencyHealthProvider } from './infrastructure/health/composite-dependency-health-provider.js';
 import { createProductionRuntimeFromEnvironment } from './infrastructure/runtime/production-runtime.js';
@@ -63,6 +64,7 @@ export interface RuntimeDependencies {
   appointmentGateway?: AppointmentGateway;
   notesGateway?: NotesGateway;
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
+  wabaChannelInfoGateway?: WabaChannelInfoGateway;
   trustProxy?: TrustProxyOption;
   logger?: boolean | Record<string, unknown>;
   /** Releases runtime-owned resources after HTTP and worker shutdown. */
@@ -124,6 +126,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     { PostgresKnownFactOperationsGateway },
     { PostgresAppointmentGateway },
     { PostgresNotesGateway },
+    { PostgresWabaChannelInfoGateway },
     { dbPool },
   ] = await Promise.all([
     import('./infrastructure/security/environment-webhook-secret-provider.js'),
@@ -143,6 +146,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     import('./infrastructure/database/postgres-known-fact-operations-gateway.js'),
     import('./infrastructure/database/postgres-appointment-gateway.js'),
     import('./infrastructure/database/postgres-notes-gateway.js'),
+    import('./infrastructure/database/postgres-waba-channel-info-gateway.js'),
     import('./infrastructure/database/pool.js'),
   ]);
 
@@ -200,6 +204,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     appointmentGateway,
     notesGateway,
     workspaceProvisioningGateway: new PostgresWorkspaceProvisioningGateway(dbPool),
+    wabaChannelInfoGateway: new PostgresWabaChannelInfoGateway(dbPool),
     trustProxy: false,
     logger: {
       transport: {
@@ -293,6 +298,7 @@ async function startComposedServer(
     appointmentGateway: runtime.appointmentGateway,
     notesGateway: runtime.notesGateway,
     workspaceProvisioningGateway: runtime.workspaceProvisioningGateway,
+    wabaChannelInfoGateway: runtime.wabaChannelInfoGateway,
     wabaWebhook: wabaWebhookConfig,
     logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? true : { level: 'info' }),
     trustProxy: runtime.trustProxy ?? false,

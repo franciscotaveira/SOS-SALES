@@ -14,7 +14,9 @@ COPY apps/api/tsconfig.json ./
 COPY apps/api/scripts ./scripts
 COPY apps/api/src ./src
 
-RUN npm run build
+# Runtime images only execute JavaScript; declaration generation is validated
+# separately by `tsc --noEmit` and must not block container assembly.
+RUN npx tsup src/index.ts --format esm && node scripts/generate-release-manifest.mjs
 
 # Stage 2: Production Runner
 FROM node:22-alpine AS runner

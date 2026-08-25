@@ -21,6 +21,7 @@ import { KnownFactOperationsGateway } from '../../application/ports/known-fact-o
 import { AppointmentGateway } from '../../application/ports/appointment-gateway.js';
 import { NotesGateway } from '../../application/ports/notes-gateway.js';
 import { WorkspaceProvisioningGateway } from '../../application/ports/workspace-provisioning-gateway.js';
+import { WabaChannelInfoGateway } from '../../application/ports/waba-channel-info-gateway.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { publicSupplierRoutes } from './routes/public-supplier-routes.js';
@@ -114,6 +115,8 @@ export interface AppDependencies {
   notesGateway?: NotesGateway;
   /** Authenticated first-login workspace auto-provisioning gateway. */
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
+  /** Production-owned read gateway for connected Meta WABA channel metadata. */
+  wabaChannelInfoGateway?: WabaChannelInfoGateway;
   logger?: boolean | Record<string, unknown>;
   rateLimit?: RateLimitOptions | false;
   /**
@@ -270,6 +273,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   app.register(whatsappChannelRoutes, {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
+    wabaChannelInfoGateway: dependencies.wabaChannelInfoGateway,
   });
 
   app.register(aiCopilotRoutes, {

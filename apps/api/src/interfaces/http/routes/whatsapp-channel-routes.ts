@@ -6,6 +6,7 @@ import { dbPool } from '../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../application/services/attribution-service.js';
 import { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
 import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
+import { WabaChannelInfoGateway } from '../../../application/ports/waba-channel-info-gateway.js';
 import { verifyOperatorAuth, assertTenantAccess, unauthorized, forbidden } from '../helpers/auth-guard.js';
 import crypto from 'node:crypto';
 
@@ -118,6 +119,7 @@ export function getWorkspaceIdFromSession(sessionName: string): string | null {
 export interface WhatsappChannelRouteDependencies {
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
+  wabaChannelInfoGateway?: WabaChannelInfoGateway;
 }
 
 export async function whatsappChannelRoutes(
@@ -880,31 +882,25 @@ export async function whatsappChannelRoutes(
   // 6.9. WABA: Get public channel info (verified phone for campaign links)
   const handleWabaChannelInfo = async (workspaceId: string, reply: FastifyReply) => {
     const normWsId = normalizeWorkspaceUuid(workspaceId);
-    const client = await dbPool.connect();
-    try {
-      const res = await client.query(`
-        SELECT public_config FROM public.channel_connections
-        WHERE workspace_id = $1 AND provider = 'meta_cloud' AND status = 'CONNECTED'
-        LIMIT 1
-      `, [normWsId]);
-      if (!res.rowCount || res.rowCount === 0) return reply.status(404).send({ error: 'Canal WABA não configurado' });
-      const cfg = typeof res.rows[0].public_config === 'string' ? JSON.parse(res.rows[0].public_config) : res.rows[0].public_config;
-      return {
-        success: true,
-        configured: true,
-        connected: true,
-        accountStatus: 'CONNECTED',
-        phoneNumber: cfg?.verifiedPhone || cfg?.displayPhone || '+55 49 8837-0054',
-        displayPhoneNumber: cfg?.verifiedPhone || cfg?.displayPhone || '+55 49 8837-0054',
-        verifiedPhone: cfg?.verifiedPhone || cfg?.displayPhone || '+55 49 8837-0054',
-        verifiedName: cfg?.verifiedName || 'Haven Escovaria',
-        phoneNumberId: cfg?.phoneNumberId || null,
-        wabaId: cfg?.wabaId || null,
-        qualityRating: cfg?.qualityRating || 'GREEN',
-      };
-    } finally {
-      client.release();
+    if (!normWsId) return reply.status(400).send({ error: 'Workspace inválido' });
+    if (!dependencies.wabaChannelInfoGateway) {
+      return reply.status(503).send({ error: 'Consulta WABA indisponível' });
     }
+    const cfg = await dependencies.wabaChannelInfoGateway.findConnectedByWorkspaceId(normWsId);
+    if (!cfg) return reply.status(404).send({ error: 'Canal WABA não configurado' });
+    return {
+      success: true,
+      configured: true,
+      connected: true,
+      accountStatus: 'CONNECTED',
+      phoneNumber: cfg.verifiedPhone || cfg.displayPhone || null,
+      displayPhoneNumber: cfg.verifiedPhone || cfg.displayPhone || null,
+      verifiedPhone: cfg.verifiedPhone || cfg.displayPhone || null,
+      verifiedName: cfg.verifiedName || null,
+      phoneNumberId: cfg.phoneNumberId || null,
+      wabaId: cfg.wabaId || null,
+      qualityRating: cfg.qualityRating || null,
+    };
   };
 
   app.get('/api/v1/workspaces/:workspaceId/channels/waba/channel-info', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {

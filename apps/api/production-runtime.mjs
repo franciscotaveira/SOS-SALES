@@ -21,6 +21,7 @@ import {
   WahaLidIdentityResolver,
   WahaWebhookAdapter,
   PostgresWorkspaceProvisioningGateway,
+  PostgresWabaChannelInfoGateway,
 } from './dist/index.js';
 
 const { Pool } = pg;
@@ -91,6 +92,7 @@ export async function createProductionRuntime() {
   const appointmentGateway = new PostgresAppointmentGateway(pool);
   const notesGateway = new PostgresNotesGateway(pool);
   const workspaceProvisioningGateway = new PostgresWorkspaceProvisioningGateway(pool);
+  const wabaChannelInfoGateway = new PostgresWabaChannelInfoGateway(pool);
   const ingestionGateway = new PostgresInboundIngestionGateway(pool);
   const outboxGateway = new PostgresOutboxProcessingGateway(pool);
   const secretProvider = {
@@ -129,6 +131,7 @@ export async function createProductionRuntime() {
     appointmentGateway,
     notesGateway,
     workspaceProvisioningGateway,
+    wabaChannelInfoGateway,
     trustProxy: true,
     logger: true,
     createHealthProvider: (worker) => ({

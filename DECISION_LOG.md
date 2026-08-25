@@ -169,6 +169,28 @@
 
 ---
 
+## Task 29: WABA Channel Info — Runtime-Owned Database Gateway
+- **Decision:** Remover o acesso direto da rota `channel-info` ao `dbPool` local e injetar um gateway de leitura pertencente ao runtime ativo.
+- **Rationale:**
+  1. O runtime de produção possuía um pool PostgreSQL saudável, mas a rota abria outro pool com configuração SSL incompatível, causando HTTP 500 com `self-signed certificate in certificate chain` enquanto `/ready` permanecia verde.
+  2. `PostgresWabaChannelInfoGateway` recebe explicitamente o pool da composição de produção, impedindo divergência entre readiness e execução da rota.
+  3. A consulta projeta somente metadados públicos permitidos; tokens e demais campos secretos de `public_config` não entram no resultado do gateway.
+  4. Sem gateway configurado, a rota falha fechada com HTTP 503 e nunca recorre implicitamente ao pool local.
+  5. Validado por TypeScript, testes de integração, Docker Lab e consulta read-only no pool real da VPS. O fechamento definitivo do finding exige repetir a chamada HTTP autenticada na interface de produção.
+- **Scope:**
+  - `apps/api/src/application/ports/waba-channel-info-gateway.ts`
+  - `apps/api/src/infrastructure/database/postgres-waba-channel-info-gateway.ts`
+  - `apps/api/src/interfaces/http/routes/whatsapp-channel-routes.ts`
+  - `apps/api/src/interfaces/http/app.ts`
+  - `apps/api/src/server.ts`
+  - `apps/api/production-runtime.mjs`
+  - `apps/api/tests/integration/waba-channel-info-api.test.ts`
+  - `Dockerfile.api`
+- **Confidence:** 9/10 — correção e runtime DB query verificados; chamada HTTP autenticada em produção ainda pendente.
+- **Date:** 2026-08-25
+
+---
+
 ## Task 27: Hardening forward-only de segredos, cobrança e agente autônomo
 - **Decision:** Credenciais de provedores deixam de ser lidas de `public_config` ou variáveis globais de fallback; permanecem apenas em `channel_connection_secrets`, vinculadas à conexão e ao workspace. Billing e webhooks AbacatePay falham fechados, exigindo autorização de tenant, secret de URL e HMAC do corpo bruto. O agente recepcionista só envia saída após validar estado atual da jornada e protocolo estrito do modelo.
 - **Rationale:** RLS de linha não protege segredos dentro de JSON público, e um modelo/fornecedor não pode ser fonte de autorização operacional. A migração é forward-only para que ambientes já existentes recebam o hardening sem reescrever histórico aplicado.
@@ -702,4 +724,3 @@
   - `DECISION_LOG.md`
 - **Confidence:** 10/10
 - **Date:** 2026-08-22
-
