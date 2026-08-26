@@ -2,18 +2,11 @@ import React from 'react';
 import { salesOsRuntimeConfig } from '../../config/runtime';
 import { Workspace } from '../../types/cockpit';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
-import {
-  clientIntelligenceMap,
-  mockSosSalesIntelligence,
-  mockHavenIntelligence,
-  mockSoraIntelligence,
-} from '../../data/clientIntelligenceFixtures';
 import { ClientIntelligenceBundle } from '../../types/intelligence';
 import { CompanyProfileSection } from './CompanyProfileSection';
 import { ProductCatalogSection } from './ProductCatalogSection';
 import { AgentKnowledgeBaseSection } from './AgentKnowledgeBaseSection';
 import { ContinuousLearningSection } from './ContinuousLearningSection';
-import { AgentSettingsSection } from './AgentSettingsSection';
 import { HistoricalDiagnosisSection } from './HistoricalDiagnosisSection';
 import {
   Building2,
@@ -51,34 +44,31 @@ export type IntelligenceTab =
   | 'agent';
 
 export function resolveWorkspaceIntelligenceBundle(wsId: string, wsName?: string): ClientIntelligenceBundle {
-  const norm = String(wsId).toLowerCase().trim();
-  if (norm.includes('haven') || norm === '22222222-2222-2222-2222-222222222222') {
-    return {
-      ...mockHavenIntelligence,
-      companyProfile: {
-        ...mockHavenIntelligence.companyProfile,
-        tradeName: wsName || mockHavenIntelligence.companyProfile.tradeName,
-      },
-    };
-  }
-  if (norm.includes('sora') || norm === '33333333-3333-3333-3333-333333333333') {
-    return {
-      ...mockSoraIntelligence,
-      companyProfile: {
-        ...mockSoraIntelligence.companyProfile,
-        tradeName: wsName || mockSoraIntelligence.companyProfile.tradeName,
-      },
-    };
-  }
-  if (clientIntelligenceMap[wsId]) {
-    return clientIntelligenceMap[wsId];
-  }
+  const closedDay = { open: '', close: '', isOpen: false };
   return {
-    ...mockSosSalesIntelligence,
+    workspaceId: wsId,
     companyProfile: {
-      ...mockSosSalesIntelligence.companyProfile,
-      tradeName: wsName || mockSosSalesIntelligence.companyProfile.tradeName,
+      legalName: '', tradeName: wsName || '', taxId: '', segment: '', tagline: '', phone: '',
+      email: '', website: '', instagram: '',
+      address: { street: '', number: '', neighborhood: '', city: '', state: '', postalCode: '' },
+      businessHours: {
+        seg: { ...closedDay }, ter: { ...closedDay }, qua: { ...closedDay }, qui: { ...closedDay },
+        sex: { ...closedDay }, sab: { ...closedDay }, dom: { ...closedDay },
+      },
+      wabaOfficialInfo: {
+        verifiedName: '', metaBusinessId: '', phoneId: '', phoneNumber: '', greenBadgeVerified: false,
+        qualityRating: 'YELLOW', messagingTier: '1k', wabaCatalogSync: false,
+        metaFlowsEnabled: false, businessAiEnabled: false,
+      },
+      valueProposition: '', targetAudience: '', guaranteesAndPolicies: '', acceptedPaymentMethods: [],
     },
+    agentConfig: {
+      id: '', workspaceId: wsId, name: '', persona: '', toneOfVoice: 'consultivo_premium',
+      autonomyMode: 'copilot_supervised', creativityTemperature: 0.2, maxDiscountPercent: 0,
+      installmentLimitWithoutInterest: 1, allowedPaymentMethods: [], escalationTriggers: [],
+      safetyGuardrails: [], workingHoursOnly: true, metaAiComparisonEnabled: false, activeChannels: [],
+    },
+    catalog: [], documents: [], learningRecords: [], sources: [], destinations: [],
   };
 }
 
@@ -96,16 +86,19 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [saveSuccess, setSaveSuccess] = React.useState(false);
+  const [bundleStatus, setBundleStatus] = React.useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
 
-  const [bundleMap, setBundleMap] = React.useState<Record<string, ClientIntelligenceBundle>>(() => {
-    return clientIntelligenceMap;
-  });
+  const [bundleMap, setBundleMap] = React.useState<Record<string, ClientIntelligenceBundle>>({});
 
   React.useEffect(() => {
     let isMounted = true;
     setIsLoading(true);
+    setBundleStatus('loading');
     authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/intelligence`)
-      .then((res) => (res.ok ? res.json() : null))
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Intelligence API ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
         if (!isMounted || !data) return;
         if (data.bundle && typeof data.bundle === 'object') {
@@ -113,9 +106,19 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
             ...prev,
             [currentWorkspace.id]: data.bundle,
           }));
+          setBundleStatus('ready');
+        } else {
+          setBundleMap((prev) => {
+            const next = { ...prev };
+            delete next[currentWorkspace.id];
+            return next;
+          });
+          setBundleStatus('empty');
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (isMounted) setBundleStatus('error');
+      })
       .finally(() => {
         if (isMounted) setIsLoading(false);
       });
@@ -153,6 +156,8 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
         ...r,
         confidenceScore: Number(r?.confidenceScore || 0),
       })) : fallback.learningRecords,
+      sources: Array.isArray(existing.sources) ? existing.sources : [],
+      destinations: Array.isArray(existing.destinations) ? existing.destinations : [],
     };
   }, [bundleMap, currentWorkspace]);
 
@@ -211,7 +216,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
                 {currentWorkspace.name}
               </h1>
               <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border border-[var(--sos-ai)]/30 flex items-center gap-1">
-                <Sparkles className="w-2.5 h-2.5 text-[var(--sos-ai)]" /> Squad de IA
+                <Sparkles className="w-2.5 h-2.5 text-[var(--sos-ai)]" /> Inteligência Comercial
               </span>
               {currentWorkspace.channels?.some((c) => c.health === 'healthy' || c.health === 'connected') ? (
                 <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border border-[var(--sos-success)]/30 flex items-center gap-1">
@@ -255,6 +260,19 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
       </div>
 
       {/* Active Section Content (Navigation controlled via sidebar) */}
+      {bundleStatus === 'empty' && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          <strong>Nenhuma inteligência persistida neste workspace.</strong>{' '}
+          Catálogo, documentos e regras permanecem vazios até serem cadastrados e salvos no backend.
+        </div>
+      )}
+
+      {bundleStatus === 'error' && (
+        <div className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-xs text-rose-900">
+          <strong>Falha ao carregar a inteligência do backend.</strong> Nenhum dado substituto foi exibido.
+        </div>
+      )}
+
       {activeTab === 'diagnosis' && (
         <HistoricalDiagnosisSection workspace={currentWorkspace} />
       )}
@@ -302,12 +320,15 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
       )}
 
       {activeTab === 'agent' && (
-        <AgentSettingsSection
-          agentConfig={currentBundle.agentConfig}
-          onSaveAgentConfig={(updated) => {
-            updateCurrentBundle((prev) => ({ ...prev, agentConfig: updated }));
-          }}
-        />
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6 text-center space-y-2 text-amber-950">
+          <Bot className="w-8 h-8 mx-auto text-amber-600" />
+          <h2 className="text-sm font-bold">Squad de agentes ainda sem contrato operacional</h2>
+          <p className="text-xs leading-relaxed max-w-2xl mx-auto">
+            A antiga configuração de seis especialistas existia apenas no navegador e não correspondia ao
+            agente Receptionist executado pelo backend. O painel foi bloqueado até existir persistência,
+            versionamento e prova de execução por agente.
+          </p>
+        </div>
       )}
     </div>
   );
