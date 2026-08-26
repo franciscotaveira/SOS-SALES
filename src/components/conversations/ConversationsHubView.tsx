@@ -152,6 +152,7 @@ export const ConversationsHubView: React.FC<ConversationsHubViewProps> = ({
           <LiveWallboardView
             journeys={journeys}
             groups={groups}
+            workspaceId={workspace.id}
             mode="conversations"
             onGoToCockpit={onGoToCockpit}
             onOpenGroup={onOpenGroup}

@@ -855,6 +855,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                           <ContactAvatar
                             name={journey.contactName}
                             phone={journey.contactPhone}
+                            workspaceId={workspaceId}
                             avatarUrl={(journey as any)?.contactAvatar || (journey as any)?.avatarUrl}
                             size="sm"
                           />
