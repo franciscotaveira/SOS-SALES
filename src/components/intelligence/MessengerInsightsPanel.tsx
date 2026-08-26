@@ -21,6 +21,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface MessengerInsightsPanelProps {
   workspace: Workspace;
@@ -72,7 +73,7 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
 
   const loadLinks = async () => {
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/links`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/links`);
       if (res.ok) {
         const data = await res.json();
         setLinks(data);
@@ -85,7 +86,7 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
   const loadInsights = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/insights`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/insights`);
       if (res.ok) {
         const data = await res.json();
         setMetrics(data.data || []);
@@ -102,7 +103,7 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
     if (!refCode) return;
     setIsCreatingLink(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/links`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/links`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageName, refCode, label }),
@@ -122,7 +123,7 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
   const handleToggleNlp = async () => {
     setIsTogglingNlp(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/nlp/enable`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/nlp/enable`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !nlpEnabled }),
@@ -141,7 +142,7 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
     setIsSavingPrivateReply(true);
     try {
       const keywords = keywordsInput.split(',').map((k) => k.trim()).filter(Boolean);
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/comments/private-reply-config`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/comments/private-reply-config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

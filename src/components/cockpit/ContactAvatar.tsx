@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { UserRound } from 'lucide-react';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface ContactAvatarProps {
   name?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
+  workspaceId?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   showOnlineBadge?: boolean;
   className?: string;
@@ -73,18 +75,12 @@ export const ContactAvatar: React.FC<ContactAvatarProps> = ({
   name,
   phone,
   avatarUrl: initialAvatarUrl,
+  workspaceId: customWsId,
   size = 'md',
   showOnlineBadge = false,
   className = '',
 }) => {
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(() => {
-    if (initialAvatarUrl) return initialAvatarUrl;
-    if (phone) {
-      const clean = phone.replace(/\D/g, '');
-      return avatarCache.get(clean) || null;
-    }
-    return null;
-  });
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl || null);
   const [imageError, setImageError] = useState(false);
 
   React.useEffect(() => {
@@ -92,6 +88,7 @@ export const ContactAvatar: React.FC<ContactAvatarProps> = ({
       setAvatarUrl(initialAvatarUrl);
       return;
     }
+
     if (!phone) return;
 
     const clean = phone.replace(/\D/g, '');
@@ -102,8 +99,16 @@ export const ContactAvatar: React.FC<ContactAvatarProps> = ({
       return;
     }
 
+    const wsId = customWsId || (() => {
+      try {
+        return localStorage.getItem('sos_selected_workspace_id') || '22222222-2222-2222-2222-222222222222';
+      } catch {
+        return '22222222-2222-2222-2222-222222222222';
+      }
+    })();
+
     // Auto-fetch profile picture from WAHA backend
-    fetch(`/api/v1/workspaces/11111111-1111-1111-1111-111111111111/contacts/${clean}/profile-picture`)
+    authenticatedFetch(`/api/v1/workspaces/${wsId}/contacts/${clean}/profile-picture`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.url) {
@@ -116,7 +121,7 @@ export const ContactAvatar: React.FC<ContactAvatarProps> = ({
       .catch(() => {
         avatarCache.set(clean, null);
       });
-  }, [initialAvatarUrl, phone]);
+  }, [initialAvatarUrl, phone, customWsId]);
 
   const seed = name || phone || 'contact';
   const gradient = getDeterministicGradient(seed);

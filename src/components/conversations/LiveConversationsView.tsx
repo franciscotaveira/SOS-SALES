@@ -47,7 +47,7 @@ function detectServiceAndIntent(item: ApiJourney, isHairSalon: boolean) {
   const text = `${name} ${rawService}`.toLowerCase();
 
   if (isHairSalon) {
-    if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || text.includes('chapinha') || text.includes('secagem') || text.includes('lavagem') || name.includes('rosy') || name.includes('haven') || name.includes('priscila')) {
+    if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || text.includes('chapinha') || text.includes('secagem') || text.includes('lavagem')) {
       return {
         service: '💇‍♀️ Escova Modelada & Lavagem',
         badgeClass: 'bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border-[var(--sos-ai)]/30 font-extrabold',
@@ -55,7 +55,7 @@ function detectServiceAndIntent(item: ApiJourney, isHairSalon: boolean) {
         category: 'escova',
       };
     }
-    if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('alongamento') || text.includes('fibra') || text.includes('manicure') || text.includes('pedicure') || name.includes('thaís') || name.includes('thais') || name.includes('neca')) {
+    if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('alongamento') || text.includes('fibra') || text.includes('manicure') || text.includes('pedicure')) {
       return {
         service: '💅 Esmaltação & Unhas em Gel',
         badgeClass: 'bg-[var(--sos-warning-subtle)] text-[var(--sos-warning)] border-[var(--sos-warning)]/30 font-extrabold',
@@ -63,7 +63,7 @@ function detectServiceAndIntent(item: ApiJourney, isHairSalon: boolean) {
         category: 'unhas',
       };
     }
-    if (text.includes('corte') || text.includes('visagismo') || text.includes('pontas') || text.includes('franja') || name.includes('édina') || name.includes('edina') || name.includes('carolina')) {
+    if (text.includes('corte') || text.includes('visagismo') || text.includes('pontas') || text.includes('franja')) {
       return {
         service: '✂️ Corte Feminino & Visagismo',
         badgeClass: 'bg-[var(--sos-operational-subtle)] text-[var(--sos-operational)] border-[var(--sos-operational)]/30 font-extrabold',
@@ -71,7 +71,7 @@ function detectServiceAndIntent(item: ApiJourney, isHairSalon: boolean) {
         category: 'corte',
       };
     }
-    if (text.includes('loiro') || text.includes('mechas') || text.includes('luzes') || text.includes('morena') || text.includes('color') || text.includes('tinta') || name.includes('allane') || name.includes('silvia')) {
+    if (text.includes('loiro') || text.includes('mechas') || text.includes('luzes') || text.includes('morena') || text.includes('color') || text.includes('tinta')) {
       return {
         service: '🎨 Mechas, Loiro & Morena Ilum.',
         badgeClass: 'bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border-[var(--sos-ai)]/30 font-extrabold',
@@ -79,15 +79,15 @@ function detectServiceAndIntent(item: ApiJourney, isHairSalon: boolean) {
         category: 'mechas',
       };
     }
-    if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('cronograma') || text.includes('ozonio') || text.includes('detox') || name.includes('sōra') || name.includes('sora') || name.includes('rubiele')) {
+    if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('cronograma') || text.includes('ozonio') || text.includes('detox') || text.includes('spa') || text.includes('terapia')) {
       return {
         service: '🧴 Tratamento Truss & Spa Capilar',
         badgeClass: 'bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border-[var(--sos-success)]/30 font-extrabold',
-        preview: 'Interesse em Cronograma de Reconstrução Truss',
+        preview: 'Interesse em Cronograma de Reconstrução Truss / Spa',
         category: 'tratamento',
       };
     }
-    if (text.includes('make') || text.includes('maquiagem') || text.includes('penteado') || text.includes('noiva') || text.includes('casamento') || text.includes('festa') || name.includes('audrin')) {
+    if (text.includes('make') || text.includes('maquiagem') || text.includes('penteado') || text.includes('noiva') || text.includes('casamento') || text.includes('festa')) {
       return {
         service: '💄 Make & Produção de Eventos',
         badgeClass: 'bg-[var(--sos-warning-subtle)] text-[var(--sos-warning)] border-[var(--sos-warning)]/30 font-extrabold',
@@ -95,7 +95,7 @@ function detectServiceAndIntent(item: ApiJourney, isHairSalon: boolean) {
         category: 'make',
       };
     }
-    if (text.includes('preço') || text.includes('valor') || text.includes('quanto') || text.includes('tabela') || name.includes('ju')) {
+    if (text.includes('preço') || text.includes('valor') || text.includes('quanto') || text.includes('tabela')) {
       return {
         service: '💰 Consulta de Valores & Tabela',
         badgeClass: 'bg-[var(--sos-action-subtle)] text-[var(--sos-action)] border-[var(--sos-action)]/30 font-extrabold',
@@ -135,13 +135,84 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
   const isHairSalon = (commercialConfig.businessType === 'hair_salon') || workspaceId.toLowerCase().includes('haven') || workspaceId.toLowerCase().includes('escovaria');
 
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'notes' | 'wallboard'>(initialViewMode);
+
+  useEffect(() => {
+    if (initialViewMode) {
+      setViewMode(initialViewMode);
+    }
+  }, [initialViewMode]);
   const [journeys, setJourneys] = useState<ApiJourney[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [serviceFilter, setServiceFilter] = useState<string>('all');
+  const [customServices, setCustomServices] = useState<Array<{ id: string; label: string }>>(() => {
+    try {
+      const saved = localStorage.getItem(`sos_sales_custom_services_${workspaceId}`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
+
+  const availableServiceCategories = useMemo(() => {
+    if (customServices.length > 0) return customServices;
+    if (isHairSalon) {
+      return [
+        { id: 'escova', label: '💇‍♀️ Escovas' },
+        { id: 'unhas', label: '💅 Unhas & Gel' },
+        { id: 'corte', label: '✂️ Cortes & Visagismo' },
+        { id: 'tratamento', label: '🧴 Tratamento Truss' },
+        { id: 'mechas', label: '🎨 Mechas & Loiro' },
+        { id: 'make', label: '💄 Make & Eventos' },
+        { id: 'preco', label: '💰 Consulta Preço' },
+      ];
+    }
+    // Para empresas de outros segmentos, extrair das jornadas ativas
+    const distinctServices = new Set<string>();
+    journeys.forEach((j) => {
+      if (j.primaryServiceOrProduct && j.primaryServiceOrProduct !== 'Interessada em Serviços / Atendimento') {
+        distinctServices.add(j.primaryServiceOrProduct);
+      }
+    });
+
+    if (distinctServices.size > 0) {
+      return Array.from(distinctServices).slice(0, 8).map((s) => ({
+        id: s.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        label: `✨ ${s}`,
+      }));
+    }
+
+    return [
+      { id: 'vendas', label: '💼 Vendas & Planos' },
+      { id: 'orcamento', label: '💰 Orçamentos' },
+      { id: 'duvidas', label: '❓ Dúvidas Gerais' },
+      { id: 'suporte', label: '🛠️ Suporte & Pós-Venda' },
+    ];
+  }, [customServices, isHairSalon, journeys]);
+
+  const handleCustomizeServices = () => {
+    const currentListStr = availableServiceCategories.map((c) => c.label.replace(/^[^\w\s]+\s*/, '')).join(', ');
+    const promptVal = window.prompt(
+      'Defina as categorias/serviços da sua empresa separados por vírgula (ex: Vendas B2B, Consultoria, Orçamento, Suporte):',
+      currentListStr
+    );
+    if (promptVal !== null) {
+      const items = promptVal
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .map((s) => ({
+          id: s.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+          label: `✨ ${s}`,
+        }));
+      setCustomServices(items);
+      try {
+        localStorage.setItem(`sos_sales_custom_services_${workspaceId}`, JSON.stringify(items));
+      } catch {}
+    }
+  };
 
   const fetchJourneys = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -467,23 +538,27 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
               </div>
             </div>
 
-            {/* Linha 2: Filtro por Serviço / Procedimento */}
+            {/* Linha 2: Filtro por Serviço / Procedimento / Segmento Dinâmico */}
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <span className="text-xs font-extrabold uppercase tracking-wider text-[var(--sos-muted)] flex items-center gap-1 mr-1">
-                <Tag size={11} /> Serviços:
+                <Tag size={11} /> Segmento / Serviços:
               </span>
-              {[
-                { id: 'all', label: 'Todos os Serviços' },
-                { id: 'escova', label: '💇‍♀️ Escovas' },
-                { id: 'unhas', label: '💅 Unhas & Gel' },
-                { id: 'corte', label: '✂️ Cortes & Visagismo' },
-                { id: 'tratamento', label: '🧴 Tratamento Truss' },
-                { id: 'mechas', label: '🎨 Mechas & Loiro' },
-                { id: 'make', label: '💄 Make & Eventos' },
-                { id: 'preco', label: '💰 Consulta Preço' },
-              ].map((svc) => (
+              <button
+                type="button"
+                onClick={() => setServiceFilter('all')}
+                className={`px-2 py-0.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                  serviceFilter === 'all'
+                    ? 'bg-[var(--sos-success)] text-white shadow-2xs'
+                    : 'bg-[var(--sos-surface)] text-[var(--sos-muted)] border border-[var(--sos-border)] hover:bg-[var(--sos-border)]/30'
+                }`}
+              >
+                Todos os Serviços
+              </button>
+
+              {availableServiceCategories.map((svc) => (
                 <button
                   key={svc.id}
+                  type="button"
                   onClick={() => setServiceFilter(svc.id)}
                   className={`px-2 py-0.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
                     serviceFilter === svc.id
@@ -494,6 +569,15 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
                   {svc.label}
                 </button>
               ))}
+
+              <button
+                type="button"
+                onClick={handleCustomizeServices}
+                className="px-2 py-0.5 rounded-md text-[11px] font-bold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition cursor-pointer flex items-center gap-1 ml-auto"
+                title="Personalizar serviços e categorias para o nicho da sua empresa"
+              >
+                <Tag size={10} /> Personalizar Filtros
+              </button>
             </div>
           </div>
 

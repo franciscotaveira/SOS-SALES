@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Workspace, Journey } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import {
   MessageSquarePlus,
   Search,
@@ -52,7 +53,7 @@ export const StartConversationModal: React.FC<StartConversationModalProps> = ({
   const fetchDbContacts = async (query: string = '') => {
     setLoadingContacts(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/contacts?search=${encodeURIComponent(query)}&limit=40`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/contacts?search=${encodeURIComponent(query)}&limit=40`);
       if (res.ok) {
         const data = await res.json();
         setContacts(data.contacts || []);
@@ -64,7 +65,7 @@ export const StartConversationModal: React.FC<StartConversationModalProps> = ({
 
   const fetchTemplates = async () => {
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/templates`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/templates`);
       if (res.ok) {
         const data = await res.json();
         if (data.templates?.length) {
@@ -107,7 +108,7 @@ export const StartConversationModal: React.FC<StartConversationModalProps> = ({
       if (messageType === 'direct' && initialMessage.trim()) body.message = initialMessage.trim();
       if (messageType === 'template' && selectedTemplate) body.templateName = selectedTemplate;
 
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/conversations/start`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/conversations/start`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });

@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { LiveWallboardView } from '../monitoring/LiveWallboardView';
 import { getSupabaseClient } from '../../services/supabaseAuth';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface GroupsHubViewProps {
   groups: WhatsAppGroup[];
@@ -82,9 +83,15 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
   };
 
   const fetchGroups = React.useCallback(async () => {
-    const wsId = workspaceId || '11111111-1111-1111-1111-111111111111';
+    const wsId = workspaceId || (() => {
+      try {
+        return localStorage.getItem('sos_selected_workspace_id') || '22222222-2222-2222-2222-222222222222';
+      } catch {
+        return '22222222-2222-2222-2222-222222222222';
+      }
+    })();
     try {
-      const res = await fetch(`/api/v1/workspaces/${wsId}/groups`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${wsId}/groups`);
       if (!res.ok) return;
       const data = await res.json();
       if (data && Array.isArray(data.groups) && data.groups.length > 0) {
@@ -267,8 +274,14 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     );
 
     try {
-      const wsId = workspaceId || '11111111-1111-1111-1111-111111111111';
-      await fetch(`/api/v1/workspaces/${wsId}/groups/${encodeURIComponent(groupId)}/resolve`, {
+      const wsId = workspaceId || (() => {
+        try {
+          return localStorage.getItem('sos_selected_workspace_id') || '22222222-2222-2222-2222-222222222222';
+        } catch {
+          return '22222222-2222-2222-2222-222222222222';
+        }
+      })();
+      await authenticatedFetch(`/api/v1/workspaces/${wsId}/groups/${encodeURIComponent(groupId)}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolved: newResolved }),
@@ -312,8 +325,14 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
     setGroups(updated);
 
     try {
-      const wsId = workspaceId || '11111111-1111-1111-1111-111111111111';
-      await fetch(`/api/v1/workspaces/${wsId}/groups/${encodeURIComponent(selectedGroup.id)}/send-message`, {
+      const wsId = workspaceId || (() => {
+        try {
+          return localStorage.getItem('sos_selected_workspace_id') || '22222222-2222-2222-2222-222222222222';
+        } catch {
+          return '22222222-2222-2222-2222-222222222222';
+        }
+      })();
+      await authenticatedFetch(`/api/v1/workspaces/${wsId}/groups/${encodeURIComponent(selectedGroup.id)}/send-message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: messageToSend }),

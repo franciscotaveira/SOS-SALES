@@ -140,7 +140,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
       label: 'Chave Pix Oficial',
       description: 'Envia dados da conta e chave Pix para pagamento imediato',
       action: () => {
-        setDraftText('Chave Pix CNPJ: 12.345.678/0001-90 (SOS Sales LTDA) - Envie o comprovante aqui para confirmação imediata!');
+        setDraftText('Olá! Segue nossa chave Pix para confirmação do seu agendamento/pedido. Envie o comprovante aqui para confirmação imediata!');
         setQuickToolsOpen(false);
       },
     },
@@ -357,7 +357,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                   { label: "🤔 Vou pensar", text: "Claro! Para te ajudar a decidir, qual é o ponto principal que ficou com dúvida? Assim já te passo a resposta certinha." },
                   { label: "👨‍👩‍👧 Falar com marido", text: "Super justo! Se você quiser, posso te mandar um resumo dos benefícios e horários livres para você mostrar pra ele." },
                   { label: "⏰ Sem tempo", text: "Pensando nisso, nosso atendimento é ultra-otimizado e pontual. Temos horários no início da manhã ou no fim da tarde. Qual prefere?" },
-                  { label: "💳 Enviar Pix", text: "Chave Pix CNPJ: 12.345.678/0001-90 (SOS Sales LTDA). Envie o comprovante aqui para confirmação imediata!" },
+                  { label: "💳 Enviar Pix", text: "Olá! Segue nossa chave Pix para confirmação. Envie o comprovante aqui para confirmação imediata!" },
                   { label: "📍 Endereço", text: "📍 Nosso endereço: Av. Getúlio Vargas, 1000 - Centro, Chapecó - SC (Estacionamento conveniado no local)." },
                 ].map((obj, i) => (
                   <button
@@ -542,7 +542,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    onCreateOutboundDraft("Chave Pix CNPJ: 12.345.678/0001-90 (SOS Sales LTDA) - Envie o comprovante para confirmação imediata!");
+                    onCreateOutboundDraft("Olá! Segue nossa chave Pix para confirmação do sinal. Envie o comprovante para confirmação imediata!");
                     onClose();
                   }}
                   className="p-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer flex items-center justify-center gap-1"

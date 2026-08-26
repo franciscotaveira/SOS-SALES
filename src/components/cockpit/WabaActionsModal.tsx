@@ -23,6 +23,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Journey, Workspace } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface WabaActionsModalProps {
   isOpen: boolean;
@@ -36,6 +37,18 @@ interface WabaActionsModalProps {
   onSuccessNotification?: (msg: string) => void;
   onError?: (err: string) => void;
 }
+
+type WabaActionTab = 'flow' | 'pix' | 'buttons' | 'location' | 'product' | 'carousel' | 'call';
+
+const SAFE_WABA_CAPABILITIES: Record<WabaActionTab, boolean> = {
+  flow: false,
+  pix: false,
+  buttons: false,
+  location: false,
+  product: false,
+  carousel: false,
+  call: false,
+};
 
 function ActionPresetChips({
   presets,
@@ -93,7 +106,8 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     activePhone ||
     'Cliente';
 
-  const [activeTab, setActiveTab] = useState<'flow' | 'pix' | 'buttons' | 'location' | 'product' | 'carousel' | 'call'>('flow');
+  const [activeTab, setActiveTab] = useState<WabaActionTab>('flow');
+  const [capabilities, setCapabilities] = useState<Record<WabaActionTab, boolean>>(SAFE_WABA_CAPABILITIES);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -152,7 +166,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     let mounted = true;
     setWabaChecking(true);
 
-    fetch(`/api/v1/workspaces/${workspaceId}/channels/waba/channel-info`)
+    authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/channel-info`)
       .then((res) => {
         if (!res.ok) throw new Error('WABA channel info not found');
         return res.json();
@@ -175,10 +189,39 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
         if (mounted) setWabaChecking(false);
       });
 
+    authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/capabilities`)
+      .then((res) => {
+        if (!res.ok) throw new Error('WABA capabilities unavailable');
+        return res.json();
+      })
+      .then((data) => {
+        if (!mounted) return;
+        const available = data?.capabilities || {};
+        setCapabilities({
+          flow: available.flow === true,
+          buttons: available.buttons === true,
+          call: available.call === true,
+          pix: available.orderDetails === true,
+          location: available.locationRequest === true,
+          product: available.product === true || available.multiProduct === true,
+          carousel: available.carousel === true,
+        });
+      })
+      .catch(() => {
+        if (mounted) setCapabilities(SAFE_WABA_CAPABILITIES);
+      });
+
     return () => {
       mounted = false;
     };
   }, [isOpen, workspaceId]);
+
+  useEffect(() => {
+    if (!capabilities[activeTab]) {
+      const firstSupported = (Object.keys(capabilities) as WabaActionTab[]).find((tab) => capabilities[tab]);
+      if (firstSupported) setActiveTab(firstSupported);
+    }
+  }, [activeTab, capabilities]);
 
   if (!isOpen) return null;
 
@@ -192,7 +235,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     setFeedback(null);
     try {
       const amountMinor = Math.round(parseFloat(pixAmount || '0') * 100);
-      const res = await fetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-order-details`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-order-details`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -229,7 +272,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     setIsSubmitting(true);
     setFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-location-request`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-location-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -287,7 +330,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
               ],
             };
 
-      const res = await fetch(endpoint, {
+      const res = await authenticatedFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -319,7 +362,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     setIsSubmitting(true);
     setFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-flow`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-flow`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -361,7 +404,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
         buttonsList.push({ id: 'btn_opt_3', title: btn3.trim() });
       }
 
-      const res = await fetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-buttons`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-buttons`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -394,7 +437,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     setIsSubmitting(true);
     setFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-carousel`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-carousel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -442,7 +485,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     setIsSubmitting(true);
     setFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-buttons`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-buttons`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -541,6 +584,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
         <div className="grid grid-cols-7 gap-1 p-2 bg-slate-100 border-b border-slate-200 text-center shrink-0">
           <button
             type="button"
+            disabled={!capabilities.flow}
             onClick={() => setActiveTab('flow')}
             className={`py-1.5 text-xs font-bold rounded-xl transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
               activeTab === 'flow' ? 'bg-white text-amber-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
@@ -551,16 +595,18 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
           </button>
           <button
             type="button"
+            disabled={!capabilities.pix}
             onClick={() => setActiveTab('pix')}
             className={`py-1.5 text-xs font-bold rounded-xl transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
               activeTab === 'pix' ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <CreditCard className="w-4 h-4 text-emerald-600" />
-            <span>💰 Pix Nativo</span>
+            <span>💰 Pix {!capabilities.pix && '(indisp.)'}</span>
           </button>
           <button
             type="button"
+            disabled={!capabilities.buttons}
             onClick={() => setActiveTab('buttons')}
             className={`py-1.5 text-xs font-bold rounded-xl transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
               activeTab === 'buttons' ? 'bg-white text-indigo-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
@@ -571,36 +617,40 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
           </button>
           <button
             type="button"
+            disabled={!capabilities.location}
             onClick={() => setActiveTab('location')}
             className={`py-1.5 text-xs font-bold rounded-xl transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
               activeTab === 'location' ? 'bg-white text-blue-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <MapPin className="w-4 h-4 text-blue-600" />
-            <span>📍 Pedir GPS</span>
+            <span>📍 GPS {!capabilities.location && '(indisp.)'}</span>
           </button>
           <button
             type="button"
+            disabled={!capabilities.product}
             onClick={() => setActiveTab('product')}
             className={`py-1.5 text-xs font-bold rounded-xl transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
               activeTab === 'product' ? 'bg-white text-purple-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <ShoppingBag className="w-4 h-4 text-purple-600" />
-            <span>🛍️ Catálogo</span>
+            <span>🛍️ Catálogo {!capabilities.product && '(indisp.)'}</span>
           </button>
           <button
             type="button"
+            disabled={!capabilities.carousel}
             onClick={() => setActiveTab('carousel')}
             className={`py-1.5 text-xs font-bold rounded-xl transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
               activeTab === 'carousel' ? 'bg-white text-pink-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Images className="w-4 h-4 text-pink-600" />
-            <span>🖼️ Carrossel</span>
+            <span>🖼️ Carrossel {!capabilities.carousel && '(indisp.)'}</span>
           </button>
           <button
             type="button"
+            disabled={!capabilities.call}
             onClick={() => setActiveTab('call')}
             className={`py-1.5 text-xs font-bold rounded-xl transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
               activeTab === 'call' ? 'bg-white text-emerald-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
@@ -1608,4 +1658,3 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     </div>
   );
 };
-

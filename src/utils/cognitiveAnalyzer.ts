@@ -325,7 +325,7 @@ export function analyzeConversationDossier(
   } else if (suggestedStage === 'GANHO') {
     smallestNextMove = {
       actionTitle: 'Enviar Dados de Pagamento / Sinal',
-      draftText: `Show ${firstName}! Agendamento confirmado! Segue nossa chave Pix CNPJ: 12.345.678/0001-90 para a taxa de reserva. Até breve!`,
+      draftText: `Show ${firstName}! Agendamento confirmado! Segue nossa chave Pix para a taxa de reserva. Envie o comprovante aqui para garantir sua vaga. Até breve!`,
       rationale: 'Agendamento concluído. Confirmar com chave Pix para garantir presença.',
       microCommitmentGoal: 'Garantir comparecimento com sinal Pix.',
     };

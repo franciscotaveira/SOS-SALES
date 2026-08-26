@@ -98,16 +98,17 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
 
         <button
           onClick={() => {
+            const now = Date.now();
             setEditingItem({
-              id: `prod-custom-${Date.now()}`,
-              sku: `SKU-${Math.floor(1000 + Math.random() * 9000)}`,
+              id: `prod-custom-${now}`,
+              sku: `SKU-${now.toString().slice(-4)}`,
               name: '',
               category: 'Serviços',
               description: '',
               basePrice: 100,
               minPromoPrice: 85,
               durationOrExecutionTime: '30 min',
-              imageUrl: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=400&auto=format&fit=crop&q=80',
+              imageUrl: '',
               inStock: true,
               tags: ['Novo'],
               frequentlyAsked: [],

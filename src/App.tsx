@@ -25,6 +25,7 @@ const GroupsHubView = React.lazy(() => import('./components/groups/GroupsHubView
 import { ResultsHubView, ResultsSubTab } from './components/results/ResultsHubView';
 const SettingsShell = React.lazy(() => import('./components/settings/SettingsShell').then(({ SettingsShell }) => ({ default: SettingsShell })));
 const LiveSettingsView = React.lazy(() => import('./components/settings/LiveSettingsView').then(({ LiveSettingsView }) => ({ default: LiveSettingsView })));
+const AgencyClientsManager = React.lazy(() => import('./components/clients/AgencyClientsManager').then(({ AgencyClientsManager }) => ({ default: AgencyClientsManager })));
 const CommercialKanbanView = React.lazy(() => import('./components/kanban/CommercialKanbanView').then(({ CommercialKanbanView }) => ({ default: CommercialKanbanView })));
 import { LiveCommercialKanbanView } from './components/kanban/LiveCommercialKanbanView';
 import { LiveConversationsView } from './components/conversations/LiveConversationsView';
@@ -118,6 +119,7 @@ function AppContent({
   isAuthenticatedApiMode,
   userEmail,
   onSignOut,
+  onCreateWorkspace,
 }: {
   workspaces: Workspace[];
   currentWorkspace: Workspace;
@@ -142,14 +144,42 @@ function AppContent({
   isAuthenticatedApiMode: boolean;
   userEmail?: string;
   onSignOut?: () => void;
+  onCreateWorkspace?: (workspaceData: {
+    name: string;
+    businessType: 'hair_salon' | 'auto_film' | 'general_services';
+    tagline: string;
+    ownerEmail: string;
+    whatsappNumber: string;
+    provider: 'waba' | 'waha';
+  }) => Promise<void>;
 }) {
   const { isFeatureEnabled } = useFeatureFlags();
 
+  const [conversationsMode, setConversationsMode] = React.useState<'list' | 'kanban' | 'wallboard'>('list');
   const [intelligenceSubTab, setIntelligenceSubTab] = React.useState<any>('knowledge');
   const [settingsSubTab, setSettingsSubTab] = React.useState<any>('channels');
   const [groupSubTab, setGroupSubTab] = React.useState<any>('conversations');
   const [resultsSubTab, setResultsSubTab] = React.useState<ResultsSubTab>('analytics');
   const [isAssistantOpen, setIsAssistantOpen] = React.useState(false);
+
+  // Role-based security fallback: prevent unauthorized roles from viewing restricted tabs
+  React.useEffect(() => {
+    const roleHierarchy: Record<OperatorRole, number> = {
+      viewer: 0,
+      operator: 1,
+      supervisor: 2,
+      admin: 3,
+      owner: 4,
+    };
+    const userLevel = roleHierarchy[role] ?? 1;
+
+    if (activeTab === 'configuracoes' && userLevel < 4) {
+      setActiveTab('agora');
+    }
+    if ((activeTab === 'clientes' || activeTab === 'resultados' || activeTab === 'playbook' || activeTab === 'simulador') && userLevel < 3) {
+      setActiveTab('agora');
+    }
+  }, [activeTab, role, setActiveTab]);
 
   // Safety fallback if active tab gets disabled via feature flag
   React.useEffect(() => {
@@ -191,6 +221,8 @@ function AppContent({
       onChangeGroupSubTab={setGroupSubTab}
       activeResultsSubTab={resultsSubTab}
       onChangeResultsSubTab={setResultsSubTab}
+      activeConversationsMode={conversationsMode}
+      onChangeConversationsMode={setConversationsMode}
       userEmail={userEmail}
       onSignOut={onSignOut}
     >
@@ -271,6 +303,7 @@ function AppContent({
               workspaceId={currentWorkspace.id}
               workspace={currentWorkspace}
               gateway={salesOsGateway}
+              initialViewMode={conversationsMode}
               onJourneySelect={(journeyId) => {
                 setSelectedJourneyId(journeyId);
                 setActiveTab('agora');
@@ -293,7 +326,7 @@ function AppContent({
               onUpdateJourney={handleUpdateJourney}
               currentOperatorId={currentOperatorId}
               role={role}
-              initialViewMode="list"
+              initialViewMode={conversationsMode}
             />
           )}
         </TabErrorBoundary>
@@ -337,6 +370,23 @@ function AppContent({
         </TabErrorBoundary>
       )}
 
+      {activeTab === 'clientes' && (
+        <TabErrorBoundary tabName="Gestão de Clientes">
+          <AgencyClientsManager
+            workspaces={workspaces}
+            currentWorkspace={currentWorkspace}
+            onSelectWorkspace={onSelectWorkspace}
+            onCreateWorkspace={onCreateWorkspace}
+            onNavigateTab={(tab, subTab) => {
+              setActiveTab(tab);
+              if (tab === 'playbook' && subTab) {
+                setIntelligenceSubTab(subTab);
+              }
+            }}
+          />
+        </TabErrorBoundary>
+      )}
+
       {activeTab === 'resultados' && isFeatureEnabled('traffic_proof') && (
         <TabErrorBoundary tabName="Resultados Comerciais & ROAS">
           <ResultsHubView
@@ -362,7 +412,7 @@ function AppContent({
         </TabErrorBoundary>
       )}
 
-      {activeTab === 'simulador' && (
+      {activeTab === 'simulador' && !isAuthenticatedApiMode && (
         <TabErrorBoundary tabName="Simulador QA">
           <QaSimulatorView
             currentWorkspace={currentWorkspace}
@@ -371,6 +421,13 @@ function AppContent({
             isNetworkErrorForced={isNetworkErrorForced}
           />
         </TabErrorBoundary>
+      )}
+
+      {activeTab === 'simulador' && isAuthenticatedApiMode && (
+        <ApiModeUnavailable
+          title="Simulador isolado do ambiente operacional"
+          detail="Os cenários desta tela são dados de laboratório e não alteram nem comprovam o funcionamento do agente em produção. Use a homologação autenticada do backend para validar o Receptionist."
+        />
       )}
 
       {activeTab === 'configuracoes' && (
@@ -435,7 +492,8 @@ function OperationalApp({
     if (clean === 'conversas' || clean === 'funil' || clean === 'kanban') return 'conversas';
     if (clean === 'grupos') return 'grupos';
     if (clean === 'agenda') return 'agenda';
-    if (clean === 'anotacoes') return 'anotacoes';
+    if (clean === 'anotacoes' || clean === 'notes') return 'conversas';
+    if (clean === 'clientes' || clean === 'empresas' || clean === 'clients') return 'clientes';
     if (clean === 'resultados' || clean === 'roi' || clean === 'analytics') return 'resultados';
     if (clean === 'inteligencia' || clean === 'playbook') return 'playbook';
     if (clean === 'simulador') return 'simulador';
@@ -451,6 +509,7 @@ function OperationalApp({
       case 'grupos': return '/grupos';
       case 'agenda': return '/agenda';
       case 'anotacoes': return '/anotacoes';
+      case 'clientes': return '/clientes';
       case 'resultados': return '/resultados';
       case 'analytics': return '/resultados';
       case 'playbook': return '/inteligencia';
@@ -472,6 +531,7 @@ function OperationalApp({
         'grupos',
         'agenda',
         'anotacoes',
+        'clientes',
         'resultados',
         'analytics',
         'playbook',
@@ -567,6 +627,10 @@ function OperationalApp({
           return;
         }
 
+        // In authenticated mode the backend membership is authoritative. Do
+        // not hide or reveal screens based on a local default role.
+        if (defaultWs.operatorRole) setRole(defaultWs.operatorRole);
+
         if (salesOsGateway instanceof HttpSalesOsGateway) {
           const page = await salesOsGateway.listJourneys(defaultWs.id, { limit: 20 });
           if (!isMounted) return;
@@ -601,6 +665,7 @@ function OperationalApp({
       // ignore
     }
     setCurrentWorkspace(ws);
+    if (ws.operatorRole) setRole(ws.operatorRole);
     setIsLoading(true);
     try {
       if (salesOsGateway instanceof HttpSalesOsGateway) {
@@ -617,6 +682,72 @@ function OperationalApp({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleCreateWorkspace = async (data: {
+    name: string;
+    businessType: 'hair_salon' | 'auto_film' | 'general_services';
+    tagline: string;
+    ownerEmail: string;
+    whatsappNumber: string;
+    provider: 'waba' | 'waha';
+  }) => {
+    let createdWs: Workspace;
+
+    if (salesOsGateway instanceof HttpSalesOsGateway) {
+      throw new Error(
+        'Criação de subconta ainda não possui contrato backend. Nenhum cliente, canal ou WABA foi criado.',
+      );
+    } else {
+      const newId = `ws-client-${Date.now()}`;
+      createdWs = {
+        id: newId,
+        name: data.name,
+        slug: data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+        businessType: data.businessType,
+        tagline: data.tagline,
+        activeOperatorCount: 1,
+        tier: 'standard',
+        channels: [
+          {
+            id: `chan-${newId}`,
+            name: `WhatsApp (${data.provider.toUpperCase()})`,
+            phoneNumber: data.whatsappNumber || '+55 49 98800-0000',
+            health: 'connected',
+            wabaAccountId: data.provider === 'waba' ? `waba_${newId}` : undefined,
+          },
+        ],
+      };
+      setWorkspaces((prev) => [...prev, createdWs]);
+    }
+
+    // Demo-only persistence. Authenticated API mode never stores client setup locally.
+    try {
+      const intelKey = 'sos_sales_intelligence_bundles_v2';
+      const existing = JSON.parse(localStorage.getItem(intelKey) || '{}');
+      existing[createdWs.id] = {
+        workspaceId: createdWs.id,
+        workspaceName: createdWs.name,
+        companyProfile: {
+          tradeName: createdWs.name,
+          legalName: createdWs.name,
+          cnpj: '',
+          tagline: data.tagline,
+          primaryColorHex: '#00A884',
+          whatsappNumber: data.whatsappNumber,
+          ownerEmail: data.ownerEmail,
+          officialChannelType: data.provider,
+          businessSegment: data.businessType,
+        },
+        catalog: [],
+        documents: [],
+        learningRecords: [],
+      };
+      localStorage.setItem(intelKey, JSON.stringify(existing));
+    } catch {}
+
+    // Auto switch to the new workspace
+    await handleSelectWorkspace(createdWs);
   };
 
   const handleUpdateJourney = (updated: Journey) => {
@@ -752,6 +883,7 @@ function OperationalApp({
           isAuthenticatedApiMode={salesOsRuntimeConfig.mode === 'api'}
           userEmail={userEmail}
           onSignOut={onSignOut}
+          onCreateWorkspace={handleCreateWorkspace}
         />
       </FeatureFlagProvider>
     </>

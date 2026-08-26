@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Workspace } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import {
   Link2,
   Copy,
@@ -91,7 +92,7 @@ export const CampaignLinksTab: React.FC<CampaignLinksTabProps> = ({ workspace })
 
   // Fetch official WABA number
   useEffect(() => {
-    fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/channel-info`)
+    authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/channel-info`)
       .then((r) => r.json())
       .then((d) => {
         if (d.verifiedPhone) {

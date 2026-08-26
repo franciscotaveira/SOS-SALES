@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Workspace } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import {
   Target,
   Users,
@@ -31,19 +32,23 @@ export const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ work
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('30d');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const wsId = workspace?.id || '22222222-2222-2222-2222-222222222222';
 
   const fetchMetrics = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${wsId}/reports/performance-sla?period=${period}`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${wsId}/reports/performance-sla?period=${period}`);
       if (res.ok) {
         const json = await res.json();
-        setData(json.metrics);
+        setData(json.metrics || null);
+      } else {
+        setFetchError('Não foi possível carregar as métricas do servidor.');
       }
     } catch {
-      // fallback
+      setFetchError('Erro de conexão com o servidor de métricas.');
     } finally {
       setLoading(false);
     }
@@ -54,29 +59,29 @@ export const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ work
   }, [wsId, period]);
 
   const metrics = data || {
-    aiResponseTimeFormatted: '3.8s',
-    humanResponseTimeFormatted: '34 min',
-    speedAdvantage: '537x mais rápida',
-    goldenWindowPercent: 88.5,
+    aiResponseTimeFormatted: '—',
+    humanResponseTimeFormatted: 'Sem registros',
+    speedAdvantage: 'Sem dados',
+    goldenWindowPercent: 0,
     volumeDistribution: {
-      aiPercent: 68,
-      humanPercent: 32,
-      aiHandledCount: 142,
-      humanHandledCount: 67,
+      aiPercent: 0,
+      humanPercent: 0,
+      aiHandledCount: 0,
+      humanHandledCount: 0,
     },
     trafficAudit: {
-      totalAdLeads: 84,
-      respondedUnder5m: 66,
-      delayedOver15m: 18,
-      adRevenueAtRiskBrl: '1602.00',
+      totalAdLeads: 0,
+      respondedUnder5m: 0,
+      delayedOver15m: 0,
+      adRevenueAtRiskBrl: '0.00',
       trafficVsAttendanceVerdict:
-        'Atenção: 18 leads de anúncios esperaram mais de 15 minutos pelo atendente humano, gerando risco de R$ 1.602,00 em perda de conversão. O tráfego entregou o lead, o gargalo foi a demora de resposta humana.',
+        'Sem dados de tráfego suficientes para gerar o parecer neste período. Conforme os leads chegarem pelo WhatsApp, a auditoria de SLA será calculada em tempo real.',
     },
     hourlySpeedHeatmap: [
-      { period: 'Manhã (08h-12h)', aiSpeed: '3.2s', humanSpeed: '14 min', status: 'OK' },
-      { period: 'Almoço (12h-14h)', aiSpeed: '3.5s', humanSpeed: '42 min', status: 'GARGALO' },
-      { period: 'Tarde (14h-18h)', aiSpeed: '4.1s', humanSpeed: '22 min', status: 'OK' },
-      { period: 'Noite/Madrugada (18h-08h)', aiSpeed: '3.9s', humanSpeed: '180 min', status: 'CRÍTICO' },
+      { period: 'Manhã (08h-12h)', aiSpeed: '—', humanSpeed: '—', status: 'SEM_DADOS' },
+      { period: 'Almoço (12h-14h)', aiSpeed: '—', humanSpeed: '—', status: 'SEM_DADOS' },
+      { period: 'Tarde (14h-18h)', aiSpeed: '—', humanSpeed: '—', status: 'SEM_DADOS' },
+      { period: 'Noite/Madrugada (18h-08h)', aiSpeed: '—', humanSpeed: '—', status: 'SEM_DADOS' },
     ],
   };
 
@@ -121,6 +126,22 @@ export const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ work
             </button>
           </div>
         </div>
+
+        {/* Error / Alert Banner if API failed */}
+        {fetchError && (
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>{fetchError} Exibindo estado sem dados até a próxima sincronização.</span>
+            </div>
+            <button
+              onClick={fetchMetrics}
+              className="px-2.5 py-1 bg-white border border-amber-300 rounded-lg text-amber-800 font-bold hover:bg-amber-100 transition text-xs cursor-pointer"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
 
         {/* Top 4 Confrontation KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

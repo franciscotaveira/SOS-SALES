@@ -31,8 +31,6 @@ services:
         APP_ENV: lab
     container_name: sos-sales-lab-api
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "4335:4334"
     environment:
@@ -41,10 +39,11 @@ services:
       - PORT=4334
       - HOST=0.0.0.0
       - PUBLIC_API_URL=http://api-lab:4334
-      - LAB_DATABASE_URL=${LAB_DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:55432/postgres}
-      - LAB_SUPABASE_URL=${LAB_SUPABASE_URL:-http://host.docker.internal:55431}
+      - LAB_DATABASE_URL=${LAB_DATABASE_URL:-postgresql://postgres:postgres@db:5432/postgres}
+      - DATABASE_SSL=false
+      - LAB_SUPABASE_URL=${LAB_SUPABASE_URL:-http://kong:8000}
       - LAB_SUPABASE_ANON_KEY=${LAB_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
-      - LAB_SUPABASE_JWKS_URL=${LAB_SUPABASE_JWKS_URL:-http://host.docker.internal:55431/auth/v1/.well-known/jwks.json}
+      - LAB_SUPABASE_JWKS_URL=${LAB_SUPABASE_JWKS_URL:-http://auth:9999/.well-known/jwks.json}
       - LAB_SUPABASE_JWT_ISSUER=${LAB_SUPABASE_JWT_ISSUER:-http://127.0.0.1:55431/auth/v1}
       - REDIS_URL=redis://redis-lab:6379
       - WAHA_BASE_URL=http://waha-lab:3000
@@ -60,6 +59,7 @@ services:
           - api-lab
           - sos-sales-api
           - sos-sales-lab-api
+      supabase-lab-network: {}
 
   # ---------------------------------------------------------------------------
   # REDIS LAB
@@ -104,3 +104,6 @@ services:
 networks:
   sos-lab-network:
     driver: bridge
+  supabase-lab-network:
+    external: true
+    name: ${LAB_SUPABASE_DOCKER_NETWORK:-supabase_network_sos-sales}

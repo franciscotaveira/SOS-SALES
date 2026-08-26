@@ -1,5 +1,5 @@
 node_modules
-dist
+apps/api/node_modules
 .git
 .agents
 .gemini
@@ -7,3 +7,7 @@ dist
 docs
 coverage
 *.log
+dist
+apps/api/dist
+.gstack
+screenshots

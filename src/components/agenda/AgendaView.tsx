@@ -69,6 +69,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<'today' | 'tomorrow' | 'week' | 'all'>('today');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [externalAgendaDrawerOpen, setExternalAgendaDrawerOpen] = useState(false);
 
   // Form State for new appointment
@@ -163,9 +165,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
       const todayStr = new Date().toISOString().slice(0, 10);
       const tomorrowStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
       if (dateFilter === 'today') {
-        matchesDate = apt.scheduledAt.startsWith(todayStr) || apt.scheduledAt.startsWith('2026-08-15');
+        matchesDate = apt.scheduledAt.startsWith(todayStr);
       } else if (dateFilter === 'tomorrow') {
-        matchesDate = apt.scheduledAt.startsWith(tomorrowStr) || apt.scheduledAt.startsWith('2026-08-16');
+        matchesDate = apt.scheduledAt.startsWith(tomorrowStr);
       }
 
       return matchesSearch && matchesStatus && matchesDate;
@@ -175,6 +177,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
   const handleCreateAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLeadName.trim() || !newLeadPhone.trim()) return;
+
+    setSaveError(null);
+    setIsSaving(true);
 
     const payload: Partial<CommercialAppointment> = {
       workspaceId: workspace.id,
@@ -191,11 +196,11 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
       notes: newNotes.trim() || undefined,
     };
 
-    if (gateway?.createAppointment) {
-      try {
+    try {
+      if (gateway?.createAppointment) {
         const created = await gateway.createAppointment(workspace.id, payload);
         setAppointments((prev) => [created, ...prev]);
-      } catch {
+      } else if (salesOsRuntimeConfig.mode !== 'api') {
         const fallbackApt: CommercialAppointment = {
           id: `apt-${Date.now()}`,
           workspaceId: workspace.id,
@@ -212,30 +217,19 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
           notes: newNotes.trim() || undefined,
         };
         setAppointments((prev) => [fallbackApt, ...prev]);
+      } else {
+        throw new Error('Serviço de agendamento indisponível no servidor.');
       }
-    } else {
-      const fallbackApt: CommercialAppointment = {
-        id: `apt-${Date.now()}`,
-        workspaceId: workspace.id,
-        leadName: newLeadName.trim(),
-        leadPhone: newLeadPhone.trim(),
-        serviceName: newServiceName,
-        serviceValue: Number(newServiceValue),
-        scheduledAt: newScheduledAt,
-        durationMinutes: Number(newDuration),
-        status: 'confirmed',
-        source: 'operator',
-        operatorName: 'Você (Gestor)',
-        location: newLocation,
-        notes: newNotes.trim() || undefined,
-      };
-      setAppointments((prev) => [fallbackApt, ...prev]);
-    }
 
-    setIsNewModalOpen(false);
-    setNewLeadName('');
-    setNewLeadPhone('');
-    setNewNotes('');
+      setIsNewModalOpen(false);
+      setNewLeadName('');
+      setNewLeadPhone('');
+      setNewNotes('');
+    } catch (err: any) {
+      setSaveError(err.message || 'Falha ao salvar agendamento no servidor.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCompleteAlarm = (alarmId: string) => {
@@ -370,14 +364,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
         <div className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-slate-500 font-medium mb-1">
-            <span>Hoje (Sábado)</span>
+            <span>Hoje</span>
             <CalendarIcon className="w-4 h-4 text-purple-600" />
           </div>
           <div className="text-2xl font-bold text-slate-900 font-heading">
-            {appointments.filter((a) => a.scheduledAt.startsWith('2026-08-15')).length} <span className="text-xs font-normal text-slate-400">horários</span>
+            {appointments.filter((a) => a.scheduledAt.startsWith(new Date().toISOString().slice(0, 10))).length} <span className="text-xs font-normal text-slate-400">horários</span>
           </div>
           <div className="text-[11px] text-emerald-600 font-semibold mt-1">
-            {stats.confirmedCount} confirmados pela IA/Operador
+            {stats.confirmedCount} confirmados
           </div>
         </div>
 
@@ -594,8 +588,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
                 >
                   <div className="flex items-start sm:items-center gap-3.5 min-w-0">
                     <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex flex-col items-center justify-center shrink-0 shadow-xs">
-                      <span className="text-xs font-bold text-emerald-400 uppercase">
-                        {dateFormatted === '2026-08-15' ? 'HOJE' : dateFormatted === '2026-08-16' ? 'DOM' : 'DATA'}
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase">
+                        {dateFormatted === new Date().toISOString().slice(0, 10) ? 'HOJE' : dateFormatted}
                       </span>
                       <span className="text-xs font-black font-mono">
                         {timeFormatted}
@@ -694,7 +688,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
               </button>
             </div>
 
+            {/* Form */}
             <form onSubmit={handleCreateAppointment} className="space-y-3">
+              {saveError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{saveError}</span>
+                </div>
+              )}
               <div>
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">
                   Nome do Cliente:

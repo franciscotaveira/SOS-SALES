@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Workspace } from '../../types/cockpit';
+import { salesOsRuntimeConfig } from '../../config/runtime';
 import {
   Key,
   Webhook,
@@ -55,6 +56,15 @@ export function resolveWorkspaceApiDefaults(wsId: string, wsName?: string): {
   isMasterAccount: boolean;
   accountTypeLabel: string;
 } {
+  if (salesOsRuntimeConfig.mode === 'api') {
+    return {
+      isMasterAccount: false,
+      accountTypeLabel: 'Conta do Workspace',
+      apiKeys: [],
+      webhooks: [],
+    };
+  }
+
   const normId = (wsId || '').toLowerCase();
   const normName = (wsName || '').toLowerCase();
 

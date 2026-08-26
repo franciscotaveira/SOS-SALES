@@ -429,10 +429,47 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   const [draggedJourneyId, setDraggedJourneyId] = useState<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
+  const [customColumnsMap, setCustomColumnsMap] = useState<Record<string, { title: string; subtitle?: string }>>(() => {
+    try {
+      const saved = localStorage.getItem(`sos_sales_custom_kanban_${workspaceId}`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
 
   const activePipeline = useMemo(() => {
-    return availablePipelines.find((p) => p.id === activePipelineId) || availablePipelines[0];
-  }, [availablePipelines, activePipelineId]);
+    const base = availablePipelines.find((p) => p.id === activePipelineId) || availablePipelines[0];
+    return {
+      ...base,
+      columns: base.columns.map((col) => {
+        const custom = customColumnsMap[col.id];
+        return custom ? { ...col, title: custom.title, subtitle: custom.subtitle || col.subtitle } : col;
+      }),
+    };
+  }, [availablePipelines, activePipelineId, customColumnsMap]);
+
+  const handleCustomizePipeline = () => {
+    const colListStr = activePipeline.columns.map((c) => c.title).join(' | ');
+    const promptVal = window.prompt(
+      'Renomeie as 5 etapas do funil separadas por barra vertical " | " (ex: 1. Novo Lead | 2. Qualificação | 3. Proposta | 4. Negociação | 5. Fechado):',
+      colListStr
+    );
+    if (promptVal !== null) {
+      const names = promptVal.split('|').map((s) => s.trim()).filter((s) => s.length > 0);
+      if (names.length > 0) {
+        const newMap = { ...customColumnsMap };
+        activePipeline.columns.forEach((col, idx) => {
+          if (names[idx]) {
+            newMap[col.id] = { title: names[idx], subtitle: col.subtitle };
+          }
+        });
+        setCustomColumnsMap(newMap);
+        try {
+          localStorage.setItem(`sos_sales_custom_kanban_${workspaceId}`, JSON.stringify(newMap));
+        } catch {}
+      }
+    }
+  };
 
   const fetchJourneys = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -631,6 +668,16 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                 <span>{pipe.name}</span>
               </button>
             ))}
+
+            <button
+              type="button"
+              onClick={handleCustomizePipeline}
+              className="px-2 py-0.5 rounded-md text-[11px] font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer flex items-center gap-1 border-l border-slate-200 ml-1 pl-1.5"
+              title="Personalizar nomes das etapas do funil para o processo da sua empresa"
+            >
+              <span>⚙️</span>
+              <span className="hidden sm:inline">Personalizar Etapas</span>
+            </button>
           </div>
         </div>
 

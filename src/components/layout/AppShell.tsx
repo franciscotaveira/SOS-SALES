@@ -3,8 +3,10 @@ import { Workspace, OperatorRole } from '../../types/cockpit';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { useFeatureFlags } from '../../contexts/FeatureFlagContext';
 import { salesOsRuntimeConfig } from '../../config/runtime';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import {
   getWorkspaceAiMode,
+  loadWorkspaceAgentConfig,
   setWorkspaceAiMode,
   GlobalAiAutonomyMode,
 } from '../../services/aiAutonomyManager';
@@ -37,6 +39,7 @@ import {
   CalendarDays,
   BookOpen,
   Megaphone,
+  Building2,
 } from 'lucide-react';
 
 export type NavigationTab =
@@ -45,6 +48,7 @@ export type NavigationTab =
   | 'kanban'
   | 'agenda'
   | 'anotacoes'
+  | 'clientes'
   | 'resultados'
   | 'analytics'
   | 'grupos'
@@ -73,6 +77,8 @@ interface AppShellProps {
   onChangeGroupSubTab?: (subTab: string) => void;
   activeResultsSubTab?: string;
   onChangeResultsSubTab?: (subTab: any) => void;
+  activeConversationsMode?: 'list' | 'kanban' | 'wallboard';
+  onChangeConversationsMode?: (mode: 'list' | 'kanban' | 'wallboard') => void;
   userEmail?: string;
   onSignOut?: () => void;
   children: React.ReactNode;
@@ -96,6 +102,8 @@ export const AppShell: React.FC<AppShellProps> = ({
   onChangeGroupSubTab,
   activeResultsSubTab = 'analytics',
   onChangeResultsSubTab,
+  activeConversationsMode = 'list',
+  onChangeConversationsMode,
   userEmail,
   onSignOut,
   children,
@@ -168,17 +176,23 @@ export const AppShell: React.FC<AppShellProps> = ({
     phone?: string | null;
     pushName?: string | null;
   } | null>(null);
+  const [liveChannelStatusError, setLiveChannelStatusError] = React.useState<string | null>(null);
 
   const fetchLiveChannelStatus = React.useCallback(async () => {
     if (!currentWorkspace?.id) return;
     try {
-      const res = await fetch(`/api/v1/workspaces/${currentWorkspace.id}/channels/whatsapp/status`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/channels/whatsapp/status`);
       if (res.ok) {
         const data = await res.json();
         setLiveChannelStatus(data);
+        setLiveChannelStatusError(null);
+      } else {
+        setLiveChannelStatus(null);
+        setLiveChannelStatusError(`Status indisponível (${res.status})`);
       }
     } catch {
-      // ignore
+      setLiveChannelStatus(null);
+      setLiveChannelStatusError('Status indisponível');
     }
   }, [currentWorkspace?.id]);
 
@@ -199,9 +213,20 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [globalAiMode, setGlobalAiMode] = React.useState<GlobalAiAutonomyMode>(() =>
     getWorkspaceAiMode(currentWorkspace.id)
   );
+  const [aiModeLoading, setAiModeLoading] = React.useState(true);
+  const [aiModeError, setAiModeError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setGlobalAiMode(getWorkspaceAiMode(currentWorkspace.id));
+    setAiModeLoading(true);
+    setAiModeError(null);
+    void loadWorkspaceAgentConfig(currentWorkspace.id)
+      .then((config) => setGlobalAiMode(config.autonomyMode))
+      .catch(() => {
+        setGlobalAiMode('copilot_supervised');
+        setAiModeError('Configuração da IA não confirmada');
+      })
+      .finally(() => setAiModeLoading(false));
     const handleModeChanged = (e: any) => {
       if (e.detail?.workspaceId === currentWorkspace.id && e.detail?.mode) {
         setGlobalAiMode(e.detail.mode);
@@ -211,22 +236,47 @@ export const AppShell: React.FC<AppShellProps> = ({
     return () => window.removeEventListener('sos_ai_mode_changed', handleModeChanged);
   }, [currentWorkspace.id]);
 
-  const toggleGlobalAiMode = () => {
+  const toggleGlobalAiMode = async () => {
+    if (aiModeLoading) return;
     const nextMode: GlobalAiAutonomyMode =
       globalAiMode === 'autonomous_24_7' ? 'copilot_supervised' : 'autonomous_24_7';
-    setWorkspaceAiMode(currentWorkspace.id, nextMode);
-    setGlobalAiMode(nextMode);
+    setAiModeLoading(true);
+    setAiModeError(null);
+    try {
+      const config = await setWorkspaceAiMode(currentWorkspace.id, nextMode);
+      setGlobalAiMode(config.autonomyMode);
+    } catch {
+      setGlobalAiMode('copilot_supervised');
+      setAiModeError('Falha ao publicar modo da IA');
+    } finally {
+      setAiModeLoading(false);
+    }
   };
 
   // Primary channel health computation
   const primaryChannel = currentWorkspace.channels[0];
   const isChannelOnline =
-    liveChannelStatus?.status === 'WORKING' ||
-    primaryChannel?.health === 'healthy' ||
-    primaryChannel?.health === 'connected';
+    !liveChannelStatusError &&
+    (liveChannelStatus?.status === 'WORKING' ||
+      primaryChannel?.health === 'healthy' ||
+      primaryChannel?.health === 'connected');
   const isChannelPaused = primaryChannel?.health === 'paused';
   const isChannelScanning = liveChannelStatus?.status === 'SCAN_QR_CODE';
   const channelEngine = (primaryChannel as any)?.engine ? (primaryChannel as any).engine.toUpperCase() : 'WAHA';
+
+  // Role hierarchy helper for fine-grained authorization
+  const roleHierarchy: Record<OperatorRole, number> = {
+    viewer: 0,
+    operator: 1,
+    supervisor: 2,
+    admin: 3,
+    owner: 4,
+  };
+
+  const hasRoleAccess = (requiredRole?: OperatorRole) => {
+    if (!requiredRole) return true;
+    return (roleHierarchy[role] ?? 1) >= (roleHierarchy[requiredRole] ?? 1);
+  };
 
   // Domain Navigation Group Definitions
   interface NavItem {
@@ -235,7 +285,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     icon: React.ElementType;
     badge?: number;
     badgeColor?: string;
-    roleRequired?: 'owner' | 'admin' | 'operator';
+    roleRequired?: OperatorRole;
     visible?: boolean;
     tag?: string;
   }
@@ -255,12 +305,14 @@ export const AppShell: React.FC<AppShellProps> = ({
           icon: Flame,
           badge: pendingPrioritiesCount > 0 ? pendingPrioritiesCount : undefined,
           badgeColor: 'bg-[#DC2626] text-white',
+          roleRequired: 'operator',
           visible: true,
         },
         {
           id: 'conversas',
           label: 'Conversas & Funil',
           icon: MessageSquare,
+          roleRequired: 'operator',
           visible: true,
         },
         {
@@ -269,46 +321,52 @@ export const AppShell: React.FC<AppShellProps> = ({
           icon: Users,
           badge: pendingGroupsCount > 0 ? pendingGroupsCount : undefined,
           badgeColor: 'bg-[#D97706] text-white',
+          roleRequired: 'operator',
           visible: showGroups,
         },
         {
           id: 'agenda',
           label: 'Agenda',
           icon: CalendarDays,
-          visible: true,
-        },
-        {
-          id: 'anotacoes',
-          label: 'Anotações',
-          icon: BookOpen,
+          roleRequired: 'operator',
           visible: true,
         },
       ],
     },
     {
-            title: 'GESTÃO',
-            items: [
-              {
-                id: 'resultados',
-                label: 'Gestão de Campanhas',
-                icon: Megaphone,
-                visible: showTrafficProof,
-              },
-            ],
-          },
+      title: 'GESTÃO',
+      items: [
+        {
+          id: 'clientes',
+          label: 'Gestão de Clientes',
+          icon: Building2,
+          roleRequired: 'admin',
+          visible: true,
+        },
+        {
+          id: 'resultados',
+          label: 'Gestão de Campanhas',
+          icon: Megaphone,
+          roleRequired: 'admin',
+          visible: showTrafficProof,
+        },
+      ],
+    },
     {
       title: 'INTELIGÊNCIA',
       items: [
         {
-                id: 'playbook',
-                label: 'Inteligência',
-                icon: Bot,
-                visible: true,
-              },
+          id: 'playbook',
+          label: 'Inteligência',
+          icon: Bot,
+          roleRequired: 'admin',
+          visible: true,
+        },
         {
           id: 'simulador',
           label: 'Simulador',
           icon: Zap,
+          roleRequired: 'admin',
           visible: salesOsRuntimeConfig.mode !== 'api' && (showQaSimulator || isAdmin),
         },
       ],
@@ -320,6 +378,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           id: 'configuracoes',
           label: 'Configurações',
           icon: Settings,
+          roleRequired: 'owner',
           visible: true,
         },
       ],
@@ -331,29 +390,40 @@ export const AppShell: React.FC<AppShellProps> = ({
     setMobileDrawerOpen(false);
   };
 
-  // Filter items for search palette
-  const searchableItems = ([
-    { id: 'agora', label: 'Cockpit Agora (Prioridades)', icon: Flame, section: 'Operação' },
-    { id: 'conversas', label: 'Todas as Conversas 1:1', icon: MessageSquare, section: 'Operação' },
-    { id: 'kanban', label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação' },
-    { id: 'agenda', label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação' },
-    { id: 'anotacoes', label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação' },
-    { id: 'resultados', label: 'Analytics & ROI da IA', icon: PieChart, section: 'Gestão', subTab: 'analytics' },
-    { id: 'resultados', label: 'Resultados & Proof of Traffic', icon: BarChart3, section: 'Gestão', subTab: 'proof' },
-    { id: 'grupos', label: 'Grupos WhatsApp', icon: Users, section: 'Gestão' },
-    { id: 'playbook', label: 'Sales AI Playbook & Políticas', icon: Bot, section: 'Inteligência' },
-    { id: 'simulador', label: 'Simulador de QA & Estresse', icon: Zap, section: 'Inteligência' },
-    { id: 'configuracoes', label: 'Configurações do Workspace', icon: Settings, section: 'Sistema' },
-  ] satisfies Array<{
+  // Filter items for search palette with role-based visibility and submode mapping
+  const allSearchableItems: Array<{
     id: NavigationTab;
     label: string;
     icon: React.ElementType;
     section: string;
+    roleRequired?: OperatorRole;
+    conversationsMode?: 'list' | 'kanban' | 'wallboard';
     subTab?: string;
-  }>).filter((item) =>
-    item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.section.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  }> = [
+    { id: 'agora', label: 'Cockpit Agora (Prioridades)', icon: Flame, section: 'Operação', roleRequired: 'operator' },
+    { id: 'conversas', label: 'Todas as Conversas (Lista 1:1)', icon: MessageSquare, section: 'Operação', roleRequired: 'operator', conversationsMode: 'list' },
+    { id: 'conversas', label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação', roleRequired: 'operator', conversationsMode: 'kanban' },
+    { id: 'agenda', label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação', roleRequired: 'operator' },
+    { id: 'anotacoes', label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação', roleRequired: 'operator' },
+    ...(showGroups ? [{ id: 'grupos' as NavigationTab, label: 'Grupos WhatsApp', icon: Users, section: 'Operação', roleRequired: 'operator' as OperatorRole }] : []),
+    { id: 'clientes', label: 'Gestão de Clientes & Sub-contas (Matriz)', icon: Building2, section: 'Gestão', roleRequired: 'admin' },
+    ...(showTrafficProof ? [
+      { id: 'resultados' as NavigationTab, label: 'Analytics & ROI da IA', icon: PieChart, section: 'Gestão', subTab: 'analytics', roleRequired: 'admin' as OperatorRole },
+      { id: 'resultados' as NavigationTab, label: 'Resultados & Proof of Traffic', icon: BarChart3, section: 'Gestão', subTab: 'proof', roleRequired: 'admin' as OperatorRole },
+    ] : []),
+    { id: 'playbook', label: 'Sales AI Playbook & Inteligência', icon: Bot, section: 'Inteligência', roleRequired: 'admin' },
+    ...(salesOsRuntimeConfig.mode !== 'api' && (showQaSimulator || isAdmin) ? [
+      { id: 'simulador' as NavigationTab, label: 'Simulador de QA & Estresse', icon: Zap, section: 'Inteligência', roleRequired: 'admin' as OperatorRole },
+    ] : []),
+    { id: 'configuracoes', label: 'Configurações do Workspace', icon: Settings, section: 'Sistema', roleRequired: 'owner' },
+  ];
+
+  const searchableItems = allSearchableItems
+    .filter((item) => hasRoleAccess(item.roleRequired))
+    .filter((item) =>
+      item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.section.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
   const renderNavContent = (isMobile = false) => {
     const collapsed = isMobile ? false : isCollapsed;
@@ -409,7 +479,9 @@ export const AppShell: React.FC<AppShellProps> = ({
         {/* Navigation Sections List */}
         <div className="flex-1 overflow-y-auto py-3 px-2 space-y-3">
           {navSections.map((section) => {
-            const visibleItems = section.items.filter((item) => item.visible !== false);
+            const visibleItems = section.items.filter(
+              (item) => item.visible !== false && hasRoleAccess(item.roleRequired)
+            );
             if (visibleItems.length === 0) return null;
 
             return (
@@ -487,13 +559,12 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {item.id === 'playbook' && isActive && !collapsed && (
                         <div className="mt-1 pl-6 bg-slate-800/30 space-y-0.5">
                           {[
-                            { id: 'thesis', label: 'Personalidade & Tom de Voz' },
-                            { id: 'diagnosis', label: 'Diagnóstico de 1 Ano' },
-                            { id: 'catalog', label: 'Catálogo de Produtos & Preços (WABA)' },
-                            { id: 'knowledge', label: 'Documentos & Regras' },
-                            { id: 'learning', label: 'Ajustes da Equipe (Aprendizado)' },
-                            { id: 'company', label: 'Dados da Empresa & WhatsApp' },
-                            { id: 'agent', label: 'Equipe de Robôs Especialistas' },
+                            { id: 'knowledge', label: 'Base de Conhecimento' },
+                            { id: 'catalog', label: 'Catálogo de Serviços' },
+                            { id: 'agent', label: 'Robôs Especialistas' },
+                            { id: 'learning', label: 'Curadoria & Aprendizado' },
+                            { id: 'thesis', label: 'Tese & Tom de Voz' },
+                            { id: 'diagnosis', label: 'Diagnóstico Histórico' },
                           ].map((sub) => {
                             const isSubActive = activeIntelligenceSubTab === sub.id;
                             return (
@@ -623,6 +694,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               onSelectWorkspace={onSelectWorkspace}
               variant="dark"
               collapsed={collapsed}
+              onNavigateToClients={() => onChangeTab('clientes')}
             />
 
             {/* 2. WhatsApp Status Pill */}
@@ -699,12 +771,13 @@ export const AppShell: React.FC<AppShellProps> = ({
               <button
                 type="button"
                 onClick={toggleGlobalAiMode}
+                disabled={aiModeLoading}
                 className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                   globalAiMode === 'autonomous_24_7'
                     ? 'bg-[#00A884]/20 hover:bg-[#00A884]/30 text-emerald-300 border-[#00A884]/40'
                     : 'bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 border-indigo-800/60'
                 }`}
-                title="Alternar entre IA Autônoma 24/7 e Modo Copiloto/Aprendizado"
+                title={aiModeError || 'Alterar modo publicado da IA no backend'}
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   {globalAiMode === 'autonomous_24_7' ? (
@@ -713,7 +786,11 @@ export const AppShell: React.FC<AppShellProps> = ({
                     <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-indigo-400" />
                   )}
                   <span className="truncate text-xs">
-                    {globalAiMode === 'autonomous_24_7' ? 'IA 24/7 Ativa' : 'Modo Copiloto'}
+                    {aiModeLoading
+                      ? 'Verificando IA...'
+                      : aiModeError
+                        ? 'IA não confirmada'
+                        : globalAiMode === 'autonomous_24_7' ? 'IA 24/7 Ativa' : 'Modo Copiloto'}
                   </span>
                 </div>
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${
@@ -728,8 +805,9 @@ export const AppShell: React.FC<AppShellProps> = ({
               <button
                 type="button"
                 onClick={toggleGlobalAiMode}
+                disabled={aiModeLoading}
                 className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 text-slate-300 transition-colors cursor-pointer"
-                title={`IA Autonomia: ${globalAiMode === 'autonomous_24_7' ? 'IA 24/7 Ativa (AUTO)' : 'Modo Copiloto (LEARN)'}`}
+                title={aiModeError || `IA: ${globalAiMode === 'autonomous_24_7' ? '24/7 ativa no backend' : 'Copiloto supervisionado'}`}
               >
                 {globalAiMode === 'autonomous_24_7' ? (
                   <Sparkles className="w-4 h-4 text-emerald-400" />
@@ -918,7 +996,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             >
               <div className="flex items-center gap-2">
                 <Search className="w-3.5 h-3.5 text-slate-400" />
-                <span>Buscar leads, grupos, comandos...</span>
+                <span>Buscar telas e comandos...</span>
               </div>
               <kbd className="text-[10px] font-mono bg-white border border-slate-300 rounded px-1.5 py-0.5 text-slate-500 font-semibold shadow-2xs">
                 ⌘K
@@ -1005,7 +1083,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 autoFocus
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por módulo, tela, lead ou comando..."
+                placeholder="Buscar por módulo, tela ou comando..."
                 className="flex-1 text-sm bg-transparent outline-none text-slate-900 placeholder:text-slate-400 font-sans"
               />
               <button
@@ -1018,7 +1096,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
             <div className="p-3 max-h-72 overflow-y-auto space-y-1 text-xs">
               <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-heading">
-                Navegação Rápida
+                Telas e comandos
               </div>
 
               {searchableItems.length > 0 ? (
@@ -1026,9 +1104,12 @@ export const AppShell: React.FC<AppShellProps> = ({
                   const Icon = item.icon;
                   return (
                     <button
-                      key={`${item.id}-${item.subTab || 'main'}`}
+                      key={`${item.id}-${item.conversationsMode || item.subTab || 'main'}`}
                       onClick={() => {
                         onChangeTab(item.id);
+                        if (item.id === 'conversas' && item.conversationsMode) {
+                          onChangeConversationsMode?.(item.conversationsMode);
+                        }
                         if (item.subTab && item.id === 'resultados') {
                           onChangeResultsSubTab?.(item.subTab);
                         }

@@ -20,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-export type ResultsSubTab = 'analytics' | 'traffic_proof' | 'campaign_links' | 'waba_templates' | 'broadcast' | 'tracking' | 'ltv_matrix';
+export type ResultsSubTab = 'analytics' | 'traffic_proof' | 'broadcast' | 'campaign_links' | 'waba_templates';
 
 interface ResultsHubViewProps {
   workspace: Workspace;
@@ -46,12 +46,12 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
   const SUB_TABS = [
     {
       id: 'analytics' as ResultsSubTab,
-      label: 'Analytics & ROI da IA',
+      label: 'Analytics & ROI',
       icon: PieChart,
     },
     {
       id: 'traffic_proof' as ResultsSubTab,
-      label: 'Campanhas & Anúncios (Click WA)',
+      label: 'Campanhas & Anúncios (CTWA)',
       icon: TrendingUp,
     },
     {
@@ -68,16 +68,6 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
       id: 'waba_templates' as ResultsSubTab,
       label: 'Modelos WABA (Templates)',
       icon: FileText,
-    },
-    {
-      id: 'tracking' as ResultsSubTab,
-      label: 'Traqueamento & Pixels',
-      icon: Target,
-    },
-    {
-      id: 'ltv_matrix' as ResultsSubTab,
-      label: 'Matriz LTV & Retenção',
-      icon: Sparkles,
     },
   ];
 
@@ -159,16 +149,6 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
 
         {activeSubTab === 'waba_templates' && (
           <WabaTemplatesTab workspace={workspace} />
-        )}
-
-        {activeSubTab === 'tracking' && (
-          <div className="max-w-6xl mx-auto p-4">
-            <TrackingSettings workspace={workspace} />
-          </div>
-        )}
-
-        {activeSubTab === 'ltv_matrix' && (
-          <LtvConfigManager workspace={workspace} />
         )}
       </div>
     </div>

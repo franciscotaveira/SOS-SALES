@@ -83,14 +83,38 @@ export async function publicSupplierRoutes(app: FastifyInstance): Promise<void> 
     }
 
     let textContent = typeof payload.body === 'string' ? payload.body : (payload.caption || '');
-    if (!textContent && (payload.hasMedia || payload.media || payload.type !== 'chat')) {
+    let mediaPayload: any = null;
+
+    if (payload.hasMedia || payload.media || payload.type !== 'chat') {
       const mediaType = payload.type || 'mídia';
-      if (mediaType === 'image') textContent = payload.caption ? `📷 ${payload.caption}` : '📷 [Imagem]';
-      else if (mediaType === 'audio' || mediaType === 'ptt' || mediaType === 'voice') textContent = '🎤 [Mensagem de Áudio]';
-      else if (mediaType === 'video') textContent = payload.caption ? `🎥 ${payload.caption}` : '🎥 [Vídeo]';
-      else if (mediaType === 'document') textContent = payload.filename ? `📄 ${payload.filename}` : '📄 [Documento]';
-      else if (mediaType === 'sticker') textContent = '🏷️ [Figurinha]';
-      else textContent = `📎 [${mediaType.toUpperCase()}]`;
+      if (!textContent) {
+        if (mediaType === 'image') textContent = payload.caption ? `📷 ${payload.caption}` : '📷 [Imagem]';
+        else if (mediaType === 'audio' || mediaType === 'ptt' || mediaType === 'voice') textContent = '🎤 [Mensagem de Áudio]';
+        else if (mediaType === 'video') textContent = payload.caption ? `🎥 ${payload.caption}` : '🎥 [Vídeo]';
+        else if (mediaType === 'document') textContent = payload.filename ? `📄 ${payload.filename}` : '📄 [Documento]';
+        else if (mediaType === 'sticker') textContent = '🏷️ [Figurinha]';
+        else textContent = `📎 [${mediaType.toUpperCase()}]`;
+      }
+
+      const rawMediaUrl = payload.media?.url || payload.mediaUrl || payload.url || (payload._data && typeof payload._data === 'object' ? payload._data.mediaUrl || payload._data.url : '') || '';
+      const mimetype = payload.media?.mimetype || payload.mimetype || (payload._data && typeof payload._data === 'object' ? payload._data.mimetype : '') || (mediaType === 'image' ? 'image/jpeg' : undefined);
+      const fileName = payload.media?.filename || payload.filename || (payload._data && typeof payload._data === 'object' ? payload._data.filename : '') || (mediaType === 'image' ? 'imagem_whatsapp.jpg' : undefined);
+
+      let publicUrl = rawMediaUrl;
+      if (rawMediaUrl && (rawMediaUrl.includes('/api/files/') || rawMediaUrl.includes(':3000/'))) {
+        const filePart = rawMediaUrl.substring(rawMediaUrl.indexOf('/api/files/'));
+        publicUrl = `/api/v1/channels/waha/media-proxy?path=${encodeURIComponent(filePart)}`;
+      } else if (!rawMediaUrl && payload.id) {
+        publicUrl = `/api/v1/channels/waha/media-proxy?messageId=${encodeURIComponent(payload.id)}&session=${encodeURIComponent(session)}`;
+      }
+
+      mediaPayload = {
+        mediaType: mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : (mediaType === 'audio' || mediaType === 'ptt' || mediaType === 'voice') ? 'audio' : mediaType === 'document' ? 'document' : 'other',
+        url: publicUrl,
+        mimetype,
+        fileName,
+        caption: payload.caption || undefined,
+      };
     }
 
     const sentAt = payload.timestamp ? new Date(payload.timestamp * 1000) : new Date();
@@ -149,9 +173,9 @@ export async function publicSupplierRoutes(app: FastifyInstance): Promise<void> 
       await client.query(`
         INSERT INTO public.conversation_messages (
           id, workspace_id, channel_connection_id, journey_id, contact_id,
-          direction, sender_type, provider_message_id, text_content, sent_at
+          direction, sender_type, provider_message_id, text_content, media_payload, sent_at
         ) VALUES (
-          gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9
+          gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
         )
         ON CONFLICT (channel_connection_id, provider_message_id) DO NOTHING
       `, [
@@ -163,6 +187,7 @@ export async function publicSupplierRoutes(app: FastifyInstance): Promise<void> 
         senderType,
         providerMsgId,
         textContent,
+        mediaPayload ? JSON.stringify(mediaPayload) : null,
         sentAt,
       ]);
 

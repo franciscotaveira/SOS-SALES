@@ -17,6 +17,7 @@ import {
   Sliders
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface EmbeddedSignupModalProps {
   isOpen: boolean;
@@ -159,7 +160,7 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
 
   const sendExchangeToBackend = async (payload: any) => {
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/oauth-connect`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/oauth-connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

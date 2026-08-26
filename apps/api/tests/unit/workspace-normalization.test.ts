@@ -56,8 +56,8 @@ describe('Strict Multi-Tenancy — Workspace Normalization & Session Resolution'
       expect(getSessionName('haven')).toBe('haven');
       expect(getSessionName('33333333-3333-3333-3333-333333333333')).toBe('sora');
       expect(getSessionName('sora')).toBe('sora');
-      expect(getSessionName('11111111-1111-1111-1111-111111111111')).toBe('matriz');
-      expect(getSessionName('matriz')).toBe('matriz');
+      expect(getSessionName('11111111-1111-1111-1111-111111111111')).toBe('default');
+      expect(getSessionName('matriz')).toBe('default');
     });
 
     it('returns null for invalid or malicious workspace inputs', () => {

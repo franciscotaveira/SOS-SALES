@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Workspace } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import {
   FileText,
   Plus,
@@ -40,14 +41,14 @@ export interface OfficialTemplatePreset {
 
 export const OFFICIAL_WABA_PRESETS: OfficialTemplatePreset[] = [
   {
-    id: 'confirmacao_agendamento_v1',
-    name: 'confirmacao_agendamento_v1',
+    id: 'confirmacao_agenda_v1',
+    name: 'confirmacao_agenda_v1',
     category: 'UTILITY',
     header: 'Confirmação de Atendimento',
     body: 'Olá {{1}}! Passando para confirmar seu atendimento agendado para {{2}} às {{3}}. Podemos confirmar sua presença?',
     buttonType: 'QUICK_REPLY',
     buttonText: 'Confirmar Presença',
-    badge: '📅 Agendamento (Aprovado)',
+    badge: '📅 Agendamento (Modelo Sugerido)',
     description: 'Utility: confirmação rápida com botão interativo para blindar a agenda e evitar no-show.',
   },
   {
@@ -58,7 +59,7 @@ export const OFFICIAL_WABA_PRESETS: OfficialTemplatePreset[] = [
     body: 'Olá {{1}}! Lembramos que seu atendimento está marcado para hoje às {{2}} na unidade {{3}}. Estamos prontos para te receber!',
     buttonType: 'QUICK_REPLY',
     buttonText: 'Estou a Caminho',
-    badge: '⏰ Lembrete 2h (Aprovado)',
+    badge: '⏰ Lembrete 2h (Modelo Sugerido)',
     description: 'Utility: aviso prévio no dia do atendimento com confirmação de deslocamento.',
   },
   {
@@ -69,7 +70,7 @@ export const OFFICIAL_WABA_PRESETS: OfficialTemplatePreset[] = [
     body: 'Olá {{1}}, tudo bem? Notamos seu interesse recente em nossos serviços. Preparamos uma condição exclusiva com vagas limitadas para esta semana. Deseja conferir os horários disponíveis?',
     buttonType: 'QUICK_REPLY',
     buttonText: 'Quero Ver Horários',
-    badge: '🔥 Reativação 24h (Aprovado)',
+    badge: '🔥 Reativação 24h (Modelo Sugerido)',
     description: 'Marketing: reabre janela de 24h com oferta exclusiva e personalizada.',
   },
   {
@@ -80,7 +81,7 @@ export const OFFICIAL_WABA_PRESETS: OfficialTemplatePreset[] = [
     body: 'Olá {{1}}! Liberamos 3 vagas promocionais com 20% de desconto para atendimentos agendados ainda hoje. Deseja garantir sua vaga?',
     buttonType: 'QUICK_REPLY',
     buttonText: 'Garantir com Desconto',
-    badge: '🏷️ Oferta VIP (Aprovado)',
+    badge: '🏷️ Oferta VIP (Modelo Sugerido)',
     description: 'Marketing: ativação imediata com gatilho de escassez e urgência.',
   },
   {
@@ -91,7 +92,7 @@ export const OFFICIAL_WABA_PRESETS: OfficialTemplatePreset[] = [
     body: 'Olá {{1}}, tudo bem? Agradecemos sua visita hoje na Haven! Como você avalia o atendimento no seu procedimento de {{2}} realizado com a nossa equipe?',
     buttonType: 'QUICK_REPLY',
     buttonText: 'Excelente Atendimento',
-    badge: '⭐ Pesquisa NPS (Aprovado)',
+    badge: '⭐ Pesquisa NPS (Modelo Sugerido)',
     description: 'Marketing: coleta de satisfação pós-venda em 1 clique.',
   },
 ];
@@ -135,7 +136,7 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
 
   const checkWabaStatus = useCallback(async () => {
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/channel-info`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/channel-info`);
       if (res.ok) {
         const data = await res.json();
         setWabaConnected(Boolean(data.configured && data.accountStatus === 'CONNECTED'));
@@ -151,7 +152,7 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/templates`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/templates`);
       const data = await res.json();
       if (data.templates && Array.isArray(data.templates)) {
         setTemplates(data.templates);
@@ -184,7 +185,7 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
         buttons.push({ type: 'URL', text: tplButtonText.trim(), url: tplButtonUrl.trim() });
       }
 
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/create-template`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/create-template`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -220,7 +221,7 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
   const handleDeleteTemplate = async (templateName: string) => {
     if (!window.confirm(`Tem certeza que deseja excluir o modelo "${templateName}" diretamente da sua conta Meta? Esta ação não pode ser desfeita.`)) return;
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/templates/${templateName}`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/templates/${templateName}`, {
         method: 'DELETE',
       });
       const data = await res.json();

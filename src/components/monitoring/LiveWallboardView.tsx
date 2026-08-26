@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { Journey } from '../../types/cockpit';
 import { WhatsAppGroup } from '../../types/groupsAndEngines';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import {
   Tv,
   Maximize2,
@@ -380,7 +381,7 @@ export const LiveWallboardView: React.FC<LiveWallboardViewProps> = ({
     if (groups.length > 0) return;
     const fetchGroupsData = async () => {
       try {
-        const res = await fetch(`/api/v1/workspaces/${workspaceId}/groups`);
+        const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/groups`);
         if (!res.ok) return;
         const data = await res.json();
         if (data && Array.isArray(data.groups) && data.groups.length > 0) {

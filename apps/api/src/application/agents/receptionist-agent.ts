@@ -13,7 +13,7 @@
 import { NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
 import { WabaClient } from '../../infrastructure/channels/meta/waba-client.js';
 import { dbPool } from '../../infrastructure/database/pool.js';
-import { buildSystemPrompt, getWorkspaceConfig } from '../../infrastructure/ai/receptionist-system-prompt.js';
+import { buildSystemPrompt, WorkspaceConfig } from '../../infrastructure/ai/receptionist-system-prompt.js';
 
 export type ReceptionistIntent =
   | 'greeting'
@@ -149,7 +149,7 @@ export function getReceptionistActionPolicy(decision: ReceptionistDecision): Rec
 }
 
 const GEMINI_BOOK_FLOW_ID = process.env.WABA_BOOKING_FLOW_ID || '';
-const NVIDIA_MODEL = process.env.NVIDIA_NIM_MODEL || 'nvidia/llama-3.1-nemotron-70b-instruct';
+const NVIDIA_MODEL = process.env.NVIDIA_NIM_MODEL || 'meta/llama-3.1-70b-instruct';
 
 export class ReceptionistAgent {
   private readonly nim: NvidiaNimEngine;
@@ -166,23 +166,103 @@ export class ReceptionistAgent {
     this.query = dependencies.query || dbPool.query.bind(dbPool);
   }
 
+  /**
+   * Carrega a configuração do agente para o workspace a partir da tabela
+   * workspace_agent_config. Ausência, schema incompleto ou erro de banco são
+   * falhas fechadas: configuração hardcoded nunca autoriza outbound autônomo.
+   */
+  private async loadWorkspaceConfig(workspaceId: string): Promise<WorkspaceConfig | null> {
+    try {
+      const result = await this.query(
+        `SELECT
+           wac.agent_name,
+           wac.business_type,
+           wac.services_json,
+           wac.working_hours,
+           wac.phone,
+           wac.city,
+           wac.booking_url,
+           wac.booking_flow_enabled,
+           wac.extra_context,
+           wac.behavior_config,
+           w.name AS workspace_name
+         FROM public.workspace_agent_config wac
+         JOIN public.workspaces w ON w.id = wac.workspace_id
+         WHERE wac.workspace_id = $1`,
+        [workspaceId]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const row = result.rows[0];
+      const rawServices = row.services_json;
+      const services: WorkspaceConfig['services'] = Array.isArray(rawServices)
+        ? rawServices.map((s: Record<string, unknown>) => ({
+            name: String(s.name || ''),
+            ...(s.duration ? { duration: String(s.duration) } : {}),
+            ...(s.price ? { price: String(s.price) } : {}),
+          }))
+        : [];
+
+      return {
+        name: String(row.workspace_name || row.agent_name || 'Empresa'),
+        agentName: String(row.agent_name || 'Assistente'),
+        businessType: String(row.business_type || 'Prestação de serviços'),
+        services,
+        workingHours: String(row.working_hours || 'Segunda a Sexta, das 9h às 18h'),
+        phone: String(row.phone || ''),
+        city: String(row.city || 'Brasil'),
+        bookingUrl: row.booking_url ? String(row.booking_url) : undefined,
+        bookingFlowEnabled: Boolean(row.booking_flow_enabled),
+        extraContext: row.extra_context ? String(row.extra_context) : undefined,
+        behavior: row.behavior_config && typeof row.behavior_config === 'object'
+          ? row.behavior_config
+          : {},
+      };
+    } catch (err) {
+      console.error('[ReceptionistAgent] Could not load published workspace config; outbound disabled', err);
+      return null;
+    }
+  }
+
   public isEnabled(): boolean {
     return process.env.RECEPTIONIST_ENABLED === 'true' && this.nim.isConfigured();
   }
 
   /**
-   * Verifica se o bot está ativo para esta jornada específica.
-   * Fail-closed: a jornada só pode receber saída autônoma quando existe e está
-   * explicitamente ativa. Erros de banco ou schema não habilitam mensagens.
+   * Verifica se o bot está habilitado E não pausado para esta jornada específica.
+   *
+   * Lógica em duas camadas (fail-closed):
+   * 1. bot_enabled = true  → operador ativou explicitamente o bot para esta jornada
+   * 2. bot_paused_at IS NULL → nenhum humano assumiu o atendimento no momento
+   *
+   * Ambas as condições devem ser verdadeiras para permitir outbound automático.
+   * Erros de banco ou schema nunca habilitam mensagens.
    */
   private async isBotActiveForJourney(workspaceId: string, journeyId: string): Promise<boolean> {
     try {
       const result = await this.query(
-        `SELECT bot_paused_at FROM public.commercial_journeys WHERE id = $1 AND workspace_id = $2`,
+        `SELECT
+           j.bot_enabled,
+           j.bot_paused_at,
+           wac.runtime_enabled,
+           wac.autonomy_mode,
+           wac.published_at
+         FROM public.commercial_journeys j
+         LEFT JOIN public.workspace_agent_config wac
+           ON wac.workspace_id = j.workspace_id
+         WHERE j.id = $1 AND j.workspace_id = $2`,
         [journeyId, workspaceId]
       );
       if (result.rows.length !== 1) return false;
-      return !result.rows[0].bot_paused_at;
+      const { bot_enabled, bot_paused_at, runtime_enabled, autonomy_mode, published_at } = result.rows[0];
+      return bot_enabled === true
+        && !bot_paused_at
+        && runtime_enabled === true
+        && autonomy_mode === 'autonomous_24_7'
+        && Boolean(published_at);
     } catch (error) {
       console.error('[ReceptionistAgent] Could not verify bot state; outbound skipped', error);
       return false;
@@ -315,8 +395,19 @@ export class ReceptionistAgent {
       return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs: 0, model: '', skipped: 'bot_paused_for_journey' };
     }
 
-    // Busca configuração do workspace
-    const wsConfig = getWorkspaceConfig(input.workspaceId);
+    // Busca somente a configuração publicada do workspace; ausência bloqueia outbound.
+    const wsConfig = await this.loadWorkspaceConfig(input.workspaceId);
+    if (!wsConfig) {
+      return {
+        intent: 'other',
+        reply: '',
+        escalated: false,
+        bookingFlowSent: false,
+        latencyMs: Date.now() - start,
+        model: '',
+        skipped: 'workspace_config_unavailable',
+      };
+    }
     const systemPrompt = buildSystemPrompt(wsConfig);
 
     // Busca histórico de contexto

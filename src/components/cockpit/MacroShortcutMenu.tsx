@@ -12,22 +12,6 @@ interface MacroShortcutMenuProps {
 
 export const MACRO_SHORTCUTS: MacroShortcut[] = [
   {
-    id: 'macro-pix',
-    trigger: '/pix',
-    label: 'Chave Pix Sinal',
-    category: 'fechamento',
-    description: 'Envia dados da chave Pix com valor e identificação',
-    template: 'Segue nossa chave Pix oficial para confirmação do seu horário/pedido: pix@salesos.com.br (Banco Cora). Assim que fizer o envio, me manda o comprovante aqui!',
-  },
-  {
-    id: 'macro-horarios',
-    trigger: '/horarios',
-    label: 'Opções de Horários',
-    category: 'agendamento',
-    description: 'Sugere 2–3 janelas de atendimento rápidas',
-    template: 'Temos disponibilidade hoje às 14h30 ou 16h00, e amanhã às 10h00. Qual dessas opções fica mais confortável para você, {{nome}}?',
-  },
-  {
     id: 'macro-oferta',
     trigger: '/oferta',
     label: 'Validar Oferta do Anúncio',
@@ -36,20 +20,12 @@ export const MACRO_SHORTCUTS: MacroShortcut[] = [
     template: 'Confirmando a oferta do anúncio: {{oferta}}! A condição especial continua 100% garantida para você.',
   },
   {
-    id: 'macro-hold',
-    trigger: '/hold',
-    label: 'Pré-reserva (Hold 15min)',
-    category: 'fechamento',
-    description: 'Bloqueia o horário temporariamente para evitar concorrência',
-    template: 'Já deixei seu horário pré-reservado aqui no sistema por 15 minutos para garantir sua vaga sem risco de outra pessoa ocupar!',
-  },
-  {
     id: 'macro-endereco',
     trigger: '/endereco',
     label: 'Endereço & Acesso',
     category: 'informacao',
     description: 'Localização, pontos de referência e estacionamento',
-    template: 'Ficamos localizados na Rua Central, 450 - Centro. Temos estacionamento privativo e gratuito bem em frente para sua comodidade!',
+    template: 'Posso confirmar o endereço e as condições de acesso cadastradas para este workspace antes de enviar.',
   },
   {
     id: 'macro-garantia',

@@ -17,6 +17,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface Message {
   id: string;
@@ -71,6 +72,7 @@ export function OnboardingSetupAssistantModal({
 
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [providerOnline, setProviderOnline] = useState<boolean | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -110,8 +112,8 @@ export function OnboardingSetupAssistantModal({
     setIsLoading(true);
 
     try {
-      // Chama a API do SOS Sales com o motor Nemotron ultra-rápido
-      const response = await fetch('/api/v1/ai/test-openrouter', {
+      // Chama a API do SOS Sales com o motor NVIDIA NIM ultra-rápido
+      const response = await authenticatedFetch('/api/v1/ai/test-openrouter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -119,10 +121,15 @@ export function OnboardingSetupAssistantModal({
         }),
       });
 
-      const data = await response.json();
-      const botReply =
-        data.response ||
-        'Perfeito! Para configurar esse item, você pode acessar a aba **Configurações da Empresa** na barra lateral. Lá você ajusta horários, alçadas e catálogo em poucos cliques!';
+      if (!response.ok) {
+        throw new Error(`Atlas indisponível (HTTP ${response.status})`);
+      }
+      const data = await response.json() as { response?: string };
+      if (!data.response || typeof data.response !== 'string') {
+        throw new Error('Resposta inválida do Atlas');
+      }
+      setProviderOnline(true);
+      const botReply = data.response;
 
       const atlasMsg: Message = {
         id: `atlas-${Date.now()}`,
@@ -133,10 +140,11 @@ export function OnboardingSetupAssistantModal({
 
       setMessages((prev) => [...prev, atlasMsg]);
     } catch (err) {
+      setProviderOnline(false);
       const fallbackMsg: Message = {
         id: `atlas-${Date.now()}`,
         sender: 'atlas',
-        text: `Compreendi perfeitamente! Para configurar isso na sua conta **${currentWorkspace.name}**, basta acessar a aba **Configurações** na barra lateral esquerda. Lá você consegue cadastrar seus serviços, horários e conectar seu número com 1 clique!`,
+        text: `O Atlas está indisponível no momento e não vou inventar uma orientação. Tente novamente ou use as telas de Configurações com validação do operador.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, fallbackMsg]);
@@ -159,9 +167,9 @@ export function OnboardingSetupAssistantModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-base text-white">Atlas · Setup Copilot</h3>
-                <span className="inline-flex items-center rounded-full bg-emerald-400/20 px-2 py-0.5 text-xs font-semibold text-emerald-100 border border-emerald-300/30">
-                  <span className="mr-1 h-1.5 w-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                  Online 24/7
+                <span className="inline-flex items-center rounded-full bg-white/15 px-2 py-0.5 text-xs font-semibold text-emerald-50 border border-white/20">
+                  <span className={`mr-1 h-1.5 w-1.5 rounded-full ${providerOnline === true ? 'bg-emerald-300' : providerOnline === false ? 'bg-rose-300' : 'bg-amber-200'}`} />
+                  {providerOnline === true ? 'Backend confirmado' : providerOnline === false ? 'Indisponível' : 'Não verificado'}
                 </span>
               </div>
               <p className="text-xs text-emerald-100/90 truncate max-w-[240px]">

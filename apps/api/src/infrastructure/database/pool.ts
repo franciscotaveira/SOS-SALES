@@ -25,16 +25,17 @@ function getSslConfig(url: string) {
     return false;
   }
 
+  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false' ? false : true;
   const sslCa = process.env.DATABASE_SSL_CA || process.env.PGSSLROOTCERT;
   if (sslCa) {
     return {
-      rejectUnauthorized: true,
+      rejectUnauthorized,
       ca: sslCa,
     };
   }
 
   return {
-    rejectUnauthorized: true,
+    rejectUnauthorized,
   };
 }
 

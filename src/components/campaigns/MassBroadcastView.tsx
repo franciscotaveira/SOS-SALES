@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Workspace } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import {
   Send,
   Users,
@@ -68,10 +69,10 @@ export const MassBroadcastView: React.FC<MassBroadcastViewProps> = ({ workspace 
     const fetchContacts = async () => {
       setLoadingContacts(true);
       try {
-        const res = await fetch(`/api/v1/workspaces/${workspace.id}/cockpit/overview`);
+        const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/contacts?limit=100`);
         const data = await res.json();
-        const journeys = data.journeys || data.items || [];
-        setContacts(journeys);
+        const contactsList = data.contacts || data.journeys || data.items || [];
+        setContacts(contactsList);
       } catch {
         // ignore
       } finally {
@@ -84,7 +85,7 @@ export const MassBroadcastView: React.FC<MassBroadcastViewProps> = ({ workspace 
   // Load WABA Templates if engine is WABA
   useEffect(() => {
     if (engine === 'waba') {
-      fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/templates`)
+      authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/templates`)
         .then((r) => r.json())
         .then((data) => {
           if (data.templates && Array.isArray(data.templates)) {
@@ -167,7 +168,7 @@ export const MassBroadcastView: React.FC<MassBroadcastViewProps> = ({ workspace 
     ]);
 
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/broadcast`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/broadcast`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

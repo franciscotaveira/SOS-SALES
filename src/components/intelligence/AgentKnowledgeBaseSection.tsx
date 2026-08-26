@@ -81,10 +81,10 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
         uploadedBy: 'Você (Gestor)',
         category,
         status: 'indexed',
-        extractedChunksCount: Math.floor(12 + Math.random() * 30),
-        tokenCount: Math.floor(2500 + Math.random() * 5000),
+        extractedChunksCount: Math.max(1, Math.ceil(file.size / 1500)),
+        tokenCount: Math.max(10, Math.floor(file.size / 4)),
         summary: `Documento "${file.name}" processado e vetorizado no Vector Store RAG com sucesso.`,
-        rawContentSnippet: `Conteúdo extraído com sucesso do arquivo ${file.name}. Regras, tabelas e parâmetros de atendimento indexados no banco de inteligência do cliente.`,
+        rawContentSnippet: `Conteúdo extraído do arquivo ${file.name}. Regras, tabelas e parâmetros de atendimento indexados no banco de inteligência.`,
         isPrioritizedFact: false,
         factType: 'faq',
       };
@@ -95,7 +95,7 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
       setDocuments(updated);
       if (onUpdateDocuments) onUpdateDocuments(updated);
       setIsUploading(false);
-    }, 1200);
+    }, 400);
   };
 
   const handleCreateRuleDoc = (e: React.FormEvent) => {

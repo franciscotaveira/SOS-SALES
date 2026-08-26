@@ -24,3 +24,4 @@ supabase/.branches/
 *.rvf
 *.rvf.lock
 backups/
+.audit/

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { salesOsRuntimeConfig } from '../../config/runtime';
 import { Workspace } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import {
   Megaphone,
   Globe,
@@ -116,7 +118,9 @@ export function resolveWorkspaceTrackingDefaults(wsId: string, wsName?: string):
 
 export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace }) => {
   const defaults = React.useMemo(
-    () => resolveWorkspaceTrackingDefaults(workspace.id, workspace.name),
+    () => salesOsRuntimeConfig.mode === 'api'
+      ? { pixelId: '', datasetId: '', googleCustomerId: '', googleConversionId: '', metaAccessToken: '', campaigns: [] }
+      : resolveWorkspaceTrackingDefaults(workspace.id, workspace.name),
     [workspace.id, workspace.name]
   );
 
@@ -168,7 +172,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
     setIsReconciling(true);
     setReconcileResult(null);
     try {
-      const response = await fetch(`/api/v1/workspaces/${workspace.id}/tracking/reconcile-retroactive`, {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/tracking/reconcile-retroactive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ forceRescan: true, limit: 300 }),
@@ -235,7 +239,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
     setFetchingDatasets(true);
     setFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking/meta/list-datasets`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/tracking/meta/list-datasets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accessToken: token }),
@@ -318,7 +322,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
 
     setSavingMeta(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/tracking`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -344,22 +348,35 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   // Fetch persisted tracking from API or localStorage
   const fetchTrackingConfig = React.useCallback(async () => {
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.tracking) {
-          const t = data.tracking;
-          if (t.metaPixelId) setMetaPixelId(t.metaPixelId);
-          if (t.metaDatasetId) setMetaDatasetId(t.metaDatasetId);
-          if (t.googleAdsCustomerId) setGoogleAdsCustomerId(t.googleAdsCustomerId);
-          if (t.googleConversionId) setGoogleConversionId(t.googleConversionId);
-          if (Array.isArray(t.campaignMappings) && t.campaignMappings.length > 0) {
-            setCampaignMappings(t.campaignMappings);
-          }
-          return;
-        }
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/tracking`);
+      if (!res.ok) throw new Error(`Tracking indisponível (HTTP ${res.status})`);
+      const data = await res.json();
+      if (data?.tracking) {
+        const t = data.tracking;
+        setMetaPixelId(t.metaPixelId || '');
+        setMetaDatasetId(t.metaDatasetId || '');
+        setGoogleAdsCustomerId(t.googleAdsCustomerId || '');
+        setGoogleConversionId(t.googleConversionId || '');
+        setCampaignMappings(Array.isArray(t.campaignMappings) ? t.campaignMappings : []);
+        return;
       }
-    } catch {}
+      setMetaPixelId('');
+      setMetaDatasetId('');
+      setGoogleAdsCustomerId('');
+      setGoogleConversionId('');
+      setCampaignMappings([]);
+      return;
+    } catch (error) {
+      if (salesOsRuntimeConfig.mode === 'api') {
+        setMetaPixelId('');
+        setMetaDatasetId('');
+        setGoogleAdsCustomerId('');
+        setGoogleConversionId('');
+        setCampaignMappings([]);
+        setFeedback({ success: false, message: error instanceof Error ? error.message : 'Tracking indisponível.' });
+        return;
+      }
+    }
 
     // Fallback to local storage or defaults
     try {
@@ -392,7 +409,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
     setSavingMeta(true);
     setFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/tracking`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -428,7 +445,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
     setSavingGoogle(true);
     setFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/tracking`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -467,7 +484,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
     setTestingCapi(true);
     setCapiTestFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/tracking/test-capi`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/tracking/test-capi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -502,7 +519,20 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
     }
   };
 
-  const handleAddCampaign = (e: React.FormEvent) => {
+  const persistCampaignMappings = async (updated: CampaignMappingItem[]) => {
+    if (salesOsRuntimeConfig.mode !== 'api') {
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      return;
+    }
+    const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/tracking`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaignMappings: updated }),
+    });
+    if (!res.ok) throw new Error(`Não foi possível salvar campanhas (HTTP ${res.status}).`);
+  };
+
+  const handleAddCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCampaignName.trim()) return;
     const newItem: CampaignMappingItem = {
@@ -517,21 +547,26 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
       activeLeadsCount: 0,
     };
     const updated = [newItem, ...campaignMappings];
-    setCampaignMappings(updated);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-    } catch {}
+      await persistCampaignMappings(updated);
+      setCampaignMappings(updated);
+    } catch (error) {
+      setFeedback({ success: false, message: error instanceof Error ? error.message : 'Falha ao salvar campanha.' });
+      return;
+    }
     setNewCampaignName('');
     setNewHook('');
     setIsAddingCampaign(false);
   };
 
-  const handleDeleteCampaign = (id: string) => {
+  const handleDeleteCampaign = async (id: string) => {
     const updated = campaignMappings.filter((c) => c.id !== id);
-    setCampaignMappings(updated);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-    } catch {}
+      await persistCampaignMappings(updated);
+      setCampaignMappings(updated);
+    } catch (error) {
+      setFeedback({ success: false, message: error instanceof Error ? error.message : 'Falha ao excluir campanha.' });
+    }
   };
 
   return (

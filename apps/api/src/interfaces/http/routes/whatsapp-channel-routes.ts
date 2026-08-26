@@ -76,7 +76,7 @@ const KNOWN_EXACT_ALIASES: Record<string, string> = {
 const KNOWN_SESSIONS: Record<string, string> = {
   '22222222-2222-2222-2222-222222222222': 'haven',
   '33333333-3333-3333-3333-333333333333': 'sora',
-  '11111111-1111-1111-1111-111111111111': 'matriz',
+  '11111111-1111-1111-1111-111111111111': 'default',
 };
 
 export function normalizeWorkspaceUuid(workspaceId: string): string | null {
@@ -126,8 +126,11 @@ export async function whatsappChannelRoutes(
   app: FastifyInstance,
   dependencies: WhatsappChannelRouteDependencies = {}
 ): Promise<void> {
-  // Enforce JWT on all operational WhatsApp routes
+  // Enforce JWT on all operational WhatsApp routes (allow media-proxy for public tag rendering)
   app.addHook('onRequest', async (request, reply) => {
+    if (request.url.startsWith('/api/v1/channels/waha/media-proxy')) {
+      return;
+    }
     if (!dependencies?.authenticator) {
       return unauthorized(reply, 'Authenticator is required');
     }
@@ -139,6 +142,9 @@ export async function whatsappChannelRoutes(
 
   app.addHook('preHandler', async (request, reply) => {
     if (reply.sent) return;
+    if (request.url.startsWith('/api/v1/channels/waha/media-proxy')) {
+      return;
+    }
     const params = request.params as { workspaceId?: string };
     const query = request.query as { workspaceId?: string };
     const body = request.body as { workspaceId?: string };
@@ -906,6 +912,32 @@ export async function whatsappChannelRoutes(
   app.get('/api/v1/workspaces/:workspaceId/channels/waba/channel-info', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
     return handleWabaChannelInfo(request.params.workspaceId, reply);
   });
+
+  // Explicit backend contract for the Arsenal UI. Unsupported actions are
+  // fail-closed instead of being inferred from a connected WABA account.
+  app.get('/api/v1/workspaces/:workspaceId/channels/waba/capabilities', async () => ({
+    capabilities: {
+      flow: true,
+      buttons: true,
+      call: true,
+      orderDetails: false,
+      locationRequest: false,
+      product: false,
+      multiProduct: false,
+      carousel: false,
+    },
+  }));
+
+  const unsupportedWabaAction = async (_request: FastifyRequest, reply: FastifyReply) => reply.status(501).send({
+    error: 'Ação WABA ainda não homologada no backend',
+    code: 'WABA_CAPABILITY_NOT_IMPLEMENTED',
+  });
+
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-order-details', unsupportedWabaAction);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-location-request', unsupportedWabaAction);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-product', unsupportedWabaAction);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-multi-product', unsupportedWabaAction);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-carousel', unsupportedWabaAction);
 
   app.get('/api/v1/channels/waba/channel-info', async (request: FastifyRequest<{ Querystring: { workspaceId?: string } }>, reply: FastifyReply) => {
     const wsId = (request.query as any)?.workspaceId || 'ws-haven-beauty';
@@ -2454,6 +2486,101 @@ export async function whatsappChannelRoutes(
       return reply.status(500).send({ success: false, error: err.message });
     } finally {
       client.release();
+    }
+  });
+
+  // 13. WAHA Media Proxy (Streams media files from internal WAHA container)
+  // This route is intentionally public (no JWT) so img/audio/video src tags can load media directly.
+  app.get('/api/v1/channels/waha/media-proxy', async (request: FastifyRequest<{ Querystring: { path?: string; messageId?: string; session?: string } }>, reply: FastifyReply) => {
+    const { path, messageId, session = 'default' } = request.query || {};
+    let targetUrl = '';
+    let parsedMessageId: string | null = null;
+    let parsedSession = session;
+
+    if (path) {
+      targetUrl = `${WAHA_BASE_URL}${path.startsWith('/') ? path : '/' + path}`;
+
+      // Extract messageId from path for fallback: /api/files/{session}/{msgId}.ext
+      const fileMatch = path.match(/\/api\/files\/([^/]+)\/([^/]+?)(\.[a-z0-9]+)?$/i);
+      if (fileMatch) {
+        parsedSession = fileMatch[1] || session;
+        parsedMessageId = fileMatch[2];
+      }
+    } else if (messageId) {
+      parsedMessageId = messageId;
+      targetUrl = `${WAHA_BASE_URL}/api/${encodeURIComponent(session)}/chats/messages/${encodeURIComponent(messageId)}/media`;
+    }
+
+    if (!targetUrl) {
+      return reply.status(400).send({ error: 'Path ou messageId é obrigatório' });
+    }
+
+    const wahaKey = getWahaApiKey();
+
+    const tryFetchFromWaha = async (url: string) => {
+      return fetch(url, { headers: { 'x-api-key': wahaKey } });
+    };
+
+    const triggerDownloadAndRetry = async (): Promise<Response | null> => {
+      if (!parsedMessageId) return null;
+
+      // Try to trigger download via the chat messages API with downloadMedia=true
+      // We search in all chats to find which chat owns this message
+      try {
+        // Optimistic: try fetching a specific message download endpoint first
+        const dlUrl1 = `${WAHA_BASE_URL}/api/${encodeURIComponent(parsedSession)}/messages/${encodeURIComponent(parsedMessageId)}/download`;
+        const dl1 = await tryFetchFromWaha(dlUrl1);
+        if (dl1.ok) {
+          // retry original
+          const retry = await tryFetchFromWaha(targetUrl);
+          if (retry.ok) return retry;
+        }
+      } catch {}
+
+      // Fallback: use chats API downloadMedia=true — requires knowing chatId
+      // WAHA messageId format: {fromMe}_{phone}@{server}_{msgHash}
+      // e.g.: false_271635491872968@lid_3AA4D954F1DF84382DBC
+      // chatId = "271635491872968@lid"
+      const chatIdMatch = parsedMessageId.match(/^(?:false|true)_(\d+@[a-z.]+)_[A-F0-9]+$/i);
+      if (chatIdMatch) {
+        const chatId = chatIdMatch[1]; // e.g. "271635491872968@lid"
+        try {
+          const chatMsgsUrl = `${WAHA_BASE_URL}/api/${encodeURIComponent(parsedSession)}/chats/${encodeURIComponent(chatId)}/messages?limit=50&downloadMedia=true`;
+          await tryFetchFromWaha(chatMsgsUrl);
+          // Now retry the original file URL
+          await new Promise(r => setTimeout(r, 600));
+          const retry = await tryFetchFromWaha(targetUrl);
+          if (retry.ok) return retry;
+        } catch {}
+      }
+
+      return null;
+    };
+
+    try {
+      let res = await tryFetchFromWaha(targetUrl);
+
+      if (!res.ok && res.status === 404 && parsedMessageId) {
+        // File not in /tmp yet — trigger download via WAHA and retry
+        const retried = await triggerDownloadAndRetry();
+        if (retried) {
+          res = retried;
+        }
+      }
+
+      if (!res.ok) {
+        return reply.status(res.status).send({ error: 'Media fetch failed', statusCode: res.status });
+      }
+
+      const contentType = res.headers.get('content-type') || 'application/octet-stream';
+      reply.header('Content-Type', contentType);
+      reply.header('Cache-Control', 'public, max-age=3600');
+      reply.header('Access-Control-Allow-Origin', '*');
+
+      const buffer = await res.arrayBuffer();
+      return reply.send(Buffer.from(buffer));
+    } catch (err: any) {
+      return reply.status(502).send({ error: err.message, statusCode: 502 });
     }
   });
 }

@@ -1,4 +1,5 @@
 import React from 'react';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import { Journey, Channel, OperatorRole, KnownFact, EvidenceReference } from '../../types/cockpit';
 import { KnownFactItem } from './KnownFactItem';
 import { ChannelStatus } from './ChannelStatus';
@@ -111,26 +112,66 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
     );
   };
 
-  // Bot 24/7 state (Nemotron)
-  const [botActive, setBotActive] = React.useState(true);
+  // Bot 24/7 — freio duplo: enabled (explícito) + paused (humano assumiu)
+  const [botEnabled, setBotEnabled] = React.useState(false);
+  const [botPaused, setBotPaused]   = React.useState(false);
   const [botToggling, setBotToggling] = React.useState(false);
+  const [botError, setBotError] = React.useState<string | null>(null);
 
+  // botActive = true somente quando habilitado E não pausado
+  const botActive = botEnabled && !botPaused;
+
+  // Carrega estado real do servidor ao abrir o dossiê
+  React.useEffect(() => {
+    setBotError(null);
+    const wsId = journey.workspaceId || '22222222-2222-2222-2222-222222222222';
+    authenticatedFetch(`/api/v1/workspaces/${wsId}/journeys/${journey.id}/bot/status`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Falha ao carregar estado do bot: HTTP ${r.status}`);
+        return r.json() as Promise<{ botEnabled?: boolean; botPaused?: boolean }>;
+      })
+      .then((data) => {
+        if (typeof data.botEnabled === 'boolean') setBotEnabled(data.botEnabled);
+        if (typeof data.botPaused  === 'boolean') setBotPaused(data.botPaused);
+      })
+      .catch(() => {
+        setBotEnabled(false);
+        setBotPaused(false);
+        setBotError('Estado do bot indisponível');
+      });
+  }, [journey.id, journey.workspaceId]);
+
+  // Toggle principal: se desabilitado → habilitar | se ativo → pausar | se pausado → retomar
   const handleToggleBot = React.useCallback(async () => {
     setBotToggling(true);
+    setBotError(null);
+    const wsId = journey.workspaceId || '22222222-2222-2222-2222-222222222222';
     try {
-      const action = botActive ? 'pause' : 'resume';
-      const res = await fetch(`/api/v1/workspaces/${journey.workspaceId || '22222222-2222-2222-2222-222222222222'}/journeys/${journey.id}/bot/${action}`, {
+      let action: string;
+      if (!botEnabled) {
+        action = 'enable';   // 🔴 → 🟢
+      } else if (!botPaused) {
+        action = 'pause';    // 🟢 → 🟡
+      } else {
+        action = 'resume';   // 🟡 → 🟢
+      }
+      const res = await authenticatedFetch(`/api/v1/workspaces/${wsId}/journeys/${journey.id}/bot/${action}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: botActive ? 'Pausado pelo operador no Cockpit' : undefined }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ reason: action === 'pause' ? 'Humano assumiu via Cockpit' : undefined }),
       });
-      if (res.ok) setBotActive(!botActive);
+      if (!res.ok) throw new Error(`Falha ao alterar estado do bot: HTTP ${res.status}`);
+      const data = await res.json() as { botEnabled?: boolean; botPaused?: boolean };
+      if (typeof data.botEnabled === 'boolean') setBotEnabled(data.botEnabled);
+      if (typeof data.botPaused  === 'boolean') setBotPaused(data.botPaused);
     } catch {
-      // silently fail
+      setBotError('Não foi possível alterar o bot. Tente novamente.');
     } finally {
       setBotToggling(false);
     }
-  }, [botActive, journey.id, journey.workspaceId]);
+  }, [botEnabled, botPaused, journey.id, journey.workspaceId]);
 
   const handoffExecutiveSummary = `🎯 Objetivo: ${journey.urgencyReason || 'Agendamento e contratação de serviços'}\n📊 Status: Pré-qualificado(a), atendimento em andamento\n⚡ Próximo Passo: Confirmar horário e enviar Pix de reserva para garantir vaga`;
 
@@ -245,21 +286,40 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
         </div>
       </div>
 
-      {/* 🤖 Bot 24/7 Toggle — NVIDIA NIM Nemotron */}
-      <div className={`shrink-0 px-3 py-2 flex items-center justify-between border-b ${botActive ? 'bg-emerald-50/60 border-emerald-200/60' : 'bg-amber-50/60 border-amber-200/60'}`}>
+      {/* Bot 24/7 — NVIDIA NIM (3 estados: desabilitado / pausado / ativo) */}
+      <div className={`shrink-0 px-3 py-2 flex items-center justify-between border-b ${
+        botActive   ? 'bg-emerald-50/60 border-emerald-200/60'
+        : botEnabled ? 'bg-amber-50/60 border-amber-200/60'
+        : 'bg-slate-50/60 border-slate-200/60'
+      }`}>
         <div className="flex items-center gap-2">
           {botActive ? (
-            <BotIcon className="w-3.5 h-3.5 text-emerald-600" />
-          ) : (
+            <BotIcon className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+          ) : botEnabled ? (
             <UserRound className="w-3.5 h-3.5 text-amber-600" />
+          ) : (
+            <BotIcon className="w-3.5 h-3.5 text-slate-400" />
           )}
           <div>
-            <span className={`text-[11px] font-bold ${botActive ? 'text-emerald-800' : 'text-amber-800'}`}>
-              {botActive ? '🤖 Bot Ativo (Nemotron 70B)' : '👤 Atendimento Humano'}
+            <span className={`text-[11px] font-bold ${
+              botActive ? 'text-emerald-800' : botEnabled ? 'text-amber-800' : 'text-slate-500'
+            }`}>
+              {botActive ? '🟢 Bot Ativo (NVIDIA NIM)'
+                : botEnabled ? '🟡 Humano no Controle'
+                : '🔴 Bot Desabilitado'}
             </span>
-            <span className={`block text-[10px] ${botActive ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {botActive ? 'Respondendo automaticamente 24/7' : 'Bot pausado — você está no controle'}
+            <span className={`block text-[10px] ${
+              botActive ? 'text-emerald-600' : botEnabled ? 'text-amber-600' : 'text-slate-400'
+            }`}>
+              {botActive ? 'Respondendo automaticamente 24/7'
+                : botEnabled ? 'Você assumiu — clique para retomar'
+                : 'Clique para habilitar o bot nesta conversa'}
             </span>
+            {botError && (
+              <span className="block text-[10px] font-semibold text-rose-700" role="alert">
+                {botError}
+              </span>
+            )}
           </div>
         </div>
         <button
@@ -269,9 +329,15 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
           className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 border ${
             botActive
               ? 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50'
-              : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50'
+              : botEnabled
+              ? 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50'
+              : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
           }`}
-          title={botActive ? 'Pausar bot e assumir atendimento' : 'Retomar atendimento automático'}
+          title={
+            botActive ? 'Pausar bot e assumir atendimento'
+            : botEnabled ? 'Retomar atendimento automático'
+            : 'Habilitar bot nesta conversa'
+          }
         >
           {botToggling ? (
             <Loader2 className="w-3 h-3 animate-spin" />
@@ -280,7 +346,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
           ) : (
             <BotIcon className="w-3 h-3" />
           )}
-          {botActive ? 'Assumir' : 'Ativar Bot'}
+          {botActive ? 'Assumir' : botEnabled ? 'Retomar Bot' : 'Habilitar Bot'}
         </button>
       </div>
 

@@ -54,6 +54,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onRetry }
           textContent={message.text}
           isOutbound={!isLead}
           senderName={message.senderName || (isLead ? 'Cliente' : 'Atendente')}
+          providerMessageId={(message as any).providerMessageId || (message as any).id || null}
+          session="default"
         />
 
         {/* AI Summary and Transcript if available - tokens semânticos */}

@@ -104,12 +104,48 @@ export class WahaOutboundWorker {
         const rawPhone = claimed.contactPhone || '';
         const cleanPhone = rawPhone.replace(/\D/g, '');
         const chatId = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@c.us`;
+        let sendResult;
+        const text = claimed.textContent || '';
 
-        const sendResult = await this.outboundAdapter.sendText({
-          chatId,
-          text: claimed.textContent,
-          session: claimed.session,
-        });
+        // Check if text is a media attachment (base64 data URL)
+        if (text.includes(':::data:') || text.startsWith('data:image/') || text.startsWith('data:application/') || text.startsWith('data:audio/')) {
+          const parts = text.split(':::');
+          const dataUrl = parts.length > 1 ? parts[1] : parts[0];
+          const caption = parts.length > 1 ? parts[0].replace(/^\[(Foto|Imagem|Vídeo|Áudio|Documento)\]\s*/i, '') : '';
+          const mimeMatch = dataUrl.match(/^data:([^;]+);base64,/);
+          const mimetype = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+          const isImg = mimetype.startsWith('image/');
+
+          if (isImg) {
+            sendResult = await this.outboundAdapter.sendImage({
+              chatId,
+              file: {
+                data: dataUrl,
+                mimetype,
+                filename: 'imagem_whatsapp.jpg',
+              },
+              caption,
+              session: claimed.session,
+            });
+          } else {
+            sendResult = await this.outboundAdapter.sendFile({
+              chatId,
+              file: {
+                data: dataUrl,
+                mimetype,
+                filename: 'documento_whatsapp',
+              },
+              caption,
+              session: claimed.session,
+            });
+          }
+        } else {
+          sendResult = await this.outboundAdapter.sendText({
+            chatId,
+            text: claimed.textContent,
+            session: claimed.session,
+          });
+        }
 
         if (sendResult.success) {
           await this.dispatchGateway.recordProviderAcceptance({

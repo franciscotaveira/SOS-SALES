@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
 import { EmbeddedSignupModal } from './EmbeddedSignupModal';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface LiveSettingsViewProps {
   workspace: Workspace;
@@ -55,7 +56,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   };
 
   useEffect(() => {
-    fetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`)
+    authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`)
       .then((res) => res.json())
       .then((data) => {
         if (data.status) {
@@ -69,7 +70,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
     setIsQrLoading(true);
     setQrError(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/qr`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/qr`);
       if (!res.ok) {
         throw new Error('Não foi possível obter o QR Code do canal.');
       }

@@ -47,7 +47,7 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => [{ name: 'matriz', status: 'CONNECTED', me: { id: '5511999999999@s.whatsapp.net', pushName: 'Operador' } }],
+      json: async () => [{ name: 'default', status: 'CONNECTED', me: { id: '5511999999999@s.whatsapp.net', pushName: 'Operador' } }],
     }));
   });
 
@@ -191,6 +191,50 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
       url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/journeys/j123/bot/pause',
       headers: { authorization: 'Bearer valid_token_tenant_a_viewer.part2.part3' },
       payload: { reason: 'attempted privilege escalation' },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('AUTH-10b: Viewer cannot enable an agent journey', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/journeys/j123/bot/enable',
+      headers: { authorization: 'Bearer valid_token_tenant_a_viewer.part2.part3' },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('AUTH-10c: Viewer cannot disable an agent journey', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/journeys/j123/bot/disable',
+      headers: { authorization: 'Bearer valid_token_tenant_a_viewer.part2.part3' },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('AUTH-10d: Workspace agent config returns 401 without a bearer token', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/agent/config',
+    });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('AUTH-10e: Viewer cannot publish workspace agent config', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/agent/config',
+      headers: { authorization: 'Bearer valid_token_tenant_a_viewer.part2.part3' },
+      payload: { autonomyMode: 'autonomous_24_7', runtimeEnabled: true },
     });
     expect(res.statusCode).toBe(403);
     await app.close();

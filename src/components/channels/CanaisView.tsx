@@ -5,6 +5,7 @@ import { EngineConfig } from '../../types/groupsAndEngines';
 import { ConnectionManager } from '../settings/ConnectionManager';
 import { resolveWorkspaceTrackingDefaults } from '../settings/TrackingSettings';
 import { MessengerInsightsPanel } from '../intelligence/MessengerInsightsPanel';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import {
   Radio,
   Server,
@@ -124,7 +125,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
 
   const fetchWabaChannelInfo = React.useCallback(async () => {
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/channel-info`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/channel-info`);
       if (res.ok) {
         const data = await res.json();
         setWabaChannelInfo(data);
@@ -156,7 +157,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
 
   const fetchChannelStatus = React.useCallback(async () => {
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`);
       if (res.ok) {
         const data = await res.json();
         setChannelStatus(data);
@@ -189,7 +190,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   const fetchQrCode = async () => {
     setQrLoading(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/qr`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/qr`);
       const data = await res.json();
       setQrStatus(data.status);
       if (data.qr) {
@@ -223,7 +224,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
     if (!confirm('Deseja realmente desconectar este WhatsApp? A sessão atual será encerrada.')) return;
     setDisconnecting(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/logout`, { method: 'POST' });
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/logout`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setActionFeedback('WhatsApp desconectado com sucesso! Você pode conectar um novo número.');
@@ -245,7 +246,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   const handleSyncChats = async () => {
     setIsRefreshing(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/sync`, { method: 'POST' });
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/sync`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setActionFeedback(`Sincronizado com sucesso! ${data.syncedContacts || 0} contatos e ${data.syncedMessages || 0} mensagens.`);
@@ -265,7 +266,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
     if (!confirm('Deseja realmente limpar todo o histórico de conversas e leads deste workspace? Essa ação é permanente.')) return;
     setIsRefreshing(true);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/clear-history`, { method: 'POST' });
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/clear-history`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setActionFeedback('Histórico de conversas e leads limpo com sucesso!');
@@ -286,7 +287,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
     setWabaSaving(true);
     setWabaFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/configure`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/configure`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumberId, wabaId, accessToken, verifyToken }),
@@ -343,7 +344,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
     setFetchingAccounts(true);
     setWabaFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/list-accounts`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/list-accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accessToken: token }),
@@ -433,7 +434,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
     setWabaSaving(true);
     setWabaFeedback(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/waba/oauth-connect`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/oauth-connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accessToken: token, wabaId, phoneNumberId, appId: metaAppId }),
@@ -490,18 +491,9 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleClearHistory}
-            disabled={isRefreshing}
-            className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-100 shadow-2xs transition-colors cursor-pointer"
-            title="Limpa todas as conversas e leads salvos neste workspace"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Limpar Histórico</span>
-          </button>
-          <button
             onClick={handleSyncChats}
             disabled={isRefreshing}
-            className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100/80 shadow-2xs transition-colors"
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100/80 shadow-2xs transition-colors cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>{isRefreshing ? 'Sincronizando...' : 'Sincronizar Mensagens'}</span>

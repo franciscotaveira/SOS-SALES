@@ -724,3 +724,49 @@
   - `DECISION_LOG.md`
 - **Confidence:** 10/10
 - **Date:** 2026-08-22
+
+---
+
+## Task 28: Painel Visual Soberano de Gestão de Clientes & Sub-contas (Matriz SOS Sales)
+- **Decision:** Implementação de painel visual completo dedicado à gestão e provisionamento de empresas/clientes (`AgencyClientsManager`), acessível diretamente no menu lateral em **GESTÃO → Gestão de Clientes** e integrado ao `WorkspaceSwitcher`.
+- **Rationale:**
+  1. **Autonomia Operacional sem Terminal:** Permite ao gestor da agência criar novas contas de clientes/empresas diretamente pela interface gráfica, sem necessidade de rodar scripts CLI.
+  2. **Provisionamento Imediato:** Modal completo com validação de Nome da Empresa, Segmento (Salão/Spa, Automotivo, Serviços Gerais/B2B), Motor de WhatsApp (Meta WABA Oficial ou WAHA Local), Telefone e Email do Dono.
+  3. **Visão 360° da Carteira da Agência:** Grid de cards com status do canal de WhatsApp em tempo real, contagem de operadores ativos, filtros por nicho, busca instantânea e atalhos rápidos para alternar o cockpit ou calibrar o squad de IA da empresa selecionada.
+- **Scope:**
+  - `src/components/clients/AgencyClientsManager.tsx` (Componente visual com filtros, KPIs, cards e modal de criação)
+  - `src/components/layout/AppShell.tsx` (Adição do item de navegação sob a seção GESTÃO e suporte no Command Palette)
+  - `src/components/layout/WorkspaceSwitcher.tsx` (Botão de atalho rápido "+ Gerenciar Clientes" no rodapé do dropdown)
+  - `src/App.tsx` (Roteamento de rota `/clientes`, sincronização de URLs, persistência e handler de criação de novos workspaces)
+  - `DECISION_LOG.md`
+- **Confidence:** 10/10
+- **Date:** 2026-08-25
+
+---
+
+## Task 29: Etapa 1 da Realocação UI/UX — AppShell Soberano & Visibilidade por Papel
+- **Decision:** Implementação da primeira etapa da realocação UI/UX estritamente no `AppShell` e no controle de rota de `App.tsx`, aplicando visibilidade efetiva baseada no papel do operador (`roleRequired`), removendo acesso duplicado de Anotações na sidebar e redirecionando Kanban e Anotações na busca global para os modos nativos de Conversas.
+- **Rationale:**
+  1. **Redução de Carga Cognitiva:** Remove acessos redundantes na barra lateral sem remover qualquer componente ou funcionalidade existente.
+  2. **Hierarquia de Papéis Efetiva:** Aplica de fato `roleRequired` com hierarquia `viewer` < `operator` < `supervisor` < `admin` < `owner`. Operadores visualizam apenas itens operacionais (Agora, Conversas & Funil, Grupos via flag, Agenda); Admins visualizam Gestão (Clientes, Campanhas) e Inteligência; Owners acessam Configurações do Sistema.
+  3. **Preservação de Navegação e Modos:** Mantém Kanban e Anotações plenamente acessíveis via Command Palette (Ctrl+K), direcionando o usuário para a tela de Conversas no submodo correspondente (`kanban` ou `notes`).
+- **Scope:**
+  - `src/components/layout/AppShell.tsx` (Remoção de Anotações da sidebar, filtro por `hasRoleAccess(item.roleRequired)`, mapeamento de busca global)
+  - `src/components/conversations/LiveConversationsView.tsx` (Sincronização dinâmica de `initialViewMode` no estado `viewMode`)
+  - `src/App.tsx` (Controle de estado de `conversationsMode`, repasse de props e fallback de segurança por papel)
+  - `DECISION_LOG.md`
+- **Confidence:** 10/10
+- **Date:** 2026-08-25
+
+---
+
+## Task 30: Backend como autoridade do AI Receptionist e falha fechada por capability
+- **Decision:** O navegador deixa de autorizar autonomia, comportamento ou disponibilidade de funções operacionais. O backend autenticado e persistido passa a ser a única fonte de verdade; ausência de contrato publicado bloqueia execução.
+- **Rationale:**
+  1. `localStorage` não oferece consistência multiusuário, RBAC, auditoria nem consumo garantido pelo agente.
+  2. Autonomia exige gate global publicado pelo owner e gate explícito por jornada.
+  3. Simuladores, previews e logs locais não podem alterar ou representar runtime real.
+  4. Funções WABA não homologadas retornam `501` e são desabilitadas por capability, em vez de falharem após prometer disponibilidade.
+- **Operational gate:** Migration e código foram validados somente no Docker Lab. Produção permanece sem deploy e com decisão `NOT_READY_FOR_PRODUCTION_DEPLOY` até checkout limpo, canário controlado e autorização explícita.
+- **Evidence:** `docs/audits/SOS_SALES_FRONT_BACK_ASSURANCE_2026-08-25.md`
+- **Date:** 2026-08-25

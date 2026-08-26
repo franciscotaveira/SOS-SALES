@@ -15,7 +15,7 @@ import {
 
 export interface QuickToolItem {
   id: string;
-  category: 'financeiro' | 'agenda' | 'localizacao' | 'waba' | 'midia';
+  category: 'financeiro' | 'agenda' | 'localizacao' | 'waba' | 'midia' | 'objecoes';
   icon: React.ReactNode;
   label: string;
   description: string;
@@ -34,7 +34,7 @@ export const QuickToolsPopover: React.FC<QuickToolsPopoverProps> = ({
   onClose,
   tools,
 }) => {
-  const [activeCategory, setActiveCategory] = React.useState<'todos' | 'financeiro' | 'agenda' | 'waba' | 'localizacao'>('todos');
+  const [activeCategory, setActiveCategory] = React.useState<'todos' | 'financeiro' | 'agenda' | 'waba' | 'localizacao' | 'objecoes'>('todos');
   const popoverRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -53,6 +53,7 @@ export const QuickToolsPopover: React.FC<QuickToolsPopoverProps> = ({
 
   const categories = [
     { id: 'todos', label: 'Todas as Ferramentas' },
+    { id: 'objecoes', label: '🛡️ Objeções' },
     { id: 'financeiro', label: '💰 Pagamento & Pix' },
     { id: 'agenda', label: '📅 Agenda & Horários' },
     { id: 'waba', label: '⚡ WABA Oficial' },
