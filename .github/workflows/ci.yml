@@ -27,6 +27,9 @@ jobs:
   api:
     name: API (Node)
     runs-on: ubuntu-latest
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55432/postgres
     defaults:
       run:
         working-directory: apps/api
@@ -39,5 +42,12 @@ jobs:
           cache-dependency-path: apps/api/package-lock.json
       - name: Install API dependencies from lockfile
         run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start isolated Supabase test stack
+        run: supabase start
+      - name: Wait for test database
+        run: npm run db:wait
       - name: Typecheck, test and build API
         run: npm run check && npm run build
