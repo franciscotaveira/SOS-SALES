@@ -6,7 +6,7 @@ interface ContactAvatarProps {
   name?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
-  workspaceId?: string;
+  workspaceId: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   showOnlineBadge?: boolean;
   className?: string;
@@ -75,7 +75,7 @@ export const ContactAvatar: React.FC<ContactAvatarProps> = ({
   name,
   phone,
   avatarUrl: initialAvatarUrl,
-  workspaceId: customWsId,
+  workspaceId,
   size = 'md',
   showOnlineBadge = false,
   className = '',
@@ -94,34 +94,27 @@ export const ContactAvatar: React.FC<ContactAvatarProps> = ({
     const clean = phone.replace(/\D/g, '');
     if (!clean) return;
 
-    if (avatarCache.has(clean)) {
-      setAvatarUrl(avatarCache.get(clean) || null);
+    const cacheKey = `${workspaceId}:${clean}`;
+    if (avatarCache.has(cacheKey)) {
+      setAvatarUrl(avatarCache.get(cacheKey) || null);
       return;
     }
 
-    const wsId = customWsId || (() => {
-      try {
-        return localStorage.getItem('sos_selected_workspace_id') || '22222222-2222-2222-2222-222222222222';
-      } catch {
-        return '22222222-2222-2222-2222-222222222222';
-      }
-    })();
-
     // Auto-fetch profile picture from WAHA backend
-    authenticatedFetch(`/api/v1/workspaces/${wsId}/contacts/${clean}/profile-picture`)
+    authenticatedFetch(`/api/v1/workspaces/${workspaceId}/contacts/${clean}/profile-picture`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.url) {
-          avatarCache.set(clean, data.url);
+          avatarCache.set(cacheKey, data.url);
           setAvatarUrl(data.url);
         } else {
-          avatarCache.set(clean, null);
+          avatarCache.set(cacheKey, null);
         }
       })
       .catch(() => {
-        avatarCache.set(clean, null);
+        avatarCache.set(cacheKey, null);
       });
-  }, [initialAvatarUrl, phone, customWsId]);
+  }, [initialAvatarUrl, phone, workspaceId]);
 
   const seed = name || phone || 'contact';
   const gradient = getDeterministicGradient(seed);

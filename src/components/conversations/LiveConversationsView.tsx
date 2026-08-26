@@ -642,6 +642,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
                           <ContactAvatar
                             name={j.contactName}
                             phone={j.contactPhone}
+                            workspaceId={workspaceId}
                             avatarUrl={(j as any)?.contactAvatar || (j as any)?.avatarUrl}
                             size="sm"
                             showOnlineBadge={true}

@@ -211,6 +211,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
             <ContactAvatar
               name={journey.contact.name}
               phone={journey.contact.phone}
+              workspaceId={workspaceId}
               avatarUrl={(journey.contact as any)?.avatarUrl || (journey as any)?.leadAvatar}
               size="md"
               showOnlineBadge={isWindowActive}
