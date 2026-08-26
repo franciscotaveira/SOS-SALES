@@ -385,29 +385,29 @@ function detectKanbanService(item: ApiJourney, isHairSalon: boolean) {
 
   if (isHairSalon) {
     if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || name.includes('rosy') || name.includes('haven') || name.includes('priscila')) {
-      return { tag: '💇‍♀️ Escova Modelada', bg: 'bg-purple-100 text-purple-900 border-purple-200', price: 'R$ 85', numericValue: 85 };
+      return { tag: '💇‍♀️ Escova Modelada', bg: 'bg-purple-100 text-purple-900 border-purple-200', price: 'Valor não informado', numericValue: 0 };
     }
     if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('fibra') || name.includes('thaís') || name.includes('thais') || name.includes('suzana')) {
-      return { tag: '💅 Unhas em Gel', bg: 'bg-pink-100 text-pink-900 border-pink-200', price: 'R$ 150', numericValue: 150 };
+      return { tag: '💅 Unhas em Gel', bg: 'bg-pink-100 text-pink-900 border-pink-200', price: 'Valor não informado', numericValue: 0 };
     }
     if (text.includes('corte') || text.includes('visagismo') || name.includes('édina') || name.includes('edina') || name.includes('carolina')) {
-      return { tag: '✂️ Corte & Visagismo', bg: 'bg-indigo-100 text-indigo-900 border-indigo-200', price: 'R$ 120', numericValue: 120 };
+      return { tag: '✂️ Corte & Visagismo', bg: 'bg-indigo-100 text-indigo-900 border-indigo-200', price: 'Valor não informado', numericValue: 0 };
     }
     if (text.includes('loiro') || text.includes('mechas') || text.includes('color') || name.includes('allane') || name.includes('silvia')) {
-      return { tag: '🎨 Mechas & Loiro', bg: 'bg-amber-100 text-amber-950 border-amber-300', price: 'R$ 380', numericValue: 380 };
+      return { tag: '🎨 Mechas & Loiro', bg: 'bg-amber-100 text-amber-950 border-amber-300', price: 'Valor não informado', numericValue: 0 };
     }
     if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('ozonio') || text.includes('ozônio') || name.includes('sōra') || name.includes('rubiele')) {
-      return { tag: '🧴 Tratamento Ozônio', bg: 'bg-emerald-100 text-emerald-950 border-emerald-300', price: 'R$ 220', numericValue: 220 };
+      return { tag: '🧴 Tratamento Ozônio', bg: 'bg-emerald-100 text-emerald-950 border-emerald-300', price: 'Valor não informado', numericValue: 0 };
     }
     if (text.includes('make') || text.includes('maquiagem') || text.includes('noiva') || name.includes('audrin')) {
-      return { tag: '💄 Make & Eventos', bg: 'bg-rose-100 text-rose-950 border-rose-300', price: 'R$ 250', numericValue: 250 };
+      return { tag: '💄 Make & Eventos', bg: 'bg-rose-100 text-rose-950 border-rose-300', price: 'Valor não informado', numericValue: 0 };
     }
   }
 
   if (item.primaryServiceOrProduct) {
-    return { tag: `✨ ${item.primaryServiceOrProduct}`, bg: 'bg-blue-100 text-blue-900 border-blue-200', price: 'R$ 150', numericValue: 150 };
+    return { tag: `✨ ${item.primaryServiceOrProduct}`, bg: 'bg-blue-100 text-blue-900 border-blue-200', price: 'Valor não informado', numericValue: 0 };
   }
-  return { tag: '💬 Oportunidade WhatsApp', bg: 'bg-slate-100 text-slate-800 border-slate-200', price: 'R$ 100', numericValue: 100 };
+  return { tag: '💬 Oportunidade WhatsApp', bg: 'bg-slate-100 text-slate-800 border-slate-200', price: 'Valor não informado', numericValue: 0 };
 }
 
 export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> = ({
@@ -541,6 +541,8 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
         await (gateway as any).setJourneyStage(workspaceId, journeyId, nextStage);
       } else if ('transitionJourneyStage' in gateway && typeof (gateway as any).transitionJourneyStage === 'function') {
         await (gateway as any).transitionJourneyStage(workspaceId, journeyId, nextStage);
+      } else {
+        throw new Error('A alteração de etapa não está disponível na API autenticada.');
       }
       setJourneys((prev) =>
         prev.map((j) => (j.id === journeyId ? { ...j, pipelineStage: nextStage } : j))

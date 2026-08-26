@@ -309,11 +309,13 @@ Retorne JSON estritamente estruturado:
         });
       } catch (err: any) {
         app.log.error(err, '[copilot-suggestion] Falha ao gerar sugestão via OpenRouter');
-        return reply.code(200).send({
+        // Provider failures must be explicit. A commercial hardcoded fallback
+        // would look like a real recommendation to the operator and could be
+        // copied into the composer without provenance.
+        return reply.code(503).send({
           success: false,
-          suggestedMessage: `Olá ${body.contactName || ''}! Como posso te ajudar hoje? Temos condições especiais para você.`,
-          recommendedAction: 'Atendimento Consultivo',
-          rationale: 'Fallback comercial seguro ativado.',
+          error: 'AI copilot is temporarily unavailable',
+          code: 'AI_PROVIDER_UNAVAILABLE',
         });
       }
     }

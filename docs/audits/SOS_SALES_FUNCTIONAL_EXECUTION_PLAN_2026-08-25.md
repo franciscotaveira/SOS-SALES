@@ -7,6 +7,19 @@
 
 Transformar cada promessa visível do SOS Sales em uma capacidade real, multi-tenant, autenticada, persistida, observável e verificável. Remover ou rotular qualquer controle que hoje simule efeito operacional.
 
+## 1.1 Ordem ajustada de execução — 2026-08-26
+
+A ergonomia visual e os atalhos só entram depois da prova de funcionamento. A sequência aprovada é:
+
+1. **P0 — Inventário frontend ↔ backend:** mapear botões, menus, modais e atalhos do Cockpit e Kanban; classificar cada item como backend real/persistente, parcial, somente frontend, mock/fixture ou sem implementação.
+2. **P0 — Verdade funcional:** remover falsos sucessos, mocks operacionais e estados otimistas sem reconciliação; qualquer capacidade sem contrato server-side deve ser bloqueada ou realocada.
+3. **P1 — Subtração visual:** reduzir carga cognitiva em 1440×900 e 1280×720 preservando funções reais; mover ações secundárias para contexto apropriado.
+4. **P2 — Ergonomia real:** implementar `Cmd/Ctrl+K`, `J/K` e `Tab` somente sobre contratos existentes e persistentes. `Tab` nunca envia automaticamente.
+5. **P3 — Onboarding verificável:** checklist alimentado por endpoints autenticados e estados confirmados.
+6. **P4 — Métricas do dono:** exibir somente indicadores com fonte, período, fórmula e proveniência auditáveis.
+
+**Regra de bloqueio:** não criar busca de leads no Command Palette, onboarding ou métrica financeira antes de confirmar o endpoint, autorização, persistência e teste correspondente.
+
 ## 2. Gates de execução
 
 1. Docker Lab antes de qualquer deploy.
