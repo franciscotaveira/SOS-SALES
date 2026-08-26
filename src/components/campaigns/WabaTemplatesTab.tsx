@@ -151,14 +151,22 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
+    setErrorFeedback(null);
     try {
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/templates`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTemplates([]);
+        const backendMessage = typeof data?.error === 'string' ? data.error : null;
+        throw new Error(backendMessage || `A Meta respondeu com erro (${res.status}).`);
+      }
       if (data.templates && Array.isArray(data.templates)) {
         setTemplates(data.templates);
+      } else {
+        setTemplates([]);
       }
-    } catch {
-      setErrorFeedback('Não foi possível carregar os templates da Meta.');
+    } catch (error) {
+      setErrorFeedback(error instanceof Error ? error.message : 'Não foi possível carregar os templates da Meta.');
     } finally {
       setLoading(false);
     }
