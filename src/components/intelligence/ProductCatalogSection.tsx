@@ -87,12 +87,18 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
             <h2 className="text-base font-bold font-heading">
               Tabela Oficial de Preços & Serviços
             </h2>
-            <span className="text-[8.5px] bg-[var(--sos-success)]/20 text-[var(--sos-success)] font-bold px-1.5 py-0.5 rounded-full border border-[var(--sos-success)]/30">
-              Sincronizado no WhatsApp
-            </span>
+            {items.some((item) => Boolean(item.wabaProductLink)) ? (
+              <span className="text-[8.5px] bg-[var(--sos-success)]/20 text-[var(--sos-success)] font-bold px-1.5 py-0.5 rounded-full border border-[var(--sos-success)]/30">
+                Itens com link WABA
+              </span>
+            ) : (
+              <span className="text-[8.5px] bg-[var(--sos-border)]/30 text-[var(--sos-muted)] font-bold px-1.5 py-0.5 rounded-full border border-[var(--sos-border)]">
+                Cadastro no SOS Sales
+              </span>
+            )}
           </div>
           <p className="text-[9.5px] text-[var(--sos-muted)]">
-            Cadastre os serviços e valores praticados pela sua empresa. A IA usa esses dados exatos para informar valores, duração e enviar links de agendamento ou pagamento.
+            Cadastre os serviços e valores praticados pela sua empresa. Este cadastro não ativa respostas automáticas sozinho.
           </p>
         </div>
 
@@ -105,9 +111,9 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
               name: '',
               category: 'Serviços',
               description: '',
-              basePrice: 100,
-              minPromoPrice: 85,
-              durationOrExecutionTime: '30 min',
+              basePrice: 0,
+              minPromoPrice: 0,
+              durationOrExecutionTime: '',
               imageUrl: '',
               inStock: true,
               tags: ['Novo'],
