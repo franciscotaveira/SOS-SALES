@@ -486,6 +486,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
           <LiveWallboardView
             journeys={mappedJourneys}
             groups={[]}
+            workspaceId={workspaceId}
             mode="conversations"
             onGoToCockpit={(j) => {
               onJourneySelect?.(j.id);

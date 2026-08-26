@@ -38,7 +38,7 @@ import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface GroupsHubViewProps {
   groups: WhatsAppGroup[];
-  workspaceId?: string;
+  workspaceId: string;
   onUpdateGroup?: (updated: WhatsAppGroup) => void;
   activeSubTab?: 'conversations' | 'monitor' | 'broadcast' | 'wallboard';
   onChangeSubTab?: (subTab: 'conversations' | 'monitor' | 'broadcast' | 'wallboard') => void;
@@ -673,6 +673,7 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
       {hubMode === 'wallboard' ? (
         <LiveWallboardView
           groups={groups}
+          workspaceId={workspaceId}
           mode="groups"
           onOpenGroup={(groupId) => {
             setSelectedGroupId(groupId);

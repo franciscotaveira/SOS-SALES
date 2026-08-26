@@ -33,72 +33,20 @@ import {
 interface LiveWallboardViewProps {
   journeys?: Journey[];
   groups?: WhatsAppGroup[];
-  workspaceId?: string;
+  workspaceId: string;
   mode?: 'conversations' | 'groups';
   onGoToCockpit?: (journey: Journey) => void;
   onOpenGroup?: (groupId: string) => void;
 }
 
-// Helper semântico para enriquecer o card da Torre TV
+// A Torre TV só pode exibir fatos presentes na jornada. Inferências e textos
+// promocionais fabricados aqui seriam indistinguíveis de dados operacionais.
 function detectTvIntent(journey: Journey) {
-  const name = (journey.leadName || (journey as any).contact?.name || '').toLowerCase();
-  const rawService = ((journey as any).primaryServiceOrProduct || '').toLowerCase();
-  const text = `${name} ${rawService}`.toLowerCase();
-
-  if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || name.includes('rosy') || name.includes('haven') || name.includes('priscila')) {
-    return {
-      service: '💇‍♀️ Escova Modelada',
-      badgeClass: 'bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border-[var(--sos-ai)]/30',
-      leadMsg: 'Gostaria de saber se tem horário para escova modelada hoje?',
-      botMsg: 'Olá! Temos vagas disponíveis às 14h30 e 17h00. Qual fica melhor para você?',
-    };
-  }
-  if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('alongamento') || name.includes('thaís') || name.includes('thais') || name.includes('neca')) {
-    return {
-      service: '💅 Unhas em Gel & Fibra',
-      badgeClass: 'bg-[var(--sos-warning-subtle)] text-[var(--sos-warning)] border-[var(--sos-warning)]/30',
-      leadMsg: 'Boa tarde! Qual o valor da colocação de unhas em gel e manutenção?',
-      botMsg: 'Olá! A aplicação em gel está com pacote especial por R$ 139,90. Posso reservar seu horário?',
-    };
-  }
-  if (text.includes('corte') || text.includes('visagismo') || name.includes('édina') || name.includes('edina') || name.includes('carolina')) {
-    return {
-      service: '✂️ Corte Feminino & Visagismo',
-      badgeClass: 'bg-[var(--sos-operational-subtle)] text-[var(--sos-operational)] border-[var(--sos-operational)]/30',
-      leadMsg: 'Olá, quero agendar corte com visagismo para mudar o corte.',
-      botMsg: 'Perfeito! Nossas especialistas em visagismo avaliam o formato do seu rosto antes do corte.',
-    };
-  }
-  if (text.includes('loiro') || text.includes('mechas') || name.includes('allane') || name.includes('silvia')) {
-    return {
-      service: '🎨 Mechas, Loiro & Morena Ilum.',
-      badgeClass: 'bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border-[var(--sos-ai)]/30',
-      leadMsg: 'Oi! Gostaria de fazer uma avaliação para iluminar o cabelo.',
-      botMsg: 'Olá! Fazemos o teste de mecha gratuito para garantir a saúde dos fios. Que tal agendar?',
-    };
-  }
-  if (text.includes('truss') || text.includes('reconstru') || name.includes('sōra') || name.includes('rubiele')) {
-    return {
-      service: '🧴 Tratamento Truss & Spa Capilar',
-      badgeClass: 'bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border-[var(--sos-success)]/30',
-      leadMsg: 'Meu cabelo está ressecado, qual o tratamento mais indicado?',
-      botMsg: 'Indicamos o Cronograma de Reconstrução Truss com ozonioterapia para recuperação imediata.',
-    };
-  }
-  if (text.includes('make') || text.includes('maquiagem') || text.includes('noiva') || name.includes('audrin')) {
-    return {
-      service: '💄 Make & Produção de Eventos',
-      badgeClass: 'bg-[var(--sos-warning-subtle)] text-[var(--sos-warning)] border-[var(--sos-warning)]/30',
-      leadMsg: 'Olá! Vocês fazem maquiagem e penteado para madrinha de casamento?',
-      botMsg: 'Sim! Temos pacote completo com make HD e penteado duradouro. Qual a data do seu evento?',
-    };
-  }
-
   return {
-    service: (journey as any).primaryServiceOrProduct || '💬 Atendimento Comercial',
+    service: (journey as any).primaryServiceOrProduct || 'Atendimento comercial',
     badgeClass: 'bg-[var(--sos-border)]/30 text-[var(--sos-muted)] border-[var(--sos-border)]',
-    leadMsg: journey.lastLeadMessage || 'Olá, vi o anúncio no Instagram e gostaria de informações.',
-    botMsg: journey.recommendation?.draftText || 'Olá! Como posso ajudar você hoje com nossos serviços?',
+    leadMsg: journey.lastLeadMessage || 'Sem mensagem recente registrada',
+    botMsg: journey.recommendation?.draftText || 'Sem sugestão disponível',
   };
 }
 
@@ -362,7 +310,7 @@ const MicroGroupCard = memo(({
 export const LiveWallboardView: React.FC<LiveWallboardViewProps> = ({
   journeys = [],
   groups: initialGroups = [],
-  workspaceId = '11111111-1111-1111-1111-111111111111',
+  workspaceId,
   mode = 'conversations',
   onGoToCockpit,
   onOpenGroup,
