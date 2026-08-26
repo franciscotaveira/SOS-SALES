@@ -1,0 +1,25 @@
+FROM nginx:1.27-alpine
+
+ARG PROD_SUPABASE_URL=https://yiiuebhyqixzluguxsqi.supabase.co
+ARG LAB_SUPABASE_URL=http://localhost:55431
+ARG PROD_API_ORIGIN=https://crm.iaparavendas.tech
+ARG PROD_SUPABASE_ANON_KEY
+ARG LAB_SUPABASE_ANON_KEY
+
+COPY .audit/vps-baseline-e773ec7/web/ /usr/share/nginx/html/
+COPY deploy/nginx.vps-baseline-lab.conf /etc/nginx/conf.d/default.conf
+
+# Preserve the exact VPS bundle except for the Supabase origin. Without this
+# relocation, opening the local baseline would authenticate against production.
+RUN find /usr/share/nginx/html -type f -name '*.js' -exec \
+      sed -i \
+        -e "s#${PROD_SUPABASE_URL}#${LAB_SUPABASE_URL}#g" \
+        -e "s#${PROD_API_ORIGIN}##g" \
+        -e "s#${PROD_SUPABASE_ANON_KEY}#${LAB_SUPABASE_ANON_KEY}#g" {} +
+
+EXPOSE 80
+
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+  CMD wget -q --spider http://127.0.0.1/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -33,7 +33,7 @@ export class CapiClient implements CapiDispatchGateway {
   private readonly defaultTestEventCode?: string;
 
   constructor(config?: CapiClientConfig) {
-    this.defaultAccessToken = config?.defaultAccessToken || process.env.META_CAPI_ACCESS_TOKEN || process.env.META_SYSTEM_USER_TOKEN;
+    this.defaultAccessToken = config?.defaultAccessToken;
     this.apiVersion = config?.apiVersion || 'v20.0';
     this.baseUrl = config?.baseUrl || 'https://graph.facebook.com';
     this.defaultTestEventCode = config?.defaultTestEventCode || process.env.META_TEST_EVENT_CODE;

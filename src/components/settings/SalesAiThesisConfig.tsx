@@ -32,6 +32,8 @@ import {
 } from 'lucide-react';
 import {
   getWorkspaceAiMode,
+  loadWorkspaceAgentConfig,
+  publishWorkspaceAgentConfig,
   setWorkspaceAiMode,
   GlobalAiAutonomyMode,
 } from '../../services/aiAutonomyManager';
@@ -54,20 +56,54 @@ export type PrimaryGoalPreset = 'agendamento' | 'sinal_pix' | 'orcamento' | 'qua
 export const SalesAiThesisConfig: React.FC<{ workspaceId?: string }> = ({ workspaceId = 'ws-haven-beauty' }) => {
   // Global Autonomy Mode (Single Source of Truth)
   const [globalMode, setGlobalMode] = useState<GlobalAiAutonomyMode>(() => getWorkspaceAiMode(workspaceId));
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
 
   useEffect(() => {
-    setGlobalMode(getWorkspaceAiMode(workspaceId));
+    let cancelled = false;
+    setIsLoadingConfig(true);
+    setConfigError(null);
+    void loadWorkspaceAgentConfig(workspaceId)
+      .then((config) => {
+        if (cancelled) return;
+        setGlobalMode(config.autonomyMode);
+        const behavior = config.behaviorConfig as Partial<{
+          tone: TonePreset;
+          rhythm: RhythmPreset;
+          structure: MessageStructurePreset;
+          emojis: EmojiUsagePreset;
+          primaryGoal: PrimaryGoalPreset;
+          maxDiscountPercent: number;
+          humanHandoffTriggers: typeof humanHandoffTriggers;
+          typingDelaySeconds: number;
+        }>;
+        if (behavior.tone) setTone(behavior.tone);
+        if (behavior.rhythm) setRhythm(behavior.rhythm);
+        if (behavior.structure) setStructure(behavior.structure);
+        if (behavior.emojis) setEmojis(behavior.emojis);
+        if (behavior.primaryGoal) setPrimaryGoal(behavior.primaryGoal);
+        if (typeof behavior.maxDiscountPercent === 'number') setMaxDiscountPercent(behavior.maxDiscountPercent);
+        if (behavior.humanHandoffTriggers) setHumanHandoffTriggers(behavior.humanHandoffTriggers);
+        if (typeof behavior.typingDelaySeconds === 'number') setTypingDelaySeconds(behavior.typingDelaySeconds);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setConfigError(error instanceof Error ? error.message : 'Configuração da IA indisponível.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingConfig(false);
+      });
     const handleModeChanged = (e: any) => {
       if (e.detail?.workspaceId === workspaceId && e.detail?.mode) {
         setGlobalMode(e.detail.mode);
       }
     };
     window.addEventListener('sos_ai_mode_changed', handleModeChanged);
-    return () => window.removeEventListener('sos_ai_mode_changed', handleModeChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('sos_ai_mode_changed', handleModeChanged);
+    };
   }, [workspaceId]);
-
-  // Tone & Personality Settings
-  const STORAGE_KEY = `sos_sales_personality_config_${workspaceId}`;
 
   const [tone, setTone] = useState<TonePreset>('elegante_acolhedor');
   const [rhythm, setRhythm] = useState<RhythmPreset>('natural_humano');
@@ -87,47 +123,46 @@ export const SalesAiThesisConfig: React.FC<{ workspaceId?: string }> = ({ worksp
   const [typingDelaySeconds, setTypingDelaySeconds] = useState<number>(20);
   const [savedFeedback, setSavedFeedback] = useState(false);
 
-  // Load saved settings
-  useEffect(() => {
+  const handleSaveConfig = async () => {
+    setIsPublishing(true);
+    setConfigError(null);
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.tone) setTone(parsed.tone);
-        if (parsed.rhythm) setRhythm(parsed.rhythm);
-        if (parsed.structure) setStructure(parsed.structure);
-        if (parsed.emojis) setEmojis(parsed.emojis);
-        if (parsed.primaryGoal) setPrimaryGoal(parsed.primaryGoal);
-        if (parsed.maxDiscountPercent !== undefined) setMaxDiscountPercent(parsed.maxDiscountPercent);
-        if (parsed.humanHandoffTriggers) setHumanHandoffTriggers(parsed.humanHandoffTriggers);
-        if (parsed.typingDelaySeconds !== undefined) setTypingDelaySeconds(parsed.typingDelaySeconds);
-      }
-    } catch {
-      // fallback
+      const config = await publishWorkspaceAgentConfig(workspaceId, {
+        autonomyMode: globalMode,
+        runtimeEnabled: globalMode === 'autonomous_24_7',
+        behaviorConfig: {
+          tone,
+          rhythm,
+          structure,
+          emojis,
+          primaryGoal,
+          maxDiscountPercent,
+          humanHandoffTriggers,
+          typingDelaySeconds,
+        },
+      });
+      setGlobalMode(config.autonomyMode);
+      setSavedFeedback(true);
+      setTimeout(() => setSavedFeedback(false), 2500);
+    } catch (error) {
+      setConfigError(error instanceof Error ? error.message : 'Não foi possível publicar a configuração.');
+    } finally {
+      setIsPublishing(false);
     }
-  }, [STORAGE_KEY]);
-
-  const handleSaveConfig = () => {
-    const config = {
-      tone,
-      rhythm,
-      structure,
-      emojis,
-      primaryGoal,
-      maxDiscountPercent,
-      humanHandoffTriggers,
-      typingDelaySeconds,
-    };
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-    } catch {}
-    setSavedFeedback(true);
-    setTimeout(() => setSavedFeedback(false), 2500);
   };
 
-  const handleToggleGlobalMode = (newMode: GlobalAiAutonomyMode) => {
-    setWorkspaceAiMode(workspaceId, newMode);
-    setGlobalMode(newMode);
+  const handleToggleGlobalMode = async (newMode: GlobalAiAutonomyMode) => {
+    setIsPublishing(true);
+    setConfigError(null);
+    try {
+      const config = await setWorkspaceAiMode(workspaceId, newMode);
+      setGlobalMode(config.autonomyMode);
+    } catch (error) {
+      setGlobalMode('copilot_supervised');
+      setConfigError(error instanceof Error ? error.message : 'Não foi possível alterar o modo da IA.');
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   // Live Preview Message Generator based on Current Calibration
@@ -136,11 +171,11 @@ export const SalesAiThesisConfig: React.FC<{ workspaceId?: string }> = ({ worksp
       if (structure === 'picado_whatsapp') {
         return [
           'Olá, que bom ter você aqui! 🌸 Temos sim horários disponíveis para hoje.',
-          'Nossa Escova Express (Lisa R$ 59 / Modelada R$ 69) inclui a lavagem com ozônio. Você prefere vir no período da tarde ou início da noite?',
+          'Para valores e horários atualizados, consulte o canal oficial de agendamento. Você prefere vir no período da tarde ou início da noite?',
         ];
       }
       return [
-        'Olá! Que prazer ter você aqui conosco! 🌸 Temos sim disponibilidade para hoje. Nossa Escova Express (Lisa R$ 59 / Modelada R$ 69) inclui a lavagem especial com ozônio. Você prefere no período da tarde ou início da noite?',
+        'Olá! Que prazer ter você aqui conosco! 🌸 Para confirmar valores e disponibilidade, consulte o canal oficial de agendamento. Você prefere tarde ou início da noite?',
       ];
     }
 
@@ -148,11 +183,11 @@ export const SalesAiThesisConfig: React.FC<{ workspaceId?: string }> = ({ worksp
       if (structure === 'picado_whatsapp') {
         return [
           'Olá! Temos vaga disponível para hoje sim.',
-          'A escova lisa está R$ 59 e a modelada R$ 69. Qual horário fica melhor: às 14h ou às 16h30?',
+          'Os valores devem ser confirmados na fonte oficial. Qual período fica melhor: tarde ou início da noite?',
         ];
       }
       return [
-        'Olá! Temos horários para hoje sim. A escova lisa está R$ 59 e a modelada R$ 69 com lavagem inclusa. Qual horário fica melhor para você: às 14h ou às 16h30?',
+        'Olá! Para confirmar valores e disponibilidade, consulte o canal oficial. Qual período fica melhor para você?',
       ];
     }
 
@@ -165,7 +200,7 @@ export const SalesAiThesisConfig: React.FC<{ workspaceId?: string }> = ({ worksp
     if (tone === 'comercial_fechador') {
       return [
         'Oi! Que excelente escolha! ✨ As vagas de hoje estão super concorridas, mas separei 2 encaixes perfeitos para você.',
-        'A escova promocional de R$ 59 já inclui lavagem com ozônio. Quer garantir a sua vaga às 15h ou às 17h com o sinal Pix de R$ 30?',
+        'Posso direcionar você ao canal oficial para confirmar valores e disponibilidade. Prefere tarde ou início da noite?',
       ];
     }
 
@@ -204,13 +239,20 @@ export const SalesAiThesisConfig: React.FC<{ workspaceId?: string }> = ({ worksp
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={handleSaveConfig}
-            className="py-2.5 px-4 rounded-xl text-xs font-bold bg-[#00A884] hover:bg-[#009473] text-white transition-all flex items-center gap-1.5 shadow-md cursor-pointer"
+            disabled={isLoadingConfig || isPublishing}
+            className="py-2.5 px-4 rounded-xl text-xs font-bold bg-[#00A884] hover:bg-[#009473] disabled:opacity-50 disabled:cursor-not-allowed text-white transition-all flex items-center gap-1.5 shadow-md cursor-pointer"
           >
             {savedFeedback ? <CheckCircle2 className="w-4 h-4 text-white" /> : <Save className="w-4 h-4" />}
             <span>{savedFeedback ? 'Calibração Salva!' : 'Salvar Calibração'}</span>
           </button>
         </div>
       </div>
+
+      {configError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">
+          Configuração não publicada: {configError} O modo seguro supervisionado foi mantido.
+        </div>
+      )}
 
       {/* SECTION 1: MODO DE OPERAÇÃO (AUTONOMIA & HORÁRIOS) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
@@ -229,7 +271,7 @@ export const SalesAiThesisConfig: React.FC<{ workspaceId?: string }> = ({ worksp
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Card: Modo Aprendizado */}
           <div
-            onClick={() => handleToggleGlobalMode('copilot_supervised')}
+            onClick={() => { if (!isPublishing) void handleToggleGlobalMode('copilot_supervised'); }}
             className={`p-4 rounded-xl border-2 transition-all cursor-pointer space-y-2 ${
               globalMode === 'copilot_supervised'
                 ? 'border-indigo-600 bg-indigo-50/50 shadow-xs ring-2 ring-indigo-600/20'
@@ -250,7 +292,7 @@ export const SalesAiThesisConfig: React.FC<{ workspaceId?: string }> = ({ worksp
 
           {/* Card: Modo Autônomo 24/7 */}
           <div
-            onClick={() => handleToggleGlobalMode('autonomous_24_7')}
+            onClick={() => { if (!isPublishing) void handleToggleGlobalMode('autonomous_24_7'); }}
             className={`p-4 rounded-xl border-2 transition-all cursor-pointer space-y-2 ${
               globalMode === 'autonomous_24_7'
                 ? 'border-emerald-600 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-600/20'

@@ -183,8 +183,12 @@ export interface DetectedSlot {
   period: 'manha' | 'tarde' | 'noite';
 }
 
+export type ExternalAgendaProvider = 'google_calendar' | 'trinks' | 'calendly' | 'avec' | 'simples_agenda' | 'custom';
+
 export interface ExternalAgendaConfig {
   enabled: boolean;
+  provider: ExternalAgendaProvider;
+  providerLabel: string;
   url: string;
   autoSyncMinutes: number;
   lastSyncedAt?: string;
@@ -192,6 +196,45 @@ export interface ExternalAgendaConfig {
   selectedServiceId: string;
   availableSlotsToday?: string[];
 }
+
+export const EXTERNAL_AGENDA_PRESETS: Record<ExternalAgendaProvider, { label: string; defaultUrl: string; placeholder: string; desc: string }> = {
+  google_calendar: {
+    label: 'Google Agenda (Google Calendar)',
+    defaultUrl: 'https://calendar.google.com/calendar/u/0/r',
+    placeholder: 'https://calendar.google.com/calendar/u/0/r ou link de agendamento',
+    desc: 'Integração e visualização direta da sua conta Google Calendar ou agenda compartilhada.',
+  },
+  trinks: {
+    label: 'Trinks (Salão & Beleza)',
+    defaultUrl: 'https://www.trinks.com/havenescovaria/admin',
+    placeholder: 'https://www.trinks.com/seusalao/admin',
+    desc: 'Painel administrativo da Trinks com leitura de profissionais e horários.',
+  },
+  calendly: {
+    label: 'Calendly / Cal.com',
+    defaultUrl: 'https://calendly.com',
+    placeholder: 'https://calendly.com/sua-empresa',
+    desc: 'Página de agendamento online do Calendly ou Cal.com para consultas e reuniões.',
+  },
+  avec: {
+    label: 'Avec / Beauty Date',
+    defaultUrl: 'https://avec.me',
+    placeholder: 'https://avec.me/seusalao',
+    desc: 'Sistema de gestão e agenda para clínicas e salões de beleza.',
+  },
+  simples_agenda: {
+    label: 'Simples Agenda',
+    defaultUrl: 'https://simplesagenda.com.br',
+    placeholder: 'https://app.simplesagenda.com.br',
+    desc: 'Software de agendamento para prestadores de serviços e autônomos.',
+  },
+  custom: {
+    label: 'Agenda Própria / Link Web',
+    defaultUrl: 'https://agenda.iaparavendas.tech',
+    placeholder: 'https://sua-agenda-online.com.br',
+    desc: 'Qualquer sistema de agenda web que possua link de visualização ou painel.',
+  },
+};
 
 interface ExternalAgendaDrawerProps {
   isOpen: boolean;
@@ -202,7 +245,41 @@ interface ExternalAgendaDrawerProps {
   onInsertSlotToDraft?: (slotText: string) => void;
 }
 
-export const DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY = 'sos_sales_external_agenda_config_v2';
+export const DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY = 'sos_sales_external_agenda_config_v3';
+
+export function getExternalAgendaConfig(wsId: string): ExternalAgendaConfig {
+  try {
+    const saved = localStorage.getItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${wsId}`);
+    if (saved) return JSON.parse(saved);
+  } catch {}
+
+  const safeId = (wsId || '').toLowerCase();
+  const isHaven = safeId.includes('haven') || safeId.includes('escovaria');
+  
+  if (isHaven) {
+    return {
+      enabled: true,
+      provider: 'trinks',
+      providerLabel: 'Trinks (Haven)',
+      url: 'https://www.trinks.com/havenescovaria/admin',
+      autoSyncMinutes: 15,
+      lastSyncedAt: new Date().toISOString(),
+      targetDate: 'hoje',
+      selectedServiceId: 'escova_express',
+    };
+  }
+
+  return {
+    enabled: true,
+    provider: 'google_calendar',
+    providerLabel: 'Google Agenda',
+    url: 'https://calendar.google.com/calendar/u/0/r',
+    autoSyncMinutes: 15,
+    lastSyncedAt: new Date().toISOString(),
+    targetDate: 'hoje',
+    selectedServiceId: 'escova_express',
+  };
+}
 
 // Real staff roster mapped directly from the Haven salon Trinks grid
 export const HAVEN_STAFF_ROSTER: StaffMember[] = [
@@ -536,26 +613,6 @@ export function computeSmartDetectedSlots(
   return slots.sort((a, b) => a.decimalTime - b.decimalTime);
 }
 
-export function getExternalAgendaConfig(wsId: string): ExternalAgendaConfig {
-  try {
-    const saved = localStorage.getItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${wsId}`);
-    if (saved) return JSON.parse(saved);
-  } catch {}
-
-  const safeId = (wsId || '').toLowerCase();
-  const isHaven = safeId.includes('haven') || safeId.includes('escovaria');
-  return {
-    enabled: true,
-    url: isHaven
-      ? 'https://www.trinks.com/havenescovaria/admin'
-      : 'https://agenda.iaparavendas.tech',
-    autoSyncMinutes: 15,
-    lastSyncedAt: new Date().toISOString(),
-    targetDate: 'hoje',
-    selectedServiceId: 'escova_express',
-  };
-}
-
 export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
   isOpen,
   onClose,
@@ -565,6 +622,7 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
   onInsertSlotToDraft,
 }) => {
   const [config, setConfig] = useState<ExternalAgendaConfig>(() => getExternalAgendaConfig(workspaceId));
+  const [selectedProvider, setSelectedProvider] = useState<ExternalAgendaProvider>(config.provider || 'google_calendar');
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState<'slots' | 'staff' | 'portal' | 'settings'>('slots');
   const [editUrl, setEditUrl] = useState(config.url);
@@ -588,6 +646,7 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
   useEffect(() => {
     const loaded = getExternalAgendaConfig(workspaceId);
     setConfig(loaded);
+    setSelectedProvider(loaded.provider || 'google_calendar');
     setEditUrl(loaded.url);
   }, [workspaceId]);
 
@@ -655,7 +714,7 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
     setSyncNotice(null);
     setTimeout(() => {
       const now = new Date();
-      const updated = {
+      const updated: ExternalAgendaConfig = {
         ...config,
         lastSyncedAt: now.toISOString(),
       };
@@ -664,23 +723,32 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
         localStorage.setItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${workspaceId}`, JSON.stringify(updated));
       } catch {}
       setIsSyncing(false);
-      setSyncNotice('Grade Trinks reanalisada: Linha do tempo e janelas livres recalculadas!');
+      setSyncNotice(`Grade ${config.providerLabel || 'de Horários'} reanalisada: Linha do tempo e janelas livres recalculadas!`);
       setTimeout(() => setSyncNotice(null), 3500);
     }, 1000);
   };
 
+  const handleSelectProvider = (prov: ExternalAgendaProvider) => {
+    setSelectedProvider(prov);
+    const preset = EXTERNAL_AGENDA_PRESETS[prov];
+    setEditUrl(preset.defaultUrl);
+  };
+
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    const updated = {
+    const preset = EXTERNAL_AGENDA_PRESETS[selectedProvider];
+    const updated: ExternalAgendaConfig = {
       ...config,
-      url: editUrl.trim() || 'https://agenda.iaparavendas.tech',
+      provider: selectedProvider,
+      providerLabel: preset ? preset.label : 'Agenda Externa',
+      url: editUrl.trim() || preset.defaultUrl,
     };
     setConfig(updated);
     try {
       localStorage.setItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${workspaceId}`, JSON.stringify(updated));
     } catch {}
     setActiveTab('portal');
-    setSyncNotice('Configurações da Agenda salvas!');
+    setSyncNotice(`Configurações salvas: Conectado a ${updated.providerLabel}!`);
     setTimeout(() => setSyncNotice(null), 3000);
   };
 
@@ -711,7 +779,7 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1.5 shadow-2xs">
                   <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-                  <span>{isHavenWorkspace ? 'Haven Escovaria (Trinks)' : `Unidade (${workspaceName || 'Geral'})`}</span>
+                  <span>{config.providerLabel || 'Google Agenda / Sistema Externo'}</span>
                 </span>
               </div>
               <p className="text-[11.5px] text-slate-400 mt-0.5">
@@ -736,7 +804,7 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800 transition"
-              title="Abrir painel Trinks em nova aba"
+              title={`Abrir ${config.providerLabel || 'agenda'} em nova aba`}
             >
               <ExternalLink className="w-4 h-4" />
             </a>
@@ -783,7 +851,7 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Visualizar Grade Trinks
+              Visualizar {config.providerLabel || 'Grade'}
             </button>
             <button
               onClick={() => setActiveTab('settings')}
@@ -794,7 +862,7 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
               }`}
             >
               <Settings className="w-3 h-3" />
-              <span>Configurações</span>
+              <span>Configurações ({config.providerLabel || 'Provedor'})</span>
             </button>
           </div>
 
@@ -1238,14 +1306,14 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
                   onClick={() => setActiveTab('settings')}
                   className="text-slate-400 hover:text-purple-300 text-[11px] font-sans font-bold flex items-center gap-1 cursor-pointer"
                 >
-                  <Sliders className="w-3 h-3" /> Alterar URL
+                  <Sliders className="w-3 h-3" /> Alterar Agenda
                 </button>
               </div>
 
               <div className="flex-1 bg-white relative overflow-hidden">
                 <iframe
                   src={config.url}
-                  title="Agenda Trinks"
+                  title={`Visualização de ${config.providerLabel || 'Agenda'}`}
                   className="w-full h-full border-0"
                   sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
                   loading="lazy"
@@ -1254,7 +1322,7 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
                 <div className="absolute bottom-3 right-3 max-w-sm bg-slate-950/95 text-white p-3 rounded-xl border border-slate-700 shadow-2xl backdrop-blur-md text-xs space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-bold text-amber-400 flex items-center gap-1 text-[11px]">
-                      <Bot className="w-3.5 h-3.5" /> IA Copilot Conectada
+                      <Bot className="w-3.5 h-3.5" /> IA Copilot Conectada ({config.providerLabel || 'Agenda'})
                     </span>
                     <a
                       href={config.url}
@@ -1262,43 +1330,86 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
                       rel="noopener noreferrer"
                       className="text-purple-400 hover:underline font-bold text-[10px] flex items-center gap-0.5"
                     >
-                      <span>Abrir Trinks externo</span>
+                      <span>Abrir em aba externa</span>
                       <ChevronRight className="w-3 h-3" />
                     </a>
                   </div>
                   <p className="text-[10.5px] text-slate-300 leading-relaxed">
-                    A IA cruza as regras de ausência, bloqueio azulado e linha do tempo vermelha em tempo real para abastecer o Copilot de atendimento.
+                    A IA cruza as regras de vagas, intervalos e linha do tempo em tempo real para abastecer as respostas rápidas no WhatsApp.
                   </p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB 4: SETTINGS */}
+          {/* TAB 4: SETTINGS & PROVIDER SELECTION */}
           {activeTab === 'settings' && (
-            <div className="p-6 space-y-6 overflow-y-auto max-w-xl">
-              <form onSubmit={handleSaveSettings} className="space-y-4 bg-slate-900 p-5 rounded-2xl border border-slate-800">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-                  <Settings className="w-4 h-4 text-purple-400" />
-                  <h4 className="font-bold text-sm text-white font-heading">
-                    Configurações da Agenda Externa
-                  </h4>
+            <div className="p-6 space-y-6 overflow-y-auto max-w-2xl">
+              <form onSubmit={handleSaveSettings} className="space-y-5 bg-slate-900 p-5 rounded-2xl border border-slate-800">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Settings className="w-4 h-4 text-purple-400" />
+                    <h4 className="font-bold text-sm text-white font-heading">
+                      Configuração da Agenda do Negócio
+                    </h4>
+                  </div>
+                  <span className="text-[10.5px] font-bold text-purple-300 bg-purple-950 px-2 py-0.5 rounded-full border border-purple-800">
+                    Múltiplos Provedores Suportados
+                  </span>
                 </div>
 
+                {/* Seletor de Provedor de Agenda */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-2">
+                    Selecione o Sistema de Agenda / Calendário:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(Object.keys(EXTERNAL_AGENDA_PRESETS) as ExternalAgendaProvider[]).map((prov) => {
+                      const preset = EXTERNAL_AGENDA_PRESETS[prov];
+                      const isSelected = selectedProvider === prov;
+                      return (
+                        <button
+                          key={prov}
+                          type="button"
+                          onClick={() => handleSelectProvider(prov)}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                            isSelected
+                              ? 'bg-purple-950/80 border-purple-500 text-white ring-1 ring-purple-500 shadow-md shadow-purple-950'
+                              : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-950'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-extrabold text-xs text-white">
+                              {preset.label}
+                            </span>
+                            {isSelected && (
+                              <span className="w-2 h-2 rounded-full bg-purple-400 shadow-xs shadow-purple-400" />
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">
+                            {preset.desc}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Campo de URL da Agenda */}
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">
-                    URL de Acesso ao Sistema de Agenda (Trinks / Web)
+                    Link de Acesso ou Painel da Agenda ({EXTERNAL_AGENDA_PRESETS[selectedProvider]?.label || 'Personalizada'}):
                   </label>
                   <input
                     type="url"
                     value={editUrl}
                     onChange={(e) => setEditUrl(e.target.value)}
-                    placeholder="https://www.trinks.com/havenescovaria/admin"
+                    placeholder={EXTERNAL_AGENDA_PRESETS[selectedProvider]?.placeholder || 'https://sua-agenda.com.br'}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:ring-2 focus:ring-purple-500 outline-none font-mono"
                     required
                   />
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Cole o link do painel de administração da sua agenda Trinks.
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Cole o link do seu Google Calendar, Trinks, Calendly ou sistema interno para visualização dentro do Cockpit.
                   </p>
                 </div>
 
@@ -1312,9 +1423,10 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white transition shadow-sm cursor-pointer"
+                    className="px-5 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white transition shadow-sm cursor-pointer flex items-center gap-1.5"
                   >
-                    Salvar Configurações
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Salvar & Conectar Agenda</span>
                   </button>
                 </div>
               </form>

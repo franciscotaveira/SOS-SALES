@@ -1247,16 +1247,13 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     journeyId: string,
     text: string,
   ): Promise<{ success: boolean; messageId: string; sentAt: string }> {
-    const response = await fetch(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/send-message`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || 'Falha ao enviar mensagem pelo canal WhatsApp.');
-    }
-    return response.json();
+    return this.request<{ success: boolean; messageId: string; sentAt: string }>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/send-message`,
+      {
+        method: 'POST',
+        body: { text },
+      },
+    );
   }
 
   async createOutboundDraft(
@@ -1328,6 +1325,7 @@ export class HttpSalesOsGateway implements SalesOsGateway {
       id: workspace.id,
       name: workspace.name,
       slug: workspace.slug,
+      operatorRole: workspace.role,
       businessType: 'general_services',
       tagline: 'Dados autenticados do SOS Sales',
       activeOperatorCount: 0,

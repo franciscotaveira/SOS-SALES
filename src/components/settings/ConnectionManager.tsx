@@ -18,7 +18,11 @@ import {
   Play,
   RotateCcw,
   Sparkles,
+  PhoneCall,
+  Users2,
+  ExternalLink,
 } from 'lucide-react';
+import { EmbeddedSignupModal } from './EmbeddedSignupModal';
 
 interface ConnectionManagerProps {
   workspace: Workspace;
@@ -37,6 +41,7 @@ export const ConnectionManager: React.FC<ConnectionManagerProps> = ({
   const [wahaPing, setWahaPing] = React.useState<number | null>(28);
   const [autoFailover, setAutoFailover] = React.useState(true);
   const [activeTransition, setActiveTransition] = React.useState<string | null>(null);
+  const [isEmbeddedModalOpen, setIsEmbeddedModalOpen] = React.useState(false);
 
   // Transition logs
   const [transitionLogs, setTransitionLogs] = React.useState<
@@ -139,7 +144,7 @@ export const ConnectionManager: React.FC<ConnectionManagerProps> = ({
               </div>
               <div>
                 <h3 className="font-bold text-sm text-[#111b21]">Meta WABA Cloud API</h3>
-                <p className="text-[11px] text-[#54656f]">API Oficial Meta Business (WhatsApp Cloud)</p>
+                <p className="text-[11px] text-[#54656f]">API Oficial Meta Business · Embedded Signup v4</p>
               </div>
             </div>
 
@@ -170,15 +175,22 @@ export const ConnectionManager: React.FC<ConnectionManagerProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-1">
-            <span className="text-[11px] text-[#54656f]">Ideal para: CTWA Ads & Vendas 1:1</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <button
+              onClick={() => setIsEmbeddedModalOpen(true)}
+              className="px-3 py-1.5 bg-[#00a884] hover:bg-[#008f6f] text-white rounded-lg text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Zap className="w-3.5 h-3.5 text-white" />
+              <span>Embedded Signup v4</span>
+            </button>
+
             <button
               onClick={handleTestWaba}
               disabled={testingWaba}
               className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-all"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-[#00a884] ${testingWaba ? 'animate-spin' : ''}`} />
-              <span>{testingWaba ? 'Validando...' : 'Testar Ping WABA'}</span>
+              <span>{testingWaba ? 'Validando...' : 'Testar Ping'}</span>
             </button>
           </div>
         </div>
@@ -398,7 +410,7 @@ export const ConnectionManager: React.FC<ConnectionManagerProps> = ({
             <div key={idx} className="flex items-start gap-2 leading-relaxed">
               <span className="text-slate-500 shrink-0">[{log.timestamp}]</span>
               <span
-                className={`px-1 py-0.2 rounded text-[9.5px] font-bold shrink-0 ${
+                className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${
                   log.engine === 'waba' ? 'bg-[#00a884]/20 text-[#00a884]' : 'bg-blue-900/40 text-blue-400'
                 }`}
               >
@@ -419,6 +431,24 @@ export const ConnectionManager: React.FC<ConnectionManagerProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Embedded Signup Modal */}
+      <EmbeddedSignupModal
+        isOpen={isEmbeddedModalOpen}
+        onClose={() => setIsEmbeddedModalOpen(false)}
+        workspace={workspace}
+        onSuccess={(data) => {
+          setTransitionLogs((prev) => [
+            {
+              timestamp: new Date().toLocaleTimeString(),
+              engine: 'waba',
+              message: `Embedded Signup v4 Concluído! WABA ID: ${data.wabaId} · Phone ID: ${data.phoneNumberId}`,
+              type: 'success',
+            },
+            ...prev,
+          ]);
+        }}
+      />
     </div>
   );
 };

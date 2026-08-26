@@ -23,7 +23,12 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({
     '14:00', '15:00', '16:00', '17:00', '18:00', '19:00',
   ];
 
-  const todayApts = appointments.filter((a) => a.scheduledAt.startsWith('2026-08-15'));
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const todayApts = appointments.filter((a) => a.scheduledAt.startsWith(todayStr));
+
+  const dayName = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(today);
+  const capitalizedDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
 
   const getTime = (iso: string) => {
     const timePart = iso.split('T')[1];
@@ -36,7 +41,7 @@ export const DailyCalendarView: React.FC<DailyCalendarViewProps> = ({
       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
         <div>
           <h2 className="text-base font-bold text-slate-900 font-heading">
-            Grade Horária do Dia · Sábado, 15 de Agosto de 2026
+            Grade Horária do Dia · {capitalizedDay}
           </h2>
           <p className="text-xs text-slate-500">
             {todayApts.length} atendimentos programados · Visão de fluxo contínuo.

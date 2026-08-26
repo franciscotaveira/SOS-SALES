@@ -41,11 +41,14 @@ function isFollowUpResult(value: unknown): value is FollowUpResult {
 
 function toDbStage(stage: string): string {
   const s = stage.toUpperCase().trim();
-  if (s === 'LEAD' || s === 'NEW' || s === 'CONTACTED') return 'NEW';
-  if (s === 'QUALIFIED' || s === 'QUALIFICADO' || s === 'APPROACHED' || s === 'ENGAGED') return 'QUALIFIED';
-  if (s === 'PROPOSAL' || s === 'PROPOSTA') return 'PROPOSAL';
-  if (s === 'NEGOTIATION' || s === 'NEGOCIACAO' || s === 'FOLLOW_UP' || s === 'SCHEDULED' || s === 'AGENDADO' || s === 'WON' || s === 'GANHO' || s === 'CLOSED') return 'NEGOTIATION';
-  return 'NEW';
+  if (s === 'LEAD' || s === 'NEW') return 'LEAD';
+  if (s === 'CONTACTED' || s === 'CONTATADO') return 'CONTACTED';
+  if (s === 'QUALIFIED' || s === 'QUALIFICADO' || s === 'APPROACHED' || s === 'ENGAGED') return 'QUALIFICADO';
+  if (s === 'PROPOSAL' || s === 'PROPOSTA') return 'PROPOSTA';
+  if (s === 'NEGOTIATION' || s === 'NEGOCIACAO' || s === 'FOLLOW_UP') return 'NEGOCIACAO';
+  if (s === 'SCHEDULED' || s === 'AGENDADO' || s === 'WON' || s === 'GANHO') return 'GANHO';
+  if (s === 'LOST' || s === 'PERDIDO') return 'LOST';
+  return s;
 }
 
 function classify(error: unknown): never {
@@ -124,6 +127,9 @@ export class PostgresJourneyOperationsGateway implements JourneyOperationsGatewa
       await client.query('SET LOCAL ROLE sos_sales_runtime');
       await client.query("SELECT pg_catalog.set_config('request.jwt.claim.role', 'authenticated', true)");
       await client.query("SELECT pg_catalog.set_config('request.jwt.claim.sub', $1, true)", [actor.userId]);
+      await client.query("SELECT pg_catalog.set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: actor.userId, role: 'authenticated', email: actor.email })
+      ]);
       const result = await action(client);
       await client.query('COMMIT');
       return result;

@@ -3,6 +3,59 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { dbPool } from '../../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../../application/services/attribution-service.js';
 import { IdempotencyGate } from '../../../../infrastructure/cache/idempotency-gate.js';
+import { getReceptionistAgent } from '../../../../application/agents/receptionist-agent.js';
+import { handleMessengerEntry } from './messenger-webhook-handler.js';
+
+/**
+ * Tenta encontrar uma conexão de canal pelo phoneNumberId do webhook.
+ * Retorna o objeto { id, workspace_id } se encontrado, ou null caso contrário.
+ * Logs de erro são feitos internamente, mas não interrompem a execução.
+ */
+export async function findChannelByPhoneNumberId(
+  phoneNumberId: string | undefined,
+  log: FastifyRequest['log'],
+  query: typeof dbPool.query = dbPool.query,
+): Promise<{ id: string | null; workspace_id: string | null } | null> {
+  if (!phoneNumberId) {
+    return null;
+  }
+
+  try {
+    const chanRes = await query(
+      `SELECT
+         workspace_id,
+         (array_agg(id ORDER BY (status = 'CONNECTED') DESC, created_at DESC))[1] AS id
+       FROM public.channel_connections
+       WHERE provider = 'meta_cloud'
+         AND (
+            (public_config->>'phoneNumberId') = $1 
+         OR (public_config->>'phone_number_id') = $1
+         OR (public_config->>'wabaPhoneNumberId') = $1
+         OR phone_number = $1
+         )
+       GROUP BY workspace_id
+       LIMIT 2`,
+      [phoneNumberId]
+    );
+
+    if (chanRes.rows.length === 1) {
+      return {
+        id: chanRes.rows[0].id,
+        workspace_id: chanRes.rows[0].workspace_id
+      };
+    }
+
+    if (chanRes.rows.length > 1) {
+      log.warn({ ownerCount: chanRes.rows.length }, 'Ambiguous WABA channel ownership found. Rejecting to prevent cross-tenant leak.');
+      return null;
+    }
+  } catch (err) {
+    // Using log.error as in original code
+    log.error({ err }, 'Error looking up channel connection for WABA webhook');
+  }
+
+  return null;
+}
 
 export interface WabaWebhookPluginOptions {
   verifyToken: string;
@@ -42,18 +95,24 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
     return reply.status(403).send('Forbidden');
   };
 
-  /**
+  /** 
    * 1. GET Webhook Verification (Meta Hub Challenge Handshake)
    */
   app.get('/api/v1/channels/waba/webhook', handleVerification);
   app.get('/webhooks/waba', handleVerification);
 
-  /**
+  /** 
    * 2. POST Webhook Events (Messages, Statuses, Referrals, Interactive Clicks)
    */
   const handleEvents = async (request: FastifyRequest, reply: FastifyReply) => {
     const rawBody = (request as unknown as { rawBody?: Buffer }).rawBody;
     const signatureHeader = request.headers['x-hub-signature-256'] as string | undefined;
+
+    request.log.info({
+      hasRawBody: Boolean(rawBody),
+      rawBodyLength: rawBody?.length,
+      hasSignature: Boolean(signatureHeader),
+    }, 'WABA webhook received');
 
     if (!rawBody || !verifyMetaSignature(rawBody, signatureHeader, appSecret)) {
       request.log.warn({ hasRawBody: Boolean(rawBody), hasSignature: Boolean(signatureHeader) }, 'WABA webhook signature verification failed');
@@ -61,6 +120,19 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
     }
 
     const payload = request.body as any;
+
+    // Messenger / Instagram DM share the same Meta webhook endpoint
+    if (payload?.object === 'page' || payload?.object === 'instagram') {
+      const platform = payload.object === 'page' ? 'messenger' : 'instagram';
+      for (const entry of payload.entry || []) {
+        try {
+          await handleMessengerEntry(entry, platform, request.log);
+        } catch (err) {
+          request.log.error({ err, platform, entryId: entry?.id }, 'Messenger/Instagram entry processing failed');
+        }
+      }
+      return reply.status(200).send({ status: 'ok', platform });
+    }
 
     if (payload?.object !== 'whatsapp_business_account') {
       return reply.status(200).send({ status: 'ignored' });
@@ -129,7 +201,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
             }
           }
 
-          const fromPhone = `+${message.from.replace(/\D/g, '')}`;
+          const fromPhone = `+${message.from.replace(/\\D/g, '')}`;
           const contactObj = contacts.find((c: any) => c.wa_id === message.from);
           const pushName = contactObj?.profile?.name || fromPhone;
           const timestamp = new Date(Number(message.timestamp) * 1000).toISOString();
@@ -167,32 +239,23 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
           const sourceId = referral?.source_id;
           const headline = referral?.headline;
 
-          // Find matching workspace by channel phoneNumberId or fallback to default workspace
-          let targetWorkspaceId: string | null = null;
-          let channelConnectionId: string | null = null;
-          try {
-            const chanRes = await dbPool.query(
-              `SELECT id, workspace_id FROM public.channel_connections 
-               WHERE (public_config->>'phoneNumberId') = $1 OR phone_number = $1 
-               LIMIT 1`,
-              [phoneNumberId]
-            );
-            if (chanRes.rows.length > 0) {
-              channelConnectionId = chanRes.rows[0].id;
-              targetWorkspaceId = chanRes.rows[0].workspace_id;
-            } else {
-              const defaultWs = await dbPool.query(`SELECT id FROM public.workspaces ORDER BY created_at ASC LIMIT 1`);
-              if (defaultWs.rows.length > 0) {
-                targetWorkspaceId = defaultWs.rows[0].id;
-              }
-            }
-          } catch {
-            // fallback
-          }
+          // Find matching workspace by channel phoneNumberId
+          const channelInfo = await findChannelByPhoneNumberId(phoneNumberId, request.log);
 
-          if (!targetWorkspaceId) {
+          if (!channelInfo) {
+            request.log.warn({ phoneNumberId }, 'Unrecognized or unmapped phoneNumberId in WABA webhook event - safely ignored to prevent cross-tenant leak');
             continue;
           }
+
+          const rawWorkspaceId: string | null = channelInfo.workspace_id ?? null;
+          if (!rawWorkspaceId) {
+            request.log.warn({ phoneNumberId }, 'Channel without workspace_id in WABA webhook - ignored');
+            continue;
+          }
+          const targetWorkspaceId: string = rawWorkspaceId;
+          let channelConnectionId = channelInfo.id;
+          let journeyId: string | null = null;
+          let contactId: string | null = null;
 
           if (!channelConnectionId) {
             const defaultChan = await dbPool.query(
@@ -204,7 +267,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
             } else {
               const newChan = await dbPool.query(
                 `INSERT INTO public.channel_connections (id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at)
-                 VALUES (gen_random_uuid(), $1, 'meta_cloud', $2, 'WhatsApp WABA Oficial', '{"engine":"META_CLOUD"}', 'CONNECTED', NOW(), NOW())
+                 VALUES (gen_random_uuid(), $1, 'meta_cloud', $2, 'WhatsApp WABA Oficial', '{\"engine\":\"META_CLOUD\"}', 'CONNECTED', NOW(), NOW())
                  RETURNING id`,
                 [targetWorkspaceId, fromPhone]
               );
@@ -221,12 +284,11 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
                ON CONFLICT (workspace_id, phone)
                DO UPDATE SET name = COALESCE(EXCLUDED.name, contacts.name), updated_at = $5
                RETURNING id`,
-              [targetWorkspaceId, fromPhone, `${fromPhone.replace(/\D/g, '')}@c.us`, pushName, timestamp]
+              [targetWorkspaceId, fromPhone, `${fromPhone.replace(/\\D/g, '')}@c.us`, pushName, timestamp]
             );
-            const contactId = contactRes.rows[0].id;
+            contactId = contactRes.rows[0].id as string;
 
             // Find or create commercial journey
-            let journeyId: string;
             const existingJourney = await dbPool.query(
               `SELECT id FROM public.commercial_journeys 
                WHERE workspace_id = $1 AND contact_id = $2 
@@ -266,7 +328,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
                 const existingAcq = await client.query('SELECT id FROM public.acquisition_contexts WHERE workspace_id = $1 AND journey_id = $2 LIMIT 1', [targetWorkspaceId, journeyId]);
                 if (existingAcq.rowCount === 0) {
                   const attr = AttributionService.extractAttribution(textContent, { referral, adId, headline, sourceId }, campaigns);
-                  if (attr) {
+                  if (attr && journeyId) {
                     await AttributionService.persistAttribution(client, targetWorkspaceId, journeyId, attr, new Date(timestamp));
                   }
                 }
@@ -316,6 +378,28 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
             );
           } catch (err) {
             console.error('Erro ao ingerir mensagem WABA:', err);
+          }
+
+          // ⚡ Fire-and-forget: AI Receptionist 24/7 (NVIDIA NIM)
+          // Não bloqueia o 200 OK para a Meta — roda em background
+          const agent = getReceptionistAgent();
+          if (agent.isEnabled() && textContent && message.type === 'text' && journeyId && contactId && channelConnectionId) {
+            const resolvedJourneyId = journeyId;
+            const resolvedContactId = contactId;
+            const resolvedChannelConnectionId: string = channelConnectionId;
+            setImmediate(() => {
+              agent.handleInbound({
+                workspaceId: targetWorkspaceId,
+                journeyId: resolvedJourneyId,
+                contactId: resolvedContactId,
+                fromPhone,
+                pushName,
+                textContent,
+                messageType: message.type,
+                channelConnectionId: resolvedChannelConnectionId,
+                phoneNumberId,
+              }).catch((err: unknown) => console.error('[ReceptionistAgent] Unhandled error:', err));
+            });
           }
         }
       }

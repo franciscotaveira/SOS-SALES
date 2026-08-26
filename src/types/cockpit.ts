@@ -255,6 +255,8 @@ export interface Workspace {
   id: string;
   name: string;
   slug: string;
+  /** Papel autenticado devolvido pelo backend para este workspace. */
+  operatorRole?: OperatorRole;
   businessType: 'hair_salon' | 'auto_film' | 'general_services';
   tagline: string;
   activeOperatorCount: number;
@@ -276,4 +278,3 @@ export interface SendMessagePayload {
   senderId: string;
   senderName: string;
 }
-

@@ -100,11 +100,14 @@ Horas em silêncio: ${hoursSilent.toFixed(1)}h
 
     let recommendedMessage = '';
     try {
-      recommendedMessage = await this.aiEngine.generateResponse({
-        messages: [{ role: 'user', content: userPrompt }],
-        systemPrompt,
-        modelTier: 'fast',
-      });
+      const result = await this.aiEngine.generateChatCompletion(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        { tier: 'fast' }
+      );
+      recommendedMessage = result.content;
     } catch {
       // Fallback determinístico caso a IA esteja offline
       if (archetype === 'POST_PRICE_FREEZE') {

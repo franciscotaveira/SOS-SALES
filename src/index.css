@@ -7,26 +7,26 @@
     --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-    /* Semantic Palette Tokens */
-    --sos-canvas: #F5F7FA;
+    /* Semantic Palette Tokens — High Contrast WCAG AA */
+    --sos-canvas: #F8FAFC;
     --sos-surface: #FFFFFF;
-    --sos-ink: #101828;
-    --sos-muted: #667085;
+    --sos-ink: #0F172A;
+    --sos-muted: #475569;
     --sos-action: #059669;
     --sos-action-hover: #047857;
     --sos-action-subtle: #ECFDF5;
-    --sos-operational: #2563EB;
-    --sos-operational-hover: #1D4ED8;
+    --sos-operational: #1D4ED8;
+    --sos-operational-hover: #1E40AF;
     --sos-operational-subtle: #EFF6FF;
-    --sos-ai: #7C3AED;
+    --sos-ai: #6D28D9;
     --sos-ai-subtle: #F5F3FF;
-    --sos-warning: #D97706;
+    --sos-warning: #B45309;
     --sos-warning-subtle: #FFFBEB;
-    --sos-danger: #DC2626;
+    --sos-danger: #B91C1C;
     --sos-danger-subtle: #FEF2F2;
     --sos-structural-dark: #0F172A;
     --sos-border: #E2E8F0;
-    --sos-border-strong: #CBD5E1;
+    --sos-border-strong: #94A3B8;
 
     /* WhatsApp Authentic Theme Tokens */
     --wa-primary: #00a884;
@@ -39,10 +39,10 @@
     --wa-chat-bg: #efeae2;
     --wa-chat-header: #f0f2f5;
     --wa-tick-blue: #53bdeb;
-    --wa-tick-grey: #8696a0;
-    --wa-text-primary: #101828;
-    --wa-text-secondary: #667085;
-    --wa-border: #e9edef;
+    --wa-tick-grey: #64748b;
+    --wa-text-primary: #0f172a;
+    --wa-text-secondary: #475569;
+    --wa-border: #cbd5e1;
   }
 
   body {

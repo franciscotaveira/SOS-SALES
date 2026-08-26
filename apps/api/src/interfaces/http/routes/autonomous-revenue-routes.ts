@@ -7,32 +7,36 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { GhostingResurrectionEngine } from '../../../application/services/ghosting-resurrection-engine.js';
 import { LtvRetentionEngine } from '../../../application/services/ltv-retention-engine.js';
+import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
+import { assertTenantAccess, unauthorized } from '../helpers/auth-guard.js';
 
 const uuid = z.string().uuid();
 const workspaceParamsSchema = z.object({ workspaceId: uuid });
 const journeyParamsSchema = z.object({ workspaceId: uuid, journeyId: uuid });
 
-function actorOrUnauthorized(request: FastifyRequest, reply: FastifyReply) {
-  if (!request.operatorActor) {
-    reply.code(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Invalid or missing bearer token' });
-    return null;
-  }
-  return request.operatorActor;
+export interface AutonomousRevenueRoutesDependencies {
+  workspaceDirectory?: WorkspaceDirectory;
 }
 
-export async function autonomousRevenueRoutes(app: FastifyInstance): Promise<void> {
+export async function autonomousRevenueRoutes(
+  app: FastifyInstance,
+  dependencies: AutonomousRevenueRoutesDependencies = {}
+): Promise<void> {
   const ghostingEngine = new GhostingResurrectionEngine();
   const retentionEngine = new LtvRetentionEngine();
 
   // 1. Listar leads em vácuo no workspace
-  app.get('/workspaces/:workspaceId/ghosting/opportunities', async (request, reply) => {
-    const actor = actorOrUnauthorized(request, reply);
-    if (!actor) return reply;
+  app.get('/workspaces/:workspaceId/ghosting/opportunities', async (request: FastifyRequest, reply: FastifyReply) => {
+    const actor = request.operatorActor;
+    if (!actor) return unauthorized(reply);
 
     const params = workspaceParamsSchema.safeParse(request.params);
     if (!params.success) {
       return reply.code(422).send({ statusCode: 422, error: 'Unprocessable Entity', message: 'Invalid workspace ID' });
     }
+
+    const hasAccess = await assertTenantAccess(request, reply, params.data.workspaceId, actor, dependencies.workspaceDirectory);
+    if (!hasAccess) return reply;
 
     try {
       const opportunities = await ghostingEngine.listGhostingOpportunities(params.data.workspaceId);
@@ -44,14 +48,17 @@ export async function autonomousRevenueRoutes(app: FastifyInstance): Promise<voi
   });
 
   // 2. Analisar e gerar micro-quebra de vácuo para uma jornada específica
-  app.post('/workspaces/:workspaceId/journeys/:journeyId/resurrect', async (request, reply) => {
-    const actor = actorOrUnauthorized(request, reply);
-    if (!actor) return reply;
+  app.post('/workspaces/:workspaceId/journeys/:journeyId/resurrect', async (request: FastifyRequest, reply: FastifyReply) => {
+    const actor = request.operatorActor;
+    if (!actor) return unauthorized(reply);
 
     const params = journeyParamsSchema.safeParse(request.params);
     if (!params.success) {
       return reply.code(422).send({ statusCode: 422, error: 'Unprocessable Entity', message: 'Invalid parameters' });
     }
+
+    const hasAccess = await assertTenantAccess(request, reply, params.data.workspaceId, actor, dependencies.workspaceDirectory, 'operator');
+    if (!hasAccess) return reply;
 
     try {
       const analysis = await ghostingEngine.analyzeAndGenerate(params.data.workspaceId, params.data.journeyId);
@@ -66,14 +73,17 @@ export async function autonomousRevenueRoutes(app: FastifyInstance): Promise<voi
   });
 
   // 3. Listar oportunidades de recompra / LTV pós-venda
-  app.get('/workspaces/:workspaceId/retention/opportunities', async (request, reply) => {
-    const actor = actorOrUnauthorized(request, reply);
-    if (!actor) return reply;
+  app.get('/workspaces/:workspaceId/retention/opportunities', async (request: FastifyRequest, reply: FastifyReply) => {
+    const actor = request.operatorActor;
+    if (!actor) return unauthorized(reply);
 
     const params = workspaceParamsSchema.safeParse(request.params);
     if (!params.success) {
       return reply.code(422).send({ statusCode: 422, error: 'Unprocessable Entity', message: 'Invalid workspace ID' });
     }
+
+    const hasAccess = await assertTenantAccess(request, reply, params.data.workspaceId, actor, dependencies.workspaceDirectory);
+    if (!hasAccess) return reply;
 
     try {
       const opportunities = await retentionEngine.listRetentionOpportunities(params.data.workspaceId);

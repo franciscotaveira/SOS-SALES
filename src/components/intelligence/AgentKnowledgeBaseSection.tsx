@@ -81,10 +81,10 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
         uploadedBy: 'Você (Gestor)',
         category,
         status: 'indexed',
-        extractedChunksCount: Math.floor(12 + Math.random() * 30),
-        tokenCount: Math.floor(2500 + Math.random() * 5000),
+        extractedChunksCount: Math.max(1, Math.ceil(file.size / 1500)),
+        tokenCount: Math.max(10, Math.floor(file.size / 4)),
         summary: `Documento "${file.name}" processado e vetorizado no Vector Store RAG com sucesso.`,
-        rawContentSnippet: `Conteúdo extraído com sucesso do arquivo ${file.name}. Regras, tabelas e parâmetros de atendimento indexados no banco de inteligência do cliente.`,
+        rawContentSnippet: `Conteúdo extraído do arquivo ${file.name}. Regras, tabelas e parâmetros de atendimento indexados no banco de inteligência.`,
         isPrioritizedFact: false,
         factType: 'faq',
       };
@@ -95,7 +95,7 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
       setDocuments(updated);
       if (onUpdateDocuments) onUpdateDocuments(updated);
       setIsUploading(false);
-    }, 1200);
+    }, 400);
   };
 
   const handleCreateRuleDoc = (e: React.FormEvent) => {
@@ -180,51 +180,51 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
   const getFileIcon = (type: string) => {
     switch (type) {
       case 'pdf':
-        return <FileText className="w-5 h-5 text-rose-500" />;
+        return <FileText className="w-4 h-4 text-[var(--sos-danger)]" />;
       case 'xlsx':
       case 'csv':
-        return <FileSpreadsheet className="w-5 h-5 text-emerald-500" />;
+        return <FileSpreadsheet className="w-4 h-4 text-[var(--sos-success)]" />;
       case 'docx':
-        return <FileText className="w-5 h-5 text-blue-500" />;
+        return <FileText className="w-4 h-4 text-[var(--sos-operational)]" />;
       default:
-        return <FileCode className="w-5 h-5 text-purple-500" />;
+        return <FileCode className="w-4 h-4 text-[var(--sos-ai)]" />;
     }
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-4 animate-in fade-in duration-200">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-xl p-5 border border-slate-800 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-[var(--sos-surface)] border-[var(--sos-border)] rounded-xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-purple-400" />
-            <h2 className="text-lg font-bold font-heading">
+          <div className="flex items-center gap-1.5">
+            <Brain className="w-4.5 h-4.5 text-[var(--sos-ai)]" />
+            <h2 className="text-base font-bold font-heading">
               Documentos & Regras da Empresa (Base de Conhecimento)
             </h2>
-            <span className="text-[10px] bg-purple-950 text-purple-300 font-bold px-2 py-0.5 rounded-full border border-purple-800 flex items-center gap-1">
-              <Database className="w-3 h-3" /> Leitura Inteligente Ativa
+            <span className="text-[8.5px] bg-[var(--sos-ai)]/20 text-[var(--sos-ai)] font-bold px-1.5 py-0.5 rounded-full border border-[var(--sos-ai)]/30 flex items-center gap-1">
+              <Database className="w-2.5 h-2.5" /> Leitura Inteligente Ativa
             </span>
           </div>
-          <p className="text-xs text-slate-300">
+          <p className="text-[9.5px] text-[var(--sos-muted)]">
             Envie arquivos PDF, DOCX, planilhas Excel de preços, manuais e regras comerciais. O atendente inteligente aprende esse conteúdo para responder dúvidas com precisão, sem inventar dados.
           </p>
         </div>
 
         {/* Stats Summary */}
-        <div className="flex items-center gap-3 shrink-0 bg-slate-800/80 px-3.5 py-2 rounded-lg border border-slate-700">
+        <div className="flex items-center gap-2.5 shrink-0 bg-[var(--sos-background)] px-3 py-1.5 rounded-lg border border-[var(--sos-border)]">
           <div className="text-center">
-            <span className="text-[10px] text-slate-400 block font-semibold">Documentos</span>
+            <span className="text-[8.5px] text-[var(--sos-muted)] block font-semibold">Documentos</span>
             <span className="text-sm font-bold text-white">{documents.length}</span>
           </div>
-          <div className="h-6 w-px bg-slate-700" />
+          <div className="h-5 w-px bg-[var(--sos-border)]" />
           <div className="text-center">
-            <span className="text-[10px] text-slate-400 block font-semibold">Tópicos Aprendidos</span>
-            <span className="text-sm font-bold text-purple-400">{totalChunks}</span>
+            <span className="text-[8.5px] text-[var(--sos-muted)] block font-semibold">Tópicos Aprendidos</span>
+            <span className="text-sm font-bold text-[var(--sos-ai)]">{totalChunks}</span>
           </div>
-          <div className="h-6 w-px bg-slate-700" />
+          <div className="h-5 w-px bg-[var(--sos-border)]" />
           <div className="text-center">
-            <span className="text-[10px] text-slate-400 block font-semibold">Palavras Aprendidas</span>
-            <span className="text-sm font-bold text-emerald-400">
+            <span className="text-[8.5px] text-[var(--sos-muted)] block font-semibold">Palavras Aprendidas</span>
+            <span className="text-sm font-bold text-[var(--sos-success)]">
               {totalTokens.toLocaleString('pt-BR')}
             </span>
           </div>
@@ -239,10 +239,10 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
           e.preventDefault();
           handleFileUpload(e.dataTransfer.files);
         }}
-        className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 group ${
+        className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 group ${
           isUploading
-            ? 'bg-purple-50/50 border-purple-400 text-purple-900'
-            : 'bg-white border-slate-300 hover:border-[#00A884] hover:bg-slate-50/50 text-slate-700 shadow-2xs'
+            ? 'bg-[var(--sos-ai-subtle)] border-[var(--sos-ai)] text-[var(--sos-ink)]'
+            : 'bg-[var(--sos-surface)] border-[var(--sos-border)] hover:border-[var(--sos-ai)] hover:bg-[var(--sos-background)]/50 text-[var(--sos-ink)] shadow-2xs'
         }`}
       >
         <input
@@ -254,27 +254,27 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
           className="hidden"
         />
 
-        <div className="w-12 h-12 rounded-2xl bg-purple-100/80 text-purple-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+        <div className="w-9 h-9 rounded-lg bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] flex items-center justify-center group-hover:scale-110 transition-transform">
           {isUploading ? (
-            <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-[var(--sos-ai)] border-t-transparent rounded-full animate-spin" />
           ) : (
-            <UploadCloud className="w-6 h-6" />
+            <UploadCloud className="w-5 h-5" />
           )}
         </div>
 
         <div className="space-y-0.5">
-          <p className="text-sm font-bold text-slate-900 font-heading">
+          <p className="text-[9.5px] font-bold text-[var(--sos-ink)] font-heading">
             {isUploading
               ? 'Processando, extraindo texto e gerando embeddings RAG...'
               : 'Clique ou arraste arquivos para treinar o Agente de IA deste cliente'}
           </p>
-          <p className="text-xs text-slate-500">
-            Suporta <span className="font-semibold text-slate-700">PDF, DOCX, XLSX (Tabelas de Preço), CSV e TXT</span> (até 25 MB cada)
+          <p className="text-[8.5px] text-[var(--sos-muted)]">
+            Suporta <span className="font-semibold text-[var(--sos-ink)]">PDF, DOCX, XLSX (Tabelas de Preço), CSV e TXT</span> (até 25 MB cada)
           </p>
         </div>
 
-        <div className="flex items-center gap-2 pt-2">
-          <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+        <div className="flex items-center gap-1.5 pt-1">
+          <span className="text-[8.5px] text-[var(--sos-muted)] bg-[var(--sos-border)]/30 px-1.5 py-0.5 rounded font-medium">
             🛡️ Indexação Segura & Privada por Cliente
           </span>
           <button
@@ -283,73 +283,73 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
               e.stopPropagation();
               setIsAddRuleOpen(true);
             }}
-            className="text-[11px] text-purple-700 font-bold hover:underline flex items-center gap-1"
+            className="text-[8.5px] text-[var(--sos-ai)] font-bold hover:underline flex items-center gap-0.5"
           >
-            <Plus className="w-3 h-3" /> Criar Regra / Script Rápido em Texto
+            <Plus className="w-2.5 h-2.5" /> Criar Regra / Script Rápido em Texto
           </button>
         </div>
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-2 bg-[var(--sos-surface)] p-2.5 rounded-lg border border-[var(--sos-border)] shadow-2xs">
         <div className="relative flex-1 w-full">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-3.5 h-3.5 text-[var(--sos-muted)] absolute left-2.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar nos documentos e regras indexadas..."
-            className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00A884]"
+            className="w-full pl-8 pr-2.5 py-1 text-xs bg-[var(--sos-background)] border border-[var(--sos-border)] rounded-lg focus:bg-[var(--sos-surface)] focus:outline-none focus:ring-1 focus:ring-[var(--sos-ai)]"
           />
         </div>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+        <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto">
           <button
             onClick={() => setSelectedCategory('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-2 py-1 rounded-lg text-[8.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${
               selectedCategory === 'all'
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-[var(--sos-ink)] text-white'
+                : 'bg-[var(--sos-border)]/30 text-[var(--sos-muted)] hover:bg-[var(--sos-border)]/50'
             }`}
           >
             Todos ({documents.length})
           </button>
           <button
             onClick={() => setSelectedCategory('prioritized')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors flex items-center gap-1 ${
+            className={`px-2 py-1 rounded-lg text-[8.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors flex items-center gap-0.5 ${
               selectedCategory === 'prioritized'
-                ? 'bg-amber-600 text-white'
-                : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                ? 'bg-[var(--sos-warning)] text-white'
+                : 'bg-[var(--sos-warning-subtle)] text-[var(--sos-warning)] border border-[var(--sos-warning)]/30 hover:bg-[var(--sos-warning-subtle)]'
             }`}
           >
-            <Sparkles className="w-3 h-3" /> Fatos Prioritários
+            <Sparkles className="w-2.5 h-2.5" /> Fatos Prioritários
           </button>
           <button
             onClick={() => setSelectedCategory('faq')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-2 py-1 rounded-lg text-[8.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${
               selectedCategory === 'faq'
-                ? 'bg-blue-600 text-white'
-                : 'bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100'
+                ? 'bg-[var(--sos-operational)] text-white'
+                : 'bg-[var(--sos-operational-subtle)] text-[var(--sos-operational)] border border-[var(--sos-operational)]/30 hover:bg-[var(--sos-operational-subtle)]'
             }`}
           >
             FAQs & Dúvidas
           </button>
           <button
             onClick={() => setSelectedCategory('pricing')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-2 py-1 rounded-lg text-[8.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${
               selectedCategory === 'pricing'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                ? 'bg-[var(--sos-success)] text-white'
+                : 'bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border border-[var(--sos-success)]/30 hover:bg-[var(--sos-success-subtle)]'
             }`}
           >
             Preços & Planos
           </button>
           <button
             onClick={() => setSelectedCategory('policy')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-2 py-1 rounded-lg text-[8.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${
               selectedCategory === 'policy'
-                ? 'bg-purple-600 text-white'
-                : 'bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100'
+                ? 'bg-[var(--sos-ai)] text-white'
+                : 'bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border border-[var(--sos-ai)]/30 hover:bg-[var(--sos-ai-subtle)]'
             }`}
           >
             Políticas & Regras
@@ -358,41 +358,41 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
       </div>
 
       {/* Indexed Documents Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-        <div className="divide-y divide-slate-100">
+      <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-lg overflow-hidden shadow-2xs">
+        <div className="divide-y divide-[var(--sos-border)]">
           {filteredDocs.map((doc) => (
             <div
               key={doc.id}
-              className="p-4 hover:bg-slate-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
+              className="p-3 hover:bg-[var(--sos-background)]/50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 group"
             >
-              <div className="flex items-start gap-3.5 min-w-0">
-                <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 shrink-0">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <div className="p-2 rounded-lg bg-[var(--sos-background)] border border-[var(--sos-border)] shrink-0">
                   {getFileIcon(doc.fileType)}
                 </div>
 
-                <div className="space-y-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-xs font-bold text-slate-900 truncate font-mono">
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h3 className="text-[9.5px] font-bold text-[var(--sos-ink)] truncate font-mono">
                       {doc.name}
                     </h3>
                     {doc.isPrioritizedFact && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1">
+                      <span className="text-[8px] font-bold px-1.5 py-0.2 rounded bg-[var(--sos-warning-subtle)] text-[var(--sos-warning)] border border-[var(--sos-warning)]/30 flex items-center gap-1">
                         ⚡ Prioridade Máxima
                       </span>
                     )}
-                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                      <CheckCircle2 className="w-2.5 h-2.5" /> Vetorizado (RAG Ativo)
+                    <span className="text-[8px] font-bold px-1.5 py-0.2 rounded bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border border-[var(--sos-success)]/30 flex items-center gap-1">
+                      <CheckCircle2 className="w-2 h-2" /> Vetorizado (RAG Ativo)
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
+                    <span className="text-[9px] text-[var(--sos-muted)] font-mono">
                       {doc.fileSize}
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-600 line-clamp-1 leading-relaxed">
+                  <p className="text-[9px] text-[var(--sos-muted)] line-clamp-1 leading-relaxed">
                     {doc.summary}
                   </p>
 
-                  <div className="flex items-center gap-3 text-[10px] text-slate-400 pt-0.5">
+                  <div className="flex items-center gap-2 text-[8.5px] text-[var(--sos-muted)] pt-0.5">
                     <span>{doc.extractedChunksCount} chunks semânticos</span>
                     <span>•</span>
                     <span>{doc.tokenCount.toLocaleString()} tokens</span>
@@ -402,13 +402,13 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+              <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
                 <button
                   onClick={() => handleTogglePriority(doc.id)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors ${
+                  className={`px-2 py-1 rounded-lg text-[8px] font-semibold flex items-center gap-0.5 transition-colors ${
                     doc.isPrioritizedFact
-                      ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      ? 'bg-[var(--sos-warning-subtle)] text-[var(--sos-warning)] hover:bg-[var(--sos-warning-subtle)]'
+                      : 'bg-[var(--sos-border)]/30 text-[var(--sos-muted)] hover:bg-[var(--sos-border)]/50'
                   }`}
                   title="Alternar prioridade máxima de resposta"
                 >
@@ -416,26 +416,26 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
                 </button>
                 <button
                   onClick={() => setSelectedDocForPreview(doc)}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1 transition-colors"
+                  className="px-2 py-1 rounded-lg text-[8px] font-semibold bg-[var(--sos-border)]/30 hover:bg-[var(--sos-border)]/50 text-[var(--sos-ink)] flex items-center gap-0.5 transition-colors"
                 >
-                  <Eye className="w-3.5 h-3.5" /> Ver Chunks
+                  <Eye className="w-3 h-3" /> Ver Chunks
                 </button>
                 <button
                   onClick={() => handleDeleteDoc(doc.id)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                  className="p-1 rounded-lg text-[var(--sos-muted)] hover:text-[var(--sos-danger)] hover:bg-[var(--sos-danger-subtle)] transition-colors"
                   title="Excluir arquivo do banco de inteligência"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
           ))}
 
           {filteredDocs.length === 0 && (
-            <div className="p-8 text-center text-slate-400 space-y-1">
-              <BookOpen className="w-8 h-8 mx-auto text-slate-300" />
-              <p className="text-xs font-semibold">Nenhum documento encontrado com os filtros atuais.</p>
-              <p className="text-[11px]">Faça upload de manuais ou planilhas para preencher a base.</p>
+            <div className="p-6 text-center text-[var(--sos-muted)] space-y-1">
+              <BookOpen className="w-7 h-7 mx-auto text-[var(--sos-border)]" />
+              <p className="text-[9.5px] font-semibold">Nenhum documento encontrado com os filtros atuais.</p>
+              <p className="text-[8.5px]">Faça upload de manuais ou planilhas para preencher a base.</p>
             </div>
           )}
         </div>
@@ -444,44 +444,44 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
       {/* Document Chunks Preview Modal */}
       {selectedDocForPreview && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-xl max-w-2xl w-full p-4 shadow-2xl space-y-3 animate-in zoom-in-95 duration-150 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--sos-border)]">
               <div>
-                <h3 className="text-sm font-bold text-slate-900 font-heading">
+                <h3 className="text-xs font-bold text-[var(--sos-ink)] font-heading">
                   Auditoria de Chunks Vetorizados: {selectedDocForPreview.name}
                 </h3>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[8.5px] text-[var(--sos-muted)]">
                   {selectedDocForPreview.extractedChunksCount} chunks indexados • {selectedDocForPreview.tokenCount} tokens
                 </p>
               </div>
               <button
                 onClick={() => setSelectedDocForPreview(null)}
-                className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1"
+                className="text-[var(--sos-muted)] hover:text-[var(--sos-ink)] text-base font-bold p-1"
               >
                 ✕
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
-              <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-purple-950 space-y-1">
-                <span className="font-bold flex items-center gap-1 text-[11px]">
-                  <Sparkles className="w-3.5 h-3.5 text-purple-600" /> Resumo do Embeddings Engine
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 text-[9px]">
+              <div className="p-2.5 bg-[var(--sos-ai-subtle)] rounded-lg border border-[var(--sos-ai)]/30 text-[var(--sos-ink)] space-y-0.5">
+                <span className="font-bold flex items-center gap-1 text-[9.5px]">
+                  <Sparkles className="w-3 h-3 text-[var(--sos-ai)]" /> Resumo do Embeddings Engine
                 </span>
                 <p className="leading-relaxed">{selectedDocForPreview.summary}</p>
               </div>
 
-              <div className="space-y-2">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-heading">
+              <div className="space-y-1.5">
+                <h4 className="text-[8.5px] font-bold uppercase tracking-wider text-[var(--sos-muted)] font-heading">
                   Chunks Semânticos Extraídos (Amostragem RAG)
                 </h4>
 
                 {[1, 2, 3].map((chunkIndex) => (
                   <div
                     key={chunkIndex}
-                    className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 space-y-1 font-mono text-[11px]"
+                    className="p-2.5 rounded-lg bg-[var(--sos-background)] border border-[var(--sos-border)] text-[var(--sos-ink)] space-y-0.5 font-mono text-[9px]"
                   >
-                    <div className="flex items-center justify-between text-[10px] text-slate-400">
-                      <span className="font-bold text-slate-600">Chunk #{chunkIndex}</span>
+                    <div className="flex items-center justify-between text-[8px] text-[var(--sos-muted)]">
+                      <span className="font-bold text-[var(--sos-ink)]">Chunk #{chunkIndex}</span>
                       <span>Score de Similaridade: 0.94</span>
                     </div>
                     <p className="leading-relaxed">
@@ -493,10 +493,10 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
               </div>
             </div>
 
-            <div className="pt-2 border-t border-slate-100 flex justify-end">
+            <div className="pt-1.5 border-t border-[var(--sos-border)] flex justify-end">
               <button
                 onClick={() => setSelectedDocForPreview(null)}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg"
+                className="px-3 py-1.5 bg-[var(--sos-ink)] hover:bg-[var(--sos-ink)]/90 text-white text-[9.5px] font-bold rounded-lg"
               >
                 Fechar Visualizador
               </button>
@@ -510,24 +510,24 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <form
             onSubmit={handleCreateRuleDoc}
-            className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-xl max-w-lg w-full p-4 shadow-2xl space-y-3 animate-in zoom-in-95 duration-150"
           >
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900 font-heading">
+            <div className="flex items-center justify-between pb-1.5 border-b border-[var(--sos-border)]">
+              <h3 className="text-xs font-bold text-[var(--sos-ink)] font-heading">
                 Criar Nova Regra / Script Comercial
               </h3>
               <button
                 type="button"
                 onClick={() => setIsAddRuleOpen(false)}
-                className="text-slate-400 hover:text-slate-700 text-sm font-bold"
+                className="text-[var(--sos-muted)] hover:text-[var(--sos-ink)] text-base font-bold"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-2.5 text-[9px]">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <label className="block text-[9px] font-semibold text-[var(--sos-ink)] mb-0.5">
                   Título da Regra ou Script
                 </label>
                 <input
@@ -536,16 +536,16 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
                   value={newRuleTitle}
                   onChange={(e) => setNewRuleTitle(e.target.value)}
                   placeholder="Ex: Como agir quando o cliente pede sábado à tarde"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#00A884]"
+                  className="w-full px-2.5 py-1.5 bg-[var(--sos-background)] border border-[var(--sos-border)] rounded-lg text-[var(--sos-ink)] focus:bg-[var(--sos-surface)] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Categoria</label>
+                <label className="block text-[9px] font-semibold text-[var(--sos-ink)] mb-0.5">Categoria</label>
                 <select
                   value={newRuleCategory}
                   onChange={(e) => setNewRuleCategory(e.target.value as DocumentCategory)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#00A884]"
+                  className="w-full px-2.5 py-1.5 bg-[var(--sos-background)] border border-[var(--sos-border)] rounded-lg text-[var(--sos-ink)] focus:bg-[var(--sos-surface)] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none"
                 >
                   <option value="scripts_vendas">Scripts de Vendas & Fechamento</option>
                   <option value="tabela_precos">Tabela de Preços & Descontos</option>
@@ -555,11 +555,11 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Tipo de Fato na Base</label>
+                <label className="block text-[9px] font-semibold text-[var(--sos-ink)] mb-0.5">Tipo de Fato na Base</label>
                 <select
                   value={newRuleFactType}
                   onChange={(e) => setNewRuleFactType(e.target.value as any)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#00A884]"
+                  className="w-full px-2.5 py-1.5 bg-[var(--sos-background)] border border-[var(--sos-border)] rounded-lg text-[var(--sos-ink)] focus:bg-[var(--sos-surface)] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none"
                 >
                   <option value="faq">FAQ (Dúvidas Frequentes)</option>
                   <option value="pricing">Tabela de Preços & Planos</option>
@@ -568,45 +568,45 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
                 </select>
               </div>
 
-              <div className="flex items-center justify-between p-3 bg-purple-50/70 border border-purple-200 rounded-xl">
+              <div className="flex items-center justify-between p-2.5 bg-[var(--sos-ai-subtle)] border border-[var(--sos-ai)]/30 rounded-lg">
                 <div>
-                  <span className="text-xs font-bold text-purple-950 block">⚡ Prioridade Máxima (Overrule IA)</span>
-                  <span className="text-[11px] text-purple-800">Se ativado, o agente prioriza este fato rigorosamente sobre qualquer outra dedução em respostas aos leads.</span>
+                  <span className="text-[9px] font-bold text-[var(--sos-ai)] block">⚡ Prioridade Máxima (Overrule IA)</span>
+                  <span className="text-[8.5px] text-[var(--sos-ai)]">Se ativado, o agente prioriza este fato rigorosamente sobre qualquer outra dedução em respostas aos leads.</span>
                 </div>
                 <input
                   type="checkbox"
                   checked={newRuleIsPrioritized}
                   onChange={(e) => setNewRuleIsPrioritized(e.target.checked)}
-                  className="w-4 h-4 text-purple-600 rounded border-purple-300 focus:ring-purple-500 cursor-pointer"
+                  className="w-3.5 h-3.5 text-[var(--sos-ai)] rounded border-[var(--sos-ai)]/30 focus:ring-[var(--sos-ai)] cursor-pointer"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <label className="block text-[9px] font-semibold text-[var(--sos-ink)] mb-0.5">
                   Instrução / Conteúdo da Regra (o que o agente deve saber e falar)
                 </label>
                 <textarea
                   required
-                  rows={4}
+                  rows={3}
                   value={newRuleContent}
                   onChange={(e) => setNewRuleContent(e.target.value)}
                   placeholder="Ex: Sempre confirme o horário das 14h imediatamente informando que temos valet cortesia na porta da Oscar Freire 1128..."
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#00A884]"
+                  className="w-full px-2.5 py-1.5 bg-[var(--sos-background)] border border-[var(--sos-border)] rounded-lg text-[var(--sos-ink)] focus:bg-[var(--sos-surface)] focus:ring-1 focus:ring-[var(--sos-ai)] outline-none resize-none leading-relaxed"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-[var(--sos-border)]">
               <button
                 type="button"
                 onClick={() => setIsAddRuleOpen(false)}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                className="px-2.5 py-1 text-[9px] text-[var(--sos-muted)] hover:bg-[var(--sos-border)]/30 rounded-lg transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-sm"
+                className="px-3 py-1 text-[9px] font-bold text-white bg-[var(--sos-ai)] hover:bg-[var(--sos-ai)]/90 rounded-lg transition shadow-2xs"
               >
                 Indexar no Agente
               </button>

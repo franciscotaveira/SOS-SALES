@@ -1,11 +1,14 @@
-# SOS-SALES
+# SOS-SALES — Claude / Hermes Context
 
-Cockpit comercial para continuidade de vendas no WhatsApp (WAHA + Meta WABA Cloud API).
-Detalhes de arquitetura e stack: ver `CODEBASE.md` e `BLUEPRINT_SOS_SALES.md`.
+> **LEIA PRIMEIRO:** `AGENTS.md` — bússola universal do projeto (estado atual, fluxo de trabalho, comandos, mapa de arquivos).
+> Depois: `CODEBASE.md` para detalhes técnicos, `DECISION_LOG.md` para decisões arquiteturais.
 
-- Frontend (raiz): React 19 + Vite, gerenciado com **Bun** (`bun run dev`, `npm run check:web`)
+Cockpit comercial para continuidade de vendas via WhatsApp (WAHA + Meta WABA Cloud API v20.0).
+
+- Frontend (raiz): React 19 + Vite + TypeScript, gerenciado com **Bun** (`bun run dev`, `npm run check:web`)
 - API (`apps/api`): Fastify 4 + Postgres/Supabase, gerenciada com **npm** (`npm run check:api`)
-- Nunca misturar gerenciadores: raiz usa `bun.lock`, `apps/api` usa `package-lock.json`
+- **Nunca misturar gerenciadores:** raiz usa `bun.lock`, `apps/api` usa `package-lock.json`
+- **Fluxo obrigatório:** `npm run dev` → Docker Lab (localhost:3333) → VPS. Nunca pular etapas.
 
 ## Skill routing
 
@@ -20,7 +23,7 @@ Key routing rules:
 - Bugs/errors → invoke /investigate
 - QA/testing site behavior → invoke /qa or /qa-only
 - Code review/diff check → invoke /review
-- Visual polish → invoke /design-review
+- Visual polish → invoke /design-review (use PROMPT_REFINAMENTO_VISUAL.md as guide)
 - Ship/deploy/PR → invoke /ship or /land-and-deploy
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore

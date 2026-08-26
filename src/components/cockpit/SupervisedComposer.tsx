@@ -11,7 +11,6 @@ import {
   Smile,
   Paperclip,
   Mic,
-  Flame,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -22,6 +21,7 @@ import {
 import { validateCommercialPolicy } from '../../services/commercialGuardrailService';
 import { MacroShortcutMenu } from './MacroShortcutMenu';
 import { EvidenceModal } from './EvidenceModal';
+import { WabaActionsModal } from './WabaActionsModal';
 
 interface SupervisedComposerProps {
   journey: Journey;
@@ -62,6 +62,8 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
   const [isAiSuggestionDismissed, setIsAiSuggestionDismissed] = React.useState(false);
   const [isAiDetailsExpanded, setIsAiDetailsExpanded] = React.useState(false);
   const [evidenceModalOpen, setEvidenceModalOpen] = React.useState(false);
+  const [wabaActionsModalOpen, setWabaActionsModalOpen] = React.useState(false);
+  const [toastNotification, setToastNotification] = React.useState<string | null>(null);
 
   // Reset dismissed state when journey or recommendation changes
   React.useEffect(() => {
@@ -139,32 +141,12 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
     textareaRef.current?.focus();
   };
 
-  // SOS Destravar Venda: Generates the optimal commercial reactivation based on journey stage
-  const handleApplyNextBestAction = () => {
-    const leadName = journey.leadName.split(' ')[0] || 'amigo';
-    let suggestion = '';
-
-    const step = (journey as any).commercialStep || journey.stage;
-    if (step === 'agendamento' || step === 'orcamento' || step === 'proposal') {
-      suggestion = `Oi ${leadName}! Tudo bem? Vi que você estava interessado(a) no nosso atendimento. Consegui segurar um horário exclusivo aqui na agenda para você amanhã às 14h30 ou 16h00. Qual fica melhor para você?`;
-    } else if (step === 'fechamento' || step === 'negotiation') {
-      suggestion = `Oi ${leadName}! Passando para te avisar que já deixei suas condições especiais ativadas aqui. Posso te enviar a chave Pix para confirmarmos seu pedido agora e garantir o bônus?`;
-    } else if (step === 'qualificacao' || step === 'qualified') {
-      suggestion = `Olá ${leadName}, vi sua mensagem pelo anúncio! Para eu te passar o valor exato e personalizado, qual o modelo do seu veículo / serviço desejado?`;
-    } else {
-      suggestion = `Oi ${leadName}! Como posso te ajudar a concluir sua solicitação hoje? Estamos com a equipe pronta para te atender agora!`;
-    }
-
-    onChangeDraft(suggestion);
-    textareaRef.current?.focus();
-  };
-
   const hasActiveAiSuggestion = !!recommendation && !isAiSuggestionDismissed && !isViewer && !isChannelPaused;
 
   return (
     <div
       id="supervised-composer-container"
-      className="p-2.5 sm:p-3 bg-[#f0f2f5] border-t border-[#e2e8f0] shrink-0 relative"
+      className="p-2 sm:p-2.5 bg-[var(--sos-canvas)] border-t border-[var(--sos-border)] shrink-0 relative"
     >
       {/* Macro Shortcuts Popover Menu */}
       <MacroShortcutMenu
@@ -175,21 +157,21 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
         filterQuery={macroFilter}
       />
 
-      {/* AI Copilot Integrated Suggestion Strip (Compact 1-line bar) */}
+      {/* AI Copilot Integrated Suggestion Strip (Compact 1-line bar) - tokens semânticos */}
       {hasActiveAiSuggestion && recommendation && (
         <div
           id="composer-ai-copilot-strip"
-          className="mb-1.5 bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5 shadow-2xs flex items-center justify-between gap-2 text-xs animate-in fade-in"
+          className="mb-1.5 bg-[var(--sos-ai-subtle)] border border-[var(--sos-ai)]/30 rounded-lg px-2.5 py-1.5 shadow-2xs flex items-center justify-between gap-2 text-xs animate-in fade-in"
         >
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-            <span className="text-[10.5px] font-bold text-purple-950 shrink-0 hidden sm:inline">
+            <Sparkles className="w-3.5 h-3.5 text-[var(--sos-ai)] shrink-0" />
+            <span className="text-[10.5px] font-bold text-[var(--sos-ai)] shrink-0 hidden sm:inline">
               Copilot:
             </span>
-            <p className="text-[11px] text-purple-900 italic truncate">
+            <p className="text-[11px] text-[var(--sos-ai)] italic truncate">
               "{recommendation.draftText || recommendation.suggestedAction}"
             </p>
-            <span className="text-[9px] bg-purple-200/80 text-purple-900 font-mono px-1 py-0.2 rounded font-bold shrink-0 hidden md:inline">
+            <span className="text-[9px] bg-[var(--sos-ai)]/20 text-[var(--sos-ai)] font-mono px-1 py-0.2 rounded font-bold shrink-0 hidden md:inline">
               {Math.round(recommendation.confidence * 100)}%
             </span>
           </div>
@@ -197,7 +179,7 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={handleApplyAiSuggestion}
-              className="px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-purple-600 hover:bg-purple-700 text-white transition-colors flex items-center gap-1 shadow-2xs"
+              className="px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-[var(--sos-ai)] hover:bg-[var(--sos-ai)]/90 text-white transition-colors flex items-center gap-1 shadow-2xs"
             >
               <span>Usar</span>
               <ArrowRight className="w-3 h-3" />
@@ -205,7 +187,7 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
 
             <button
               onClick={() => setEvidenceModalOpen(true)}
-              className="text-purple-600 hover:text-purple-900 p-0.5 rounded hover:bg-purple-100/70 transition-colors"
+              className="text-[var(--sos-ai)] hover:text-[var(--sos-ai)]/70 p-0.5 rounded hover:bg-[var(--sos-ai)]/10 transition-colors"
               title="Ver evidências"
             >
               <Eye className="w-3 h-3" />
@@ -213,7 +195,7 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
 
             <button
               onClick={() => setIsAiSuggestionDismissed(true)}
-              className="text-slate-400 hover:text-slate-600 p-0.5 rounded transition-colors"
+              className="text-[var(--sos-muted)] hover:text-[var(--sos-ink)] p-0.5 rounded transition-colors"
               title="Dispensar sugestão"
             >
               <X className="w-3 h-3" />
@@ -222,46 +204,46 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
         </div>
       )}
 
-      {/* Guardrail Violation Alert */}
+      {/* Guardrail Violation Alert - tokens semânticos */}
       {!guardrail.isValid && (
         <div
           id="guardrail-violation-banner"
-          className="mb-2 p-2 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-900 flex items-start gap-2 animate-in fade-in"
+          className="mb-2 p-2 bg-[var(--sos-danger-subtle)] border border-[var(--sos-danger)]/30 rounded-xl text-xs text-[var(--sos-danger)] flex items-start gap-2 animate-in fade-in"
         >
-          <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <ShieldAlert className="w-4 h-4 text-[var(--sos-danger)] shrink-0 mt-0.5" />
           <div className="space-y-0.5">
             <span className="font-bold block">Alerta de Conformidade (Guardrail Comercial):</span>
             {guardrail.violations.map((v, i) => (
-              <p key={i} className="text-[11px] text-rose-800">{v}</p>
+              <p key={i} className="text-[11px] text-[var(--sos-danger)]">{v}</p>
             ))}
           </div>
         </div>
       )}
 
-      {/* Guardrail Soft Warnings */}
+      {/* Guardrail Soft Warnings - tokens semânticos */}
       {guardrail.isValid && guardrail.warnings.length > 0 && (
         <div
           id="guardrail-warning-banner"
-          className="mb-2 p-1.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-center gap-2"
+          className="mb-2 p-1.5 bg-[var(--sos-warning-subtle)] border border-[var(--sos-warning)]/30 rounded-xl text-[11px] text-[var(--sos-warning)] flex items-center gap-2"
         >
-          <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          <AlertCircle className="w-3.5 h-3.5 text-[var(--sos-warning)] shrink-0" />
           <span>{guardrail.warnings[0]}</span>
         </div>
       )}
 
-      {/* Error alert if send failed */}
+      {/* Error alert if send failed - tokens semânticos */}
       {sendError && (
         <div
           id="composer-error-banner"
-          className="mb-2 p-2 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-center justify-between"
+          className="mb-2 p-2 bg-[var(--sos-danger-subtle)] border border-[var(--sos-danger)]/30 rounded-lg text-xs text-[var(--sos-danger)] flex items-center justify-between"
         >
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-[var(--sos-danger)] shrink-0" />
             <span>{sendError}</span>
           </div>
           <button
             onClick={onClearError}
-            className="text-[11px] font-bold text-rose-900 underline ml-2"
+            className="text-[11px] font-bold text-[var(--sos-danger)] underline ml-2"
           >
             Fechar
           </button>
@@ -271,17 +253,17 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
       {/* WhatsApp Signature Input Bar Row */}
       <div className="flex items-end gap-2">
         {/* Left Accessories: Emoji & Attachment Icons */}
-        <div className="flex items-center gap-0.5 sm:gap-1 text-[#54656f] pb-1.5 shrink-0">
+        <div className="flex items-center gap-0.5 sm:gap-1 text-[var(--sos-muted)] pb-1.5 shrink-0">
           <button
             type="button"
-            className="p-1.5 rounded-full hover:bg-white/80 text-[#54656f] hover:text-[#111b21] transition-colors"
+            className="p-1.5 rounded-full hover:bg-white/80 text-[var(--sos-muted)] hover:text-[var(--sos-ink)] transition-colors"
             title="Emojis"
           >
             <Smile className="w-5 h-5" />
           </button>
           <button
             type="button"
-            className="p-1.5 rounded-full hover:bg-white/80 text-[#54656f] hover:text-[#111b21] transition-colors"
+            className="p-1.5 rounded-full hover:bg-white/80 text-[var(--sos-muted)] hover:text-[var(--sos-ink)] transition-colors"
             title="Anexar arquivo / foto"
           >
             <Paperclip className="w-5 h-5" />
@@ -289,7 +271,7 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
         </div>
 
         {/* Center: Clean White Rounded Input Area */}
-        <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-200 focus-within:border-[#00a884] focus-within:ring-1 focus-within:ring-[#00a884] transition-all shadow-2xs">
+        <div className="flex-1 min-w-0 bg-white rounded-xl border border-[var(--sos-border)] focus-within:border-[var(--sos-action)] focus-within:ring-1 focus-within:ring-[var(--sos-action)] transition-all shadow-2xs">
           <textarea
             id="supervised-composer-textarea"
             ref={textareaRef}
@@ -305,50 +287,50 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
                 ? 'Canal pausado pelo supervisor. O rascunho está preservado com segurança.'
                 : 'Digite uma mensagem para o cliente (ou / para atalhos)...'
             }
-            className="w-full px-3.5 py-2 text-[13.5px] text-[#111b21] placeholder:text-[#8696a0] bg-transparent rounded-2xl border-none outline-none resize-none leading-relaxed"
+            className="w-full px-3.5 py-2 text-sm text-[var(--sos-ink)] placeholder:text-[var(--sos-muted)] bg-transparent rounded-xl border-none outline-none resize-none leading-relaxed"
           />
 
-          {/* Quick macro triggers & Helper chips */}
+          {/* Quick macro triggers & Helper chips - tokens semânticos */}
           {!isViewer && !isChannelPaused && (
             <div className="flex items-center gap-1.5 px-3 pb-1.5 overflow-x-auto">
-              {/* SOS Destravar Venda Button */}
-              <button
-                onClick={handleApplyNextBestAction}
-                className="text-[10.5px] bg-[#00a884] hover:bg-[#008069] text-white font-bold px-2.5 py-0.5 rounded-md shrink-0 transition-colors flex items-center gap-1 shadow-2xs"
-                title="Sugerir o próximo passo comercial para destravar esta venda"
-              >
-                <Flame className="w-3 h-3 text-amber-300" />
-                <span>SOS Destravar Venda</span>
-              </button>
-
               <button
                 onClick={() => {
                   setIsMacroMenuOpen(!isMacroMenuOpen);
                   setMacroFilter('');
                 }}
-                className="text-[10.5px] bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold px-2 py-0.5 rounded-md border border-emerald-200 shrink-0 transition-colors flex items-center gap-1"
+                className="text-[10.5px] bg-[var(--sos-action-subtle)] hover:bg-[var(--sos-action)]/20 text-[var(--sos-action)] font-bold px-2 py-0.5 rounded-md border border-[var(--sos-action)]/30 shrink-0 transition-colors flex items-center gap-1"
               >
-                <Zap className="w-3 h-3 text-[#00a884]" />
+                <Zap className="w-3 h-3 text-[var(--sos-action)]" />
                 <span>/ Atalhos</span>
+              </button>
+
+              {/* WABA Native Features (Pix, Location, Catalog, Flow) */}
+              <button
+                onClick={() => setWabaActionsModalOpen(true)}
+                className="text-[10.5px] bg-[var(--sos-ai-subtle)] hover:bg-[var(--sos-ai)]/20 text-[var(--sos-ai)] font-bold px-2 py-0.5 rounded-md border border-[var(--sos-ai)]/30 shrink-0 transition-colors flex items-center gap-1 cursor-pointer"
+                title="Disparar Pix Dinâmico, Localização GPS, Catálogo ou Flow"
+              >
+                <Sparkles className="w-3 h-3 text-[var(--sos-ai)]" />
+                <span>⚡ WABA Nativo</span>
               </button>
 
               <button
                 onClick={() => handleInsertMacro('Temos vaga disponível hoje por volta das 14h30 ou 16h00!')}
-                className="text-[10.5px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 shrink-0 transition-colors"
+                className="text-[10.5px] bg-[var(--sos-canvas)] hover:bg-[var(--sos-border)]/50 text-[var(--sos-muted)] px-2 py-0.5 rounded-md border border-[var(--sos-border)] shrink-0 transition-colors"
               >
                 Vaga hoje
               </button>
 
               <button
                 onClick={() => handleInsertMacro('Segue nossa chave Pix oficial para confirmação do seu horário:')}
-                className="text-[10.5px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 shrink-0 transition-colors"
+                className="text-[10.5px] bg-[var(--sos-canvas)] hover:bg-[var(--sos-border)]/50 text-[var(--sos-muted)] px-2 py-0.5 rounded-md border border-[var(--sos-border)] shrink-0 transition-colors"
               >
                 Chave Pix
               </button>
 
               <button
                 onClick={() => handleInsertMacro('Já deixei seu horário pré-reservado aqui por 15 minutos para garantir!')}
-                className="text-[10.5px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 shrink-0 transition-colors"
+                className="text-[10.5px] bg-[var(--sos-canvas)] hover:bg-[var(--sos-border)]/50 text-[var(--sos-muted)] px-2 py-0.5 rounded-md border border-[var(--sos-border)] shrink-0 transition-colors"
               >
                 Hold 15min
               </button>
@@ -356,7 +338,7 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
           )}
         </div>
 
-        {/* Right: WhatsApp Circular Green Send Button */}
+        {/* Right: WhatsApp Circular Green Send Button - token semântico */}
         <div className="pb-1.5 shrink-0">
           <button
             id="composer-send-btn"
@@ -364,15 +346,15 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
             disabled={!canSend}
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-xs ${
               canSend
-                ? 'bg-[#00a884] hover:bg-[#008069] text-white cursor-pointer active:scale-95'
-                : 'bg-slate-300 text-white cursor-not-allowed opacity-80'
+                ? 'bg-[var(--sos-action)] hover:bg-[var(--sos-action-hover)] text-white cursor-pointer active:scale-95'
+                : 'bg-[var(--sos-border-strong)] text-white cursor-not-allowed opacity-80'
             }`}
             title="Enviar mensagem (Cmd + Enter)"
           >
             {isSending ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : currentDraft.trim().length === 0 ? (
-              <Mic className="w-5 h-5 text-slate-500" />
+              <Mic className="w-5 h-5 text-[var(--sos-muted)]" />
             ) : (
               <Send className="w-4 h-4 ml-0.5" />
             )}
@@ -380,22 +362,22 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
         </div>
       </div>
 
-      {/* Footer Status / Policy confirmations */}
-      <div className="flex items-center justify-between text-[10.5px] mt-1.5 px-2 text-[#667781]">
+      {/* Footer Status / Policy confirmations - tokens semânticos */}
+      <div className="flex items-center justify-between text-[10.5px] mt-1.5 px-2 text-[var(--sos-muted)]">
         <div className="flex items-center gap-2">
           {isChannelPaused ? (
-            <span className="flex items-center gap-1 text-rose-600 font-bold">
+            <span className="flex items-center gap-1 text-[var(--sos-danger)] font-bold">
               <ShieldAlert className="w-3 h-3" />
               Canal pausado · Envio bloqueado
             </span>
           ) : !guardrail.isValid ? (
-            <span className="flex items-center gap-1 text-rose-600 font-bold">
-              <ShieldX className="w-3 h-3 text-rose-600" />
+            <span className="flex items-center gap-1 text-[var(--sos-danger)] font-bold">
+              <ShieldX className="w-3 h-3 text-[var(--sos-danger)]" />
               Desconto excede política comercial
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-[#00a884] font-medium">
-              <ShieldCheck className="w-3 h-3 text-[#00a884]" />
+            <span className="flex items-center gap-1 text-[var(--sos-action)] font-medium">
+              <ShieldCheck className="w-3 h-3 text-[var(--sos-action)]" />
               WhatsApp Cloud API Oficial · Políticas OK
             </span>
           )}
@@ -405,6 +387,27 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
           <span className="hidden sm:inline">Pressione Enter para enviar</span>
         </div>
       </div>
+
+      {/* WABA Native Actions Modal */}
+      <WabaActionsModal
+        isOpen={wabaActionsModalOpen}
+        onClose={() => setWabaActionsModalOpen(false)}
+        journey={journey}
+        workspaceId={journey.workspaceId}
+        recipientPhone={journey.leadPhone || ''}
+        onSuccessNotification={(msg) => {
+          setToastNotification(msg);
+          setTimeout(() => setToastNotification(null), 3000);
+        }}
+      />
+
+      {/* Toast Notification */}
+      {toastNotification && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xl border border-slate-700 flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{toastNotification}</span>
+        </div>
+      )}
 
       {/* Evidence Modal for AI Recommendation */}
       {recommendation && (
@@ -426,4 +429,3 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
     </div>
   );
 };
-

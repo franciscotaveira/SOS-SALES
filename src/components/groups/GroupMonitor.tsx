@@ -35,9 +35,10 @@ export const GroupMonitor: React.FC<GroupMonitorProps> = ({
   const [quickReplyTextMap, setQuickReplyTextMap] = React.useState<Record<string, string>>({});
   const [activeReplyGroupId, setActiveReplyGroupId] = React.useState<string | null>(null);
 
-  // Derive metrics for the groups
+  // Derive real metrics for the groups
   const totalMessagesToday = React.useMemo(() => {
-    return (groups || []).reduce((acc, g) => acc + ((g?.unreadCount || 0) * 3 + (g?.pinned ? 25 : 12)), 140);
+    if (!groups || groups.length === 0) return 0;
+    return groups.reduce((acc, g) => acc + (g?.unreadCount || 0), 0);
   }, [groups]);
 
   const criticalGroups = React.useMemo(() => {
@@ -59,6 +60,14 @@ export const GroupMonitor: React.FC<GroupMonitorProps> = ({
           (g.tags || []).includes('urgente'))
     );
   }, [groups]);
+
+  const activeCount = React.useMemo(() => {
+    return (groups || []).filter((g) => g && g.healthStatus === 'active').length;
+  }, [groups]);
+
+  const resolutionRateFormatted = groups.length > 0
+    ? `${Math.round((activeCount / groups.length) * 100)}%`
+    : '—';
 
   // Filtered groups according to urgency selection
   const displayedGroups = React.useMemo(() => {
@@ -101,7 +110,7 @@ export const GroupMonitor: React.FC<GroupMonitorProps> = ({
               </h2>
               <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-ping" />
-                12 Grupos Conectados
+                {groups.length} {groups.length === 1 ? 'Grupo Conectado' : 'Grupos Conectados'}
               </span>
             </div>
             <p className="text-xs text-[#54656f]">
@@ -113,18 +122,18 @@ export const GroupMonitor: React.FC<GroupMonitorProps> = ({
         {/* Real-time KPI Badges */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <div className="px-3 py-1 bg-[#f0f2f5] rounded-xl border border-[#e2e8f0] flex items-center gap-2">
-            <span className="text-[10px] text-[#667781]">Tráfego Hoje:</span>
+            <span className="text-[10px] text-[#667781]">Mensagens Pendentes:</span>
             <span className="font-bold text-[#111b21] font-mono">{totalMessagesToday} msgs</span>
           </div>
 
           <div className="px-3 py-1 bg-[#e7f8e8] rounded-xl border border-[#a7f3d0] flex items-center gap-2">
-            <span className="text-[10px] text-emerald-800">SLA Médio de Resposta:</span>
-            <span className="font-bold text-emerald-900 font-mono">11 min</span>
+            <span className="text-[10px] text-emerald-800">Grupos em Dia:</span>
+            <span className="font-bold text-emerald-900 font-mono">{activeCount} / {groups.length}</span>
           </div>
 
           <div className="px-3 py-1 bg-blue-50 rounded-xl border border-blue-200 flex items-center gap-2">
-            <span className="text-[10px] text-blue-800">Resolução do Dia:</span>
-            <span className="font-bold text-blue-900 font-mono">94.8%</span>
+            <span className="text-[10px] text-blue-800">Taxa de Conformidade:</span>
+            <span className="font-bold text-blue-900 font-mono">{resolutionRateFormatted}</span>
           </div>
         </div>
       </div>
@@ -141,7 +150,7 @@ export const GroupMonitor: React.FC<GroupMonitorProps> = ({
             }`}
           >
             <Users className="w-3 h-3" />
-            <span>Todos os 12 Grupos ({groups.length})</span>
+            <span>Todos os Grupos ({groups.length})</span>
           </button>
 
           <button

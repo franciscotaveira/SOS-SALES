@@ -12,8 +12,13 @@ import {
   Loader2,
   Wifi,
   WifiOff,
+  ShieldCheck,
+  Zap,
+  Radio,
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
+import { EmbeddedSignupModal } from './EmbeddedSignupModal';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface LiveSettingsViewProps {
   workspace: Workspace;
@@ -30,6 +35,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   const [firstResponseMins, setFirstResponseMins] = useState(15);
   const [resolutionHours, setResolutionHours] = useState(24);
   const [savedSlaToast, setSavedSlaToast] = useState(false);
+  const [isEmbeddedModalOpen, setIsEmbeddedModalOpen] = useState(false);
 
   // Live QR Code Modal state
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -50,7 +56,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   };
 
   useEffect(() => {
-    fetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`)
+    authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`)
       .then((res) => res.json())
       .then((data) => {
         if (data.status) {
@@ -64,7 +70,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
     setIsQrLoading(true);
     setQrError(null);
     try {
-      const res = await fetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/qr`);
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/qr`);
       if (!res.ok) {
         throw new Error('Não foi possível obter o QR Code do canal.');
       }
@@ -154,14 +160,44 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
       <div className="mt-5 flex-1">
         {currentTab === 'canais' && (
           <div className="max-w-4xl space-y-4">
+            {/* Meta WABA Official Cloud API Card */}
+            <div className="p-5 bg-white border-2 border-emerald-200 rounded-2xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative overflow-hidden">
+              <div className="flex items-start gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-[#00a884] to-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-900">WhatsApp Oficial Meta · Cloud API (WABA)</h3>
+                    <span className="px-2 py-0.5 rounded-md text-xs font-bold border bg-emerald-50 text-emerald-800 border-emerald-200 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Oficial Meta v23.0
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Onboarding via <strong>Embedded Signup v4</strong> com suporte a Marketing Messages & Modo Híbrido.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsEmbeddedModalOpen(true)}
+                className="px-4 py-2.5 bg-[#00a884] hover:bg-[#008f6f] text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
+              >
+                <Zap className="w-4 h-4 text-white" />
+                Conectar via Embedded Signup v4
+              </button>
+            </div>
+
+            {/* WAHA Multi-Device QR Code Card */}
             <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3.5">
-                <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0 shadow-2xs">
+                <div className="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center shrink-0 shadow-2xs">
                   <Smartphone className="w-6 h-6" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-slate-900">Canal Principal · WhatsApp Web (WAHA)</h3>
+                    <h3 className="text-sm font-bold text-slate-900">Canal Secundário · WhatsApp Web (WAHA)</h3>
                     <span className={`px-2 py-0.5 rounded-md text-[10.5px] font-bold border flex items-center gap-1 ${
                       qrStatus === 'WORKING'
                         ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
@@ -172,14 +208,14 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    Instância dedicada para o workspace <strong className="text-slate-800">{workspace.name}</strong>.
+                    Instância multi-device para o workspace <strong className="text-slate-800">{workspace.name}</strong>.
                   </p>
                 </div>
               </div>
 
               <button
                 onClick={() => setIsQrModalOpen(true)}
-                className="px-4 py-2 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
               >
                 <QrCode className="w-4 h-4" />
                 {qrStatus === 'WORKING' ? 'Reconectar / QR Code' : 'Conectar via QR Code'}
@@ -340,6 +376,16 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Meta WABA Embedded Signup v4 Modal */}
+      <EmbeddedSignupModal
+        isOpen={isEmbeddedModalOpen}
+        onClose={() => setIsEmbeddedModalOpen(false)}
+        workspace={workspace}
+        onSuccess={() => {
+          setIsEmbeddedModalOpen(false);
+        }}
+      />
     </div>
   );
 };

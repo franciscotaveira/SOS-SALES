@@ -1,8 +1,11 @@
-import dotenv from './apps/api/node_modules/dotenv/lib/main.js';
-import pg from './apps/api/node_modules/pg/lib/index.js';
-dotenv.config();
+import dotenv from '../apps/api/node_modules/dotenv/lib/main.js';
+import pg from '../apps/api/node_modules/pg/lib/index.js';
+dotenv.config({ path: 'apps/api/.env' });
 if (!process.env.DATABASE_URL) {
   dotenv.config({ path: '.env.production' });
+}
+if (!process.env.DATABASE_URL) {
+  dotenv.config({ path: '../.env.production' });
 }
 const { Pool } = pg;
 

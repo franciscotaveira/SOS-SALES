@@ -1,0 +1,22 @@
+services:
+  web-vps-baseline:
+    build:
+      context: .
+      dockerfile: Dockerfile.vps-baseline.web
+      args:
+        PROD_SUPABASE_URL: https://yiiuebhyqixzluguxsqi.supabase.co
+        LAB_SUPABASE_URL: http://localhost:55431
+        PROD_API_ORIGIN: https://crm.iaparavendas.tech
+        PROD_SUPABASE_ANON_KEY: sb_publishable_4Mq9Nya3JTrs7OuqkjSa9g_Bs3g1Dgt
+        LAB_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+    container_name: sos-sales-vps-baseline-web
+    restart: unless-stopped
+    ports:
+      - "3334:80"
+    networks:
+      - sos-lab-network
+
+networks:
+  sos-lab-network:
+    external: true
+    name: sos-sales_sos-lab-network

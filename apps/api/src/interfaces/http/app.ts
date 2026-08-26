@@ -21,12 +21,44 @@ import { KnownFactOperationsGateway } from '../../application/ports/known-fact-o
 import { AppointmentGateway } from '../../application/ports/appointment-gateway.js';
 import { NotesGateway } from '../../application/ports/notes-gateway.js';
 import { WorkspaceProvisioningGateway } from '../../application/ports/workspace-provisioning-gateway.js';
+import { WabaChannelInfoGateway } from '../../application/ports/waba-channel-info-gateway.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { publicSupplierRoutes } from './routes/public-supplier-routes.js';
 import { wahaWebhookRoutes } from './routes/webhooks/waha.js';
 import { wabaWebhookPlugin } from './routes/webhooks/waba-webhook.js';
 import { operatorAuthRoutes } from './routes/operator-auth.js';
 import { abacatePayRoutes } from './routes/abacatepay-routes.js';
 import { aiCopilotRoutes } from './routes/ai-copilot-routes.js';
 import { whatsappChannelRoutes } from './routes/whatsapp-channel-routes.js';
+import { agentRoutes } from './routes/agent-routes.js';
+import { metaPartnerRoutes } from './routes/meta-partner-routes.js';
+
+function loadReleaseManifest() {
+  let manifest: Record<string, unknown> = {};
+  try {
+    const manifestPath = path.resolve(process.cwd(), 'dist', 'release-manifest.json');
+    if (fs.existsSync(manifestPath)) {
+      manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    }
+  } catch {}
+
+  const activeEnv = process.env.APP_ENV || (process.env.NODE_ENV === 'production' && !process.env.LAB_DATABASE_URL ? 'production' : process.env.NODE_ENV || 'development');
+  const releaseStr = activeEnv === 'production' ? ((manifest.release as string) || 'v2.0.0-prod') : `v2.0.0-${activeEnv}`;
+
+  return {
+    product: 'SOS Sales',
+    edition: 'Enterprise Multi-Tenant WhatsApp CRM',
+    version: '2.0.0',
+    kernel: 'TX Commercial Core v2.0',
+    commitSha: (manifest.commitSha as string) || process.env.GIT_COMMIT_SHA || (activeEnv === 'production' ? 'UNKNOWN_UNCOMMITTED' : 'dev-local'),
+    cleanTree: manifest.cleanTree ?? (activeEnv !== 'production'),
+    buildTimestamp: (manifest.buildTimestamp as string) || new Date().toISOString(),
+    ...manifest,
+    release: releaseStr,
+    environment: activeEnv,
+  };
+}
 
 export interface RateLimitOptions {
   max?: number;
@@ -83,6 +115,8 @@ export interface AppDependencies {
   notesGateway?: NotesGateway;
   /** Authenticated first-login workspace auto-provisioning gateway. */
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
+  /** Production-owned read gateway for connected Meta WABA channel metadata. */
+  wabaChannelInfoGateway?: WabaChannelInfoGateway;
   logger?: boolean | Record<string, unknown>;
   rateLimit?: RateLimitOptions | false;
   /**
@@ -222,15 +256,41 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     workspaceProvisioningGateway: dependencies.workspaceProvisioningGateway,
   });
 
-  app.register(abacatePayRoutes);
-  app.register(aiCopilotRoutes);
-  app.register(whatsappChannelRoutes);
+  // ─── 1. Public Supplier Webhooks & Crypto Handshakes (Protected by Provider Secrets & HMAC) ───
+  app.register(publicSupplierRoutes);
+  app.register(abacatePayRoutes, {
+    authenticator: dependencies.authenticator,
+    workspaceDirectory: dependencies.workspaceDirectory,
+  });
   if (wabaWebhook) {
     app.register(wabaWebhookPlugin, {
       verifyToken: wabaWebhook.verifyToken,
       appSecret: wabaWebhook.appSecret,
     });
   }
+
+  // ─── 2. Authenticated Operator Routes (Protected by Bearer JWT & Workspace Isolation) ───────────
+  app.register(whatsappChannelRoutes, {
+    authenticator: dependencies.authenticator,
+    workspaceDirectory: dependencies.workspaceDirectory,
+    wabaChannelInfoGateway: dependencies.wabaChannelInfoGateway,
+  });
+
+  app.register(aiCopilotRoutes, {
+    authenticator: dependencies.authenticator,
+  });
+
+  app.register(agentRoutes, {
+    authenticator: dependencies.authenticator,
+    workspaceDirectory: dependencies.workspaceDirectory,
+  });
+
+  app.register(metaPartnerRoutes, {
+    authenticator: dependencies.authenticator,
+    workspaceDirectory: dependencies.workspaceDirectory,
+  });
+
+  const releaseManifest = loadReleaseManifest();
 
   /**
    * GET /health — Liveness probe.
@@ -242,8 +302,22 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     config: { rateLimit: false },
   }, async () => ({
     status: 'ok',
-    system: 'TX Commercial Core',
-    version: '1.0.0',
+    system: 'SOS Sales Commercial Core',
+    kernel: 'TX Commercial Core',
+    version: releaseManifest.version,
+    release: releaseManifest.release,
+    environment: releaseManifest.environment,
+    commit: releaseManifest.commitSha,
+    timestamp: new Date().toISOString(),
+  }));
+
+  /**
+   * GET /version — Product release metadata & build provenance
+   */
+  app.get('/version', {
+    config: { rateLimit: false },
+  }, async () => ({
+    ...releaseManifest,
     timestamp: new Date().toISOString(),
   }));
 

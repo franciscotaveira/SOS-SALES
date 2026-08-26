@@ -24,11 +24,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
-import {
-  getWorkspaceAiMode,
-  setWorkspaceAiMode,
-  GlobalAiAutonomyMode,
-} from '../../services/aiAutonomyManager';
+import { GlobalAiAutonomyMode } from '../../services/aiAutonomyManager';
 
 interface QaSimulatorViewProps {
   currentWorkspace?: Workspace;
@@ -161,24 +157,10 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
     isHavenActive ? 'haven' : 'all'
   );
 
-  const wsId = currentWorkspace?.id || 'ws-haven-beauty';
-  const [autonomyMode, setAutonomyMode] = useState<GlobalAiAutonomyMode>(() =>
-    getWorkspaceAiMode(wsId)
-  );
-
-  React.useEffect(() => {
-    setAutonomyMode(getWorkspaceAiMode(wsId));
-    const handleModeChanged = (e: any) => {
-      if (e.detail?.workspaceId === wsId && e.detail?.mode) {
-        setAutonomyMode(e.detail.mode);
-      }
-    };
-    window.addEventListener('sos_ai_mode_changed', handleModeChanged);
-    return () => window.removeEventListener('sos_ai_mode_changed', handleModeChanged);
-  }, [wsId]);
+  const [autonomyMode, setAutonomyMode] = useState<GlobalAiAutonomyMode>('copilot_supervised');
 
   const handleToggleAutonomyMode = (mode: GlobalAiAutonomyMode) => {
-    setWorkspaceAiMode(wsId, mode);
+    // Simulator state is deliberately isolated and never changes live runtime.
     setAutonomyMode(mode);
   };
 

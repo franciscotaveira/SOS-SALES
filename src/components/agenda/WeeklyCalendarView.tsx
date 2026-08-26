@@ -18,15 +18,30 @@ export const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
   appointments,
   onGoToCockpit,
 }) => {
-  const daysOfWeek = [
-    { name: 'Segunda', date: '2026-08-10', dayNum: '10' },
-    { name: 'Terça', date: '2026-08-11', dayNum: '11' },
-    { name: 'Quarta', date: '2026-08-12', dayNum: '12' },
-    { name: 'Quinta', date: '2026-08-13', dayNum: '13' },
-    { name: 'Sexta', date: '2026-08-14', dayNum: '14' },
-    { name: 'Sábado (Hoje)', date: '2026-08-15', dayNum: '15', isToday: true },
-    { name: 'Domingo', date: '2026-08-16', dayNum: '16' },
-  ];
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const currentDayOfWeek = today.getDay(); // 0 = Dom, 1 = Seg...
+  const mondayOffset = (currentDayOfWeek + 6) % 7;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - mondayOffset);
+
+  const daysOfWeek = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const dateIso = d.toISOString().slice(0, 10);
+    const dayNames = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+    const isToday = dateIso === todayStr;
+    return {
+      name: isToday ? `${dayNames[i]} (Hoje)` : dayNames[i],
+      date: dateIso,
+      dayNum: String(d.getDate()).padStart(2, '0'),
+      isToday,
+    };
+  });
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const weekRangeLabel = `Semana de ${monday.getDate()} a ${sunday.getDate()} de ${new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(today)}`;
 
   const getAppointmentsForDay = (dateStr: string) => {
     return appointments.filter((a) => a.scheduledAt.startsWith(dateStr));
@@ -43,7 +58,7 @@ export const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
         <div>
           <h2 className="text-base font-bold text-slate-900 font-heading">
-            Semana de 10 a 16 de Agosto de 2026
+            {weekRangeLabel}
           </h2>
           <p className="text-xs text-slate-500">
             Grade semanal com horários disponíveis e ocupação de cadeiras/salas.

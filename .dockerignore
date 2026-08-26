@@ -1,0 +1,13 @@
+node_modules
+apps/api/node_modules
+.git
+.agents
+.gemini
+.gemini_tasks
+docs
+coverage
+*.log
+dist
+apps/api/dist
+.gstack
+screenshots

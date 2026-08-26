@@ -33,6 +33,8 @@ interface MessageMediaRendererProps {
   textContent?: string | null;
   isOutbound?: boolean;
   senderName?: string;
+  providerMessageId?: string | null;
+  session?: string;
 }
 
 export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
@@ -40,7 +42,15 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
   textContent,
   isOutbound = false,
   senderName,
+  providerMessageId,
+  session = 'default',
 }) => {
+  // Build a fallback proxy URL from providerMessageId when media_payload has no url
+  const buildProxyUrl = (msgId: string, ext?: string): string => {
+    const ext_ = ext || (msgId.includes('.') ? '' : '.bin');
+    const path = `/api/files/${session}/${msgId}${ext_}`;
+    return `/api/v1/channels/waha/media-proxy?path=${encodeURIComponent(path)}`;
+  };
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
   const [playbackRate, setPlaybackRate] = React.useState<number>(1);
@@ -48,29 +58,57 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
-  // Inferred media type if mediaPayload is absent but text contains indicators
+  // Inferred media type if mediaPayload is absent but text contains indicators.
+  // No stock photos/videos — only shape detection. URL will be null when no real URL exists.
   const inferred = React.useMemo(() => {
-    if (mediaPayload) return mediaPayload;
+    if (mediaPayload) {
+      // If payload exists but url is empty, try to build from providerMessageId
+      if (!mediaPayload.url && providerMessageId) {
+        const ext = mediaPayload.mimetype?.split('/')[1]?.split(';')[0] || '';
+        const extMap: Record<string, string> = { 'ogg': '.oga', 'mpeg': '.mp3', 'jpeg': '.jpg', 'png': '.png', 'pdf': '.pdf', 'mp4': '.mp4' };
+        const resolvedExt = extMap[ext] || (ext ? `.${ext}` : '');
+        return { ...mediaPayload, url: buildProxyUrl(providerMessageId, resolvedExt) };
+      }
+      return mediaPayload;
+    }
 
     const text = (textContent || '').trim();
     const lower = text.toLowerCase();
 
+    // Outbound draft with embedded base64: "caption:::data:image/jpeg;base64,..."
+    if (text.includes(':::data:')) {
+      const sepIdx = text.indexOf(':::');
+      const dataUrl = text.substring(sepIdx + 3);
+      const captionRaw = text.substring(0, sepIdx);
+      const mimeMatch = dataUrl.match(/^data:([^;]+);base64,/);
+      const mimetype = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      const isImg = mimetype.startsWith('image/');
+      const isVid = mimetype.startsWith('video/');
+      const isAud = mimetype.startsWith('audio/');
+      return {
+        mediaType: (isImg ? 'image' : isVid ? 'video' : isAud ? 'audio' : 'document') as MessageMediaPayload['mediaType'],
+        url: dataUrl,
+        mimetype,
+        caption: captionRaw.replace(/^\[(Foto|Imagem|Vídeo|Áudio|Documento)\]\s*/i, '') || undefined,
+        fileName: isImg ? 'imagem_whatsapp.jpg' : isVid ? 'video_whatsapp.mp4' : isAud ? 'audio_whatsapp.ogg' : 'documento_whatsapp',
+      };
+    }
+
     if (
       lower.includes('[áudio]') ||
       lower.includes('[audio]') ||
+      lower.includes('🎤') ||
       lower.endsWith('.mp3') ||
       lower.endsWith('.ogg') ||
-      lower.endsWith('.wav') ||
-      lower.includes('audio da suzana') ||
-      lower.includes('áudio da suzana') ||
-      lower.includes('áudio')
+      lower.endsWith('.oga') ||
+      lower.endsWith('.wav')
     ) {
+      const ext = lower.endsWith('.mp3') ? '.mp3' : lower.endsWith('.oga') ? '.oga' : '.ogg';
       return {
         mediaType: 'audio' as const,
-        url: 'https://assets.mixkit.co/active_storage/sfx/2874/2874-preview.mp3',
-        duration: 38,
-        fileName: 'Mensagem de voz WhatsApp.ogg',
-        authorOrSpeaker: lower.includes('suzana') ? 'Suzana' : senderName || 'Cliente',
+        url: providerMessageId ? buildProxyUrl(providerMessageId, ext) : undefined,
+        fileName: text || 'Mensagem de voz WhatsApp.ogg',
+        authorOrSpeaker: senderName || 'Cliente',
       };
     }
 
@@ -79,56 +117,61 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
       lower.includes('[imagem]') ||
       lower.includes('[mídia]') ||
       lower.includes('[midia]') ||
+      lower.includes('📷') ||
       lower.endsWith('.jpg') ||
       lower.endsWith('.png') ||
       lower.endsWith('.jpeg') ||
       lower.endsWith('.webp')
     ) {
+      const ext = lower.endsWith('.png') ? '.png' : lower.endsWith('.webp') ? '.webp' : '.jpg';
       return {
         mediaType: 'image' as const,
-        url: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&auto=format&fit=crop&q=80',
-        fileName: 'foto_referencia_whatsapp.jpg',
-        caption: text.replace(/^\[(FOTO|IMAGEM|MÍDIA|MIDIA)\]\s*/i, '') || undefined,
+        url: providerMessageId ? buildProxyUrl(providerMessageId, ext) : undefined,
+        fileName: text || 'imagem_whatsapp.jpg',
+        caption: text.replace(/^📷\s*|^\[(FOTO|IMAGEM|MÍDIA|MIDIA)\]\s*/i, '') || undefined,
       };
     }
 
     if (
       lower.includes('[vídeo]') ||
       lower.includes('[video]') ||
+      lower.includes('🎥') ||
       lower.endsWith('.mp4') ||
       lower.endsWith('.webm')
     ) {
       return {
         mediaType: 'video' as const,
-        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        fileName: 'video_atendimento_whatsapp.mp4',
+        url: providerMessageId ? buildProxyUrl(providerMessageId, '.mp4') : undefined,
+        fileName: text || 'video_whatsapp.mp4',
       };
     }
 
     if (
       lower.includes('[pdf]') ||
       lower.includes('[documento]') ||
+      lower.includes('📄') ||
       lower.endsWith('.pdf') ||
       lower.endsWith('.docx') ||
       lower.endsWith('.xlsx')
     ) {
+      const ext = lower.endsWith('.pdf') ? '.pdf' : lower.endsWith('.docx') ? '.docx' : lower.endsWith('.xlsx') ? '.xlsx' : '';
       return {
         mediaType: 'document' as const,
-        url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-        fileName: 'Catalogo_Tabela_Oficial_2026.pdf',
-        fileSize: '1.4 MB',
+        url: providerMessageId ? buildProxyUrl(providerMessageId, ext) : undefined,
+        fileName: text.replace(/^📄\s*|^\[(DOCUMENTO|PDF)\]\s*/i, '') || 'documento_whatsapp',
       };
     }
 
     return null;
-  }, [mediaPayload, textContent, senderName]);
+  }, [mediaPayload, textContent, senderName, providerMessageId, session]);
 
   const targetMedia = mediaPayload || inferred;
 
   // Audio Playback Handler
   const togglePlayAudio = (audioUrl?: string) => {
+    if (!audioUrl) return;
     if (!audioRef.current) {
-      const audio = new Audio(audioUrl || 'https://assets.mixkit.co/active_storage/sfx/2874/2874-preview.mp3');
+      const audio = new Audio(audioUrl);
       audioRef.current = audio;
 
       audio.ontimeupdate = () => {
@@ -255,25 +298,41 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
   // 2. FOTOS & IMAGENS COM LIGHTBOX
   // ==========================================================================
   if (targetMedia.mediaType === 'image' || targetMedia.mediaType === 'sticker') {
-    const imageUrl = targetMedia.url || 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&auto=format&fit=crop&q=80';
+    const imageUrl = targetMedia.url
+      ? targetMedia.url.startsWith('/api/v1/')
+        ? `${window.location.origin}${targetMedia.url}`
+        : targetMedia.url
+      : null;
 
     return (
       <div className="py-1 max-w-[280px] space-y-1.5">
         <div
-          onClick={() => setLightboxOpen(true)}
-          className="group relative rounded-xl overflow-hidden border border-black/10 shadow-2xs cursor-pointer bg-slate-900 aspect-4/3 flex items-center justify-center"
+          onClick={() => imageUrl && setLightboxOpen(true)}
+          className={`group relative rounded-xl overflow-hidden border border-black/10 shadow-2xs bg-slate-900 aspect-4/3 flex items-center justify-center ${
+            imageUrl ? 'cursor-pointer' : 'cursor-default'
+          }`}
         >
-          <img
-            src={imageUrl}
-            alt={targetMedia.caption || 'Anexo do WhatsApp'}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-            loading="lazy"
-          />
-          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-            <span className="bg-black/60 backdrop-blur-xs px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
-              <ZoomIn size={13} /> Ver foto completa
-            </span>
-          </div>
+          {imageUrl ? (
+            <>
+              <img
+                src={imageUrl}
+                alt={targetMedia.caption || 'Anexo do WhatsApp'}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                <span className="bg-black/60 backdrop-blur-xs px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
+                  <ZoomIn size={13} /> Ver foto completa
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-2 text-slate-400 py-6 px-4">
+              <Eye size={28} className="opacity-50" />
+              <span className="text-xs text-center leading-tight">Imagem recebida pelo WhatsApp</span>
+              <span className="text-[10px] opacity-60">Carregando...</span>
+            </div>
+          )}
         </div>
 
         {targetMedia.caption && (
@@ -283,7 +342,7 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
         )}
 
         {/* Lightbox Modal */}
-        {lightboxOpen && (
+        {lightboxOpen && imageUrl && (
           <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
             <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center">
               <button

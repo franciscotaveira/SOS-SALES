@@ -16,7 +16,12 @@ import {
   Activity,
   X,
 } from 'lucide-react';
-import { GlobalAiAutonomyMode, getWorkspaceAiMode, setWorkspaceAiMode } from '../../services/aiAutonomyManager';
+import {
+  GlobalAiAutonomyMode,
+  getWorkspaceAiMode,
+  loadWorkspaceAgentConfig,
+  setWorkspaceAiMode,
+} from '../../services/aiAutonomyManager';
 
 export interface AiDecisionLogItem {
   id: string;
@@ -50,61 +55,54 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
   variant = 'compact_badge',
 }) => {
   const [autonomyMode, setAutonomyMode] = useState<GlobalAiAutonomyMode>(() => getWorkspaceAiMode(workspaceId));
-  const [countdown, setCountdown] = useState<number | null>(null);
+  const [countdown] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const isTrinksClient = (workspaceId || '').toLowerCase().includes('escovaria') || (workspaceId || '').toLowerCase().includes('haven');
-
-  const [logs, setLogs] = useState<AiDecisionLogItem[]>([
-    {
-      id: 'log-1',
-      timestamp: new Date(Date.now() - 45000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      contactName: currentContactName,
-      inboundSnippet: 'Solicitação de atendimento / horários',
-      intentDetected: isTrinksClient ? 'Agendamento • Escova & Unhas' : 'Qualificação Comercial • Serviços',
-      systemConsulted: isTrinksClient ? 'Grade Trinks • Vaga 14:30 com Lis' : 'Motor Comercial Sales OS • Catálogo Ativo',
-      recommendedAction: isTrinksClient ? 'Proposta de horário confirmado' : 'Envio de proposta e próximos passos',
-      confidenceScore: 0.96,
-      status: 'pending_approval',
-    },
-  ]);
+  const [logs] = useState<AiDecisionLogItem[]>([]);
+  const [modeError, setModeError] = useState<string | null>(null);
+  const [modeLoading, setModeLoading] = useState(true);
 
   // Sync mode changes
   useEffect(() => {
+    let cancelled = false;
+    setModeLoading(true);
+    setModeError(null);
+    void loadWorkspaceAgentConfig(workspaceId)
+      .then((config) => {
+        if (!cancelled) setAutonomyMode(config.autonomyMode);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setAutonomyMode('copilot_supervised');
+          setModeError(error instanceof Error ? error.message : 'Estado da IA indisponível.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setModeLoading(false);
+      });
     const handleModeChange = (e: any) => {
       if (e.detail && e.detail.workspaceId === workspaceId) {
         setAutonomyMode(e.detail.mode);
       }
     };
     window.addEventListener('sos_ai_mode_changed', handleModeChange);
-    return () => window.removeEventListener('sos_ai_mode_changed', handleModeChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('sos_ai_mode_changed', handleModeChange);
+    };
   }, [workspaceId]);
 
-  // Semi-autonomous countdown logic
-  useEffect(() => {
-    if (autonomyMode === 'semi_autonomous' && pendingSuggestion) {
-      setCountdown(10);
-      const interval = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev === null || prev <= 1) {
-            clearInterval(interval);
-            if (prev === 1 && onApproveAndSend) {
-              onApproveAndSend(pendingSuggestion);
-            }
-            return null;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(interval);
-    } else {
-      setCountdown(null);
+  const handleChangeMode = async (newMode: GlobalAiAutonomyMode) => {
+    setModeLoading(true);
+    setModeError(null);
+    try {
+      const config = await setWorkspaceAiMode(workspaceId, newMode);
+      setAutonomyMode(config.autonomyMode);
+    } catch (error) {
+      setAutonomyMode('copilot_supervised');
+      setModeError(error instanceof Error ? error.message : 'Não foi possível alterar o modo da IA.');
+    } finally {
+      setModeLoading(false);
     }
-  }, [autonomyMode, pendingSuggestion, onApproveAndSend]);
-
-  const handleChangeMode = (newMode: GlobalAiAutonomyMode) => {
-    setAutonomyMode(newMode);
-    setWorkspaceAiMode(workspaceId, newMode);
   };
 
   if (variant === 'compact_badge') {
@@ -167,10 +165,7 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setCountdown(null);
-                  if (onRejectOrCancel) onRejectOrCancel();
-                }}
+                onClick={() => { if (onRejectOrCancel) onRejectOrCancel(); }}
                 className="px-2 py-0.5 rounded bg-rose-900 hover:bg-rose-800 text-rose-200 border border-rose-700 text-[10px] font-bold transition flex items-center gap-0.5 cursor-pointer shadow-2xs"
               >
                 <XCircle size={9} /> Pausar
@@ -208,7 +203,8 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
                 <div className="grid grid-cols-3 gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1 text-xs font-semibold text-center">
                   <button
                     type="button"
-                    onClick={() => handleChangeMode('copilot_supervised')}
+                    disabled={modeLoading}
+                    onClick={() => { void handleChangeMode('copilot_supervised'); }}
                     className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                       autonomyMode === 'copilot_supervised'
                         ? 'bg-blue-600 text-white font-bold shadow-xs'
@@ -219,18 +215,20 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleChangeMode('semi_autonomous')}
+                    disabled
+                    title="Indisponível até existir execução e auditoria no backend"
                     className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                       autonomyMode === 'semi_autonomous'
                         ? 'bg-amber-600 text-white font-bold shadow-xs'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    🟡 Semi-Auto (10s)
+                    🟡 Semi-Auto indisponível
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleChangeMode('autonomous_24_7')}
+                    disabled={modeLoading}
+                    onClick={() => { void handleChangeMode('autonomous_24_7'); }}
                     className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                       autonomyMode === 'autonomous_24_7'
                         ? 'bg-emerald-600 text-white font-bold shadow-xs'
@@ -240,6 +238,7 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
                     🟢 100% Autônomo
                   </button>
                 </div>
+                {modeError && <p role="alert" className="text-[10px] font-semibold text-rose-300">{modeError} Modo assistido mantido.</p>}
               </div>
 
               {/* Live thought trail */}
@@ -248,7 +247,7 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
                   <span className="flex items-center gap-1.5">
                     <Activity size={13} className="text-purple-400" /> Trilha de Raciocínio Recente
                   </span>
-                  <span className="text-[10px] text-slate-400">96% precisão de resposta</span>
+                  <span className="text-[10px] text-slate-400">Somente eventos confirmados pelo backend</span>
                 </div>
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {logs.map((log) => (
@@ -268,13 +267,18 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
                       </div>
                     </div>
                   ))}
+                  {logs.length === 0 && (
+                    <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 text-[11px] text-slate-400">
+                      Nenhuma decisão auditável recebida do backend nesta sessão.
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
                 <button
                   type="button"
-                  onClick={() => handleChangeMode('copilot_supervised')}
+                  onClick={() => { void handleChangeMode('copilot_supervised'); }}
                   className="px-3 py-1.5 rounded-lg bg-rose-950 hover:bg-rose-900 border border-rose-700 text-rose-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <ShieldAlert size={13} /> Pausar Autonomia Geral
@@ -328,7 +332,8 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
         <div className="grid grid-cols-3 gap-0.5 bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-[10px] font-semibold text-center">
           <button
             type="button"
-            onClick={() => handleChangeMode('copilot_supervised')}
+            disabled={modeLoading}
+            onClick={() => { void handleChangeMode('copilot_supervised'); }}
             className={`py-0.5 rounded-md transition-all truncate ${
               autonomyMode === 'copilot_supervised'
                 ? 'bg-blue-600 text-white font-bold shadow-xs'
@@ -340,19 +345,20 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
           </button>
           <button
             type="button"
-            onClick={() => handleChangeMode('semi_autonomous')}
+            disabled
             className={`py-0.5 rounded-md transition-all truncate ${
               autonomyMode === 'semi_autonomous'
                 ? 'bg-amber-600 text-white font-bold shadow-xs'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
-            title="Avisa e envia após 10 segundos com opção de intervir"
+            title="Indisponível até existir execução e auditoria no backend"
           >
             Supervisionado
           </button>
           <button
             type="button"
-            onClick={() => handleChangeMode('autonomous_24_7')}
+            disabled={modeLoading}
+            onClick={() => { void handleChangeMode('autonomous_24_7'); }}
             className={`py-0.5 rounded-md transition-all truncate ${
               autonomyMode === 'autonomous_24_7'
                 ? 'bg-emerald-600 text-white font-bold shadow-xs'
@@ -390,7 +396,6 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
             <button
               type="button"
               onClick={() => {
-                setCountdown(null);
                 if (onRejectOrCancel) onRejectOrCancel();
               }}
               className="px-2.5 py-1 rounded-md bg-rose-900/80 hover:bg-rose-800 text-rose-200 border border-rose-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
@@ -450,7 +455,7 @@ export const AutonomousSupervisorPanel: React.FC<AutonomousSupervisorPanelProps>
         </span>
         <button
           type="button"
-          onClick={() => handleChangeMode('copilot_supervised')}
+          onClick={() => { void handleChangeMode('copilot_supervised'); }}
           className="px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-700 text-rose-200 text-[9.5px] font-bold transition flex items-center gap-1 cursor-pointer"
         >
           <ShieldAlert size={10} /> Pausar Autonomia

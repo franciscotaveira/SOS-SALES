@@ -33,15 +33,15 @@ VALUES (
   'CONNECTED'
 ) ON CONFLICT DO NOTHING;
 
--- 3.1 Channel Connection Secret References (segredos reais ficam no Vault)
+-- 3.1 Channel Connection Secret References
 INSERT INTO channel_connection_secrets (
-  channel_connection_id, workspace_id, api_key_vault_secret_id, webhook_vault_secret_id
+  channel_connection_id, workspace_id, secret_kind, secret_payload
 )
 VALUES (
   'a2000000-0000-0000-0000-000000000001',
   'a0000000-0000-0000-0000-000000000001',
-  '51000000-0000-0000-0000-000000000001',
-  '52000000-0000-0000-0000-000000000001'
+  'meta_bearer_token',
+  '{"token": "sample-waha-token"}'::jsonb
 ) ON CONFLICT DO NOTHING;
 
 -- 4. Contact

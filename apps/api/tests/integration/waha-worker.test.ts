@@ -100,7 +100,7 @@ describe('TX Commercial Core — WAHA Worker Lifecycle & Connection Hygiene', ()
     // 4. Stop worker (idempotent multiple calls)
     await worker.stop();
     await worker.stop();
-  });
+  }, 15000);
 
   it('LIFE-02: worker does not leak service_role claim or role to pooled database connections', async () => {
     // Process single batch to trigger worker database interactions

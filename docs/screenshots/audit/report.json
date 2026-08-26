@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-08-19T21:29:26.009033",
+  "target": "http://localhost:5173",
+  "modules": {
+    "Cockpit Agora": {
+      "status": "PASS",
+      "screenshot": "docs/screenshots/audit/02_cockpit_full.png",
+      "chars": 34
+    },
+    "Kanban Comercial": {
+      "status": "FAIL"
+    },
+    "Conversas & Hub": {
+      "status": "FAIL"
+    },
+    "Agenda Comercial": {
+      "status": "FAIL"
+    },
+    "Grupos WhatsApp": {
+      "status": "FAIL"
+    },
+    "Resultados & Analytics": {
+      "status": "FAIL"
+    },
+    "Intelig\u00eancia Playbook": {
+      "status": "FAIL"
+    },
+    "Anota\u00e7\u00f5es da Equipe": {
+      "status": "FAIL"
+    },
+    "Configura\u00e7\u00f5es": {
+      "status": "FAIL"
+    }
+  },
+  "cockpit_interactions": {
+    "Dossier": "PASS"
+  },
+  "console_errors": []
+}

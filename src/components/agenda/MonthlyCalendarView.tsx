@@ -23,8 +23,8 @@ export const MonthlyCalendarView: React.FC<MonthlyCalendarViewProps> = ({
   onSelectAppointment,
   onGoToCockpit,
 }) => {
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 15)); // August 2026
-  const [selectedDay, setSelectedDay] = useState<number | null>(15);
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [selectedDay, setSelectedDay] = useState<number | null>(() => new Date().getDate());
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();

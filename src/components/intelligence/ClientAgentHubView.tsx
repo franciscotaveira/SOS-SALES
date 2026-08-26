@@ -1,5 +1,7 @@
 import React from 'react';
+import { salesOsRuntimeConfig } from '../../config/runtime';
 import { Workspace } from '../../types/cockpit';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 import {
   clientIntelligenceMap,
   mockSosSalesIntelligence,
@@ -26,6 +28,8 @@ import {
   Sparkles,
   Users,
   ChevronDown,
+  Save,
+  Loader2,
 } from 'lucide-react';
 
 import { SalesAiThesisConfig } from '../settings/SalesAiThesisConfig';
@@ -39,47 +43,38 @@ interface ClientAgentHubViewProps {
 }
 
 export type IntelligenceTab =
+  | 'thesis'
   | 'diagnosis'
   | 'knowledge'
   | 'catalog'
-  | 'thesis'
   | 'learning'
-  | 'company'
   | 'agent';
 
 export function resolveWorkspaceIntelligenceBundle(wsId: string, wsName?: string): ClientIntelligenceBundle {
-  const normId = (wsId || '').toLowerCase();
-  const normName = (wsName || '').toLowerCase();
-
-  if (normId.includes('haven') || normId.includes('escovaria') || normName.includes('haven') || normName.includes('escovaria')) {
+  const norm = String(wsId).toLowerCase().trim();
+  if (norm.includes('haven') || norm === '22222222-2222-2222-2222-222222222222') {
     return {
       ...mockHavenIntelligence,
-      workspaceId: wsId,
       companyProfile: {
         ...mockHavenIntelligence.companyProfile,
         tradeName: wsName || mockHavenIntelligence.companyProfile.tradeName,
       },
     };
   }
-
-  if (normId.includes('sora') || normId.includes('spa') || normName.includes('sora') || normName.includes('spa')) {
+  if (norm.includes('sora') || norm === '33333333-3333-3333-3333-333333333333') {
     return {
       ...mockSoraIntelligence,
-      workspaceId: wsId,
       companyProfile: {
         ...mockSoraIntelligence.companyProfile,
         tradeName: wsName || mockSoraIntelligence.companyProfile.tradeName,
       },
     };
   }
-
   if (clientIntelligenceMap[wsId]) {
     return clientIntelligenceMap[wsId];
   }
-
   return {
     ...mockSosSalesIntelligence,
-    workspaceId: wsId,
     companyProfile: {
       ...mockSosSalesIntelligence.companyProfile,
       tradeName: wsName || mockSosSalesIntelligence.companyProfile.tradeName,
@@ -98,22 +93,37 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   const activeTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalActiveTab;
   const setActiveTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalActiveTab;
 
-  const STORAGE_KEY = 'sos_sales_intelligence_bundles_v2';
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [saveSuccess, setSaveSuccess] = React.useState(false);
+
   const [bundleMap, setBundleMap] = React.useState<Record<string, ClientIntelligenceBundle>>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch {}
     return clientIntelligenceMap;
   });
 
   React.useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(bundleMap));
-    } catch {}
-  }, [bundleMap]);
+    let isMounted = true;
+    setIsLoading(true);
+    authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/intelligence`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!isMounted || !data) return;
+        if (data.bundle && typeof data.bundle === 'object') {
+          setBundleMap((prev) => ({
+            ...prev,
+            [currentWorkspace.id]: data.bundle,
+          }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentWorkspace.id]);
 
   const currentBundle = React.useMemo(() => {
     const fallback = resolveWorkspaceIntelligenceBundle(currentWorkspace.id, currentWorkspace.name);
@@ -147,65 +157,100 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   }, [bundleMap, currentWorkspace]);
 
   const updateCurrentBundle = (updater: (prev: ClientIntelligenceBundle) => ClientIntelligenceBundle) => {
-    setBundleMap((prev) => {
-      const existing = prev[currentWorkspace.id] || currentBundle;
-      return {
-        ...prev,
-        [currentWorkspace.id]: updater(existing),
-      };
-    });
+    const updated = updater(currentBundle);
+    setBundleMap((prev) => ({
+      ...prev,
+      [currentWorkspace.id]: updated,
+    }));
+
+    setIsSaving(true);
+    authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/intelligence`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bundle: updated }),
+    })
+      .then((r) => {
+        if (r.ok) {
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 2000);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsSaving(false));
+  };
+
+  const handleManualSave = async () => {
+    setIsSaving(true);
+    try {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/intelligence`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bundle: currentBundle }),
+      });
+      if (res.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
-    <div id="client-agent-hub-view" className="h-full overflow-y-auto w-full p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
-      {/* Top Client Header & Quick Switcher */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#00A884] to-emerald-700 text-white flex items-center justify-center font-bold text-lg shadow-md shrink-0">
+    <div id="client-agent-hub-view" className="h-full overflow-y-auto w-full p-3 sm:p-4 max-w-7xl mx-auto space-y-4">
+      {/* Top Client Header */}
+      <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-xl p-3 sm:p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-[var(--sos-ai)]/20 text-[var(--sos-ai)] flex items-center justify-center font-bold text-base shadow-2xs shrink-0">
             {currentWorkspace.name.substring(0, 2).toUpperCase()}
           </div>
 
           <div className="min-w-0 space-y-0.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg font-bold text-slate-900 font-heading truncate">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h1 className="text-sm font-bold text-[var(--sos-ink)] font-heading truncate">
                 {currentWorkspace.name}
               </h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-purple-600" /> Agente IA Dedicado
+              <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border border-[var(--sos-ai)]/30 flex items-center gap-1">
+                <Sparkles className="w-2.5 h-2.5 text-[var(--sos-ai)]" /> Squad de IA
               </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> WhatsApp Oficial Conectado
-              </span>
+              {currentWorkspace.channels?.some((c) => c.health === 'healthy' || c.health === 'connected') ? (
+                <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border border-[var(--sos-success)]/30 flex items-center gap-1">
+                  <CheckCircle2 className="w-2.5 h-2.5 text-[var(--sos-success)]" /> WhatsApp Conectado
+                </span>
+              ) : (
+                <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1">
+                  <Radio className="w-2.5 h-2.5 text-slate-400" /> WhatsApp Não Confirmado
+                </span>
+              )}
             </div>
 
-            <p className="text-xs text-slate-500 truncate">
+            <p className="text-[9.5px] text-[var(--sos-muted)] truncate">
               {currentBundle.companyProfile.tagline || currentWorkspace.tagline}
             </p>
           </div>
         </div>
 
-        {/* Client Workspace Selector */}
-        <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
-          <label className="text-xs font-semibold text-slate-500 whitespace-nowrap hidden sm:inline">
-            Configurações do Cliente:
-          </label>
-          <div className="relative">
-            <select
-              value={currentWorkspace.id}
-              onChange={(e) => {
-                const target = workspaces.find((w) => w.id === e.target.value);
-                if (target) onSelectWorkspace(target);
-              }}
-              className="appearance-none pl-3 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#00A884] cursor-pointer"
-            >
-              {workspaces.map((ws) => (
-                <option key={ws.id} value={ws.id}>
-                  🏢 {ws.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
+        {/* Action Controls & Save Status */}
+        <div className="flex items-center gap-2 shrink-0">
+          {isSaving ? (
+            <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
+              <Loader2 className="w-3 h-3 animate-spin" /> Salvando...
+            </span>
+          ) : saveSuccess ? (
+            <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Salvo no Supabase
+            </span>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={handleManualSave}
+            disabled={isSaving}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-2xs transition active:scale-95 disabled:opacity-50 cursor-pointer"
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span>Salvar Inteligência</span>
+          </button>
         </div>
       </div>
 
@@ -252,15 +297,6 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
                 r.id === id ? { ...r, status: 'rejected' } : r
               ),
             }));
-          }}
-        />
-      )}
-
-      {activeTab === 'company' && (
-        <CompanyProfileSection
-          profile={currentBundle.companyProfile}
-          onSaveProfile={(updated) => {
-            updateCurrentBundle((prev) => ({ ...prev, companyProfile: updated }));
           }}
         />
       )}

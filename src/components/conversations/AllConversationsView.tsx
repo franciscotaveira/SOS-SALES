@@ -41,12 +41,12 @@ export const AllConversationsView: React.FC<AllConversationsViewProps> = ({
   }, [journeys, search, statusFilter, currentOperatorId]);
 
   return (
-    <div id="all-conversations-view" className="h-full overflow-y-auto w-full p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
+    <div id="all-conversations-view" className="h-full overflow-y-auto w-full p-3 sm:p-4 max-w-7xl mx-auto space-y-3">
       {/* Header with Search and Filter */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2 border-b border-[var(--sos-border)]">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Todas as Conversas</h1>
-          <p className="text-xs text-slate-500">Histórico completo de atendimentos e jornadas</p>
+          <h1 className="text-lg font-bold text-[var(--sos-ink)]">Todas as Conversas</h1>
+          <p className="text-xs text-[var(--sos-muted)]">Histórico completo de atendimentos e jornadas</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -55,7 +55,7 @@ export const AllConversationsView: React.FC<AllConversationsViewProps> = ({
             <button
               id="view-as-kanban-btn"
               onClick={onGoToKanban}
-              className="px-3 py-1.5 bg-[#e7f8e8] hover:bg-[#d1fae5] text-[#00a884] border border-[#a7f3d0] rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+              className="px-2.5 py-1.5 bg-[var(--sos-success-subtle)] hover:bg-[var(--sos-success-subtle)]/80 text-[var(--sos-success)] border border-[var(--sos-success)]/30 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
               title="Alternar para visualização de funil Kanban"
             >
               <Columns3 className="w-3.5 h-3.5" />
@@ -64,14 +64,14 @@ export const AllConversationsView: React.FC<AllConversationsViewProps> = ({
           )}
 
           {/* Search bar */}
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+          <div className="relative w-full sm:w-60">
+            <Search className="w-4 h-4 text-[var(--sos-muted)] absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar por nome, telefone ou mensagem..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs text-slate-900 rounded-lg border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+              className="w-full pl-8 pr-3 py-1.5 text-xs text-[var(--sos-ink)] rounded-lg border border-[var(--sos-border)] focus:border-[var(--sos-action)] focus:ring-1 focus:ring-[var(--sos-action)] bg-[var(--sos-surface)]"
             />
           </div>
 
@@ -79,7 +79,7 @@ export const AllConversationsView: React.FC<AllConversationsViewProps> = ({
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white rounded-lg border border-slate-200 focus:border-blue-500"
+            className="px-2.5 py-1.5 text-xs font-semibold text-[var(--sos-ink)] bg-[var(--sos-surface)] rounded-lg border border-[var(--sos-border)] focus:border-[var(--sos-action)]"
           >
             <option value="all">Todos os status</option>
             <option value="pending">Aguardando operador</option>
@@ -93,20 +93,20 @@ export const AllConversationsView: React.FC<AllConversationsViewProps> = ({
       <div className="cockpit-panel overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+            <thead className="bg-[var(--sos-border)]/30 border-b border-[var(--sos-border)] text-[var(--sos-muted)] font-bold uppercase text-[10px]">
               <tr>
-                <th className="px-4 py-3">Lead / Telefone</th>
-                <th className="px-4 py-3">Origem / Campanha</th>
-                <th className="px-4 py-3">Última Mensagem</th>
-                <th className="px-4 py-3">SLA / Status</th>
-                <th className="px-4 py-3">Responsável</th>
-                <th className="px-4 py-3 text-right">Ação</th>
+                <th className="px-3 py-2.5">Lead / Telefone</th>
+                <th className="px-3 py-2.5">Origem / Campanha</th>
+                <th className="px-3 py-2.5">Última Mensagem</th>
+                <th className="px-3 py-2.5">SLA / Status</th>
+                <th className="px-3 py-2.5">Responsável</th>
+                <th className="px-3 py-2.5 text-right">Ação</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-800">
+            <tbody className="divide-y divide-[var(--sos-border)] text-[var(--sos-ink)]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-3 py-6 text-center text-[var(--sos-muted)]">
                     Nenhuma conversa encontrada para os filtros selecionados.
                   </td>
                 </tr>
@@ -115,57 +115,57 @@ export const AllConversationsView: React.FC<AllConversationsViewProps> = ({
                   <tr
                     key={j.id}
                     onClick={() => onGoToCockpit(j)}
-                    className="hover:bg-blue-50/40 cursor-pointer transition-colors"
+                    className="hover:bg-[var(--sos-action-subtle)]/40 cursor-pointer transition-colors"
                   >
-                    <td className="px-4 py-3.5">
-                      <div className="font-bold text-slate-900">{j.leadName}</div>
-                      <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1">
-                        <Phone className="w-3 h-3 text-slate-400" />
+                    <td className="px-3 py-2.5">
+                      <div className="font-bold text-[var(--sos-ink)]">{j.leadName}</div>
+                      <div className="text-[11px] text-[var(--sos-muted)] font-mono flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-[var(--sos-muted)]" />
                         {j.leadPhone}
                       </div>
                     </td>
-                    <td className="px-4 py-3.5">
-                      <div className="font-semibold text-slate-800 truncate max-w-[180px]">
+                    <td className="px-3 py-2.5">
+                      <div className="font-semibold text-[var(--sos-ink)] truncate max-w-[180px]">
                         {j.acquisition.campaignName || 'Orgânico'}
                       </div>
-                      <div className="text-[10px] text-slate-500">
+                      <div className="text-[10px] text-[var(--sos-muted)]">
                         {j.acquisition.referralOffer || 'Sem oferta vinculada'}
                       </div>
                     </td>
-                    <td className="px-4 py-3.5">
-                      <div className="text-slate-600 line-clamp-1 max-w-[260px]">
+                    <td className="px-3 py-2.5">
+                      <div className="text-[var(--sos-muted)] line-clamp-1 max-w-[260px]">
                         "{j.lastLeadMessage}"
                       </div>
                     </td>
-                    <td className="px-4 py-3.5">
+                    <td className="px-3 py-2.5">
                       {j.handoffStatus === 'resolved' ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border border-[var(--sos-success)]/30">
                           Finalizado
                         </span>
                       ) : j.slaStatus === 'critical' ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--sos-danger-subtle)] text-[var(--sos-danger)] border border-[var(--sos-danger)]/30">
                           Crítico ({j.slaMinutesRemaining}m)
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--sos-border)]/30 text-[var(--sos-muted)]">
                           SLA {j.slaMinutesRemaining}m
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3.5">
-                      <div className="text-slate-700 font-medium">
+                    <td className="px-3 py-2.5">
+                      <div className="text-[var(--sos-muted)] font-medium">
                         {j.assignedOperatorName || 'Fila geral (Pendente)'}
                       </div>
                     </td>
-                    <td className="px-4 py-3.5 text-right">
+                    <td className="px-3 py-2.5 text-right">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onGoToCockpit(j);
                         }}
-                        className="px-3 py-1 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors"
+                        className="px-2.5 py-1 text-xs font-bold text-[var(--sos-action)] bg-[var(--sos-action-subtle)] hover:bg-[var(--sos-action-subtle)]/80 rounded-lg border border-[var(--sos-action)]/30 transition-colors"
                       >
-                        Abrir Cockpit ➔
+                        Abrir Cockpit
                       </button>
                     </td>
                   </tr>

@@ -21,7 +21,7 @@ function requireAbsoluteUrl(value: string, name: string): URL {
 
 function isSupabaseUserId(value: unknown): value is string {
   return typeof value === 'string'
-    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 function createJoseVerifier(options: Required<Pick<SupabaseJwtAuthenticatorOptions, 'issuer' | 'jwksUrl' | 'audience'>>): SupabaseJwtVerifier {

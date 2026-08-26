@@ -113,8 +113,9 @@ describe('TX Commercial Core — RBAC, Composite FKs, Secret Isolation & Outbox 
       await client1.query(`SET "request.jwt.claim.role" = 'authenticated'`);
       await client1.query(`SET "request.jwt.claim.sub" = '${operatorUserId}'`);
 
-      const opSecretRes = await client1.query('SELECT * FROM channel_connection_secrets WHERE channel_connection_id = $1', [channelAId]);
-      expect(opSecretRes.rowCount).toBe(0);
+      await expect(
+        client1.query('SELECT * FROM channel_connection_secrets WHERE channel_connection_id = $1', [channelAId])
+      ).rejects.toThrow(/permission denied/);
     } finally {
       await client1.query('RESET ROLE');
       client1.release();
@@ -127,15 +128,50 @@ describe('TX Commercial Core — RBAC, Composite FKs, Secret Isolation & Outbox 
       await client2.query(`SET "request.jwt.claim.role" = 'authenticated'`);
       await client2.query(`SET "request.jwt.claim.sub" = '${viewerUserId}'`);
 
-      const viewerSecretRes = await client2.query('SELECT * FROM channel_connection_secrets WHERE channel_connection_id = $1', [channelAId]);
-      expect(viewerSecretRes.rowCount).toBe(0);
+      await expect(
+        client2.query('SELECT * FROM channel_connection_secrets WHERE channel_connection_id = $1', [channelAId])
+      ).rejects.toThrow(/permission denied/);
     } finally {
       await client2.query('RESET ROLE');
       client2.release();
     }
   });
 
-  it('SEC-04: Last Owner Guard — should strictly prevent deleting or demoting the last owner without bypass', async () => {
+  it('SEC-04: public channel config rejects secret-bearing keys', async () => {
+    await expect(
+      query(`
+        UPDATE channel_connections
+        SET public_config = public_config || '{"_secret_token":"must-not-persist"}'::jsonb
+        WHERE id = $1
+      `, [channelAId])
+    ).rejects.toThrow(/ck_channel_public_config_no_secrets/);
+  });
+
+  it('SEC-05: future public tables receive no automatic Data API grants', async () => {
+    const client = await dbPool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('CREATE TABLE public.audit_future_privilege_probe (id BIGINT)');
+
+      const privileges = await client.query(`
+        SELECT
+          has_table_privilege('anon', 'public.audit_future_privilege_probe', 'select') AS anon_select,
+          has_table_privilege('authenticated', 'public.audit_future_privilege_probe', 'select') AS authenticated_select,
+          has_table_privilege('service_role', 'public.audit_future_privilege_probe', 'select') AS service_select
+      `);
+
+      expect(privileges.rows[0]).toEqual({
+        anon_select: false,
+        authenticated_select: false,
+        service_select: false,
+      });
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined);
+      client.release();
+    }
+  });
+
+  it('SEC-06: Last Owner Guard — should strictly prevent deleting or demoting the last owner without bypass', async () => {
     // Sub-test 1: Demote owner
     const client1 = await dbPool.connect();
     try {
@@ -174,7 +210,7 @@ describe('TX Commercial Core — RBAC, Composite FKs, Secret Isolation & Outbox 
     }
   });
 
-  it('SEC-05: RPC Authorization Guard — viewer and anon must be rejected from executing actions and outcomes', async () => {
+  it('SEC-07: RPC Authorization Guard — viewer and anon must be rejected from executing actions and outcomes', async () => {
     // 1. Viewer trying to execute commercial action
     const client1 = await dbPool.connect();
     try {
@@ -238,7 +274,7 @@ describe('TX Commercial Core — RBAC, Composite FKs, Secret Isolation & Outbox 
     }
   });
 
-  it('SEC-06: routine allowlist keeps worker RPCs unavailable to authenticated clients', async () => {
+  it('SEC-08: routine allowlist keeps worker RPCs unavailable to authenticated clients', async () => {
     const privilege = await query(`
       SELECT
         has_function_privilege('authenticated', 'public.claim_outbox_batch(text,integer,integer)', 'EXECUTE') AS authenticated_claim,
@@ -263,7 +299,7 @@ describe('TX Commercial Core — RBAC, Composite FKs, Secret Isolation & Outbox 
     }
   });
 
-  it('SEC-07: concurrent owner removals cannot orphan a workspace', async () => {
+  it('SEC-09: concurrent owner removals cannot orphan a workspace', async () => {
     const workspaceId = randomUUID();
     const ownerA = randomUUID();
     const ownerB = randomUUID();
@@ -656,6 +692,16 @@ describe('TX Commercial Core — RBAC, Composite FKs, Secret Isolation & Outbox 
   });
 
   it('ARC-01: Outbox Worker Protocol — should claim batch via claim_outbox_batch with SKIP LOCKED and fencing token', async () => {
+    // 0. Clean up any leftover pending outbox events before testing deterministic batches
+    const cleanupClient = await dbPool.connect();
+    try {
+      await cleanupClient.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'true', false)");
+      await cleanupClient.query("DELETE FROM outbox_events WHERE status IN ('PENDING', 'PROCESSING', 'FAILED')");
+      await cleanupClient.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'false', false)");
+    } finally {
+      cleanupClient.release();
+    }
+
     // 1. Insert 4 test outbox events
     await query(`
       INSERT INTO outbox_events (workspace_id, event_name, aggregate_type, aggregate_id, payload, idempotency_key, status)

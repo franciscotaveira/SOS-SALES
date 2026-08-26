@@ -466,12 +466,16 @@ paths:
             schema:
               type: object
               required:
+                - workspaceId
                 - customerName
                 - customerPhone
                 - customerEmail
                 - productName
                 - priceInCents
               properties:
+                workspaceId:
+                  type: string
+                  format: uuid
                 customerName:
                   type: string
                 customerPhone:
@@ -515,6 +519,19 @@ paths:
       tags:
         - Webhooks
       description: Webhook público para receber confirmação de pagamentos do AbacatePay.
+      parameters:
+        - name: webhookSecret
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 16
+        - name: X-Webhook-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 16
       responses:
         200:
           description: Default Response

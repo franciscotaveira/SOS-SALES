@@ -19,6 +19,7 @@ import {
   Users,
   MessageSquare,
   Flame,
+  AlertCircle,
 } from 'lucide-react';
 
 import { SalesOsGateway } from '../../services/salesOsGateway';
@@ -41,6 +42,8 @@ export const NotesView: React.FC<NotesViewProps> = ({ workspace, gateway }) => {
 
   // New Note Modal / Drawer state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
   const [newCategory, setNewCategory] = useState<NoteCategory>('script');
@@ -122,18 +125,25 @@ export const NotesView: React.FC<NotesViewProps> = ({ workspace, gateway }) => {
       try {
         await gateway.updateNote(workspace.id, noteId, { pinned: newPinned });
       } catch {
-        // revert on failure
+        // Revert on failure
+        setNotes((prev) =>
+          prev.map((n) => (n.id === noteId ? { ...n, pinned: !newPinned } : n))
+        );
       }
     }
   };
 
   const handleDeleteNote = async (noteId: string) => {
+    const noteToDelete = notes.find((n) => n.id === noteId);
     setNotes((prev) => prev.filter((n) => n.id !== noteId));
     if (gateway?.deleteNote) {
       try {
         await gateway.deleteNote(workspace.id, noteId);
       } catch {
-        // revert on failure
+        // Revert on failure
+        if (noteToDelete) {
+          setNotes((prev) => [noteToDelete, ...prev]);
+        }
       }
     }
   };
@@ -141,6 +151,9 @@ export const NotesView: React.FC<NotesViewProps> = ({ workspace, gateway }) => {
   const handleCreateNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim() || !newContent.trim()) return;
+
+    setSaveError(null);
+    setIsSaving(true);
 
     const tagsArray = newTags
       .split(',')
@@ -158,11 +171,11 @@ export const NotesView: React.FC<NotesViewProps> = ({ workspace, gateway }) => {
       authorName: 'Você (Gestor)',
     };
 
-    if (gateway?.createNote) {
-      try {
+    try {
+      if (gateway?.createNote) {
         const created = await gateway.createNote(workspace.id, payload);
         setNotes((prev) => [created, ...prev]);
-      } catch {
+      } else if (salesOsRuntimeConfig.mode !== 'api') {
         const fallbackNote: OperationalNote = {
           id: `note-${Date.now()}`,
           workspaceId: workspace.id,
@@ -177,28 +190,19 @@ export const NotesView: React.FC<NotesViewProps> = ({ workspace, gateway }) => {
           updatedAt: 'Agora',
         };
         setNotes((prev) => [fallbackNote, ...prev]);
+      } else {
+        throw new Error('Serviço de notas indisponível no servidor.');
       }
-    } else {
-      const fallbackNote: OperationalNote = {
-        id: `note-${Date.now()}`,
-        workspaceId: workspace.id,
-        title: newTitle.trim(),
-        content: newContent.trim(),
-        category: newCategory,
-        tags: tagsArray.length > 0 ? tagsArray : ['Geral'],
-        pinned: false,
-        color: newColor,
-        authorName: 'Você (Gestor)',
-        createdAt: 'Agora',
-        updatedAt: 'Agora',
-      };
-      setNotes((prev) => [fallbackNote, ...prev]);
-    }
 
-    setIsModalOpen(false);
-    setNewTitle('');
-    setNewContent('');
-    setNewTags('');
+      setIsModalOpen(false);
+      setNewTitle('');
+      setNewContent('');
+      setNewTags('');
+    } catch (err: any) {
+      setSaveError(err.message || 'Falha ao salvar anotação no servidor.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getColorClasses = (color?: string) => {
@@ -426,7 +430,14 @@ export const NotesView: React.FC<NotesViewProps> = ({ workspace, gateway }) => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateNote} className="space-y-3">
+            {/* Form */}
+            <form onSubmit={handleCreateNote} className="p-5 space-y-4">
+              {saveError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{saveError}</span>
+                </div>
+              )}
               <div>
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">
                   Título da Anotação:

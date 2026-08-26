@@ -1,24 +1,28 @@
 import pg from 'pg';
 import { Redis } from 'ioredis';
 
-import { SupabaseJwtAuthenticator } from './dist/supabase-jwt-authenticator-XGSCOJXH.js';
-import { PostgresWorkspaceDirectory } from './dist/postgres-workspace-directory-DK7BHQAZ.js';
-import { PostgresCockpitReadGateway } from './dist/postgres-cockpit-read-gateway-C35MDXDX.js';
-import { PostgresHandoffOperationsGateway } from './dist/postgres-handoff-operations-gateway-AYNWTUZQ.js';
-import { PostgresJourneyOperationsGateway } from './dist/postgres-journey-operations-gateway-O3PS76H5.js';
-import { PostgresCommercialOutcomeGateway } from './dist/postgres-commercial-outcome-gateway-MNFHVDUP.js';
-import { PostgresOutboundDispatchGateway } from './dist/postgres-outbound-dispatch-gateway-HVUGKUAS.js';
-import { PostgresTrafficProofGateway } from './dist/postgres-traffic-proof-gateway-GSOEYJMA.js';
-import { PostgresKnownFactOperationsGateway } from './dist/postgres-known-fact-operations-gateway-CUQBCOJQ.js';
-import { PostgresAppointmentGateway } from './dist/postgres-appointment-gateway-D6ARAJHZ.js';
-import { PostgresNotesGateway } from './dist/postgres-notes-gateway-DSBCFJL2.js';
-import { PostgresInboundIngestionGateway } from './dist/postgres-inbound-ingestion-gateway-IO2HCN7E.js';
-import { PostgresOutboxProcessingGateway } from './dist/postgres-outbox-processing-gateway-MMPHGZOZ.js';
-import { EnvironmentWebhookSecretProvider } from './dist/environment-webhook-secret-provider-5TVRC3OY.js';
-import { PostgresDependencyHealthProvider } from './dist/postgres-dependency-health-provider-PNAJCFHH.js';
-import { RedisDependencyHealthProvider } from './dist/redis-dependency-health-provider-UKZKMYVT.js';
-import { WahaLidIdentityResolver } from './dist/waha-lid-identity-resolver-ZTARQL3U.js';
-import { WahaWebhookAdapter, PostgresWorkspaceProvisioningGateway } from './dist/index.js';
+import {
+  SupabaseJwtAuthenticator,
+  PostgresWorkspaceDirectory,
+  PostgresCockpitReadGateway,
+  PostgresHandoffOperationsGateway,
+  PostgresJourneyOperationsGateway,
+  PostgresCommercialOutcomeGateway,
+  PostgresOutboundDispatchGateway,
+  PostgresTrafficProofGateway,
+  PostgresKnownFactOperationsGateway,
+  PostgresAppointmentGateway,
+  PostgresNotesGateway,
+  PostgresInboundIngestionGateway,
+  PostgresOutboxProcessingGateway,
+  EnvironmentWebhookSecretProvider,
+  PostgresDependencyHealthProvider,
+  RedisDependencyHealthProvider,
+  WahaLidIdentityResolver,
+  WahaWebhookAdapter,
+  PostgresWorkspaceProvisioningGateway,
+  PostgresWabaChannelInfoGateway,
+} from './dist/index.js';
 
 const { Pool } = pg;
 
@@ -33,6 +37,9 @@ export async function createProductionRuntime() {
   const jwksUrl = process.env.SUPABASE_JWKS_URL || 'https://yiiuebhyqixzluguxsqi.supabase.co/auth/v1/.well-known/jwks.json';
   const jwtAudience = process.env.SUPABASE_JWT_AUDIENCE || 'authenticated';
 
+  const isLocalDb = databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1') || databaseUrl.includes('postgres-lab') || databaseUrl.includes('host.docker.internal') || process.env.DATABASE_SSL === 'false';
+  const sslConfig = isLocalDb ? false : (process.env.DATABASE_SSL_CA ? { rejectUnauthorized: true, ca: process.env.DATABASE_SSL_CA } : { rejectUnauthorized: true });
+
   let poolConfig;
   try {
     const u = new URL(databaseUrl);
@@ -42,7 +49,7 @@ export async function createProductionRuntime() {
       user: decodeURIComponent(u.username),
       password: decodeURIComponent(u.password),
       database: u.pathname.replace(/^\//, '') || 'postgres',
-      ssl: { rejectUnauthorized: false },
+      ssl: sslConfig,
       max: Number(process.env.DATABASE_POOL_MAX || 20),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
@@ -50,7 +57,7 @@ export async function createProductionRuntime() {
   } catch {
     poolConfig = {
       connectionString: databaseUrl,
-      ssl: { rejectUnauthorized: false },
+      ssl: sslConfig,
       max: Number(process.env.DATABASE_POOL_MAX || 20),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
@@ -85,13 +92,17 @@ export async function createProductionRuntime() {
   const appointmentGateway = new PostgresAppointmentGateway(pool);
   const notesGateway = new PostgresNotesGateway(pool);
   const workspaceProvisioningGateway = new PostgresWorkspaceProvisioningGateway(pool);
+  const wabaChannelInfoGateway = new PostgresWabaChannelInfoGateway(pool);
   const ingestionGateway = new PostgresInboundIngestionGateway(pool);
   const outboxGateway = new PostgresOutboxProcessingGateway(pool);
-  const webhookSecret = process.env.WAHA_WEBHOOK_SECRET || 'mct_sos_waha_webhook_secret_2026';
   const secretProvider = {
     getWebhookSecret: async (channelConnectionId) => {
-      const specific = process.env[`WAHA_WEBHOOK_SECRET_${channelConnectionId.replace(/-/g, '_')}`];
-      return specific || webhookSecret;
+      const envKey = `WAHA_WEBHOOK_SECRET_${channelConnectionId.replace(/-/g, '_')}`;
+      const specific = process.env[envKey]?.trim();
+      if (!specific) {
+        throw new Error(`Missing channel-specific WAHA webhook secret: ${envKey}`);
+      }
+      return specific;
     },
   };
   const wahaAdapter = new WahaWebhookAdapter();
@@ -120,6 +131,7 @@ export async function createProductionRuntime() {
     appointmentGateway,
     notesGateway,
     workspaceProvisioningGateway,
+    wabaChannelInfoGateway,
     trustProxy: true,
     logger: true,
     createHealthProvider: (worker) => ({

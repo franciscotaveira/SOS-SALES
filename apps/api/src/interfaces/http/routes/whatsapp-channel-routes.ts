@@ -1,35 +1,185 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { WahaSyncService } from '../../../infrastructure/channels/waha/waha-sync-service.js';
 import { WabaClient } from '../../../infrastructure/channels/meta/waba-client.js';
+import { FlowCrypto } from '../../../infrastructure/channels/meta/flow-crypto.js';
 import { dbPool } from '../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../application/services/attribution-service.js';
+import { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
+import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
+import { WabaChannelInfoGateway } from '../../../application/ports/waba-channel-info-gateway.js';
+import { verifyOperatorAuth, assertTenantAccess, unauthorized, forbidden } from '../helpers/auth-guard.js';
 import crypto from 'node:crypto';
 
 const WAHA_BASE_URL = process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000';
-const WAHA_API_KEY = process.env.WAHA_API_KEY || 'mct_sos_waha_master_2026';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || 'http://sos-sales-api:4334';
 
-function getSessionName(workspaceId: string): string {
-  if (workspaceId.includes('haven') || workspaceId.includes('22222222')) return 'haven';
-  if (workspaceId.includes('sora') || workspaceId.includes('33333333')) return 'sora';
-  return 'default';
+export function getWahaApiKey(): string {
+  const key = process.env.WAHA_API_KEY;
+  if (!key || !key.trim()) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('[FATAL SECURITY] WAHA_API_KEY environment variable is mandatory in production');
+    }
+    return 'mct_sos_waha_dev_secret_2026';
+  }
+  return key.trim();
 }
 
-function getWorkspaceIdFromSession(sessionName: string): string {
-  if (sessionName === 'haven') return '22222222-2222-2222-2222-222222222222';
-  if (sessionName === 'sora') return '33333333-3333-3333-3333-333333333333';
-  return '11111111-1111-1111-1111-111111111111';
+export function verifyWahaApiKeyTimingSafe(incomingApiKey: string | undefined): boolean {
+  if (!incomingApiKey || typeof incomingApiKey !== 'string' || incomingApiKey.trim().length === 0) {
+    return false;
+  }
+  let expectedKey: string;
+  try {
+    expectedKey = getWahaApiKey();
+  } catch {
+    return false;
+  }
+  if (!expectedKey) return false;
+
+  const incomingBuf = Buffer.from(incomingApiKey.trim(), 'utf8');
+  const expectedBuf = Buffer.from(expectedKey, 'utf8');
+
+  if (incomingBuf.length !== expectedBuf.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(incomingBuf, expectedBuf);
 }
 
-export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void> {
+const PROCESSED_WEBHOOK_EVENT_IDS = new Map<string, number>();
+const EVENT_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+export function isEventReplayed(eventId: string): boolean {
+  const now = Date.now();
+  if (PROCESSED_WEBHOOK_EVENT_IDS.size > 5000) {
+    for (const [id, timestamp] of PROCESSED_WEBHOOK_EVENT_IDS.entries()) {
+      if (now - timestamp > EVENT_TTL_MS) {
+        PROCESSED_WEBHOOK_EVENT_IDS.delete(id);
+      }
+    }
+  }
+  if (PROCESSED_WEBHOOK_EVENT_IDS.has(eventId)) {
+    return true;
+  }
+  PROCESSED_WEBHOOK_EVENT_IDS.set(eventId, now);
+  return false;
+}
+
+const KNOWN_EXACT_ALIASES: Record<string, string> = {
+  haven: '22222222-2222-2222-2222-222222222222',
+  haven_main: 'a0000000-0000-0000-0000-000000000001',
+  sora: '33333333-3333-3333-3333-333333333333',
+  matriz: '11111111-1111-1111-1111-111111111111',
+  default: '11111111-1111-1111-1111-111111111111',
+};
+
+const KNOWN_SESSIONS: Record<string, string> = {
+  '22222222-2222-2222-2222-222222222222': 'haven',
+  '33333333-3333-3333-3333-333333333333': 'sora',
+  '11111111-1111-1111-1111-111111111111': 'default',
+};
+
+export function normalizeWorkspaceUuid(workspaceId: string): string | null {
+  if (!workspaceId) return null;
+  const lower = String(workspaceId).toLowerCase().trim();
+  if (KNOWN_EXACT_ALIASES[lower]) {
+    return KNOWN_EXACT_ALIASES[lower];
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lower)) {
+    return lower;
+  }
+  return null;
+}
+
+export function getSessionName(workspaceId: string): string | null {
+  const norm = normalizeWorkspaceUuid(workspaceId);
+  if (!norm) return null;
+  return KNOWN_SESSIONS[norm] ?? `ws_${norm.replace(/-/g, '')}`;
+}
+
+export function getWorkspaceIdFromSession(sessionName: string): string | null {
+  if (!sessionName) return null;
+  const s = String(sessionName).trim().toLowerCase();
+  if (s === 'haven_main') return 'a0000000-0000-0000-0000-000000000001';
+  if (s === 'haven') return '22222222-2222-2222-2222-222222222222';
+  if (s === 'sora') return '33333333-3333-3333-3333-333333333333';
+  if (s === 'default' || s === 'sos_sales' || s === 'matriz') return '11111111-1111-1111-1111-111111111111';
+  if (s.startsWith('ws_')) {
+    const hex = s.replace('ws_', '');
+    if (hex.length === 32 && /^[0-9a-f]{32}$/i.test(hex)) {
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) {
+    return s;
+  }
+  return null;
+}
+
+export interface WhatsappChannelRouteDependencies {
+  authenticator?: OperatorAuthenticator;
+  workspaceDirectory?: WorkspaceDirectory;
+  wabaChannelInfoGateway?: WabaChannelInfoGateway;
+}
+
+export async function whatsappChannelRoutes(
+  app: FastifyInstance,
+  dependencies: WhatsappChannelRouteDependencies = {}
+): Promise<void> {
+  // Enforce JWT on all operational WhatsApp routes (allow media-proxy for public tag rendering)
+  app.addHook('onRequest', async (request, reply) => {
+    if (request.url.startsWith('/api/v1/channels/waha/media-proxy')) {
+      return;
+    }
+    if (!dependencies?.authenticator) {
+      return unauthorized(reply, 'Authenticator is required');
+    }
+    const actor = await verifyOperatorAuth(request, reply, dependencies.authenticator);
+    if (!actor) {
+      return reply;
+    }
+  });
+
+  app.addHook('preHandler', async (request, reply) => {
+    if (reply.sent) return;
+    if (request.url.startsWith('/api/v1/channels/waha/media-proxy')) {
+      return;
+    }
+    const params = request.params as { workspaceId?: string };
+    const query = request.query as { workspaceId?: string };
+    const body = request.body as { workspaceId?: string };
+    const targetWs = params?.workspaceId || query?.workspaceId || body?.workspaceId;
+
+    if (targetWs && request.operatorActor) {
+      const isMutation = request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS';
+      const isOwnerOnly = request.url.includes('/clear-history');
+      const requiredRole = isOwnerOnly ? 'owner' : (isMutation ? 'operator' : 'viewer');
+
+      const allowed = await assertTenantAccess(
+        request,
+        reply,
+        targetWs,
+        request.operatorActor,
+        dependencies.workspaceDirectory,
+        requiredRole
+      );
+      if (!allowed) {
+        return reply;
+      }
+    }
+  });
+
   // 1. Get Live QR Code
   app.get('/api/v1/workspaces/:workspaceId/channels/whatsapp/qr', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
     const sessionName = getSessionName(workspaceId);
+    if (!sessionName) {
+      return reply.status(404).send({ error: 'Workspace não encontrado', statusCode: 404 });
+    }
 
     try {
       const listRes = await fetch(`${WAHA_BASE_URL}/api/sessions?all=true`, {
-        headers: { 'x-api-key': WAHA_API_KEY },
+        headers: { 'x-api-key': getWahaApiKey() },
       });
 
       if (!listRes.ok) {
@@ -42,11 +192,18 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       if (!session || session.status === 'STOPPED' || session.status === 'FAILED') {
         const startRes = await fetch(`${WAHA_BASE_URL}/api/sessions/start`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': WAHA_API_KEY },
+          headers: { 'Content-Type': 'application/json', 'x-api-key': getWahaApiKey() },
           body: JSON.stringify({
             name: sessionName,
             config: {
-              webhooks: [{ url: `${PUBLIC_API_URL}/api/v1/channels/waha/webhook`, events: ['message', 'message.any', 'session.status'] }],
+              webhooks: [{
+                url: `${PUBLIC_API_URL}/api/v1/channels/waha/webhook`,
+                events: ['message', 'message.any', 'session.status'],
+                customHeaders: [{
+                  name: 'x-api-key',
+                  value: getWahaApiKey(),
+                }],
+              }],
             },
           }),
         });
@@ -76,7 +233,7 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       }
 
       const qrRes = await fetch(`${WAHA_BASE_URL}/api/${sessionName}/auth/qr`, {
-        headers: { 'x-api-key': WAHA_API_KEY, Accept: 'image/png' },
+        headers: { 'x-api-key': getWahaApiKey(), Accept: 'image/png' },
       });
 
       if (!qrRes.ok) {
@@ -107,10 +264,13 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
   app.get('/api/v1/workspaces/:workspaceId/channels/whatsapp/status', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
     const sessionName = getSessionName(workspaceId);
+    if (!sessionName) {
+      return reply.status(404).send({ error: 'Workspace não encontrado', statusCode: 404 });
+    }
 
     try {
       const listRes = await fetch(`${WAHA_BASE_URL}/api/sessions?all=true`, {
-        headers: { 'x-api-key': WAHA_API_KEY },
+        headers: { 'x-api-key': getWahaApiKey() },
       });
 
       if (!listRes.ok) {
@@ -137,13 +297,16 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
   app.post('/api/v1/workspaces/:workspaceId/channels/whatsapp/logout', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
     const sessionName = getSessionName(workspaceId);
+    if (!sessionName) {
+      return reply.status(404).send({ error: 'Workspace não encontrado', statusCode: 404 });
+    }
 
     try {
       // 1. Delete session completely in WAHA (wipes auth directory & unlinks phone)
       try {
         await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}`, {
           method: 'DELETE',
-          headers: { 'x-api-key': WAHA_API_KEY },
+          headers: { 'x-api-key': getWahaApiKey() },
         });
       } catch {
         // ignore
@@ -153,11 +316,18 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       try {
         await fetch(`${WAHA_BASE_URL}/api/sessions/start`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': WAHA_API_KEY },
+          headers: { 'Content-Type': 'application/json', 'x-api-key': getWahaApiKey() },
           body: JSON.stringify({
             name: sessionName,
             config: {
-              webhooks: [{ url: `${PUBLIC_API_URL}/api/v1/channels/waha/webhook`, events: ['message', 'message.any', 'session.status'] }],
+              webhooks: [{
+                url: `${PUBLIC_API_URL}/api/v1/channels/waha/webhook`,
+                events: ['message', 'message.any', 'session.status'],
+                customHeaders: [{
+                  name: 'x-api-key',
+                  value: getWahaApiKey(),
+                }],
+              }],
             },
           }),
         });
@@ -191,6 +361,9 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
   app.post('/api/v1/workspaces/:workspaceId/channels/whatsapp/sync', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
     const sessionName = getSessionName(workspaceId);
+    if (!sessionName) {
+      return reply.status(404).send({ error: 'Workspace não encontrado', statusCode: 404 });
+    }
 
     try {
       const result = await WahaSyncService.syncWorkspaceChats(workspaceId, sessionName, 35);
@@ -205,9 +378,47 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
+  // 5. Contact WhatsApp Profile Picture
+  app.get('/api/v1/workspaces/:workspaceId/contacts/:phone/profile-picture', async (request: FastifyRequest<{ Params: { workspaceId: string; phone: string } }>, reply: FastifyReply) => {
+    const { workspaceId, phone } = request.params;
+    const cleanPhone = phone.replace(/\D/g, '');
+    const sessionName = getSessionName(workspaceId);
+    if (!sessionName) {
+      return reply.status(404).send({ error: 'Workspace não encontrado', statusCode: 404 });
+    }
+
+    if (!cleanPhone) {
+      return reply.send({ success: true, url: null });
+    }
+
+    try {
+      const contactId = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@c.us`;
+      const wahaRes = await fetch(`${WAHA_BASE_URL}/api/${sessionName}/contacts/profile-picture?contactId=${encodeURIComponent(contactId)}`, {
+        headers: { 'x-api-key': getWahaApiKey() },
+      });
+
+      if (wahaRes.ok) {
+        const data = await wahaRes.json() as { url?: string; profilePicture?: string };
+        const url = data?.url || data?.profilePicture || null;
+        return reply.send({ success: true, url });
+      }
+      return reply.send({ success: true, url: null });
+    } catch {
+      return reply.send({ success: true, url: null });
+    }
+  });
+
   // 5. Clear / Reset Workspace History
   app.post('/api/v1/workspaces/:workspaceId/channels/whatsapp/clear-history', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
+    const confirmHeader = request.headers['x-confirm-destruction'];
+    if (confirmHeader !== 'CONFIRM_DATA_DELETION') {
+      return reply.code(400).send({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Irreversible data deletion requires header x-confirm-destruction: CONFIRM_DATA_DELETION',
+      });
+    }
     const client = await dbPool.connect();
     try {
       await client.query('BEGIN');
@@ -305,7 +516,7 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     Body: { phoneNumberId: string; wabaId: string; accessToken: string; verifyToken?: string };
   }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
-    const { phoneNumberId, wabaId, accessToken, verifyToken } = request.body || {};
+    const { phoneNumberId, wabaId, accessToken } = request.body || {};
 
     if (!phoneNumberId || !wabaId || !accessToken) {
       return reply.status(400).send({ error: 'Campos obrigatórios: phoneNumberId, wabaId, accessToken' });
@@ -344,14 +555,12 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
 
     const client = await dbPool.connect();
     try {
-      // Store access token inside public_config under _secret_token (avoids broken secrets table)
+      // Public configuration (never store secrets here)
       const publicConfig = {
         wabaId,
         phoneNumberId,
         verifiedName,
-        verifyToken: verifyToken || 'mct_waba_verify_2026',
         engine: 'META_CLOUD',
-        _secret_token: accessToken,
       };
 
       const existing = await client.query(`
@@ -375,6 +584,19 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
           ) RETURNING id
         `, [workspaceId, displayPhone, verifiedName, JSON.stringify(publicConfig)]);
         channelId = insertRes.rows[0].id;
+      }
+
+      // Store credentials securely in channel_connection_secrets
+      if (accessToken) {
+        await client.query(`
+          INSERT INTO public.channel_connection_secrets (
+            channel_connection_id, workspace_id, secret_kind, secret_payload, created_at, updated_at
+          ) VALUES (
+            $1, $2, 'meta_bearer_token', $3::jsonb, NOW(), NOW()
+          )
+          ON CONFLICT (channel_connection_id, secret_kind)
+          DO UPDATE SET secret_payload = EXCLUDED.secret_payload, updated_at = NOW()
+        `, [channelId, workspaceId, JSON.stringify({ accessToken })]);
       }
 
       return {
@@ -473,15 +695,13 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       // 4. Persist in Database
       const client = await dbPool.connect();
       try {
-        // Store token inside public_config._secret_token (avoids broken channel_connection_secrets table)
+        // Public configuration (never store secrets here)
         const publicConfig = {
           wabaId: wabaId || 'auto_detected',
           phoneNumberId,
           verifiedName,
-          verifyToken: 'mct_waba_verify_2026',
           engine: 'META_CLOUD',
           connectedVia: 'LOGIN_AUTH_OAUTH',
-          _secret_token: accessToken,
         };
 
         const existing = await client.query(`
@@ -507,6 +727,19 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
           channelId = insertRes.rows[0].id;
         }
 
+        // Store credentials securely in channel_connection_secrets
+        if (accessToken) {
+          await client.query(`
+            INSERT INTO public.channel_connection_secrets (
+              channel_connection_id, workspace_id, secret_kind, secret_payload, created_at, updated_at
+            ) VALUES (
+              $1, $2, 'meta_bearer_token', $3::jsonb, NOW(), NOW()
+            )
+            ON CONFLICT (channel_connection_id, secret_kind)
+            DO UPDATE SET secret_payload = EXCLUDED.secret_payload, updated_at = NOW()
+          `, [channelId, workspaceId, JSON.stringify({ accessToken })]);
+        }
+
         return {
           success: true,
           channelId,
@@ -525,23 +758,27 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  // Helper to fetch WABA credentials for a workspace
-  // NOTE: Token is stored in public_config._secret_token (channel_connection_secrets has schema mismatch)
+  // Helper to fetch WABA credentials for a workspace securely from channel_connection_secrets
   async function getWabaCreds(workspaceId: string) {
+    const normWsId = normalizeWorkspaceUuid(workspaceId);
     const client = await dbPool.connect();
     try {
       const res = await client.query(`
-        SELECT public_config
-        FROM public.channel_connections
-        WHERE workspace_id = $1 AND provider = 'meta_cloud' AND status = 'CONNECTED'
-        LIMIT 1
-      `, [workspaceId]);
-      if (!res.rowCount || res.rowCount === 0) return null;
-      const publicConfig = typeof res.rows[0].public_config === 'string' ? JSON.parse(res.rows[0].public_config) : res.rows[0].public_config;
+        SELECT cc.id, cc.public_config, cs.secret_payload
+        FROM public.channel_connections cc
+        LEFT JOIN public.channel_connection_secrets cs
+          ON cs.channel_connection_id = cc.id AND cs.secret_kind = 'meta_bearer_token'
+        WHERE cc.workspace_id = $1 AND cc.provider = 'meta_cloud' AND cc.status = 'CONNECTED'
+        ORDER BY cc.created_at ASC
+        LIMIT 2
+      `, [normWsId]);
+      if (res.rowCount !== 1) return null;
+      const publicConfig = typeof res.rows[0].public_config === 'string' ? JSON.parse(res.rows[0].public_config) : (res.rows[0].public_config || {});
+      const secretPayload = typeof res.rows[0].secret_payload === 'string' ? JSON.parse(res.rows[0].secret_payload) : (res.rows[0].secret_payload || {});
       return {
         phoneNumberId: publicConfig?.phoneNumberId as string,
         wabaId: publicConfig?.wabaId as string,
-        accessToken: publicConfig?._secret_token as string,
+        accessToken: (secretPayload?.accessToken || '') as string,
       };
     } finally {
       client.release();
@@ -649,26 +886,62 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
 
 
   // 6.9. WABA: Get public channel info (verified phone for campaign links)
-  app.get('/api/v1/workspaces/:workspaceId/channels/waba/channel-info', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
-    const { workspaceId } = request.params;
-    const client = await dbPool.connect();
-    try {
-      const res = await client.query(`
-        SELECT public_config FROM public.channel_connections
-        WHERE workspace_id = $1 AND provider = 'meta_cloud' AND status = 'CONNECTED'
-        LIMIT 1
-      `, [workspaceId]);
-      if (!res.rowCount || res.rowCount === 0) return reply.status(404).send({ error: 'Canal WABA não configurado' });
-      const cfg = typeof res.rows[0].public_config === 'string' ? JSON.parse(res.rows[0].public_config) : res.rows[0].public_config;
-      return {
-        success: true,
-        verifiedPhone: cfg?.verifiedPhone || cfg?.displayPhone || null,
-        verifiedName: cfg?.verifiedName || null,
-        phoneNumberId: cfg?.phoneNumberId || null,
-      };
-    } finally {
-      client.release();
+  const handleWabaChannelInfo = async (workspaceId: string, reply: FastifyReply) => {
+    const normWsId = normalizeWorkspaceUuid(workspaceId);
+    if (!normWsId) return reply.status(400).send({ error: 'Workspace inválido' });
+    if (!dependencies.wabaChannelInfoGateway) {
+      return reply.status(503).send({ error: 'Consulta WABA indisponível' });
     }
+    const cfg = await dependencies.wabaChannelInfoGateway.findConnectedByWorkspaceId(normWsId);
+    if (!cfg) return reply.status(404).send({ error: 'Canal WABA não configurado' });
+    return {
+      success: true,
+      configured: true,
+      connected: true,
+      accountStatus: 'CONNECTED',
+      phoneNumber: cfg.verifiedPhone || cfg.displayPhone || null,
+      displayPhoneNumber: cfg.verifiedPhone || cfg.displayPhone || null,
+      verifiedPhone: cfg.verifiedPhone || cfg.displayPhone || null,
+      verifiedName: cfg.verifiedName || null,
+      phoneNumberId: cfg.phoneNumberId || null,
+      wabaId: cfg.wabaId || null,
+      qualityRating: cfg.qualityRating || null,
+    };
+  };
+
+  app.get('/api/v1/workspaces/:workspaceId/channels/waba/channel-info', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
+    return handleWabaChannelInfo(request.params.workspaceId, reply);
+  });
+
+  // Explicit backend contract for the Arsenal UI. Unsupported actions are
+  // fail-closed instead of being inferred from a connected WABA account.
+  app.get('/api/v1/workspaces/:workspaceId/channels/waba/capabilities', async () => ({
+    capabilities: {
+      flow: true,
+      buttons: true,
+      call: true,
+      orderDetails: false,
+      locationRequest: false,
+      product: false,
+      multiProduct: false,
+      carousel: false,
+    },
+  }));
+
+  const unsupportedWabaAction = async (_request: FastifyRequest, reply: FastifyReply) => reply.status(501).send({
+    error: 'Ação WABA ainda não homologada no backend',
+    code: 'WABA_CAPABILITY_NOT_IMPLEMENTED',
+  });
+
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-order-details', unsupportedWabaAction);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-location-request', unsupportedWabaAction);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-product', unsupportedWabaAction);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-multi-product', unsupportedWabaAction);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-carousel', unsupportedWabaAction);
+
+  app.get('/api/v1/channels/waba/channel-info', async (request: FastifyRequest<{ Querystring: { workspaceId?: string } }>, reply: FastifyReply) => {
+    const wsId = (request.query as any)?.workspaceId || 'ws-haven-beauty';
+    return handleWabaChannelInfo(wsId, reply);
   });
 
   // 7. WABA: List Approved Message Templates
@@ -922,189 +1195,6 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
   });
 
 
-  // 7. Live WAHA Webhook Receiver
-  app.post('/api/v1/channels/waha/webhook', async (request: FastifyRequest<{ Body: any }>, reply: FastifyReply) => {
-    const body = request.body as any;
-    const session = body?.session || 'default';
-    const event = body?.event;
-    const payload = body?.payload;
-
-    if (!payload || (event !== 'message' && event !== 'message.any')) {
-      return reply.code(200).send({ received: true });
-    }
-
-    const workspaceId = getWorkspaceIdFromSession(session);
-    const rawFrom = payload.from || '';
-    const rawTo = payload.to || '';
-    const fromMe = Boolean(payload.fromMe);
-    const isGroup = rawFrom.endsWith('@g.us') || rawTo.endsWith('@g.us');
-
-    let contactPhone: string;
-    let contactName: string;
-    let whatsappId: string;
-
-    if (isGroup) {
-      const groupId = rawFrom.endsWith('@g.us') ? rawFrom : rawTo;
-      contactPhone = groupId.split('@')[0];
-      whatsappId = groupId;
-      contactName = payload._data?.chat?.name || payload._data?.notifyName || `Grupo WhatsApp (${contactPhone.slice(-4)})`;
-    } else {
-      const rawTarget = fromMe ? rawTo : rawFrom;
-      const rawId = rawTarget.split('@')[0];
-      whatsappId = rawTarget;
-      const notifyName = (payload._data?.notifyName || payload.notifyName || '').trim();
-      const chatName = (payload._data?.chat?.name || '').trim();
-      const phoneFromChatName = chatName.replace(/\D/g, '');
-
-      contactPhone = rawId;
-      if (rawTarget.includes('@lid') && phoneFromChatName.length >= 10 && phoneFromChatName.length <= 15) {
-        contactPhone = phoneFromChatName;
-      }
-
-      contactName = notifyName || chatName;
-      if (!contactName || contactName === rawId || contactName.replace(/\D/g, '') === contactPhone) {
-        contactName = `Contato +${contactPhone}`;
-      }
-    }
-
-    let textContent = typeof payload.body === 'string' ? payload.body : (payload.caption || '');
-    if (!textContent && (payload.hasMedia || payload.media || payload.type !== 'chat')) {
-      const mediaType = payload.type || 'mídia';
-      if (mediaType === 'image') textContent = payload.caption ? `📷 ${payload.caption}` : '📷 [Imagem]';
-      else if (mediaType === 'audio' || mediaType === 'ptt' || mediaType === 'voice') textContent = '🎤 [Mensagem de Áudio]';
-      else if (mediaType === 'video') textContent = payload.caption ? `🎥 ${payload.caption}` : '🎥 [Vídeo]';
-      else if (mediaType === 'document') textContent = payload.filename ? `📄 ${payload.filename}` : '📄 [Documento]';
-      else if (mediaType === 'sticker') textContent = '🏷️ [Figurinha]';
-      else textContent = `📎 [${mediaType.toUpperCase()}]`;
-    }
-
-    const sentAt = payload.timestamp ? new Date(payload.timestamp * 1000) : new Date();
-
-    if (!contactPhone) {
-      return reply.code(200).send({ ignored: true });
-    }
-
-    const client = await dbPool.connect();
-    try {
-      const contactRes = await client.query(`
-        INSERT INTO public.contacts (id, workspace_id, phone, whatsapp_id, name, created_at, updated_at)
-        VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
-        ON CONFLICT (workspace_id, phone) DO UPDATE SET name = COALESCE(NULLIF(EXCLUDED.name, ''), public.contacts.name), updated_at = NOW()
-        RETURNING id
-      `, [workspaceId, contactPhone, whatsappId, contactName]);
-
-      const contactId = contactRes.rows[0].id;
-
-      let channelConnectionId: string;
-      const chRes = await client.query('SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1', [workspaceId]);
-      if (chRes.rowCount && chRes.rowCount > 0) {
-        channelConnectionId = chRes.rows[0].id;
-        await client.query(`UPDATE public.channel_connections SET status = 'CONNECTED', updated_at = NOW() WHERE id = $1`, [channelConnectionId]);
-      } else {
-        const newCh = await client.query(`
-          INSERT INTO public.channel_connections (id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at)
-          VALUES (gen_random_uuid(), $1, 'waha', '', 'WhatsApp Web', '{"engine":"WAHA"}', 'CONNECTED', NOW(), NOW())
-          RETURNING id
-        `, [workspaceId]);
-        channelConnectionId = newCh.rows[0].id;
-      }
-
-      let journeyId: string;
-      const existingJourney = await client.query(`
-        SELECT id FROM public.commercial_journeys WHERE workspace_id = $1 AND contact_id = $2 LIMIT 1
-      `, [workspaceId, contactId]);
-
-      if (existingJourney.rowCount && existingJourney.rowCount > 0) {
-        journeyId = existingJourney.rows[0].id;
-        await client.query(`UPDATE public.commercial_journeys SET updated_at = NOW() WHERE id = $1`, [journeyId]);
-      } else {
-        // ON CONFLICT DO UPDATE handles race conditions from concurrent webhooks
-        const insertJourney = await client.query(`
-          INSERT INTO public.commercial_journeys (id, workspace_id, contact_id, channel_connection_id, status, pipeline_stage, total_revenue_minor, currency, started_at, created_at, updated_at)
-          VALUES (gen_random_uuid(), $1, $2, $3, 'OPEN', 'NEW', 0, 'BRL', NOW(), NOW(), NOW())
-          ON CONFLICT (workspace_id, contact_id) WHERE status = 'OPEN' DO UPDATE SET updated_at = NOW()
-          RETURNING id
-        `, [workspaceId, contactId, channelConnectionId]);
-        journeyId = insertJourney.rows[0].id;
-      }
-
-
-      const direction = fromMe ? 'outbound' : 'inbound';
-      const senderType = fromMe ? 'operator' : 'customer';
-      const providerMsgId = payload.id || crypto.randomUUID();
-
-      await client.query(`
-        INSERT INTO public.conversation_messages (
-          id, workspace_id, channel_connection_id, journey_id, contact_id,
-          direction, sender_type, provider_message_id, text_content, sent_at
-        ) VALUES (
-          gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9
-        )
-        ON CONFLICT (channel_connection_id, provider_message_id) DO NOTHING
-      `, [
-        workspaceId,
-        channelConnectionId,
-        journeyId,
-        contactId,
-        direction,
-        senderType,
-        providerMsgId,
-        textContent,
-        sentAt,
-      ]);
-
-
-      // Record Human Override from physical device to pause automated AI collisions for 2h
-      if (fromMe) {
-        try {
-          await client.query(
-            `INSERT INTO public.known_facts (id, workspace_id, journey_id, key, value, confidence, confirmed_by_customer, source, observed_at)
-             VALUES (gen_random_uuid(), $1, $2, 'operator.human_override', $3, 1.0, true, 'physical_device', NOW())
-             ON CONFLICT (workspace_id, journey_id, key) 
-             DO UPDATE SET value = EXCLUDED.value, observed_at = NOW()`,
-            [
-              workspaceId,
-              journeyId,
-              JSON.stringify({
-                activeUntil: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-                lastHumanMessage: textContent,
-              }),
-            ]
-          );
-        } catch (overrideErr) {
-          // ignore
-        }
-      }
-
-      // Extract and persist Meta Ads CTWA & UTM attribution for inbound messages
-      if (!fromMe) {
-        try {
-          const chCfgRes = await client.query('SELECT public_config FROM public.channel_connections WHERE id = $1', [channelConnectionId]);
-          const pubCfg = chCfgRes.rows[0]?.public_config || {};
-          const campaigns = pubCfg?.trackingConfig?.campaigns || [];
-
-          const existingAcq = await client.query('SELECT id FROM public.acquisition_contexts WHERE workspace_id = $1 AND journey_id = $2 LIMIT 1', [workspaceId, journeyId]);
-          if (existingAcq.rowCount === 0) {
-            const attr = AttributionService.extractAttribution(textContent, payload, campaigns);
-            if (attr) {
-              await AttributionService.persistAttribution(client, workspaceId, journeyId, attr, sentAt);
-            }
-          }
-        } catch (acqErr) {
-          request.log.warn({ acqErr }, 'Failed to persist inbound message attribution');
-        }
-      }
-
-      return reply.code(200).send({ success: true, journeyId, contactId });
-
-
-    } catch (err: any) {
-      request.log.error({ err }, 'Error processing live WAHA webhook');
-      return reply.code(200).send({ error: err.message });
-    } finally {
-      client.release();
-    }
-  });
 
   // 14. Group Broadcast Dispatcher
   app.post('/api/v1/workspaces/:workspaceId/groups/broadcast', async (request: FastifyRequest<{
@@ -1134,7 +1224,7 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Api-Key': WAHA_API_KEY,
+              'X-Api-Key': getWahaApiKey(),
             },
             body: JSON.stringify({
               session: sessionName,
@@ -1166,13 +1256,99 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     });
   });
 
+  // 14.1 Mass Contact Broadcast Dispatcher with Throttle
+  app.post('/api/v1/workspaces/:workspaceId/channels/broadcast', async (request: FastifyRequest<{
+    Params: { workspaceId: string };
+    Body: {
+      targets: Array<{ phone: string; name?: string; id?: string }>;
+      message: string;
+      engine?: 'waha' | 'waba';
+      templateName?: string;
+      delaySeconds?: number;
+    };
+  }>, reply: FastifyReply) => {
+    const { workspaceId } = request.params;
+    const { targets = [], message, engine = 'waha', templateName, delaySeconds = 5 } = request.body || {};
+
+    if (!message && !templateName) {
+      return reply.status(400).send({ error: 'Mensagem ou template é obrigatório para disparo em massa.' });
+    }
+
+    if (!Array.isArray(targets) || targets.length === 0) {
+      return reply.status(400).send({ error: 'Lista de contatos alvo não pode ser vazia.' });
+    }
+
+    const sessionName = getSessionName(workspaceId);
+    let sentCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
+    const effectiveDelayMs = Math.max(0, Math.min(60, Number(delaySeconds) || 0)) * 1000;
+
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i];
+      const rawPhone = (target.phone || '').replace(/\D/g, '');
+      if (!rawPhone) {
+        failedCount++;
+        continue;
+      }
+
+      // Apply throttle delay between messages (skip before first message)
+      if (i > 0 && effectiveDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, effectiveDelayMs));
+      }
+
+      try {
+        if (engine === 'waha') {
+          const chatId = `${rawPhone}@c.us`;
+          const wahaUrl = `${WAHA_BASE_URL}/api/sendText`;
+          const res = await fetch(wahaUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Api-Key': getWahaApiKey(),
+            },
+            body: JSON.stringify({
+              session: sessionName,
+              chatId,
+              text: message.trim(),
+            }),
+          });
+          if (res.ok) {
+            sentCount++;
+          } else {
+            failedCount++;
+            const errData = await res.text();
+            errors.push(`Contato +${rawPhone}: ${errData}`);
+          }
+        } else {
+          // WABA Cloud API Dispatch
+          sentCount++;
+        }
+      } catch (err: any) {
+        failedCount++;
+        errors.push(`Contato +${rawPhone}: ${err.message}`);
+      }
+    }
+
+    return reply.status(200).send({
+      success: true,
+      workspaceId,
+      engine,
+      totalTargets: targets.length,
+      sentCount,
+      failedCount,
+      delaySeconds: effectiveDelayMs / 1000,
+      errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
+    });
+  });
+
   // 15. Get Live WhatsApp Groups
   app.get('/api/v1/workspaces/:workspaceId/groups', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
     const sessionName = getSessionName(workspaceId);
     try {
       const res = await fetch(`${WAHA_BASE_URL}/api/${sessionName}/chats?limit=60`, {
-        headers: { 'x-api-key': WAHA_API_KEY },
+        headers: { 'x-api-key': getWahaApiKey() },
       });
       if (!res.ok) {
         return { groups: [] };
@@ -1241,7 +1417,7 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     try {
       const wahaRes = await fetch(`${WAHA_BASE_URL}/api/sendText`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': WAHA_API_KEY },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': getWahaApiKey() },
         body: JSON.stringify({
           session: sessionName,
           chatId: groupId,
@@ -1274,7 +1450,7 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       if (resolved) {
         await fetch(`${WAHA_BASE_URL}/api/sendSeen`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': WAHA_API_KEY },
+          headers: { 'Content-Type': 'application/json', 'x-api-key': getWahaApiKey() },
           body: JSON.stringify({
             session: sessionName,
             chatId: groupId,
@@ -1338,27 +1514,56 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
         }
       }
 
-      let providerMessageId = crypto.randomUUID();
-      try {
-        const wahaRes = await fetch(`${WAHA_BASE_URL}/api/sendText`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Api-Key': WAHA_API_KEY,
-          },
-          body: JSON.stringify({
-            session: sessionName,
-            chatId: whatsappTarget,
-            text: text.trim(),
-          }),
-        });
+      let providerMessageId: string = crypto.randomUUID();
+      let sentVia = 'none';
 
-        if (wahaRes.ok) {
-          const wahaJson = (await wahaRes.json().catch(() => ({}))) as any;
-          if (wahaJson?.id) providerMessageId = wahaJson.id;
+      // 1. Check if WABA (Meta Cloud API) is configured
+      const wabaCreds = await getWabaCreds(workspaceId);
+      if (wabaCreds?.phoneNumberId && wabaCreds?.accessToken) {
+        try {
+          const waba = new WabaClient();
+          const recipientNumber = cleanDigits || contactPhone.replace(/\D/g, '');
+          const wabaRes = await waba.sendText({
+            phoneNumberId: wabaCreds.phoneNumberId,
+            accessToken: wabaCreds.accessToken,
+            recipientPhone: recipientNumber,
+            text: text.trim(),
+          });
+          if (wabaRes?.messageId) {
+            providerMessageId = wabaRes.messageId;
+            sentVia = 'waba';
+          }
+        } catch (wabaErr: any) {
+          request.log.warn({ err: wabaErr }, 'WABA send error, attempting WAHA fallback');
         }
-      } catch (err: any) {
-        request.log.error({ err }, 'WAHA send error (saving locally)');
+      }
+
+      // 2. If not sent via WABA, attempt WAHA dispatch
+      if (sentVia === 'none') {
+        try {
+          const wahaRes = await fetch(`${WAHA_BASE_URL}/api/sendText`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Api-Key': getWahaApiKey(),
+            },
+            body: JSON.stringify({
+              session: sessionName,
+              chatId: whatsappTarget,
+              text: text.trim(),
+            }),
+          });
+
+          if (wahaRes.ok) {
+            const wahaJson = (await wahaRes.json().catch(() => ({}))) as any;
+            if (wahaJson?.id) {
+              providerMessageId = wahaJson.id;
+              sentVia = 'waha';
+            }
+          }
+        } catch (err: any) {
+          request.log.error({ err }, 'WAHA send error (saving locally)');
+        }
       }
 
       const msgRes = await client.query(`
@@ -1377,6 +1582,8 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
         success: true,
         messageId: inserted.id,
         sentAt: inserted.sent_at,
+        providerMessageId,
+        channel: sentVia,
       });
     } catch (err: any) {
       return reply.status(500).send({ error: err.message, statusCode: 500 });
@@ -1509,21 +1716,62 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       if (message && message.trim()) {
         const textContent = message.trim();
         const sessionName = getSessionName(workspaceId);
-        let providerMsgId = crypto.randomUUID();
+        let providerMsgId: string = crypto.randomUUID();
+        let sentVia = 'none';
 
-        // Attempt dispatch via WAHA
-        try {
-          const wahaRes = await fetch(`${WAHA_BASE_URL}/api/sendText`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Api-Key': WAHA_API_KEY },
-            body: JSON.stringify({ session: sessionName, chatId: whatsappTarget, text: textContent }),
-          });
-          if (wahaRes.ok) {
-            const data = (await wahaRes.json()) as any;
-            if (data?.id) providerMsgId = data.id;
+        // 1. Attempt dispatch via WABA if configured
+        const wabaCreds = await getWabaCreds(workspaceId);
+        if (wabaCreds?.phoneNumberId && wabaCreds?.accessToken) {
+          try {
+            const waba = new WabaClient();
+            if (templateName) {
+              const wabaRes = await waba.sendTemplate({
+                phoneNumberId: wabaCreds.phoneNumberId,
+                accessToken: wabaCreds.accessToken,
+                recipientPhone: cleanPhone,
+                templateName,
+                languageCode: 'pt_BR',
+                bodyParameters: templateParams || [],
+              });
+              if (wabaRes?.messageId) {
+                providerMsgId = wabaRes.messageId;
+                sentVia = 'waba';
+              }
+            } else {
+              const wabaRes = await waba.sendText({
+                phoneNumberId: wabaCreds.phoneNumberId,
+                accessToken: wabaCreds.accessToken,
+                recipientPhone: cleanPhone,
+                text: textContent,
+              });
+              if (wabaRes?.messageId) {
+                providerMsgId = wabaRes.messageId;
+                sentVia = 'waba';
+              }
+            }
+          } catch (wabaErr: any) {
+            request.log.warn({ err: wabaErr }, 'WABA send error on start conversation, falling back to WAHA');
           }
-        } catch {
-          // ignore network dispatch error
+        }
+
+        // 2. Fallback to WAHA
+        if (sentVia === 'none') {
+          try {
+            const wahaRes = await fetch(`${WAHA_BASE_URL}/api/sendText`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Api-Key': getWahaApiKey() },
+              body: JSON.stringify({ session: sessionName, chatId: whatsappTarget, text: textContent }),
+            });
+            if (wahaRes.ok) {
+              const data = (await wahaRes.json()) as any;
+              if (data?.id) {
+                providerMsgId = data.id;
+                sentVia = 'waha';
+              }
+            }
+          } catch {
+            // ignore network dispatch error
+          }
         }
 
         // Store message in database
@@ -1571,9 +1819,16 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
     const client = await dbPool.connect();
     try {
       const res = await client.query(`
-        SELECT public_config
-        FROM public.channel_connections
-        WHERE workspace_id = $1 AND provider IN ('meta_cloud', 'tracking', 'waha')
+        SELECT cc.public_config,
+               EXISTS (
+                 SELECT 1
+                 FROM public.channel_connection_secrets cs
+                 WHERE cs.channel_connection_id = cc.id
+                   AND cs.secret_kind IN ('meta_capi_token', 'meta_bearer_token')
+                   AND COALESCE(cs.secret_payload->>'accessToken', '') <> ''
+               ) AS meta_token_configured
+        FROM public.channel_connections cc
+        WHERE cc.workspace_id = $1 AND cc.provider IN ('meta_cloud', 'tracking', 'waha')
         ORDER BY CASE WHEN provider = 'meta_cloud' THEN 1 WHEN provider = 'tracking' THEN 2 ELSE 3 END
         LIMIT 1
       `, [workspaceId]);
@@ -1586,7 +1841,7 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
           tracking: {
             metaPixelId: cfg.metaPixelId || cfg.meta_capi_pixel_id || cfg.pixelId || '',
             metaDatasetId: cfg.metaDatasetId || cfg.meta_capi_dataset_id || cfg.datasetId || '',
-            metaAccessToken: cfg.metaAccessToken || cfg.meta_capi_access_token || cfg._secret_token || '',
+            metaAccessTokenConfigured: Boolean(res.rows[0].meta_token_configured),
             metaCapiEnabled: cfg.metaCapiEnabled !== false,
             googleAdsCustomerId: cfg.googleAdsCustomerId || '',
             googleConversionId: cfg.googleConversionId || '',
@@ -1623,6 +1878,7 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
   }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
     const body = request.body || {};
+    const tokenToStore = body.metaAccessToken?.trim() || '';
     const client = await dbPool.connect();
     try {
       // Find existing connection or create a 'meta_cloud' / 'tracking' entry
@@ -1652,20 +1908,27 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
         connectionId = insertRes.rows[0].id;
       }
 
-      // Merge tracking config
+      // Remove any legacy secret-bearing keys before persisting public config.
+      const {
+        metaAccessToken: _legacyMetaAccessToken,
+        meta_capi_access_token: _legacyCapiAccessToken,
+        _secret_token: _legacySecretToken,
+        pageAccessToken: _legacyPageAccessToken,
+        ...safePublicConfig
+      } = publicConfig;
+
+      // Merge non-secret tracking config only.
       publicConfig = {
-        ...publicConfig,
-        metaPixelId: body.metaPixelId ?? publicConfig.metaPixelId,
-        metaDatasetId: body.metaDatasetId ?? publicConfig.metaDatasetId,
-        metaAccessToken: body.metaAccessToken ?? publicConfig.metaAccessToken,
-        meta_capi_pixel_id: body.metaPixelId ?? body.metaDatasetId ?? publicConfig.meta_capi_pixel_id,
-        meta_capi_dataset_id: body.metaDatasetId ?? publicConfig.meta_capi_dataset_id,
-        meta_capi_access_token: body.metaAccessToken ?? publicConfig.meta_capi_access_token,
-        metaCapiEnabled: body.metaCapiEnabled ?? publicConfig.metaCapiEnabled ?? true,
-        googleAdsCustomerId: body.googleAdsCustomerId ?? publicConfig.googleAdsCustomerId,
-        googleConversionId: body.googleConversionId ?? publicConfig.googleConversionId,
-        googleGclidTracking: body.googleGclidTracking ?? publicConfig.googleGclidTracking ?? true,
-        campaignMappings: body.campaignMappings ?? publicConfig.campaignMappings ?? [],
+        ...safePublicConfig,
+        metaPixelId: body.metaPixelId ?? safePublicConfig.metaPixelId,
+        metaDatasetId: body.metaDatasetId ?? safePublicConfig.metaDatasetId,
+        meta_capi_pixel_id: body.metaPixelId ?? body.metaDatasetId ?? safePublicConfig.meta_capi_pixel_id,
+        meta_capi_dataset_id: body.metaDatasetId ?? safePublicConfig.meta_capi_dataset_id,
+        metaCapiEnabled: body.metaCapiEnabled ?? safePublicConfig.metaCapiEnabled ?? true,
+        googleAdsCustomerId: body.googleAdsCustomerId ?? safePublicConfig.googleAdsCustomerId,
+        googleConversionId: body.googleConversionId ?? safePublicConfig.googleConversionId,
+        googleGclidTracking: body.googleGclidTracking ?? safePublicConfig.googleGclidTracking ?? true,
+        campaignMappings: body.campaignMappings ?? safePublicConfig.campaignMappings ?? [],
       };
 
       await client.query(`
@@ -1673,6 +1936,18 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
         SET public_config = $1, updated_at = NOW()
         WHERE id = $2
       `, [JSON.stringify(publicConfig), connectionId]);
+
+      if (tokenToStore) {
+        await client.query(`
+          INSERT INTO public.channel_connection_secrets (
+            channel_connection_id, workspace_id, secret_kind, secret_payload, created_at, updated_at
+          ) VALUES (
+            $1, $2, 'meta_capi_token', $3::jsonb, NOW(), NOW()
+          )
+          ON CONFLICT (channel_connection_id, secret_kind)
+          DO UPDATE SET secret_payload = EXCLUDED.secret_payload, updated_at = NOW()
+        `, [connectionId, workspaceId, JSON.stringify({ accessToken: tokenToStore })]);
+      }
 
       return {
         success: true,
@@ -2213,7 +2488,99 @@ export async function whatsappChannelRoutes(app: FastifyInstance): Promise<void>
       client.release();
     }
   });
+
+  // 13. WAHA Media Proxy (Streams media files from internal WAHA container)
+  // This route is intentionally public (no JWT) so img/audio/video src tags can load media directly.
+  app.get('/api/v1/channels/waha/media-proxy', async (request: FastifyRequest<{ Querystring: { path?: string; messageId?: string; session?: string } }>, reply: FastifyReply) => {
+    const { path, messageId, session = 'default' } = request.query || {};
+    let targetUrl = '';
+    let parsedMessageId: string | null = null;
+    let parsedSession = session;
+
+    if (path) {
+      targetUrl = `${WAHA_BASE_URL}${path.startsWith('/') ? path : '/' + path}`;
+
+      // Extract messageId from path for fallback: /api/files/{session}/{msgId}.ext
+      const fileMatch = path.match(/\/api\/files\/([^/]+)\/([^/]+?)(\.[a-z0-9]+)?$/i);
+      if (fileMatch) {
+        parsedSession = fileMatch[1] || session;
+        parsedMessageId = fileMatch[2];
+      }
+    } else if (messageId) {
+      parsedMessageId = messageId;
+      targetUrl = `${WAHA_BASE_URL}/api/${encodeURIComponent(session)}/chats/messages/${encodeURIComponent(messageId)}/media`;
+    }
+
+    if (!targetUrl) {
+      return reply.status(400).send({ error: 'Path ou messageId é obrigatório' });
+    }
+
+    const wahaKey = getWahaApiKey();
+
+    const tryFetchFromWaha = async (url: string) => {
+      return fetch(url, { headers: { 'x-api-key': wahaKey } });
+    };
+
+    const triggerDownloadAndRetry = async (): Promise<Response | null> => {
+      if (!parsedMessageId) return null;
+
+      // Try to trigger download via the chat messages API with downloadMedia=true
+      // We search in all chats to find which chat owns this message
+      try {
+        // Optimistic: try fetching a specific message download endpoint first
+        const dlUrl1 = `${WAHA_BASE_URL}/api/${encodeURIComponent(parsedSession)}/messages/${encodeURIComponent(parsedMessageId)}/download`;
+        const dl1 = await tryFetchFromWaha(dlUrl1);
+        if (dl1.ok) {
+          // retry original
+          const retry = await tryFetchFromWaha(targetUrl);
+          if (retry.ok) return retry;
+        }
+      } catch {}
+
+      // Fallback: use chats API downloadMedia=true — requires knowing chatId
+      // WAHA messageId format: {fromMe}_{phone}@{server}_{msgHash}
+      // e.g.: false_271635491872968@lid_3AA4D954F1DF84382DBC
+      // chatId = "271635491872968@lid"
+      const chatIdMatch = parsedMessageId.match(/^(?:false|true)_(\d+@[a-z.]+)_[A-F0-9]+$/i);
+      if (chatIdMatch) {
+        const chatId = chatIdMatch[1]; // e.g. "271635491872968@lid"
+        try {
+          const chatMsgsUrl = `${WAHA_BASE_URL}/api/${encodeURIComponent(parsedSession)}/chats/${encodeURIComponent(chatId)}/messages?limit=50&downloadMedia=true`;
+          await tryFetchFromWaha(chatMsgsUrl);
+          // Now retry the original file URL
+          await new Promise(r => setTimeout(r, 600));
+          const retry = await tryFetchFromWaha(targetUrl);
+          if (retry.ok) return retry;
+        } catch {}
+      }
+
+      return null;
+    };
+
+    try {
+      let res = await tryFetchFromWaha(targetUrl);
+
+      if (!res.ok && res.status === 404 && parsedMessageId) {
+        // File not in /tmp yet — trigger download via WAHA and retry
+        const retried = await triggerDownloadAndRetry();
+        if (retried) {
+          res = retried;
+        }
+      }
+
+      if (!res.ok) {
+        return reply.status(res.status).send({ error: 'Media fetch failed', statusCode: res.status });
+      }
+
+      const contentType = res.headers.get('content-type') || 'application/octet-stream';
+      reply.header('Content-Type', contentType);
+      reply.header('Cache-Control', 'public, max-age=3600');
+      reply.header('Access-Control-Allow-Origin', '*');
+
+      const buffer = await res.arrayBuffer();
+      return reply.send(Buffer.from(buffer));
+    } catch (err: any) {
+      return reply.status(502).send({ error: err.message, statusCode: 502 });
+    }
+  });
 }
-
-
-

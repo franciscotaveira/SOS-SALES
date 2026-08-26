@@ -1,15 +1,27 @@
 import pg from 'pg';
 const { Pool } = pg;
 
-const DATABASE_URL = 'postgresql://sos_sales_runtime.yiiuebhyqixzluguxsqi:SosSalesSovereignSecure2026!@aws-0-ca-central-1.pooler.supabase.com:6543/postgres';
+// Strict local development enforcement: Never allow tests to target remote or production databases
+const databaseUrl = process.env.LAB_DATABASE_URL || process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error('[FATAL] LAB_DATABASE_URL or DATABASE_URL environment variable is required');
+}
+
+const parsed = new URL(databaseUrl);
+const hostname = parsed.hostname.toLowerCase();
+const allowedLocalHosts = new Set(['localhost', '127.0.0.1', '::1', 'postgres-lab', 'host.docker.internal']);
+
+if (!allowedLocalHosts.has(hostname)) {
+  throw new Error(`[FAIL-CLOSED] test-list-actor is strictly restricted to local lab environments. Host '${hostname}' is rejected.`);
+}
 
 const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  connectionString: databaseUrl,
+  ssl: false,
 });
 
 async function main() {
-  const actor = { userId: '17fc95cf-7d0f-4ad5-ab92-de1531bd9eb2', email: 'franciscotaveira.mkt@gmail.com' };
+  const actor = { userId: '17fc95cf-7d0f-4ad5-ab92-de1531bd9eb2', email: 'operator@example.test' };
   console.log('Testing listForActor with claims JSON...');
   const client = await pool.connect();
   try {

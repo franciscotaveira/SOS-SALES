@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { UserRound } from 'lucide-react';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface ContactAvatarProps {
   name?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
+  workspaceId?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   showOnlineBadge?: boolean;
   className?: string;
@@ -67,15 +69,60 @@ const BADGE_SIZE_MAP = {
   xl: 'w-3.5 h-3.5 bottom-1 right-1',
 };
 
+const avatarCache = new Map<string, string | null>();
+
 export const ContactAvatar: React.FC<ContactAvatarProps> = ({
   name,
   phone,
-  avatarUrl,
+  avatarUrl: initialAvatarUrl,
+  workspaceId: customWsId,
   size = 'md',
   showOnlineBadge = false,
   className = '',
 }) => {
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl || null);
   const [imageError, setImageError] = useState(false);
+
+  React.useEffect(() => {
+    if (initialAvatarUrl) {
+      setAvatarUrl(initialAvatarUrl);
+      return;
+    }
+
+    if (!phone) return;
+
+    const clean = phone.replace(/\D/g, '');
+    if (!clean) return;
+
+    if (avatarCache.has(clean)) {
+      setAvatarUrl(avatarCache.get(clean) || null);
+      return;
+    }
+
+    const wsId = customWsId || (() => {
+      try {
+        return localStorage.getItem('sos_selected_workspace_id') || '22222222-2222-2222-2222-222222222222';
+      } catch {
+        return '22222222-2222-2222-2222-222222222222';
+      }
+    })();
+
+    // Auto-fetch profile picture from WAHA backend
+    authenticatedFetch(`/api/v1/workspaces/${wsId}/contacts/${clean}/profile-picture`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.url) {
+          avatarCache.set(clean, data.url);
+          setAvatarUrl(data.url);
+        } else {
+          avatarCache.set(clean, null);
+        }
+      })
+      .catch(() => {
+        avatarCache.set(clean, null);
+      });
+  }, [initialAvatarUrl, phone, customWsId]);
+
   const seed = name || phone || 'contact';
   const gradient = getDeterministicGradient(seed);
   const initials = getInitials(name, phone);

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Workspace } from '../../types/cockpit';
-import { Building2, ChevronDown, Check } from 'lucide-react';
+import { Building2, ChevronDown, Check, Plus } from 'lucide-react';
 
 interface WorkspaceSwitcherProps {
   workspaces: Workspace[];
@@ -8,6 +8,7 @@ interface WorkspaceSwitcherProps {
   onSelectWorkspace: (workspace: Workspace) => void;
   variant?: 'dark' | 'light';
   collapsed?: boolean;
+  onNavigateToClients?: () => void;
 }
 
 export const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({
@@ -16,6 +17,7 @@ export const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({
   onSelectWorkspace,
   variant = 'light',
   collapsed = false,
+  onNavigateToClients,
 }) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
@@ -113,8 +115,19 @@ export const WorkspaceSwitcher: React.FC<WorkspaceSwitcherProps> = ({
               );
             })}
           </div>
-          <div className={`px-3 py-1.5 mt-1 border-t ${isDark ? 'border-slate-800 text-slate-400' : 'border-slate-100 text-slate-400'} text-[10px]`}>
-            {currentWorkspace.channels.length} canais conectados · {currentWorkspace.activeOperatorCount} operadores
+          <div className={`px-3 py-2 mt-1 border-t ${isDark ? 'border-slate-800 text-slate-400' : 'border-slate-100 text-slate-400'} text-[10px] flex items-center justify-between`}>
+            <span>{currentWorkspace.channels.length} canais · {currentWorkspace.activeOperatorCount} operadores</span>
+            {onNavigateToClients && (
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  onNavigateToClients();
+                }}
+                className="text-[#00A884] hover:underline font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" /> Gerenciar Clientes
+              </button>
+            )}
           </div>
         </div>
       )}

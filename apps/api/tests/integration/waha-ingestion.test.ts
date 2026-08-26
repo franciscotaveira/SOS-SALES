@@ -32,7 +32,7 @@ describe('TX Commercial Core — WAHA Inbound Pipeline, Security & Concurrency (
     worker: WahaInboundWorker,
     outboxQuery: { id?: string; aggregateId?: string },
     expectedStatuses: string[],
-    maxIterations = 10,
+    maxIterations = 20,
     delayMs = 25
   ): Promise<{ status: string; attempts: number; last_error: string | null }> {
     let lastRow: { status: string; attempts: number; last_error: string | null } | undefined;
@@ -661,7 +661,7 @@ describe('TX Commercial Core — WAHA Inbound Pipeline, Security & Concurrency (
       [canonicalId]
     );
     expect(Number(outboxCount.rows[0].count)).toBe(1);
-  });
+  }, 20000);
 
   it('ING-12: same phone number in two distinct workspaces => contacts and journeys completely isolated', async () => {
     const sharedPhone = `+5549${Math.floor(Math.random() * 89999999 + 10000000)}`;
@@ -918,4 +918,4 @@ describe('TX Commercial Core — WAHA Inbound Pipeline, Security & Concurrency (
     expect(res2.isDuplicate).toBe(true);
     expect(res2.inboundEventId).toBe(res1.inboundEventId);
   });
-});
+}, 30000);

@@ -2,11 +2,14 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.js';
 import { MultimodalVisionAnalyzer } from '../../../infrastructure/ai/multimodal-vision-analyzer.js';
+import { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
+import { verifyOperatorAuth, unauthorized } from '../helpers/auth-guard.js';
 
 export interface AiCopilotRoutesOptions {
   nvidiaEngine?: NvidiaNimEngine;
   openrouterEngine?: OpenRouterEngine;
   visionAnalyzer?: MultimodalVisionAnalyzer;
+  authenticator?: OperatorAuthenticator;
 }
 
 export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async (
@@ -16,6 +19,15 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
   const nvidiaEngine = options.nvidiaEngine || new NvidiaNimEngine();
   const openrouterEngine = options.openrouterEngine || new OpenRouterEngine();
   const visionAnalyzer = options.visionAnalyzer || new MultimodalVisionAnalyzer();
+
+  // Enforce JWT authentication on all AI routes
+  app.addHook('onRequest', async (request, reply) => {
+    if (!options?.authenticator) {
+      return unauthorized(reply, 'Authenticator is required');
+    }
+    const actor = await verifyOperatorAuth(request, reply, options.authenticator);
+    if (!actor) return;
+  });
 
   /**
    * POST /api/v1/ai/vision/analyze
@@ -265,7 +277,7 @@ Retorne JSON estritamente estruturado:
             },
           ],
           {
-            model: 'nvidia/nemotron-3-nano-30b-a3b:free',
+            tier: 'auto',
           }
         );
 
@@ -296,11 +308,14 @@ Retorne JSON estritamente estruturado:
           model: result.model,
         });
       } catch (err: any) {
-        return reply.code(200).send({
+        app.log.error(err, '[copilot-suggestion] Falha ao gerar sugestão via OpenRouter');
+        // Provider failures must be explicit. A commercial hardcoded fallback
+        // would look like a real recommendation to the operator and could be
+        // copied into the composer without provenance.
+        return reply.code(503).send({
           success: false,
-          suggestedMessage: `Olá ${body.contactName || ''}! Como posso te ajudar hoje? Temos condições especiais para você.`,
-          recommendedAction: 'Atendimento Consultivo',
-          rationale: 'Fallback comercial seguro ativado.',
+          error: 'AI copilot is temporarily unavailable',
+          code: 'AI_PROVIDER_UNAVAILABLE',
         });
       }
     }

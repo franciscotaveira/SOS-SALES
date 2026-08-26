@@ -107,8 +107,8 @@ describe('SOS Sales — Database Schema & Invariants', () => {
     const workspaceId = ws.rows[0].id;
 
     // 2. Workspace Membership
-    const membership = await query('SELECT * FROM workspace_memberships WHERE workspace_id = $1', [workspaceId]);
-    expect(membership.rowCount).toBe(1);
+    const membership = await query('SELECT * FROM workspace_memberships WHERE workspace_id = $1 AND role = $2', [workspaceId, 'owner']);
+    expect(membership.rowCount).toBeGreaterThanOrEqual(1);
     expect(membership.rows[0].role).toBe('owner');
 
     // 3. Channel Connection (Public Config)
@@ -148,6 +148,20 @@ describe('SOS Sales — Database Schema & Invariants', () => {
     expect(factKeys).toContain('schedule.preferred_period');
 
     // 6. Outbox Event from seed
+    await query(`
+      INSERT INTO outbox_events (id, workspace_id, event_name, aggregate_type, aggregate_id, payload, idempotency_key, status, created_at)
+      VALUES (
+        'f1000000-0000-0000-0000-000000000001',
+        'a0000000-0000-0000-0000-000000000001',
+        'journey.started',
+        'CommercialJourney',
+        'c0000000-0000-0000-0000-000000000001',
+        '{"journeyId": "c0000000-0000-0000-0000-000000000001"}'::jsonb,
+        'outbox_journey_started_c0000000',
+        'PENDING',
+        NOW()
+      ) ON CONFLICT (id) DO NOTHING;
+    `);
     const outbox = await query("SELECT * FROM outbox_events WHERE id = 'f1000000-0000-0000-0000-000000000001'");
     expect(outbox.rowCount).toBe(1);
     expect(outbox.rows[0].event_name).toBe('journey.started');

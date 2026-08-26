@@ -1,0 +1,97 @@
+{
+  "timestamp": "2026-08-17T23:09:59.442306",
+  "url": "http://localhost:3000",
+  "tests": [
+    {
+      "name": "Homepage loads",
+      "status": "passed",
+      "details": "Loaded http://localhost:3000",
+      "screenshot": "test-results/screenshots/01_homepage_231004.png"
+    },
+    {
+      "name": "React app mounted",
+      "status": "passed",
+      "details": "Root element has content",
+      "screenshot": null
+    },
+    {
+      "name": "Console error: Failed to load resource: the server responded with",
+      "status": "failed",
+      "details": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "screenshot": null
+    },
+    {
+      "name": "Navigation present",
+      "status": "passed",
+      "details": "Found 1 navigation links/buttons",
+      "screenshot": null
+    },
+    {
+      "name": "Main views accessible",
+      "status": "passed",
+      "details": "Found: Cockpit, Conversas",
+      "screenshot": null
+    },
+    {
+      "name": "Cockpit view opens",
+      "status": "passed",
+      "details": "Clicked Cockpit and loaded",
+      "screenshot": "test-results/screenshots/06_cockpit_view_231010.png"
+    },
+    {
+      "name": "Mobile responsive",
+      "status": "passed",
+      "details": "Content visible on mobile",
+      "screenshot": null
+    },
+    {
+      "name": "Interactive elements",
+      "status": "passed",
+      "details": "Found 3 interactive elements",
+      "screenshot": null
+    },
+    {
+      "name": "Loading states",
+      "status": "warning",
+      "details": "No loading indicators visible",
+      "screenshot": null
+    },
+    {
+      "name": "Error states",
+      "status": "passed",
+      "details": "No error states visible",
+      "screenshot": null
+    },
+    {
+      "name": "Full page capture",
+      "status": "passed",
+      "details": "Complete page captured",
+      "screenshot": "test-results/screenshots/10_final_fullpage_231013.png"
+    }
+  ],
+  "console_errors": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "location": {
+        "url": "http://localhost:3000/favicon.ico",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    }
+  ],
+  "screenshots": [
+    "test-results/screenshots/01_homepage_231004.png",
+    "test-results/screenshots/06_cockpit_view_231010.png",
+    "test-results/screenshots/07_mobile_view_231013.png",
+    "test-results/screenshots/10_final_fullpage_231013.png"
+  ],
+  "summary": {
+    "total": 11,
+    "passed": 9,
+    "failed": 1,
+    "warnings": 1
+  }
+}

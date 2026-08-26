@@ -51,13 +51,15 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no formato:
 }`;
 
     try {
-      const response = await this.aiEngine.generateResponse({
-        messages: [{ role: 'user', content: conversationTranscript }],
-        systemPrompt,
-        modelTier: 'fast',
-      });
+      const result = await this.aiEngine.generateChatCompletion(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: conversationTranscript },
+        ],
+        { tier: 'fast' }
+      );
 
-      const cleanJson = response.replace(/```json/g, '').replace(/```/g, '').trim();
+      const cleanJson = result.content.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson) as BattlecardExtraction;
 
       if (parsed.objectionTitle && parsed.winningArgumentText) {
