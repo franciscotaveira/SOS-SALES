@@ -5,9 +5,9 @@
  * classifica intenções e responde usando NVIDIA NIM (Nemotron 70B).
  * 
  * Design:
- * - Fire-and-forget: chamado após o 200 OK para a Meta (não bloqueia)
- * - Idempotente: verifica flag bot_active por jornada antes de responder
- * - Escalável: pausa automaticamente quando humano é solicitado
+ * - Consumido por worker/outbox durável após a persistência do inbound
+ * - Fail-closed: verifica o estado publicado e a pausa da jornada antes do envio
+ * - Escalável: pausa automaticamente quando humano é solicitado ou o envio fica incerto
  */
 
 import { NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
@@ -336,12 +336,10 @@ export class ReceptionistAgent {
   private async pauseBotForJourney(workspaceId: string, journeyId: string, reason: string): Promise<boolean> {
     try {
       const result = await this.query(
-        `UPDATE public.commercial_journeys 
-         SET bot_paused_at = NOW(), bot_pause_reason = $3
-         WHERE id = $1 AND workspace_id = $2`,
+        `SELECT public.pause_receptionist_and_open_handoff($2, $1, $3) AS handoff_id`,
         [journeyId, workspaceId, reason]
       );
-      return result.rowCount === 1;
+      return result.rowCount === 1 && Boolean(result.rows[0]?.handoff_id);
     } catch {
       return false;
     }
@@ -374,9 +372,7 @@ export class ReceptionistAgent {
     );
   }
 
-  /**
-   * Ponto de entrada principal — chamado via setImmediate() após salvar mensagem no DB
-   */
+  /** Ponto de entrada principal — consumido pelo ReceptionistInboundWorker. */
   public async handleInbound(input: ReceptionistInput): Promise<ReceptionistOutput> {
     const start = Date.now();
 
@@ -435,12 +431,16 @@ export class ReceptionistAgent {
       latencyMs = result.latencyMs;
     } catch (err) {
       console.error('[ReceptionistAgent] NVIDIA NIM error:', err);
-      return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs: Date.now() - start, model: usedModel, skipped: 'nim_error' };
+      // Inference has not produced any irreversible external effect. Throwing
+      // lets the leased outbox worker retry safely instead of acknowledging and
+      // losing the customer's message.
+      throw new Error('RECEPTIONIST_NIM_UNAVAILABLE');
     }
 
     const decision = parseReceptionistDecision(rawResponse);
     if (!decision) {
-      return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs, model: usedModel, skipped: 'invalid_model_output' };
+      // Invalid model output is also safe to retry: no provider call happened.
+      throw new Error('RECEPTIONIST_INVALID_MODEL_OUTPUT');
     }
     const policy = getReceptionistActionPolicy(decision);
     if (policy.shouldEscalate) {
@@ -480,7 +480,10 @@ export class ReceptionistAgent {
           recipientPhone: toNumber,
           text: replyText,
         });
-        providerId = sendResult.messageId || `bot_${Date.now()}`;
+        if (!sendResult.messageId) {
+          throw new Error('WABA_PROVIDER_MESSAGE_ID_MISSING');
+        }
+        providerId = sendResult.messageId;
 
         // Salva no banco
         await this.saveAgentReply(
@@ -493,6 +496,26 @@ export class ReceptionistAgent {
         );
       } catch (sendErr) {
         console.error('[ReceptionistAgent] Error sending WABA message:', sendErr);
+        // A transport error may be ambiguous: Meta can have accepted the
+        // message even when the client did not receive the response. Retrying
+        // the whole receptionist event could duplicate a customer message.
+        // Pause and hand control to a human instead of retrying blindly.
+        const paused = await this.pauseBotForJourney(
+          input.workspaceId,
+          input.journeyId,
+          'Falha ou confirmação ambígua no envio WABA — revisão humana obrigatória'
+        );
+        return {
+          intent: decision.intent,
+          reply: '',
+          escalated: paused,
+          bookingFlowSent: false,
+          latencyMs,
+          model: usedModel,
+          skipped: paused
+            ? 'waba_delivery_unconfirmed_handoff_required'
+            : 'waba_delivery_unconfirmed_pause_failed',
+        };
       }
     }
 
@@ -520,6 +543,24 @@ export class ReceptionistAgent {
         bookingFlowSent = true;
       } catch (flowErr) {
         console.error('[ReceptionistAgent] Error sending Flow:', flowErr);
+        // The text may already have been accepted. Do not replay it just to
+        // retry the Flow; stop automation and expose the journey to a human.
+        const paused = await this.pauseBotForJourney(
+          input.workspaceId,
+          input.journeyId,
+          'Falha ou confirmação ambígua no envio do WhatsApp Flow — revisão humana obrigatória'
+        );
+        return {
+          intent: decision.intent,
+          reply: replyText,
+          escalated: paused,
+          bookingFlowSent: false,
+          latencyMs,
+          model: usedModel,
+          skipped: paused
+            ? 'waba_flow_unconfirmed_handoff_required'
+            : 'waba_flow_unconfirmed_pause_failed',
+        };
       }
     }
 

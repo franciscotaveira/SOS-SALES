@@ -8,6 +8,48 @@ import { WahaOutboundAdapter } from '../../src/infrastructure/channels/waha/waha
 import { WahaOutboundWorker } from '../../src/infrastructure/workers/waha-outbound-worker.js';
 
 describe('WAHA Outbound Worker — Supervised Message Sending', () => {
+  it('OUTBOUND-WORKER-WABA-01: routes a Meta channel through WABA and never through WAHA', async () => {
+    const dispatchId = 'd0000000-0000-4000-8000-000000000010';
+    const gateway = {
+      createDraft: vi.fn(), approve: vi.fn(), cancel: vi.fn(), get: vi.fn(),
+      listClaimableDispatches: vi.fn().mockResolvedValue([{ dispatchId, workspaceId: 'w' }]),
+      claimDispatch: vi.fn().mockResolvedValue({
+        dispatchId,
+        claimToken: 'c0000000-0000-4000-8000-000000000010',
+        textContent: 'Mensagem oficial',
+        channelConnectionId: 'cc000000-0000-4000-8000-000000000010',
+        contactId: 'ct000000-0000-4000-8000-000000000010',
+        contactPhone: '+1 (508) 250-1315',
+        provider: 'meta_cloud',
+        wabaPhoneNumberId: 'meta-phone-id',
+        wabaAccessToken: 'meta-token',
+      }),
+      recordProviderAcceptance: vi.fn().mockResolvedValue({ dispatchId, status: 'ACCEPTED', idempotent: false }),
+      recordProviderFailure: vi.fn(),
+    } as unknown as OutboundDispatchGateway;
+    const waha = new WahaOutboundAdapter({ endpoint: 'http://localhost:3002' });
+    const wahaSend = vi.spyOn(waha, 'sendText');
+    const waba = { sendText: vi.fn().mockResolvedValue({ messageId: 'wamid.meta-1' }) };
+    const worker = new WahaOutboundWorker({
+      dispatchGateway: gateway,
+      outboundAdapter: waha,
+      wabaClient: waba as any,
+      workerId: 'provider-router-test',
+    });
+
+    await expect(worker.processSingleBatch()).resolves.toBe(1);
+    expect(waba.sendText).toHaveBeenCalledWith({
+      phoneNumberId: 'meta-phone-id',
+      accessToken: 'meta-token',
+      recipientPhone: '+1 (508) 250-1315',
+      text: 'Mensagem oficial',
+    });
+    expect(wahaSend).not.toHaveBeenCalled();
+    expect(gateway.recordProviderAcceptance).toHaveBeenCalledWith(expect.objectContaining({
+      providerMessageId: 'wamid.meta-1',
+    }));
+  });
+
   it('OUTBOUND-WORKER-01: claims approved dispatches, sends via WAHA and records provider acceptance', async () => {
     const dispatchId = 'd1000000-0000-4000-8000-000000000001';
     const claimToken = 'c1000000-0000-4000-8000-000000000001';

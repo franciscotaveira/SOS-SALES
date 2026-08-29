@@ -73,6 +73,25 @@ describe('SOS Sales — Database Schema & Invariants', () => {
     }
   });
 
+  it('should keep workspace agent configs attached to an existing workspace', async () => {
+    const constraint = await query<{ validated: boolean }>(`
+      SELECT convalidated AS validated
+      FROM pg_constraint
+      WHERE conname = 'fk_workspace_agent_config_workspace'
+        AND conrelid = 'public.workspace_agent_config'::regclass
+    `);
+    expect(constraint.rowCount).toBe(1);
+    expect(constraint.rows[0].validated).toBe(true);
+
+    const orphanedConfigs = await query<{ count: string }>(`
+      SELECT COUNT(*)::text AS count
+      FROM public.workspace_agent_config AS config
+      LEFT JOIN public.workspaces AS workspace ON workspace.id = config.workspace_id
+      WHERE workspace.id IS NULL
+    `);
+    expect(orphanedConfigs.rows[0].count).toBe('0');
+  });
+
   it('should prevent UPDATE and DELETE on immutable historical fact tables', async () => {
     // 1. Fetch an existing inbound event from seed
     const eventRes = await query('SELECT id FROM inbound_channel_events LIMIT 1');

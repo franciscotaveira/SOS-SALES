@@ -560,7 +560,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Email do Administrador / Dono
+                    E-mail de referência do cliente
                   </label>
                   <input
                     type="email"
@@ -569,6 +569,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
                     placeholder="contato@empresa.com.br"
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00a884]"
                   />
+                  <p className="mt-1 text-[10px] text-slate-500">A agência continua proprietária até o convite de acesso ser concluído.</p>
                 </div>
               </div>
 

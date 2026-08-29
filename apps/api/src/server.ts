@@ -12,6 +12,8 @@ import { buildApp, TrustProxyOption } from './interfaces/http/app.js';
 import { WahaWebhookAdapter } from './infrastructure/channels/waha/waha-webhook-adapter.js';
 import { WahaInboundWorker } from './infrastructure/workers/waha-inbound-worker.js';
 import { WahaOutboundWorker } from './infrastructure/workers/waha-outbound-worker.js';
+import { ReceptionistInboundWorker } from './infrastructure/workers/receptionist-inbound-worker.js';
+import { getReceptionistAgent } from './application/agents/receptionist-agent.js';
 import { WahaOutboundAdapter } from './infrastructure/channels/waha/waha-outbound-adapter.js';
 import { WebhookSecretProvider } from './application/ports/webhook-secret-provider.js';
 import { ChannelWebhookAdapter } from './application/ports/channel-webhook-adapter.js';
@@ -50,7 +52,10 @@ export interface RuntimeDependencies {
   /** Optional until a provider's server-only LID resolver is configured. */
   lidIdentityResolver?: LidIdentityResolver;
   /** Created after the worker exists so readiness can always include it. */
-  createHealthProvider: (worker: WahaInboundWorker) => DependencyHealthProvider;
+  createHealthProvider: (
+    worker: WahaInboundWorker,
+    workers?: { outbound?: WahaOutboundWorker; receptionist?: ReceptionistInboundWorker },
+  ) => DependencyHealthProvider;
   /** Optional only while operator API remains fail-closed (401) during bootstrap. */
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
@@ -212,10 +217,12 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
         options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
       },
     },
-    createHealthProvider: (worker) => new CompositeDependencyHealthProvider([
+    createHealthProvider: (worker, workers) => new CompositeDependencyHealthProvider([
       { name: 'database', check: async () => (await databaseHealth.checkAll()).every((status) => status.healthy) },
       { name: 'redis', check: async () => (await redisHealth.checkAll()).every((status) => status.healthy) },
-      { name: 'worker', check: async () => worker.isHealthy() },
+      { name: 'waha-inbound-worker', check: async () => worker.isHealthy() },
+      ...(workers?.outbound ? [{ name: 'outbound-worker', check: async () => workers.outbound!.isHealthy() }] : []),
+      ...(workers?.receptionist ? [{ name: 'receptionist-worker', check: async () => workers.receptionist!.isHealthy() }] : []),
     ]),
     close: async () => {
       await redis.quit().catch(() => redis.disconnect());
@@ -281,11 +288,30 @@ async function startComposedServer(
     appSecret: metaAppSecret,
   } : undefined;
 
+  let outboundWorker: WahaOutboundWorker | undefined;
+  if (runtime.outboundDispatchGateway) {
+    const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim() || 'http://sos-sales-waha:3000';
+    const wahaApiKey = process.env.WAHA_API_KEY?.trim() || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
+    const outboundAdapter = new WahaOutboundAdapter({ endpoint: wahaBaseUrl, apiKey: wahaApiKey });
+    outboundWorker = new WahaOutboundWorker({ dispatchGateway: runtime.outboundDispatchGateway, outboundAdapter });
+  }
+
+  const receptionistWorker = runtime.outboxGateway
+    ? new ReceptionistInboundWorker({ receptionistAgent: getReceptionistAgent(), outboxGateway: runtime.outboxGateway })
+    : undefined;
+
   const app = buildApp({
     secretProvider: runtime.secretProvider,
     wahaAdapter: runtime.wahaAdapter,
     ingestionGateway: runtime.ingestionGateway,
-    healthProvider: runtime.createHealthProvider(worker),
+    healthProvider: runtime.createHealthProvider(worker, { outbound: outboundWorker, receptionist: receptionistWorker }),
+    readinessDependencyNames: [
+      'database',
+      'redis',
+      'waha-inbound-worker',
+      ...(outboundWorker ? ['outbound-worker'] : []),
+      ...(receptionistWorker ? ['receptionist-worker'] : []),
+    ],
     authenticator: runtime.authenticator,
     workspaceDirectory: runtime.workspaceDirectory,
     cockpitReadGateway: runtime.cockpitReadGateway,
@@ -305,24 +331,15 @@ async function startComposedServer(
   });
 
   worker.start();
-
-  let outboundWorker: WahaOutboundWorker | undefined;
-  if (runtime.outboundDispatchGateway) {
-    const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim() || 'http://sos-sales-waha:3000';
-    const wahaApiKey = process.env.WAHA_API_KEY?.trim() || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
-    const outboundAdapter = new WahaOutboundAdapter({ endpoint: wahaBaseUrl, apiKey: wahaApiKey });
-    outboundWorker = new WahaOutboundWorker({
-      dispatchGateway: runtime.outboundDispatchGateway,
-      outboundAdapter,
-    });
-    outboundWorker.start();
-  }
+  outboundWorker?.start();
+  receptionistWorker?.start();
 
   try {
     await app.listen({ port, host });
   } catch (error) {
     await worker.stop();
     await outboundWorker?.stop();
+    await receptionistWorker?.stop();
     await runtime.close?.();
     throw error;
   }
@@ -333,6 +350,7 @@ async function startComposedServer(
     stopped = true;
     await worker.stop();
     await outboundWorker?.stop();
+    await receptionistWorker?.stop();
     await app.close();
     await runtime.close?.();
   };

@@ -51,6 +51,7 @@ describe('Workspace Init API — /api/v1/workspaces/init', () => {
         channelConnectionId: 'c2000000-0000-4000-8000-000000000002',
         isExisting: false,
       }),
+      createClientWorkspace: vi.fn(),
     };
 
     const server = createApp(mockGateway);
@@ -79,6 +80,7 @@ describe('Workspace Init API — /api/v1/workspaces/init', () => {
         channelConnectionId: 'c1000000-0000-4000-8000-000000000001',
         isExisting: true,
       }),
+      createClientWorkspace: vi.fn(),
     };
 
     const server = createApp(mockGateway);
@@ -99,6 +101,7 @@ describe('Workspace Init API — /api/v1/workspaces/init', () => {
     const mockGateway: WorkspaceProvisioningGateway = {
       actorHasWorkspace: vi.fn(),
       initializeForActor: vi.fn(),
+      createClientWorkspace: vi.fn(),
     };
 
     const server = createApp(mockGateway);
@@ -109,5 +112,50 @@ describe('Workspace Init API — /api/v1/workspaces/init', () => {
     });
 
     expect(response.statusCode).toBe(401);
+  });
+
+  it('WS-CLIENT-01: provisions a disconnected client workspace through the backend contract', async () => {
+    const createClientWorkspace = vi.fn().mockResolvedValue({
+      workspaceId: '20000000-0000-4000-8000-000000000002',
+      workspaceName: 'Jacob Adv',
+      membershipId: '21000000-0000-4000-8000-000000000002',
+      role: 'owner',
+      channelConnectionId: '22000000-0000-4000-8000-000000000002',
+      slug: 'jacob-adv-a1b2c3d4',
+      channelProvider: 'meta_cloud',
+      channelStatus: 'DISCONNECTED',
+      ownerAccess: 'agency_owner',
+    });
+    const gateway = {
+      actorHasWorkspace: vi.fn(),
+      initializeForActor: vi.fn(),
+      createClientWorkspace,
+    } as WorkspaceProvisioningGateway;
+    const server = createApp(gateway);
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/10000000-0000-4000-8000-000000000001/client-workspaces',
+      headers: { authorization: 'Bearer existing.jwt.token' },
+      payload: {
+        name: 'Jacob Adv',
+        businessType: 'general_services',
+        tagline: 'Escritório de advocacia migratória',
+        ownerEmail: '',
+        whatsappNumber: '+1 (508) 250 1315',
+        provider: 'waba',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().data).toMatchObject({
+      workspaceName: 'Jacob Adv',
+      channelProvider: 'meta_cloud',
+      channelStatus: 'DISCONNECTED',
+    });
+    expect(createClientWorkspace).toHaveBeenCalledWith(
+      actorWithWorkspace,
+      expect.objectContaining({ parentWorkspaceId: '10000000-0000-4000-8000-000000000001' }),
+    );
   });
 });

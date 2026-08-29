@@ -10,6 +10,15 @@ const initBodySchema = z.object({
   workspaceName: z.string().trim().min(2).max(100).optional(),
 }).strict();
 
+const clientWorkspaceBodySchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  businessType: z.enum(['hair_salon', 'auto_film', 'general_services']),
+  tagline: z.string().trim().max(500).default(''),
+  ownerEmail: z.string().trim().email().optional().or(z.literal('')),
+  whatsappNumber: z.string().trim().max(32).optional().default(''),
+  provider: z.enum(['waba', 'waha']),
+}).strict();
+
 function actorOrUnauthorized(request: FastifyRequest, reply: FastifyReply) {
   if (!request.operatorActor) {
     reply.code(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Invalid or missing bearer token' });
@@ -44,5 +53,30 @@ export async function workspaceInitRoutes(
 
     reply.code(result.isExisting ? 200 : 201);
     return { data: result };
+  });
+
+  app.post('/workspaces/:parentWorkspaceId/client-workspaces', async (request, reply) => {
+    const actor = actorOrUnauthorized(request, reply);
+    if (!actor) return reply;
+    if (!dependencies.workspaceProvisioningGateway) return unavailable(reply);
+    const body = clientWorkspaceBodySchema.safeParse(request.body || {});
+    const parentWorkspaceId = z.string().uuid().safeParse(
+      (request.params as { parentWorkspaceId?: string }).parentWorkspaceId,
+    );
+    if (!body.success || !parentWorkspaceId.success) return invalid(reply);
+
+    try {
+      const result = await dependencies.workspaceProvisioningGateway.createClientWorkspace(actor, {
+        parentWorkspaceId: parentWorkspaceId.data,
+        ...body.data,
+        ownerEmail: body.data.ownerEmail || undefined,
+      });
+      return reply.code(201).send({ data: result });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'CLIENT_WORKSPACE_OWNER_REQUIRED') {
+        return reply.code(403).send({ statusCode: 403, error: 'Forbidden', message: 'Workspace owner role required' });
+      }
+      throw error;
+    }
   });
 }

@@ -60,6 +60,9 @@ export interface ClaimedOutboundDispatch {
   contactId: string;
   contactPhone?: string;
   session?: string;
+  provider?: 'waha' | 'meta_cloud';
+  wabaPhoneNumberId?: string;
+  wabaAccessToken?: string;
 }
 
 /**
@@ -77,4 +80,3 @@ export interface OutboundDispatchGateway {
   recordProviderAcceptance(params: { dispatchId: string; claimToken: string; workerId: string; providerMessageId: string }): Promise<OutboundDispatchMutationResult | null>;
   recordProviderFailure(params: { dispatchId: string; claimToken: string; workerId: string; failureCode: string }): Promise<OutboundDispatchMutationResult | null>;
 }
-
