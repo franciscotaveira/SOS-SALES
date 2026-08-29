@@ -67,4 +67,72 @@ describe('WABA channel info runtime gateway', () => {
     expect(response.json()).toEqual({ error: 'Consulta WABA indisponível' });
     await app.close();
   });
+
+  it('rejects the legacy channel-info route when workspaceId is absent instead of selecting a default tenant', async () => {
+    const findConnectedByWorkspaceId = vi.fn();
+    const app = buildApp(dependencies({ wabaChannelInfoGateway: { findConnectedByWorkspaceId } }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/channels/waba/channel-info',
+      headers: { authorization: 'Bearer test.jwt.token' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'workspaceId é obrigatório' });
+    expect(findConnectedByWorkspaceId).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('fails WABA capabilities closed when no connected channel exists', async () => {
+    const findConnectedByWorkspaceId = vi.fn().mockResolvedValue(null);
+    const app = buildApp(dependencies({ wabaChannelInfoGateway: { findConnectedByWorkspaceId } }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${workspaceId}/channels/waba/capabilities`,
+      headers: { authorization: 'Bearer test.jwt.token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      connected: false,
+      capabilities: {
+        flow: false,
+        buttons: false,
+        call: false,
+        orderDetails: false,
+        locationRequest: false,
+        product: false,
+        multiProduct: false,
+        carousel: false,
+      },
+    });
+    await app.close();
+  });
+
+  it('advertises only implemented WABA actions for the connected workspace', async () => {
+    const findConnectedByWorkspaceId = vi.fn().mockResolvedValue({
+      phoneNumberId: 'phone-id',
+      wabaId: 'waba-id',
+    });
+    const app = buildApp(dependencies({ wabaChannelInfoGateway: { findConnectedByWorkspaceId } }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${workspaceId}/channels/waba/capabilities`,
+      headers: { authorization: 'Bearer test.jwt.token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      connected: true,
+      capabilities: {
+        flow: true,
+        buttons: true,
+        call: false,
+      },
+    });
+    await app.close();
+  });
 });

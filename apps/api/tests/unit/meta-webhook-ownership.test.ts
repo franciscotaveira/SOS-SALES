@@ -50,4 +50,11 @@ describe('Meta webhook provider ownership', () => {
     await expect(findChannelByPhoneNumberId(undefined, logger, query)).resolves.toBeNull();
     expect(query).not.toHaveBeenCalled();
   });
+
+  it('propagates ownership lookup failures so the webhook can request a Meta retry', async () => {
+    const query = vi.fn().mockRejectedValue(new Error('database unavailable')) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
+
+    await expect(findChannelByPhoneNumberId('123456789', logger, query)).rejects.toThrow('database unavailable');
+    expect(logger.error).toHaveBeenCalled();
+  });
 });

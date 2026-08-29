@@ -59,6 +59,18 @@ export interface ApiWorkspace {
   role: 'owner' | 'operator' | 'viewer';
 }
 
+export interface ApiClientWorkspaceResult {
+  workspaceId: string;
+  workspaceName: string;
+  membershipId: string;
+  role: 'owner';
+  channelConnectionId: string;
+  slug: string;
+  channelProvider: 'meta_cloud' | 'waha';
+  channelStatus: 'DISCONNECTED';
+  ownerAccess: 'agency_owner';
+}
+
 export interface ApiPriority {
   journeyId: string;
   contactId: string;
@@ -908,6 +920,23 @@ export class HttpSalesOsGateway implements SalesOsGateway {
       body: workspaceName ? { workspaceName } : {},
     });
     return response.data;
+  }
+
+  async createClientWorkspace(
+    parentWorkspaceId: string,
+    input: {
+      name: string;
+      businessType: 'hair_salon' | 'auto_film' | 'general_services';
+      tagline: string;
+      ownerEmail?: string;
+      whatsappNumber?: string;
+      provider: 'waba' | 'waha';
+    },
+  ): Promise<ApiClientWorkspaceResult> {
+    return (await this.request<ApiEnvelope<ApiClientWorkspaceResult>>(
+      `/workspaces/${encodeURIComponent(parentWorkspaceId)}/client-workspaces`,
+      { method: 'POST', body: input },
+    )).data;
   }
 
   async listPriorities(workspaceId: string, limit = 5): Promise<ApiPriority[]> {

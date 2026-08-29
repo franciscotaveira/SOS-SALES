@@ -2,14 +2,13 @@ import { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } fro
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { dbPool } from '../../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../../application/services/attribution-service.js';
-import { IdempotencyGate } from '../../../../infrastructure/cache/idempotency-gate.js';
 import { getReceptionistAgent } from '../../../../application/agents/receptionist-agent.js';
 import { handleMessengerEntry } from './messenger-webhook-handler.js';
 
 /**
  * Tenta encontrar uma conexão de canal pelo phoneNumberId do webhook.
  * Retorna o objeto { id, workspace_id } se encontrado, ou null caso contrário.
- * Logs de erro são feitos internamente, mas não interrompem a execução.
+ * Falha de banco é propagada para que a Meta possa repetir a entrega.
  */
 export async function findChannelByPhoneNumberId(
   phoneNumberId: string | undefined,
@@ -50,8 +49,8 @@ export async function findChannelByPhoneNumberId(
       return null;
     }
   } catch (err) {
-    // Using log.error as in original code
     log.error({ err }, 'Error looking up channel connection for WABA webhook');
+    throw err;
   }
 
   return null;
@@ -81,8 +80,6 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
   options: WabaWebhookPluginOptions
 ) => {
   const { verifyToken, appSecret } = options;
-  const idempotencyGate = IdempotencyGate.getInstance();
-
   const handleVerification = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = request.query as Record<string, string>;
     const mode = query['hub.mode'];
@@ -129,6 +126,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
           await handleMessengerEntry(entry, platform, request.log);
         } catch (err) {
           request.log.error({ err, platform, entryId: entry?.id }, 'Messenger/Instagram entry processing failed');
+          throw err;
         }
       }
       return reply.status(200).send({ status: 'ok', platform });
@@ -146,21 +144,35 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
         const value = change.value;
         const metadata = value?.metadata;
         const phoneNumberId = metadata?.phone_number_id;
+        const statuses = value?.statuses || [];
+        const messages = value?.messages || [];
+        const contacts = value?.contacts || [];
+        const channelInfo = await findChannelByPhoneNumberId(phoneNumberId, request.log);
+
+        if ((statuses.length > 0 || messages.length > 0) && !channelInfo) {
+          request.log.warn(
+            { phoneNumberId },
+            'Unrecognized or ambiguous WABA phone number ownership - event ignored to prevent cross-tenant leakage'
+          );
+          continue;
+        }
+        if (!channelInfo) continue;
+        const resolvedChannelInfo = channelInfo;
 
         // 1. Process Status Updates (sent, delivered, read, failed)
-        const statuses = value?.statuses || [];
         for (const statusObj of statuses) {
           const wabaMessageId = statusObj.id;
           const statusStr = String(statusObj.status || '').toUpperCase();
           const validStatuses = ['SENT', 'DELIVERED', 'READ', 'FAILED', 'REVOKED'];
-          const status = validStatuses.includes(statusStr) ? statusStr : 'DELIVERED';
-
-          if (wabaMessageId && statusStr) {
-            const isDup = await idempotencyGate.isDuplicate(`waba:status:${wabaMessageId}:${statusStr}`, 180);
-            if (isDup) {
-              continue;
-            }
+          if (!wabaMessageId || !validStatuses.includes(statusStr)) {
+            request.log.warn({ status: statusStr }, 'Invalid WABA status event ignored');
+            continue;
           }
+          const status = statusStr;
+          const providerTimestamp = statusObj.timestamp
+            ? new Date(Number(statusObj.timestamp) * 1000)
+            : new Date();
+          const providerEventId = `waba_status_${wabaMessageId}_${status}_${statusObj.timestamp || 'unknown'}`;
 
           try {
             await dbPool.query(
@@ -169,39 +181,36 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
                  provider_event_id, status, provider_timestamp, raw_payload, created_at
                )
                SELECT gen_random_uuid(), m.workspace_id, m.channel_connection_id, m.id,
-                      $1, $2, NOW(), $3, NOW()
+                      $1, $2, $3, $4, NOW()
                FROM public.conversation_messages m
-               WHERE m.provider_message_id = $4
+               WHERE m.provider_message_id = $5
+                 AND m.channel_connection_id = $6
                LIMIT 1
                ON CONFLICT (channel_connection_id, provider_event_id) DO NOTHING`,
               [
-                `waba_status_${wabaMessageId}_${status}_${Date.now()}`,
+                providerEventId,
                 status,
+                providerTimestamp.toISOString(),
                 JSON.stringify(statusObj),
                 wabaMessageId,
+                resolvedChannelInfo.id,
               ]
             );
           } catch (err) {
-            // Ignore status update errors
+            request.log.error({ err, providerEventId }, 'Failed to persist WABA message status');
+            throw err;
           }
         }
 
         // 2. Process Inbound Messages
-        const messages = value?.messages || [];
-        const contacts = value?.contacts || [];
-
         for (const message of messages) {
           const messageId = message.id;
-
-          if (messageId) {
-            const isDup = await idempotencyGate.isDuplicate(`waba:msg:${messageId}`, 180);
-            if (isDup) {
-              request.log.info({ messageId }, 'Duplicate WABA webhook message ignored by IdempotencyGate');
-              continue;
-            }
+          if (!messageId || typeof message.from !== 'string') {
+            request.log.warn({ hasMessageId: Boolean(messageId) }, 'Malformed WABA message ignored');
+            continue;
           }
 
-          const fromPhone = `+${message.from.replace(/\\D/g, '')}`;
+          const fromPhone = `+${message.from.replace(/\D/g, '')}`;
           const contactObj = contacts.find((c: any) => c.wa_id === message.from);
           const pushName = contactObj?.profile?.name || fromPhone;
           const timestamp = new Date(Number(message.timestamp) * 1000).toISOString();
@@ -239,40 +248,19 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
           const sourceId = referral?.source_id;
           const headline = referral?.headline;
 
-          // Find matching workspace by channel phoneNumberId
-          const channelInfo = await findChannelByPhoneNumberId(phoneNumberId, request.log);
-
-          if (!channelInfo) {
-            request.log.warn({ phoneNumberId }, 'Unrecognized or unmapped phoneNumberId in WABA webhook event - safely ignored to prevent cross-tenant leak');
-            continue;
-          }
-
-          const rawWorkspaceId: string | null = channelInfo.workspace_id ?? null;
+          const rawWorkspaceId: string | null = resolvedChannelInfo.workspace_id ?? null;
           if (!rawWorkspaceId) {
             request.log.warn({ phoneNumberId }, 'Channel without workspace_id in WABA webhook - ignored');
             continue;
           }
           const targetWorkspaceId: string = rawWorkspaceId;
-          let channelConnectionId = channelInfo.id;
+          const channelConnectionId = resolvedChannelInfo.id;
           let journeyId: string | null = null;
           let contactId: string | null = null;
 
           if (!channelConnectionId) {
-            const defaultChan = await dbPool.query(
-              `SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1`,
-              [targetWorkspaceId]
-            );
-            if (defaultChan.rows.length > 0) {
-              channelConnectionId = defaultChan.rows[0].id;
-            } else {
-              const newChan = await dbPool.query(
-                `INSERT INTO public.channel_connections (id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at)
-                 VALUES (gen_random_uuid(), $1, 'meta_cloud', $2, 'WhatsApp WABA Oficial', '{\"engine\":\"META_CLOUD\"}', 'CONNECTED', NOW(), NOW())
-                 RETURNING id`,
-                [targetWorkspaceId, fromPhone]
-              );
-              channelConnectionId = newChan.rows[0].id;
-            }
+            request.log.warn({ phoneNumberId }, 'WABA owner has no channel connection id - event ignored');
+            continue;
           }
 
           // Ingest contact and journey
@@ -284,7 +272,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
                ON CONFLICT (workspace_id, phone)
                DO UPDATE SET name = COALESCE(EXCLUDED.name, contacts.name), updated_at = $5
                RETURNING id`,
-              [targetWorkspaceId, fromPhone, `${fromPhone.replace(/\\D/g, '')}@c.us`, pushName, timestamp]
+              [targetWorkspaceId, fromPhone, `${fromPhone.replace(/\D/g, '')}@c.us`, pushName, timestamp]
             );
             contactId = contactRes.rows[0].id as string;
 
@@ -437,7 +425,8 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
               ingestClient.release();
             }
           } catch (err) {
-            console.error('Erro ao ingerir mensagem WABA:', err);
+            request.log.error({ err, messageId }, 'Failed to persist WABA inbound message');
+            throw err;
           }
         }
       }

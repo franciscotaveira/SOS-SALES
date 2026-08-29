@@ -8,6 +8,7 @@ import {
 describe('ReceptionistAgent untrusted-model safety policy', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it('accepts only the documented classification envelope', () => {
@@ -172,6 +173,151 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
       expect(cfg.services[0].name).toBe('Corte Feminino');
       expect(cfg.services[0].price).toBe('80');
       expect(cfg.bookingUrl).toBe('https://agenda.studio.com');
+    });
+  });
+
+  describe('Durable worker retry and ambiguous WABA delivery safety', () => {
+    const input = {
+      workspaceId: '10000000-0000-4000-8000-000000000001',
+      journeyId: '20000000-0000-4000-8000-000000000002',
+      contactId: '30000000-0000-4000-8000-000000000003',
+      fromPhone: '+5549999999999',
+      pushName: 'Cliente Teste',
+      textContent: 'Olá',
+      messageType: 'text',
+      channelConnectionId: '40000000-0000-4000-8000-000000000004',
+      phoneNumberId: 'phone-number-id',
+    };
+
+    function runtimeQuery() {
+      return vi.fn(async (sql: string) => {
+        if (sql.includes('SELECT') && sql.includes('j.bot_enabled')) {
+          return {
+            rows: [{
+              bot_enabled: true,
+              bot_paused_at: null,
+              runtime_enabled: true,
+              autonomy_mode: 'autonomous_24_7',
+              published_at: new Date(),
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('FROM public.workspace_agent_config')) {
+          return {
+            rows: [{
+              workspace_name: 'Empresa Teste',
+              agent_name: 'Assistente',
+              business_type: 'Serviços',
+              services_json: [{ name: 'Serviço conhecido' }],
+              working_hours: 'Seg a Sex 09h-18h',
+              phone: '+5549999999999',
+              city: 'Chapecó',
+              booking_url: null,
+              booking_flow_enabled: false,
+              extra_context: null,
+              behavior_config: {},
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('FROM public.conversation_messages')) {
+          return { rows: [], rowCount: 0 };
+        }
+        if (sql.includes('FROM public.channel_connections cc')) {
+          return {
+            rows: [{
+              public_config: { phoneNumberId: 'phone-number-id' },
+              secret_payload: { accessToken: 'redacted-test-token' },
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('pause_receptionist_and_open_handoff')) {
+          return { rows: [{ handoff_id: 'handoff-id' }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO public.conversation_messages')) {
+          return { rows: [], rowCount: 1 };
+        }
+        throw new Error(`Unexpected test SQL: ${sql}`);
+      }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
+    }
+
+    it('throws before any provider effect when NVIDIA inference is unavailable so the outbox can retry', async () => {
+      vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
+      const query = runtimeQuery();
+      const nim = {
+        isConfigured: () => true,
+        generateChatCompletion: vi.fn().mockRejectedValue(new Error('provider timeout')),
+      };
+      const waba = { sendText: vi.fn(), sendFlow: vi.fn() };
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const agent = new ReceptionistAgent({ nim: nim as any, waba: waba as any, query });
+
+      await expect(agent.handleInbound(input)).rejects.toThrow('RECEPTIONIST_NIM_UNAVAILABLE');
+      expect(waba.sendText).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalled();
+    });
+
+    it('pauses the journey and does not fabricate success when WABA delivery is unconfirmed', async () => {
+      vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
+      const query = runtimeQuery();
+      const nim = {
+        isConfigured: () => true,
+        generateChatCompletion: vi.fn().mockResolvedValue({
+          content: '{"intent":"greeting","escalate":false,"sendBookingFlow":false}\nOlá! Como posso ajudar?',
+          model: 'test-model',
+          latencyMs: 12,
+        }),
+      };
+      const waba = {
+        sendText: vi.fn().mockRejectedValue(new Error('ambiguous timeout')),
+        sendFlow: vi.fn(),
+      };
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const agent = new ReceptionistAgent({ nim: nim as any, waba: waba as any, query });
+
+      const result = await agent.handleInbound(input);
+
+      expect(result).toMatchObject({
+        reply: '',
+        escalated: true,
+        bookingFlowSent: false,
+        skipped: 'waba_delivery_unconfirmed_handoff_required',
+      });
+      expect(query).toHaveBeenCalledWith(
+        expect.stringContaining('pause_receptionist_and_open_handoff'),
+        expect.arrayContaining([input.journeyId, input.workspaceId])
+      );
+      expect(errorSpy).toHaveBeenCalled();
+    });
+
+    it('treats a missing provider message id as unconfirmed delivery', async () => {
+      vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
+      const query = runtimeQuery();
+      const nim = {
+        isConfigured: () => true,
+        generateChatCompletion: vi.fn().mockResolvedValue({
+          content: '{"intent":"greeting","escalate":false,"sendBookingFlow":false}\nOlá!',
+          model: 'test-model',
+          latencyMs: 8,
+        }),
+      };
+      const waba = {
+        sendText: vi.fn().mockResolvedValue({ messageId: '' }),
+        sendFlow: vi.fn(),
+      };
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const agent = new ReceptionistAgent({ nim: nim as any, waba: waba as any, query });
+
+      const result = await agent.handleInbound(input);
+
+      expect(result.skipped).toBe('waba_delivery_unconfirmed_handoff_required');
+      expect(result.reply).toBe('');
+      expect(query).not.toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO public.conversation_messages'),
+        expect.anything()
+      );
     });
   });
 });

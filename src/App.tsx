@@ -695,9 +695,26 @@ function OperationalApp({
     let createdWs: Workspace;
 
     if (salesOsGateway instanceof HttpSalesOsGateway) {
-      throw new Error(
-        'Criação de subconta ainda não possui contrato backend. Nenhum cliente, canal ou WABA foi criado.',
-      );
+      if (!currentWorkspace) throw new Error('Selecione o workspace matriz antes de criar uma conta de cliente.');
+      const created = await salesOsGateway.createClientWorkspace(currentWorkspace.id, data);
+      createdWs = {
+        id: created.workspaceId,
+        name: created.workspaceName,
+        slug: created.slug,
+        operatorRole: created.role,
+        businessType: data.businessType,
+        tagline: data.tagline,
+        activeOperatorCount: 1,
+        tier: 'standard',
+        channels: [{
+          id: created.channelConnectionId,
+          name: data.provider === 'waba' ? 'WhatsApp Oficial (Meta Cloud)' : 'WhatsApp Principal (WAHA)',
+          phoneNumber: data.whatsappNumber || 'Aguardando conexão',
+          health: 'disconnected',
+          wabaAccountId: undefined,
+        }],
+      };
+      setWorkspaces((prev) => [...prev, createdWs]);
     } else {
       const newId = `ws-client-${Date.now()}`;
       createdWs = {

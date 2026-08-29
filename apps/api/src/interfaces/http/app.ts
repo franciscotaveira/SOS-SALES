@@ -88,6 +88,8 @@ export interface AppDependencies {
   ingestionGateway: InboundIngestionGateway;
   /** Optional: injected for /ready checks. If omitted, /ready always returns degraded. */
   healthProvider?: DependencyHealthProvider;
+  /** Exact probes that must be present once each for this composed runtime. */
+  readinessDependencyNames?: readonly string[];
   /**
    * Server-side Supabase JWT verifier. When absent, operator routes fail
    * closed with 401; no local/user header fallback is permitted.
@@ -156,6 +158,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   }
 
   const { secretProvider, wahaAdapter, ingestionGateway, healthProvider, wabaWebhook } = dependencies;
+  const requiredReadinessDependencies = dependencies.readinessDependencyNames ?? REQUIRED_READINESS_DEPENDENCIES;
 
   // trustProxy MUST be set explicitly — no implicit fallback to trusting all headers.
   const trustProxy: TrustProxyOption = dependencies.trustProxy ?? false;
@@ -163,6 +166,19 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   const app = Fastify({
     logger: dependencies.logger !== undefined ? dependencies.logger : { level: 'info' },
     trustProxy,
+  });
+
+  // Fastify 4 remains in the compatibility line for this release. Reject
+  // ambiguous Content-Type whitespace before body parsing so validation cannot
+  // be bypassed with a tab-delimited media type.
+  app.addHook('onRequest', async (request, reply) => {
+    const rawHeaders = request.raw.rawHeaders;
+    for (let index = 0; index < rawHeaders.length; index += 2) {
+      if (rawHeaders[index]?.toLowerCase() !== 'content-type') continue;
+      if (/[\t\r\n]/.test(rawHeaders[index + 1] || '')) {
+        return reply.status(400).send({ error: 'Invalid Content-Type header' });
+      }
+    }
   });
 
   // Attach rawBody buffer to request for cryptographic signature verification
@@ -207,11 +223,15 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     }
   });
 
-  app.register(fastifySwaggerUi, {
-    routePrefix: '/docs',
-    uiConfig: { docExpansion: 'list', deepLinking: true },
-    staticCSP: true,
-  });
+  // Swagger UI carries static-file routing and is for local/Lab diagnostics.
+  // Production exposes no public documentation surface.
+  if (process.env.APP_ENV !== 'production') {
+    app.register(fastifySwaggerUi, {
+      routePrefix: '/docs',
+      uiConfig: { docExpansion: 'list', deepLinking: true },
+      staticCSP: true,
+    });
+  }
 
   // Rate Limiting (Default 600 req/min, bypass for /health and /ready)
   if (dependencies.rateLimit !== false) {
@@ -337,7 +357,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
       // unauthenticated endpoint.
       return reply.status(503).send({
         status: 'degraded',
-        dependencies: REQUIRED_READINESS_DEPENDENCIES.map((name) => ({ name, status: 'degraded' })),
+        dependencies: requiredReadinessDependencies.map((name) => ({ name, status: 'degraded' })),
         timestamp: new Date().toISOString(),
       });
     }
@@ -348,7 +368,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     } catch {
       return reply.status(503).send({
         status: 'degraded',
-        dependencies: REQUIRED_READINESS_DEPENDENCIES.map((name) => ({ name, status: 'degraded' })),
+        dependencies: requiredReadinessDependencies.map((name) => ({ name, status: 'degraded' })),
         timestamp: new Date().toISOString(),
       });
     }
@@ -357,7 +377,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     // can turn a broken health adapter into a false positive. Readiness is
     // fail-closed: each mandatory dependency must be reported exactly once and
     // that single probe must be healthy.
-    const dependencies = REQUIRED_READINESS_DEPENDENCIES.map((name) => ({
+    const dependencies = requiredReadinessDependencies.map((name) => ({
       name,
       status: statuses.filter((status) => status.name === name).length === 1
         && statuses.find((status) => status.name === name)?.healthy === true

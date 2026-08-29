@@ -2,6 +2,8 @@ import type { Pool, PoolClient } from 'pg';
 import { AuthenticatedActor } from '../../application/ports/operator-authenticator.js';
 import {
   WorkspaceInitResult,
+  ClientWorkspaceInput,
+  ClientWorkspaceResult,
   WorkspaceProvisioningGateway,
 } from '../../application/ports/workspace-provisioning-gateway.js';
 import { dbPool } from './pool.js';
@@ -66,9 +68,10 @@ export class PostgresWorkspaceProvisioningGateway implements WorkspaceProvisioni
         workspaceName?.trim() ||
         (actor.email ? `${actor.email.split('@')[0]} Workspace` : 'Meu Espaço Comercial');
 
+      const slug = this.workspaceSlug(defaultName);
       const wsResult = await client.query<{ id: string; name: string }>(
-        'INSERT INTO public.workspaces (name) VALUES ($1) RETURNING id, name',
-        [defaultName],
+        'INSERT INTO public.workspaces (name, slug) VALUES ($1, $2) RETURNING id, name',
+        [defaultName, slug],
       );
       const ws = wsResult.rows[0];
 
@@ -100,6 +103,82 @@ export class PostgresWorkspaceProvisioningGateway implements WorkspaceProvisioni
         isExisting: false,
       };
     });
+  }
+
+  async createClientWorkspace(
+    actor: AuthenticatedActor,
+    input: ClientWorkspaceInput,
+  ): Promise<ClientWorkspaceResult> {
+    return this.withServiceRole(async (client) => {
+      const authorization = await client.query(
+        `SELECT 1 FROM public.workspace_memberships
+         WHERE workspace_id = $1 AND user_id = $2 AND role = 'owner'`,
+        [input.parentWorkspaceId, actor.userId],
+      );
+      if (authorization.rowCount !== 1) throw new Error('CLIENT_WORKSPACE_OWNER_REQUIRED');
+
+      const slug = this.workspaceSlug(input.name);
+      const workspace = await client.query<{ id: string; name: string }>(
+        `INSERT INTO public.workspaces (name, slug)
+         VALUES ($1, $2)
+         RETURNING id, name`,
+        [input.name.trim(), slug],
+      );
+      const ws = workspace.rows[0];
+      const membership = await client.query<{ id: string }>(
+        `INSERT INTO public.workspace_memberships (workspace_id, user_id, role)
+         VALUES ($1, $2, 'owner') RETURNING id`,
+        [ws.id, actor.userId],
+      );
+
+      const provider = input.provider === 'waba' ? 'meta_cloud' : 'waha';
+      const publicConfig = input.provider === 'waba'
+        ? { onboardingState: 'PENDING_EMBEDDED_SIGNUP' }
+        : { session: `ws_${ws.id.replace(/-/g, '')}`, onboardingState: 'PENDING_QR' };
+      const channel = await client.query<{ id: string }>(
+        `INSERT INTO public.channel_connections (
+           workspace_id, provider, phone_number, name, status, public_config
+         ) VALUES ($1, $2, $3, $4, 'DISCONNECTED', $5) RETURNING id`,
+        [
+          ws.id,
+          provider,
+          input.whatsappNumber?.trim() || 'pending',
+          input.provider === 'waba' ? 'WhatsApp Oficial (Meta Cloud)' : 'WhatsApp Principal (WAHA)',
+          JSON.stringify(publicConfig),
+        ],
+      );
+
+      await client.query(
+        `INSERT INTO public.workspace_agent_config (
+           workspace_id, business_type, phone, extra_context
+         ) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (workspace_id) DO NOTHING`,
+        [ws.id, input.businessType, input.whatsappNumber?.trim() || '', input.tagline.trim() || null],
+      );
+
+      return {
+        workspaceId: ws.id,
+        workspaceName: ws.name,
+        membershipId: membership.rows[0].id,
+        role: 'owner',
+        channelConnectionId: channel.rows[0].id,
+        slug,
+        channelProvider: provider,
+        channelStatus: 'DISCONNECTED',
+        ownerAccess: 'agency_owner',
+      };
+    });
+  }
+
+  private workspaceSlug(name: string): string {
+    const base = name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 55) || 'workspace';
+    return `${base}-${crypto.randomUUID().slice(0, 8)}`;
   }
 
   private async withServiceRole<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {

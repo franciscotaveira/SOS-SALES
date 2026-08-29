@@ -52,7 +52,10 @@ export interface RuntimeDependencies {
   /** Optional until a provider's server-only LID resolver is configured. */
   lidIdentityResolver?: LidIdentityResolver;
   /** Created after the worker exists so readiness can always include it. */
-  createHealthProvider: (worker: WahaInboundWorker) => DependencyHealthProvider;
+  createHealthProvider: (
+    worker: WahaInboundWorker,
+    workers?: { outbound?: WahaOutboundWorker; receptionist?: ReceptionistInboundWorker },
+  ) => DependencyHealthProvider;
   /** Optional only while operator API remains fail-closed (401) during bootstrap. */
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
@@ -214,10 +217,12 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
         options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
       },
     },
-    createHealthProvider: (worker) => new CompositeDependencyHealthProvider([
+    createHealthProvider: (worker, workers) => new CompositeDependencyHealthProvider([
       { name: 'database', check: async () => (await databaseHealth.checkAll()).every((status) => status.healthy) },
       { name: 'redis', check: async () => (await redisHealth.checkAll()).every((status) => status.healthy) },
-      { name: 'worker', check: async () => worker.isHealthy() },
+      { name: 'waha-inbound-worker', check: async () => worker.isHealthy() },
+      ...(workers?.outbound ? [{ name: 'outbound-worker', check: async () => workers.outbound!.isHealthy() }] : []),
+      ...(workers?.receptionist ? [{ name: 'receptionist-worker', check: async () => workers.receptionist!.isHealthy() }] : []),
     ]),
     close: async () => {
       await redis.quit().catch(() => redis.disconnect());
@@ -283,11 +288,30 @@ async function startComposedServer(
     appSecret: metaAppSecret,
   } : undefined;
 
+  let outboundWorker: WahaOutboundWorker | undefined;
+  if (runtime.outboundDispatchGateway) {
+    const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim() || 'http://sos-sales-waha:3000';
+    const wahaApiKey = process.env.WAHA_API_KEY?.trim() || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
+    const outboundAdapter = new WahaOutboundAdapter({ endpoint: wahaBaseUrl, apiKey: wahaApiKey });
+    outboundWorker = new WahaOutboundWorker({ dispatchGateway: runtime.outboundDispatchGateway, outboundAdapter });
+  }
+
+  const receptionistWorker = runtime.outboxGateway
+    ? new ReceptionistInboundWorker({ receptionistAgent: getReceptionistAgent(), outboxGateway: runtime.outboxGateway })
+    : undefined;
+
   const app = buildApp({
     secretProvider: runtime.secretProvider,
     wahaAdapter: runtime.wahaAdapter,
     ingestionGateway: runtime.ingestionGateway,
-    healthProvider: runtime.createHealthProvider(worker),
+    healthProvider: runtime.createHealthProvider(worker, { outbound: outboundWorker, receptionist: receptionistWorker }),
+    readinessDependencyNames: [
+      'database',
+      'redis',
+      'waha-inbound-worker',
+      ...(outboundWorker ? ['outbound-worker'] : []),
+      ...(receptionistWorker ? ['receptionist-worker'] : []),
+    ],
     authenticator: runtime.authenticator,
     workspaceDirectory: runtime.workspaceDirectory,
     cockpitReadGateway: runtime.cockpitReadGateway,
@@ -307,27 +331,8 @@ async function startComposedServer(
   });
 
   worker.start();
-
-  let outboundWorker: WahaOutboundWorker | undefined;
-  if (runtime.outboundDispatchGateway) {
-    const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim() || 'http://sos-sales-waha:3000';
-    const wahaApiKey = process.env.WAHA_API_KEY?.trim() || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
-    const outboundAdapter = new WahaOutboundAdapter({ endpoint: wahaBaseUrl, apiKey: wahaApiKey });
-    outboundWorker = new WahaOutboundWorker({
-      dispatchGateway: runtime.outboundDispatchGateway,
-      outboundAdapter,
-    });
-    outboundWorker.start();
-  }
-
-  let receptionistWorker: ReceptionistInboundWorker | undefined;
-  if (runtime.outboxGateway) {
-    receptionistWorker = new ReceptionistInboundWorker({
-      receptionistAgent: getReceptionistAgent(),
-      outboxGateway: runtime.outboxGateway,
-    });
-    receptionistWorker.start();
-  }
+  outboundWorker?.start();
+  receptionistWorker?.start();
 
   try {
     await app.listen({ port, host });

@@ -915,18 +915,35 @@ export async function whatsappChannelRoutes(
 
   // Explicit backend contract for the Arsenal UI. Unsupported actions are
   // fail-closed instead of being inferred from a connected WABA account.
-  app.get('/api/v1/workspaces/:workspaceId/channels/waba/capabilities', async () => ({
-    capabilities: {
-      flow: true,
-      buttons: true,
-      call: true,
-      orderDetails: false,
-      locationRequest: false,
-      product: false,
-      multiProduct: false,
-      carousel: false,
-    },
-  }));
+  app.get('/api/v1/workspaces/:workspaceId/channels/waba/capabilities', async (
+    request: FastifyRequest<{ Params: { workspaceId: string } }>,
+    reply: FastifyReply
+  ) => {
+    const normWsId = normalizeWorkspaceUuid(request.params.workspaceId);
+    if (!normWsId) return reply.status(400).send({ error: 'Workspace inválido' });
+    if (!dependencies.wabaChannelInfoGateway) {
+      return reply.status(503).send({ error: 'Capabilities WABA indisponíveis' });
+    }
+
+    const channel = await dependencies.wabaChannelInfoGateway.findConnectedByWorkspaceId(normWsId);
+    const connected = Boolean(channel?.phoneNumberId && channel?.wabaId);
+
+    return {
+      connected,
+      capabilities: {
+        flow: connected,
+        buttons: connected,
+        // The current send-buttons endpoint creates quick replies, not a
+        // phone-number CTA. Advertising call=true would be a false contract.
+        call: false,
+        orderDetails: false,
+        locationRequest: false,
+        product: false,
+        multiProduct: false,
+        carousel: false,
+      },
+    };
+  });
 
   const unsupportedWabaAction = async (_request: FastifyRequest, reply: FastifyReply) => reply.status(501).send({
     error: 'Ação WABA ainda não homologada no backend',
@@ -940,7 +957,8 @@ export async function whatsappChannelRoutes(
   app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-carousel', unsupportedWabaAction);
 
   app.get('/api/v1/channels/waba/channel-info', async (request: FastifyRequest<{ Querystring: { workspaceId?: string } }>, reply: FastifyReply) => {
-    const wsId = (request.query as any)?.workspaceId || 'ws-haven-beauty';
+    const wsId = request.query?.workspaceId?.trim();
+    if (!wsId) return reply.status(400).send({ error: 'workspaceId é obrigatório' });
     return handleWabaChannelInfo(wsId, reply);
   });
 

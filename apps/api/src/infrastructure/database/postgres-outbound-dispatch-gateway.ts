@@ -155,15 +155,37 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
         if (!raw) return null;
         const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Record<string, string>;
 
-        const detailsQuery = await client.query<{ phone: string; session_name: string | null }>(
-          `SELECT c.phone, cc.session_name
+        const detailsQuery = await client.query<{
+          phone: string;
+          session_name: string | null;
+          provider: string;
+          public_config: Record<string, unknown> | string;
+          secret_payload: Record<string, unknown> | string | null;
+        }>(
+          `SELECT c.phone, cc.session_name, cc.provider, cc.public_config,
+                  secrets.secret_payload
            FROM public.outbound_dispatches od
            JOIN public.contacts c ON c.id = od.contact_id
            JOIN public.channel_connections cc ON cc.id = od.channel_connection_id
+           LEFT JOIN LATERAL (
+             SELECT ccs.secret_payload
+             FROM public.channel_connection_secrets ccs
+             WHERE ccs.channel_connection_id = cc.id
+               AND ccs.workspace_id = cc.workspace_id
+               AND ccs.secret_kind = 'meta_bearer_token'
+             ORDER BY ccs.updated_at DESC
+             LIMIT 1
+           ) secrets ON TRUE
            WHERE od.id = $1`,
           [params.dispatchId],
         );
         const details = detailsQuery.rows[0];
+        const publicConfig = typeof details?.public_config === 'string'
+          ? JSON.parse(details.public_config)
+          : (details?.public_config || {});
+        const secretPayload = typeof details?.secret_payload === 'string'
+          ? JSON.parse(details.secret_payload)
+          : (details?.secret_payload || {});
 
         return {
           dispatchId: parsed.dispatchId,
@@ -173,6 +195,9 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
           contactId: parsed.contactId,
           contactPhone: details?.phone,
           session: details?.session_name ?? undefined,
+          provider: details?.provider === 'meta_cloud' ? 'meta_cloud' : 'waha',
+          wabaPhoneNumberId: typeof publicConfig.phoneNumberId === 'string' ? publicConfig.phoneNumberId : undefined,
+          wabaAccessToken: typeof secretPayload.accessToken === 'string' ? secretPayload.accessToken : undefined,
         };
       } catch (error) {
         return null;
@@ -252,4 +277,3 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
     }
   }
 }
-

@@ -134,7 +134,7 @@ export async function createProductionRuntime() {
     wabaChannelInfoGateway,
     trustProxy: true,
     logger: true,
-    createHealthProvider: (worker) => ({
+    createHealthProvider: (worker, workers = {}) => ({
       checkAll: async () => {
         const [dbStatuses, redisStatuses] = await Promise.all([
           databaseHealth.checkAll(),
@@ -142,12 +142,12 @@ export async function createProductionRuntime() {
         ]);
         const dbHealthy = dbStatuses.every((s) => s.healthy);
         const redisHealthy = redisStatuses.every((s) => s.healthy);
-        const workerHealthy = worker.isHealthy();
-
         return [
           { name: 'database', healthy: dbHealthy },
           { name: 'redis', healthy: redisHealthy },
-          { name: 'worker', healthy: workerHealthy },
+          { name: 'waha-inbound-worker', healthy: worker.isHealthy() },
+          ...(workers.outbound ? [{ name: 'outbound-worker', healthy: workers.outbound.isHealthy() }] : []),
+          ...(workers.receptionist ? [{ name: 'receptionist-worker', healthy: workers.receptionist.isHealthy() }] : []),
         ];
       },
     }),

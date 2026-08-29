@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { OutboundDispatchGateway } from '../../application/ports/outbound-dispatch-gateway.js';
 import { WahaOutboundAdapter } from '../channels/waha/waha-outbound-adapter.js';
+import { WabaClient } from '../channels/meta/waba-client.js';
 
 export interface WahaOutboundWorkerOptions {
   dispatchGateway: OutboundDispatchGateway;
   outboundAdapter: WahaOutboundAdapter;
+  wabaClient?: WabaClient;
   pollingIntervalMs?: number;
   batchSize?: number;
   leaseSeconds?: number;
@@ -24,6 +26,7 @@ export interface WahaOutboundWorkerOptions {
 export class WahaOutboundWorker {
   private readonly dispatchGateway: OutboundDispatchGateway;
   private readonly outboundAdapter: WahaOutboundAdapter;
+  private readonly wabaClient: WabaClient;
   private readonly pollingIntervalMs: number;
   private readonly batchSize: number;
   private readonly leaseSeconds: number;
@@ -44,6 +47,7 @@ export class WahaOutboundWorker {
 
     this.dispatchGateway = options.dispatchGateway;
     this.outboundAdapter = options.outboundAdapter;
+    this.wabaClient = options.wabaClient ?? new WabaClient();
     this.pollingIntervalMs = options.pollingIntervalMs ?? 1000;
     this.batchSize = options.batchSize ?? 10;
     this.leaseSeconds = options.leaseSeconds ?? 60;
@@ -104,11 +108,35 @@ export class WahaOutboundWorker {
         const rawPhone = claimed.contactPhone || '';
         const cleanPhone = rawPhone.replace(/\D/g, '');
         const chatId = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@c.us`;
-        let sendResult;
+        let sendResult: { success: boolean; providerMessageId?: string; failureCode?: string };
         const text = claimed.textContent || '';
+        const containsInlineMedia = text.includes(':::data:') || text.startsWith('data:image/') || text.startsWith('data:application/') || text.startsWith('data:audio/');
 
+        if (claimed.provider === 'meta_cloud') {
+          if (containsInlineMedia) {
+            sendResult = { success: false, failureCode: 'WABA_INLINE_MEDIA_UNSUPPORTED' };
+          } else if (!claimed.wabaPhoneNumberId || !claimed.wabaAccessToken || !claimed.contactPhone) {
+            sendResult = { success: false, failureCode: 'WABA_CHANNEL_NOT_CONFIGURED' };
+          } else {
+            try {
+              const wabaResult = await this.wabaClient.sendText({
+                phoneNumberId: claimed.wabaPhoneNumberId,
+                accessToken: claimed.wabaAccessToken,
+                recipientPhone: claimed.contactPhone,
+                text,
+              });
+              sendResult = wabaResult.messageId
+                ? { success: true, providerMessageId: wabaResult.messageId }
+                : { success: false, failureCode: 'WABA_PROVIDER_ID_MISSING' };
+            } catch {
+              // The provider may have accepted a timed-out request. Mark it for
+              // human reconciliation and never replay the irreversible call.
+              sendResult = { success: false, failureCode: 'WABA_DELIVERY_UNCONFIRMED' };
+            }
+          }
         // Check if text is a media attachment (base64 data URL)
-        if (text.includes(':::data:') || text.startsWith('data:image/') || text.startsWith('data:application/') || text.startsWith('data:audio/')) {
+        } else if (containsInlineMedia) {
+
           const parts = text.split(':::');
           const dataUrl = parts.length > 1 ? parts[1] : parts[0];
           const caption = parts.length > 1 ? parts[0].replace(/^\[(Foto|Imagem|Vídeo|Áudio|Documento)\]\s*/i, '') : '';
@@ -152,14 +180,14 @@ export class WahaOutboundWorker {
             dispatchId: claimed.dispatchId,
             claimToken: claimed.claimToken,
             workerId: this.workerId,
-            providerMessageId: sendResult.providerMessageId,
+            providerMessageId: sendResult.providerMessageId || '',
           });
         } else {
           await this.dispatchGateway.recordProviderFailure({
             dispatchId: claimed.dispatchId,
             claimToken: claimed.claimToken,
             workerId: this.workerId,
-            failureCode: sendResult.failureCode,
+            failureCode: sendResult.failureCode || 'PROVIDER_FAILURE',
           });
         }
 

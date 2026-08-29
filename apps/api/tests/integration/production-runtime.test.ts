@@ -21,7 +21,8 @@ function makeProductionRuntime(
     checkAll: async () => [
       { name: 'database', healthy: true },
       { name: 'redis', healthy: true },
-      { name: 'worker', healthy: true },
+      { name: 'waha-inbound-worker', healthy: true },
+      { name: 'receptionist-worker', healthy: true },
     ],
   }
 ): RuntimeDependencies {
