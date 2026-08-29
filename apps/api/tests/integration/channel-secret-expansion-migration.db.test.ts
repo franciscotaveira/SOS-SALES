@@ -85,6 +85,49 @@ async function prepareSchema(client: PoolClient): Promise<void> {
   await client.query(MIGRATION_BODY);
 }
 
+// Reproduz exatamente o contrato legado observado na producao: uma linha por
+// canal, referencias Vault opcionais e CHECK exigindo ao menos uma delas. Isso
+// protege a migration contra regressao no caminho real de upgrade do VPS.
+async function reproduceProductionLegacySecretShape(client: PoolClient): Promise<void> {
+  await client.query(
+    'ALTER TABLE public.channel_connections DROP CONSTRAINT IF EXISTS ck_channel_public_config_no_secrets;',
+  );
+  await client.query(
+    'ALTER TABLE public.channel_connection_secrets DROP CONSTRAINT IF EXISTS ck_channel_secret_reference;',
+  );
+  await client.query(
+    'ALTER TABLE public.channel_connection_secrets DROP CONSTRAINT IF EXISTS uq_channel_secrets_conn_kind;',
+  );
+  await client.query(
+    'ALTER TABLE public.channel_connection_secrets DROP CONSTRAINT IF EXISTS channel_connection_secrets_pkey;',
+  );
+  // A fixture precisa partir da mesma contagem observada em producao (zero
+  // secrets). O DELETE existe apenas nesta transacao de teste e sera revertido.
+  await client.query('DELETE FROM public.channel_connection_secrets;');
+  await client.query('DROP INDEX IF EXISTS public.idx_channel_secrets_kind;');
+  await client.query(
+    'ALTER TABLE public.channel_connection_secrets DROP COLUMN IF EXISTS secret_payload;',
+  );
+  await client.query(
+    'ALTER TABLE public.channel_connection_secrets DROP COLUMN IF EXISTS secret_kind;',
+  );
+  await client.query(
+    'ALTER TABLE public.channel_connection_secrets ADD COLUMN IF NOT EXISTS api_key_vault_secret_id UUID;',
+  );
+  await client.query(
+    'ALTER TABLE public.channel_connection_secrets ADD COLUMN IF NOT EXISTS webhook_vault_secret_id UUID;',
+  );
+  await client.query(
+    'ALTER TABLE public.channel_connection_secrets ADD CONSTRAINT channel_connection_secrets_pkey PRIMARY KEY (channel_connection_id);',
+  );
+  await client.query(
+    `ALTER TABLE public.channel_connection_secrets
+       ADD CONSTRAINT ck_channel_secret_reference CHECK (
+         api_key_vault_secret_id IS NOT NULL OR webhook_vault_secret_id IS NOT NULL
+       );`,
+  );
+}
+
 async function seedConnection(
   client: PoolClient,
   workspaceId: string,
@@ -129,6 +172,51 @@ describe('F2 — channel secret expansion migration (DB-backed)', () => {
 
   afterAll(async () => {
     await dbPool.end();
+  });
+
+  it('upgrades the exact production legacy shape without removing Vault columns', async () => {
+    await withRolledBackTx(async (client) => {
+      await reproduceProductionLegacySecretShape(client);
+      await seedConnection(client, workspaceId, CONN_B, {
+        _secret_token: BEARER_TOKEN,
+        metaAccessToken: CAPI_TOKEN,
+        verifyToken: VERIFY_TOKEN,
+      });
+
+      await client.query(MIGRATION_BODY);
+
+      const columns = await client.query(
+        `SELECT column_name
+           FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'channel_connection_secrets'`,
+      );
+      const names = columns.rows.map((row) => row.column_name);
+      expect(names).toContain('api_key_vault_secret_id');
+      expect(names).toContain('webhook_vault_secret_id');
+      expect(names).toContain('secret_kind');
+      expect(names).toContain('secret_payload');
+
+      const constraints = await client.query(
+        `SELECT conname, pg_get_constraintdef(oid) AS definition
+           FROM pg_constraint
+          WHERE conrelid = 'public.channel_connection_secrets'::regclass`,
+      );
+      const byName = new Map(constraints.rows.map((row) => [row.conname, row.definition]));
+      expect(byName.has('channel_connection_secrets_pkey')).toBe(false);
+      expect(byName.get('uq_channel_secrets_conn_kind')).toContain(
+        'UNIQUE (channel_connection_id, secret_kind)',
+      );
+      expect(byName.get('ck_channel_secret_reference')).toContain('secret_payload');
+      expect(byName.get('ck_channel_secret_reference')).toContain('api_key_vault_secret_id');
+
+      const secrets = await readSecrets(client, CONN_B);
+      expect(secrets.map((secret) => secret.secret_kind)).toEqual([
+        'meta_bearer_token',
+        'meta_capi_token',
+        'meta_webhook_verify_token',
+      ]);
+    });
   });
 
   it('inserts nothing when the connection carries no legacy tokens', async () => {

@@ -76,14 +76,24 @@ describe('F2 — channel secret expansion migration (structural)', () => {
     expect(emptyGuards.length).toBe(3);
   });
 
-  it('is non-destructive: never drops Vault columns, constraints, tables or _secret_token', () => {
+  it('converges only the two named legacy constraints and preserves all data/columns', () => {
     expect(executableSql).not.toMatch(/DROP\s+COLUMN/i);
-    expect(executableSql).not.toMatch(/DROP\s+CONSTRAINT/i);
     expect(executableSql).not.toMatch(/DROP\s+TABLE/i);
     expect(executableSql).not.toMatch(/DELETE\s+FROM/i);
     expect(executableSql).not.toMatch(/TRUNCATE/i);
-    expect(executableSql).not.toMatch(/api_key_vault_secret_id/);
-    expect(executableSql).not.toMatch(/webhook_vault_secret_id/);
+
+    const droppedConstraints = [
+      ...executableSql.matchAll(/DROP\s+CONSTRAINT(?:\s+IF\s+EXISTS)?\s+([a-zA-Z0-9_]+)/gi),
+    ].map((match) => match[1]);
+    expect(droppedConstraints).toEqual([
+      'channel_connection_secrets_pkey',
+      'ck_channel_secret_reference',
+    ]);
+
+    expect(normalized).toContain("legacy_pkey_definition = 'PRIMARY KEY (channel_connection_id)'");
+    expect(executableSql).toMatch(/api_key_vault_secret_id IS NOT NULL/);
+    expect(executableSql).toMatch(/webhook_vault_secret_id IS NOT NULL/);
+    expect(executableSql).toMatch(/secret_payload <> '\{\}'::jsonb/);
   });
 
   it('does not touch grants or RLS', () => {
