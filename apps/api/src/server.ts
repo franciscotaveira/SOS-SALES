@@ -12,6 +12,8 @@ import { buildApp, TrustProxyOption } from './interfaces/http/app.js';
 import { WahaWebhookAdapter } from './infrastructure/channels/waha/waha-webhook-adapter.js';
 import { WahaInboundWorker } from './infrastructure/workers/waha-inbound-worker.js';
 import { WahaOutboundWorker } from './infrastructure/workers/waha-outbound-worker.js';
+import { ReceptionistInboundWorker } from './infrastructure/workers/receptionist-inbound-worker.js';
+import { getReceptionistAgent } from './application/agents/receptionist-agent.js';
 import { WahaOutboundAdapter } from './infrastructure/channels/waha/waha-outbound-adapter.js';
 import { WebhookSecretProvider } from './application/ports/webhook-secret-provider.js';
 import { ChannelWebhookAdapter } from './application/ports/channel-webhook-adapter.js';
@@ -318,11 +320,21 @@ async function startComposedServer(
     outboundWorker.start();
   }
 
+  let receptionistWorker: ReceptionistInboundWorker | undefined;
+  if (runtime.outboxGateway) {
+    receptionistWorker = new ReceptionistInboundWorker({
+      receptionistAgent: getReceptionistAgent(),
+      outboxGateway: runtime.outboxGateway,
+    });
+    receptionistWorker.start();
+  }
+
   try {
     await app.listen({ port, host });
   } catch (error) {
     await worker.stop();
     await outboundWorker?.stop();
+    await receptionistWorker?.stop();
     await runtime.close?.();
     throw error;
   }
@@ -333,6 +345,7 @@ async function startComposedServer(
     stopped = true;
     await worker.stop();
     await outboundWorker?.stop();
+    await receptionistWorker?.stop();
     await app.close();
     await runtime.close?.();
   };

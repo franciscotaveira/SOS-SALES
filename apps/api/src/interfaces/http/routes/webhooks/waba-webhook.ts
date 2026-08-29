@@ -349,57 +349,95 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
               );
             }
 
-            // Insert conversation message
-            await dbPool.query(
-              `INSERT INTO public.conversation_messages (
-                 id, workspace_id, channel_connection_id, journey_id, contact_id,
-                 direction, sender_type, provider_message_id, text_content, media_payload, sent_at
-               )
-               VALUES (
-                 gen_random_uuid(), $1, $2, $3, $4, 'inbound', 'customer', $5, $6, $7, $8
-               )
-               ON CONFLICT (channel_connection_id, provider_message_id) DO NOTHING`,
-              [
-                targetWorkspaceId,
-                channelConnectionId,
-                journeyId,
-                contactId,
-                messageId,
-                textContent,
-                JSON.stringify({
-                  wabaMessageId: messageId,
-                  mediaType,
-                  mediaUrl,
-                  referral,
-                  wabaEngine: 'meta_cloud_api_v20',
-                }),
-                timestamp,
-              ]
-            );
+            // Insert conversation message + durable AI Receptionist enqueue in a
+            // single service-role transaction (QA-P0 §4.1). Replaces the
+            // non-recoverable setImmediate() fire-and-forget trigger: the message
+            // id is captured with RETURNING and, only when the row is freshly
+            // inserted and the receptionist is eligible, a durable
+            // 'receptionist.inbound_received' outbox row is enqueued in the SAME tx
+            // so a leased/fenced worker can drive the agent recoverably.
+            const receptionistAgent = getReceptionistAgent();
+            const receptionistEligible =
+              receptionistAgent.isEnabled() &&
+              !!textContent &&
+              message.type === 'text' &&
+              !!journeyId &&
+              !!contactId &&
+              !!channelConnectionId;
+
+            const ingestClient = await dbPool.connect();
+            try {
+              await ingestClient.query('BEGIN');
+              await ingestClient.query('SET LOCAL ROLE service_role');
+              await ingestClient.query(
+                "SELECT set_config('request.jwt.claim.role', 'service_role', true)"
+              );
+
+              const insertedMessage = await ingestClient.query<{ id: string }>(
+                `INSERT INTO public.conversation_messages (
+                   id, workspace_id, channel_connection_id, journey_id, contact_id,
+                   direction, sender_type, provider_message_id, text_content, media_payload, sent_at
+                 )
+                 VALUES (
+                   gen_random_uuid(), $1, $2, $3, $4, 'inbound', 'customer', $5, $6, $7, $8
+                 )
+                 ON CONFLICT (channel_connection_id, provider_message_id) DO NOTHING
+                 RETURNING id`,
+                [
+                  targetWorkspaceId,
+                  channelConnectionId,
+                  journeyId,
+                  contactId,
+                  messageId,
+                  textContent,
+                  JSON.stringify({
+                    wabaMessageId: messageId,
+                    mediaType,
+                    mediaUrl,
+                    referral,
+                    wabaEngine: 'meta_cloud_api_v20',
+                  }),
+                  timestamp,
+                ]
+              );
+
+              const conversationMessageId = insertedMessage.rows[0]?.id;
+
+              // ON CONFLICT DO NOTHING → empty RETURNING on duplicate delivery,
+              // so we only enqueue the receptionist trigger for a fresh message.
+              if (conversationMessageId && receptionistEligible) {
+                await ingestClient.query(
+                  `SELECT public.enqueue_receptionist_inbound(
+                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+                   )`,
+                  [
+                    conversationMessageId,
+                    targetWorkspaceId,
+                    journeyId,
+                    contactId,
+                    channelConnectionId,
+                    fromPhone,
+                    pushName,
+                    textContent,
+                    message.type,
+                    phoneNumberId,
+                  ]
+                );
+              }
+
+              await ingestClient.query('COMMIT');
+            } catch (txErr) {
+              await ingestClient.query('ROLLBACK').catch(() => {});
+              throw txErr;
+            } finally {
+              await ingestClient.query('RESET ROLE').catch(() => {});
+              await ingestClient
+                .query("SELECT set_config('request.jwt.claim.role', '', true)")
+                .catch(() => {});
+              ingestClient.release();
+            }
           } catch (err) {
             console.error('Erro ao ingerir mensagem WABA:', err);
-          }
-
-          // ⚡ Fire-and-forget: AI Receptionist 24/7 (NVIDIA NIM)
-          // Não bloqueia o 200 OK para a Meta — roda em background
-          const agent = getReceptionistAgent();
-          if (agent.isEnabled() && textContent && message.type === 'text' && journeyId && contactId && channelConnectionId) {
-            const resolvedJourneyId = journeyId;
-            const resolvedContactId = contactId;
-            const resolvedChannelConnectionId: string = channelConnectionId;
-            setImmediate(() => {
-              agent.handleInbound({
-                workspaceId: targetWorkspaceId,
-                journeyId: resolvedJourneyId,
-                contactId: resolvedContactId,
-                fromPhone,
-                pushName,
-                textContent,
-                messageType: message.type,
-                channelConnectionId: resolvedChannelConnectionId,
-                phoneNumberId,
-              }).catch((err: unknown) => console.error('[ReceptionistAgent] Unhandled error:', err));
-            });
           }
         }
       }
