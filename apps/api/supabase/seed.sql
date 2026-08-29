@@ -12,6 +12,51 @@ VALUES (
   true
 ) ON CONFLICT (id) DO NOTHING;
 
+-- 1.1 Configuração do recepcionista do workspace piloto.
+-- Migrations criam estrutura; dados de demonstração pertencem ao seed e só
+-- podem ser inseridos depois que o workspace pai existe.
+INSERT INTO workspace_agent_config (
+  workspace_id,
+  agent_name,
+  business_type,
+  services_json,
+  working_hours,
+  phone,
+  city,
+  booking_url,
+  booking_flow_enabled,
+  extra_context
+) VALUES (
+  'a0000000-0000-0000-0000-000000000001',
+  'Camila',
+  'Escovaria e salão de beleza premium',
+  '[
+    {"name":"Escova Modelada","duration":"45-60 min"},
+    {"name":"Esmaltação em Gel","duration":"60 min"},
+    {"name":"Spa dos Pés","duration":"60 min"},
+    {"name":"Terapia Capilar","duration":"90 min"},
+    {"name":"Manicure + Pedicure","duration":"60 min"},
+    {"name":"Progressiva / Relaxamento","duration":"120-180 min"},
+    {"name":"Coloração / Luzes","duration":"variável"}
+  ]'::jsonb,
+  'Segunda a Sábado, das 9h às 19h',
+  '+55 49 8837-0054',
+  'Chapecó, SC',
+  'https://www.trinks.com/haven-escovaria',
+  true,
+  'Ambiente premium e acolhedor. Aceitamos PIX, cartão de débito e crédito. Estacionamento gratuito. Os valores dos serviços estão sempre atualizados em: https://www.trinks.com/haven-escovaria'
+) ON CONFLICT (workspace_id) DO UPDATE SET
+  agent_name = EXCLUDED.agent_name,
+  business_type = EXCLUDED.business_type,
+  services_json = EXCLUDED.services_json,
+  working_hours = EXCLUDED.working_hours,
+  phone = EXCLUDED.phone,
+  city = EXCLUDED.city,
+  booking_url = EXCLUDED.booking_url,
+  booking_flow_enabled = EXCLUDED.booking_flow_enabled,
+  extra_context = EXCLUDED.extra_context,
+  updated_at = NOW();
+
 -- 2. Workspace Membership (Owner User)
 INSERT INTO workspace_memberships (id, workspace_id, user_id, role)
 VALUES (
