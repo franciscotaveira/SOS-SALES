@@ -143,6 +143,13 @@ export const MassBroadcastView: React.FC<MassBroadcastViewProps> = ({ workspace 
 
   // Start Mass Broadcast
   const handleStartBroadcast = async () => {
+    if (engine === 'waba') {
+      setFeedback({
+        type: 'error',
+        message: 'O disparo em massa pela Meta Cloud API ainda está em homologação. Use WAHA para esta operação ou configure modelos WABA para atendimentos individuais.',
+      });
+      return;
+    }
     if (targetList.length === 0) {
       setFeedback({ type: 'error', message: 'Nenhum contato selecionado para o disparo.' });
       return;
@@ -441,7 +448,7 @@ export const MassBroadcastView: React.FC<MassBroadcastViewProps> = ({ workspace 
                   />
                 </div>
                 <p className="text-[10px] text-slate-500 leading-tight">
-                  Envio instantâneo e 100% seguro via Templates oficiais Meta.
+                  Modelos oficiais da Meta. Disparo em massa está em homologação.
                 </p>
               </label>
             </div>
@@ -475,7 +482,11 @@ export const MassBroadcastView: React.FC<MassBroadcastViewProps> = ({ workspace 
 
             {/* WABA Template Picker */}
             {engine === 'waba' && (
-              <div className="p-3 bg-purple-50/60 border border-purple-200 rounded-xl space-y-2">
+              <div className="p-3 bg-purple-50/60 border border-purple-200 rounded-xl space-y-3">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[10.5px] leading-relaxed text-amber-900">
+                  <p className="font-bold text-amber-950">Disparo em massa WABA ainda não está liberado</p>
+                  <p className="mt-0.5">Os modelos abaixo são reais e serão usados pela fila oficial quando ela for homologada. Até lá, nenhum lote será enviado ou registrado como sucesso pela Meta Cloud API.</p>
+                </div>
                 <label className="block text-xs font-bold text-purple-900">Selecione o Modelo WABA Aprovado:</label>
                 {wabaTemplates.length === 0 ? (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs space-y-1">
@@ -561,7 +572,9 @@ export const MassBroadcastView: React.FC<MassBroadcastViewProps> = ({ workspace 
             <div className="p-4 rounded-2xl bg-[#ECE5DD] border border-slate-300/80 space-y-3 min-h-[160px] flex flex-col justify-end">
               <div className="self-end max-w-[85%] bg-[#E7FFDB] p-3 rounded-xl rounded-tr-xs shadow-xs text-xs text-slate-800 leading-relaxed font-sans relative">
                 <p>
-                  {messageText.replace(/\{\{nome\}\}/g, 'Ana')}
+                  {engine === 'waba'
+                    ? (selectedTemplate ? `Modelo Meta selecionado: ${selectedTemplate}` : 'Selecione um modelo Meta aprovado para visualizar a configuração.')
+                    : messageText.replace(/\{\{nome\}\}/g, 'Ana')}
                 </p>
                 <div className="flex items-center justify-end gap-1 text-[9px] text-slate-400 mt-1">
                   <span>{new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
@@ -574,7 +587,7 @@ export const MassBroadcastView: React.FC<MassBroadcastViewProps> = ({ workspace 
             <button
               type="button"
               onClick={handleStartBroadcast}
-              disabled={isBroadcasting || targetList.length === 0}
+              disabled={isBroadcasting || targetList.length === 0 || engine === 'waba'}
               className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 disabled:opacity-50 transition cursor-pointer transform active:scale-98"
             >
               {isBroadcasting ? (
@@ -584,8 +597,12 @@ export const MassBroadcastView: React.FC<MassBroadcastViewProps> = ({ workspace 
                 </>
               ) : (
                 <>
-                  <Send className="w-4 h-4" />
-                  <span>Iniciar Disparo em Massa ({targetList.length} Leads)</span>
+                  {engine === 'waba' ? <AlertTriangle className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                  <span>
+                    {engine === 'waba'
+                      ? 'Disparo WABA em homologação'
+                      : `Iniciar Disparo em Massa (${targetList.length} Leads)`}
+                  </span>
                 </>
               )}
             </button>
