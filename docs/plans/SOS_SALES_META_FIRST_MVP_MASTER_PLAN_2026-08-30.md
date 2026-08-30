@@ -252,10 +252,11 @@ falha após aceite não pode gerar reenvio cego.
 Essas mudanças foram provadas no Supabase Lab com testes de integração; não são
 prova de credenciais Meta, webhook ou entrega em produção.
 
-### P0.4 — Meta Business Agent ainda é capacidade ausente
+### P0.4 — Meta Business Agent: fundação de elegibilidade concluída; ativação ainda ausente
 
-**[KNOWN]** Não há implementação atual de elegibilidade, onboarding, configuração,
-allowlist, teste/eval ou thread control do Meta Business Agent para WhatsApp.
+**[KNOWN]** A elegibilidade já possui contrato autenticado no SOS Sales. Onboarding,
+configuração, allowlist, teste/eval, persistência de `agent_id` e thread control do Meta
+Business Agent para WhatsApp continuam ausentes e não devem ser presumidos pela UI.
 
 #### Primeira fundação implementada em 2026-08-30
 
@@ -488,7 +489,8 @@ evidência histórica, mas não devem ser executados em paralelo:
 2. tornar outbound durável e conciliável;
 3. consolidar owner/claim/transfer do multiatendimento;
 4. publicar um bundle canônico de conhecimento;
-5. implementar Meta Business Agent atrás de capability flag e allowlist;
+5. concluir Meta Business Agent atrás de capability flag e allowlist, partindo da
+   elegibilidade já entregue;
 6. ligar ownership Meta/SOS/humano;
 7. fechar CTWA → resultado → CAPI;
 8. reorganizar UX sem apagar funções;
