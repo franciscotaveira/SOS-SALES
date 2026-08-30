@@ -1,7 +1,5 @@
 import React from 'react';
 import { Workspace } from '../../types/cockpit';
-import { mockEngineConfig } from '../../data/groupFixtures';
-import { EngineConfig } from '../../types/groupsAndEngines';
 import { ConnectionManager } from '../settings/ConnectionManager';
 import { resolveWorkspaceTrackingDefaults } from '../settings/TrackingSettings';
 import { MessengerInsightsPanel } from '../intelligence/MessengerInsightsPanel';
@@ -29,7 +27,6 @@ import {
   Check,
   Trash2,
   X,
-  FileText,
   MessageSquare,
   Instagram,
   Link2,
@@ -47,44 +44,12 @@ const DEFAULT_SYSTEM_APP_ID = '2294262161340902';
 
 export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'operator' }) => {
   const [activeChannelTab, setActiveChannelTab] = React.useState<'whatsapp' | 'meta_omnichannel'>('whatsapp');
-  const [engineConfig, setEngineConfig] = React.useState<EngineConfig>(mockEngineConfig);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [showAdvanced, setShowAdvanced] = React.useState(false);
 
   // WABA Config Modal State
   const [wabaModalOpen, setWabaModalOpen] = React.useState(false);
 
-  // Create Template Modal State
-  const [createTemplateModalOpen, setCreateTemplateModalOpen] = React.useState(false);
-  const [tplError, setTplError] = React.useState<string | null>(null);
-  const [tplName, setTplName] = React.useState('');
-  const [tplCategory, setTplCategory] = React.useState<'UTILITY' | 'MARKETING' | 'AUTHENTICATION'>('UTILITY');
-  const [tplHeaderText, setTplHeaderText] = React.useState('');
-  const [tplBodyText, setTplBodyText] = React.useState('');
-  const [tplFooterText, setTplFooterText] = React.useState('');
-  const [tplButtonText, setTplButtonText] = React.useState('');
-  const [tplSubmitting, setTplSubmitting] = React.useState(false);
-
-  const handleCreateTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setTplSubmitting(true);
-    setTplError(null);
-    try {
-      // Mock implementation - would call API in real scenario
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setCreateTemplateModalOpen(false);
-      setTplName('');
-      setTplCategory('UTILITY');
-      setTplHeaderText('');
-      setTplBodyText('');
-      setTplFooterText('');
-      setTplButtonText('');
-    } catch (err: any) {
-      setTplError(err.message || 'Erro ao submeter template');
-    } finally {
-      setTplSubmitting(false);
-    }
-  };
   const [phoneNumberId, setPhoneNumberId] = React.useState('');
   const [wabaId, setWabaId] = React.useState('');
   const [accessToken, setAccessToken] = React.useState('');
@@ -1248,156 +1213,6 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                 </div>
               </form>
             )}
-          </div>
-        </div>
-      )}
-      {/* Create Template In-App Modal */}
-      {createTemplateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-                  <FileText className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 font-heading text-sm">
-                    Criar Modelo de Mensagem Oficial (Meta HSM)
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    O template será submetido diretamente para a Meta e aprovado em minutos.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setCreateTemplateModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {tplError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-800">
-                {tplError}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateTemplate} className="space-y-3.5 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Nome do Template (sem espaços): <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="ex: confirmacao_horario"
-                    value={tplName}
-                    onChange={(e) => setTplName(e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-purple-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Categoria: <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={tplCategory}
-                    onChange={(e) => setTplCategory(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 outline-none font-semibold"
-                  >
-                    <option value="UTILITY">UTILIDADE (Confirmações, Lembretes, Pós-Venda)</option>
-                    <option value="MARKETING">MARKETING (Ofertas, Reengajamento, Promoções)</option>
-                    <option value="AUTHENTICATION">AUTENTICAÇÃO (Códigos OTP / 2FA)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Texto do Cabeçalho (Opcional):
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Haven Escovaria & Spa"
-                  value={tplHeaderText}
-                  onChange={(e) => setTplHeaderText(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-bold text-slate-700">
-                    Corpo da Mensagem: <span className="text-rose-500">*</span>
-                  </label>
-                  <span className="text-[10px] text-slate-400">Use &#123;&#123;1&#125;&#125;, &#123;&#123;2&#125;&#125; para variáveis</span>
-                </div>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="Olá {{1}}, confirmamos o seu horário para {{2}}! Qualquer dúvida, estamos à disposição."
-                  value={tplBodyText}
-                  onChange={(e) => setTplBodyText(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 outline-none resize-none font-sans"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Rodapé (Opcional):
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Atendimento ao Cliente"
-                    value={tplFooterText}
-                    onChange={(e) => setTplFooterText(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Botão de Resposta Rápida (Opcional):
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Confirmar Horário"
-                    value={tplButtonText}
-                    onChange={(e) => setTplButtonText(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setCreateTemplateModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={tplSubmitting || !tplName.trim() || !tplBodyText.trim()}
-                  className="px-5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  {tplSubmitting ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Submetendo à Meta...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Submeter para Aprovação</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
