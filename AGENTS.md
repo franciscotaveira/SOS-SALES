@@ -45,11 +45,11 @@
    docker compose -f docker-compose.lab.yml up --build -d
        ↓
 3. Build + Deploy VPS   → crm.iaparavendas.tech
-   npm run build
-   npm --prefix apps/api run build
-   rsync -avz --delete dist/ vps:/opt/sos-sales/dist/
-   rsync -avz --delete apps/api/dist/ vps:/opt/sos-sales/api/dist/
-   ssh vps "docker restart sos-sales-api"
+   APP_ENV=production npm run build
+   APP_ENV=production npm --prefix apps/api run build
+   bash scripts/preflight-production-deploy.sh
+   bash scripts/stage-production-release.sh
+   bash scripts/promote-production-release.sh "$(git rev-parse HEAD)"  # exige aprovação humana
 ```
 
 **REGRA ABSOLUTA:** Nunca testar diretamente no VPS. Sempre Docker Lab primeiro.
@@ -91,13 +91,16 @@ docker logs sos-sales-lab-api --tail 50 -f
 # Docker Lab (parar)
 docker compose -f docker-compose.lab.yml down
 
-# Build completo
-npm run build && npm --prefix apps/api run build
+# Build completo + verificação dos artefatos de release
+APP_ENV=production npm run build && APP_ENV=production npm --prefix apps/api run build
+bash scripts/preflight-production-deploy.sh
 
 # Deploy VPS (só depois do lab!)
-rsync -avz --delete dist/ vps:/opt/sos-sales/dist/
-rsync -avz --delete apps/api/dist/ vps:/opt/sos-sales/api/dist/
-ssh vps "docker restart sos-sales-api"
+bash scripts/stage-production-release.sh
+bash scripts/promote-production-release.sh "$(git rev-parse HEAD)"  # só após aprovação
+
+# Rollback atômico de frontend + API + runtime + CA + compose
+bash scripts/rollback-production-release.sh
 
 # Auditoria E2E (9 rotas)
 node scripts/test-e2e-all-routes.js

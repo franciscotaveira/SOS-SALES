@@ -50,6 +50,8 @@ services:
       dockerfile: Dockerfile.api
     container_name: sos-sales-api
     restart: unless-stopped
+    env_file:
+      - ${SOS_SALES_ENV_FILE:-.env.production}
     expose:
       - "4334"
     environment:
@@ -59,6 +61,7 @@ services:
       - SOS_SALES_RUNTIME_FACTORY=/app/deploy/production-runtime.mjs
       - DATABASE_URL=${DATABASE_URL}
       - DATABASE_POOL_MAX=${DATABASE_POOL_MAX:-20}
+      - DATABASE_SSL_CA_FILE=/run/secrets/supabase-ca.crt
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
       - SUPABASE_JWT_ISSUER=${SUPABASE_JWT_ISSUER}
       - SUPABASE_JWKS_URL=${SUPABASE_JWKS_URL}
@@ -66,8 +69,11 @@ services:
       - WAHA_BASE_URL=http://waha:3000
       - WAHA_API_KEY=${WAHA_API_KEY}
       - WAHA_WEBHOOK_SECRET=${WAHA_WEBHOOK_SECRET}
+      - META_VERIFY_TOKEN=${META_VERIFY_TOKEN:?META_VERIFY_TOKEN is required}
+      - META_APP_SECRET=${META_APP_SECRET:?META_APP_SECRET is required}
     volumes:
       - ./deploy/production-runtime.mjs:/app/deploy/production-runtime.mjs:ro
+      - ./certs/supabase-ca.crt:/run/secrets/supabase-ca.crt:ro
     depends_on:
       redis:
         condition: service_healthy

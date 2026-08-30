@@ -26,6 +26,11 @@ export { AbacatePayGateway } from './infrastructure/billing/abacatepay-gateway.j
 export type { CreateAbacateChargeInput, AbacateChargeOutput } from './infrastructure/billing/abacatepay-gateway.js';
 export { OpenRouterEngine } from './infrastructure/ai/openrouter-engine.js';
 export { NvidiaNimEngine } from './infrastructure/ai/nvidia-nim-engine.js';
+export {
+  buildReadinessStatuses,
+  normalizeDatabaseHostname,
+  resolveDatabaseSslConfig,
+} from './infrastructure/runtime/production-runtime-helpers.js';
 import { fileURLToPath } from 'url';
 import { startServer } from './server.js';
 export { startServer };

@@ -43,15 +43,16 @@ ssh vps "docker logs sos-sales-caddy --tail 50"
 * Avisar a equipe sobre a ativação do protocolo de rollback.
 * Congelar novas tentativas de deploy.
 
-### Passo 2: Restauração do Artefato Anterior
+### Passo 2: Restauração Atômica do Release Anterior
 ```bash
-# No VPS, restaurar o diretório de build anterior
-ssh vps "cp -r /opt/sos-sales/backup_dist/* /opt/sos-sales/api/dist/ && cp -r /opt/sos-sales/backup_frontend/* /opt/sos-sales/dist/"
+# Alterna /opt/sos-sales/current e /opt/sos-sales/previous e recria API + Caddy.
+# O conjunto restaurado inclui frontend, API, runtime, CA e compose compatíveis.
+bash scripts/rollback-production-release.sh
 ```
 
-### Passo 3: Reinício Controlado do Container da API
+### Passo 3: Confirmar Release e Containers
 ```bash
-ssh vps "docker restart sos-sales-api"
+ssh vps "readlink -f /opt/sos-sales/current && docker ps --format 'table {{.Names}}\t{{.Status}}'"
 ```
 
 ### Passo 4: Validação Pós-Rollback (Smoke Test)
@@ -66,3 +67,6 @@ curl -s https://crm.iaparavendas.tech/version
 
 ### Passo 5: Registro Post-Mortem
 * Documentar causa raiz, impacto temporal e lições aprendidas no `DECISION_LOG.md`.
+
+> Não restaure somente `api/dist` ou somente o frontend. O runtime importa
+> símbolos do bundle da mesma versão; misturar artefatos pode impedir o startup.
