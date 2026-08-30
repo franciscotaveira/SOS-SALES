@@ -49,8 +49,12 @@ function getGitShortSha() {
 
 function isGitClean() {
   try {
-    const status = execSync('git status --porcelain', { cwd: rootDir, encoding: 'utf8' }).trim();
-    return status.length === 0;
+    execSync('git diff --quiet && git diff --cached --quiet', { cwd: rootDir, stdio: 'ignore' });
+    const untracked = execSync(
+      "git ls-files --others --exclude-standard -- . ':(exclude)node_modules' ':(exclude)apps/api/node_modules' ':(exclude)dist' ':(exclude)apps/api/dist'",
+      { cwd: rootDir, encoding: 'utf8' },
+    ).trim();
+    return untracked.length === 0;
   } catch {
     return false;
   }
