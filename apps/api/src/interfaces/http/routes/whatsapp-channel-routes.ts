@@ -804,6 +804,32 @@ export async function whatsappChannelRoutes(
     const seenWabaIds = new Set<string>();
 
     try {
+      // Do not treat an empty account list as a valid token by inference. The
+      // UI uses this result to decide whether it can safely offer manual IDs.
+      let identityRes: Response;
+      try {
+        identityRes = await fetch(
+          `https://graph.facebook.com/v20.0/me?fields=id&access_token=${encodeURIComponent(token)}`,
+        );
+      } catch {
+        return reply.status(502).send({
+          error: 'Não foi possível alcançar a Meta para validar o token. Tente novamente antes de inserir os IDs manualmente.',
+          code: 'META_TOKEN_VALIDATION_UNAVAILABLE',
+        });
+      }
+      if (!identityRes.ok) {
+        if ([400, 401, 403].includes(identityRes.status)) {
+          return reply.status(401).send({
+            error: 'Não foi possível validar o token Meta. Gere um token com acesso à conta WhatsApp Business e tente novamente.',
+            code: 'META_TOKEN_INVALID_OR_UNAUTHORIZED',
+          });
+        }
+        return reply.status(502).send({
+          error: 'A Meta não respondeu à validação do token. Tente novamente antes de inserir os IDs manualmente.',
+          code: 'META_TOKEN_VALIDATION_UNAVAILABLE',
+        });
+      }
+
       // Strategy 1: debug_token to get granular scopes target_ids
       try {
         const debugRes = await fetch(`https://graph.facebook.com/v20.0/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`);
@@ -858,7 +884,7 @@ export async function whatsappChannelRoutes(
         }
       } catch {}
 
-      return { success: true, accounts };
+      return { success: true, tokenValidated: true, accounts };
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });
     }
