@@ -6,8 +6,21 @@ EXPECTED_CA_FINGERPRINT="80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B
 
 # A release manifest contains the current Git SHA. Do not permit it to attest
 # uncommitted source or migration changes as if they belonged to that commit.
-if [[ -n "$(git -C "${REPO_ROOT}" status --porcelain)" ]]; then
+# Build dependencies are intentionally not tracked in the temporary release
+# worktree, so do not mistake node_modules/dist for source changes.
+if ! git -C "${REPO_ROOT}" diff --quiet || ! git -C "${REPO_ROOT}" diff --cached --quiet; then
   echo "[preflight] working tree is not clean; commit or isolate the intended release before deployment" >&2
+  exit 1
+fi
+
+untracked_source="$(git -C "${REPO_ROOT}" ls-files --others --exclude-standard -- \
+  . \
+  ':(exclude)node_modules' \
+  ':(exclude)apps/api/node_modules' \
+  ':(exclude)dist' \
+  ':(exclude)apps/api/dist')"
+if [[ -n "${untracked_source}" ]]; then
+  echo "[preflight] working tree contains untracked source; commit or isolate the intended release before deployment" >&2
   exit 1
 fi
 
