@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { RuntimeDependencies, startServer } from '../../src/server.js';
 import { buildApp } from '../../src/interfaces/http/app.js';
 import { PostgresInboundIngestionGateway } from '../../src/infrastructure/database/postgres-inbound-ingestion-gateway.js';
@@ -53,9 +53,20 @@ function makeProductionRuntime(
 
 describe('TX Commercial Core — P0.3B Production Runtime Contracts & Separation of Concerns', () => {
   const originalEnv = process.env.NODE_ENV;
+  const originalMetaVerifyToken = process.env.META_VERIFY_TOKEN;
+  const originalMetaAppSecret = process.env.META_APP_SECRET;
+
+  beforeEach(() => {
+    process.env.META_VERIFY_TOKEN = 'test_verify_token';
+    process.env.META_APP_SECRET = 'test_app_secret';
+  });
 
   afterEach(() => {
     process.env.NODE_ENV = originalEnv;
+    if (originalMetaVerifyToken === undefined) delete process.env.META_VERIFY_TOKEN;
+    else process.env.META_VERIFY_TOKEN = originalMetaVerifyToken;
+    if (originalMetaAppSecret === undefined) delete process.env.META_APP_SECRET;
+    else process.env.META_APP_SECRET = originalMetaAppSecret;
   });
 
   // ============================================================================
@@ -109,6 +120,19 @@ describe('TX Commercial Core — P0.3B Production Runtime Contracts & Separation
       expect(close).toHaveBeenCalledOnce();
     });
 
+    it('RUN-01C: production refuses WABA webhook test defaults when Meta secrets are absent', async () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.META_VERIFY_TOKEN;
+      delete process.env.META_APP_SECRET;
+
+      await expect(startServer({
+        runtime: makeProductionRuntime(),
+        host: '127.0.0.1',
+        port: 0,
+        installSignalHandlers: false,
+      })).rejects.toThrow(/Missing required environment variables META_VERIFY_TOKEN and\/or META_APP_SECRET/i);
+    });
+
     it('RUN-02: production starts only with explicit server-only ports, without local adapters', async () => {
       process.env.NODE_ENV = 'production';
       const close = vi.fn().mockResolvedValue(undefined);
@@ -155,6 +179,39 @@ describe('TX Commercial Core — P0.3B Production Runtime Contracts & Separation
 
       process.env.NODE_ENV = 'test';
       expect(() => new PostgresOutboxProcessingGateway()).not.toThrow();
+    });
+
+    it('RUN-05B: every outbox mutation uses the explicitly injected pool', async () => {
+      process.env.NODE_ENV = 'production';
+      const client = {
+        query: vi.fn(async (sql: string) =>
+          sql.includes('FROM public.inbound_channel_events')
+            ? {
+                rowCount: 1,
+                rows: [{
+                  id: 'inbound-1', workspace_id: 'workspace-1', channel_connection_id: 'channel-1',
+                  provider: 'waha', raw_payload: { event: 'message' },
+                }],
+              }
+            : { rowCount: 0, rows: [] }
+        ),
+        release: vi.fn(),
+      };
+      const injectedPool = { connect: vi.fn(async () => client) };
+      const gateway = new PostgresOutboxProcessingGateway(injectedPool as any);
+
+      await gateway.completeEvent({ eventId: 'event-1', claimToken: 'claim-1', workerId: 'worker-1' });
+      await gateway.failEvent({
+        eventId: 'event-2', claimToken: 'claim-2', workerId: 'worker-1', errorMessage: 'retry', maxAttempts: 3,
+      });
+      await gateway.fetchInboundChannelEvent({ inboundEventId: 'inbound-1', workspaceId: 'workspace-1', provider: 'waha' });
+      await gateway.normalizeWahaInboundMessage({
+        inboundEventId: 'inbound-1', contactPhone: '5511999999999', whatsappId: null, contactName: null,
+        providerMessageId: 'message-1', textContent: 'oi', mediaPayload: null, sentAt: new Date(),
+      });
+
+      expect(injectedPool.connect).toHaveBeenCalledTimes(4);
+      expect(client.release).toHaveBeenCalledTimes(4);
     });
 
     it('RUN-06: EnvironmentWebhookSecretProvider throws in production and passes in development/test', () => {

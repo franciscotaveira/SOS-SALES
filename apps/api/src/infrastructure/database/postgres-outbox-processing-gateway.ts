@@ -85,7 +85,7 @@ export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway 
     claimToken: string;
     workerId: string;
   }): Promise<void> {
-    const client = await dbPool.connect();
+    const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SET LOCAL ROLE service_role');
@@ -114,7 +114,7 @@ export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway 
     errorMessage: string;
     maxAttempts: number;
   }): Promise<void> {
-    const client = await dbPool.connect();
+    const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SET LOCAL ROLE service_role');
@@ -141,7 +141,7 @@ export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway 
     workspaceId: string;
     provider: string;
   }): Promise<InboundChannelEventRow | null> {
-    const client = await dbPool.connect();
+    const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SET LOCAL ROLE service_role');
@@ -191,7 +191,7 @@ export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway 
     mediaPayload: string | null;
     sentAt: Date;
   }): Promise<void> {
-    const client = await dbPool.connect();
+    const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SET LOCAL ROLE service_role');

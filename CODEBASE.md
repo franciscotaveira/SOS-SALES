@@ -226,14 +226,19 @@ docker compose -f docker-compose.lab.yml down
 # Ver logs da API no lab
 docker logs sos-sales-lab-api --tail 50 -f
 
-# 3. Build de produção
-npm run build
-npm --prefix apps/api run build
+# 3. Build e preflight de produção
+APP_ENV=production npm run build
+APP_ENV=production npm --prefix apps/api run build
+bash scripts/preflight-production-deploy.sh
 
-# 4. Deploy Lab → VPS
-rsync -avz --delete dist/ vps:/opt/sos-sales/dist/
-rsync -avz --delete apps/api/dist/ vps:/opt/sos-sales/api/dist/
-ssh vps "docker restart sos-sales-api"
+# 4. Stage imutável Lab → VPS (não altera o release ativo)
+bash scripts/stage-production-release.sh
+
+# 5. Promoção atômica após aprovação humana explícita
+bash scripts/promote-production-release.sh "$(git rev-parse HEAD)"
+
+# Rollback atômico do conjunto completo, se qualquer gate pós-deploy falhar
+bash scripts/rollback-production-release.sh
 
 # ══════════════════════════════════════════════════
 # AUDITORIA & TESTES
@@ -265,4 +270,3 @@ ssh vps "docker logs sos-sales-api --tail 50"
 # Flush Redis (cache de idempotência)
 ssh vps "docker exec sos-sales-redis redis-cli FLUSHALL"
 ```
-

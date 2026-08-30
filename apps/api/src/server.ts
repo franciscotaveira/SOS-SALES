@@ -272,11 +272,11 @@ async function startComposedServer(
   const port = options.port ?? Number(process.env.PORT || 4334);
   const host = options.host ?? process.env.HOST ?? '0.0.0.0';
 
-  const isCustomOrTestRuntime = process.env.NODE_ENV === 'test' || Boolean(options.runtime) || Boolean(process.env.SOS_SALES_RUNTIME_FACTORY);
-  const metaVerifyToken = process.env.META_VERIFY_TOKEN?.trim() || (isCustomOrTestRuntime ? 'test_verify_token' : '');
-  const metaAppSecret = process.env.META_APP_SECRET?.trim() || (isCustomOrTestRuntime ? 'test_app_secret' : '');
+  const isTestEnvironment = process.env.NODE_ENV === 'test';
+  const metaVerifyToken = process.env.META_VERIFY_TOKEN?.trim() || (isTestEnvironment ? 'test_verify_token' : '');
+  const metaAppSecret = process.env.META_APP_SECRET?.trim() || (isTestEnvironment ? 'test_app_secret' : '');
   if (!metaVerifyToken || !metaAppSecret) {
-    if (process.env.NODE_ENV === 'production' && !isCustomOrTestRuntime) {
+    if (process.env.NODE_ENV === 'production') {
       throw new Error(
         'Missing required environment variables META_VERIFY_TOKEN and/or META_APP_SECRET for the WABA webhook.'
       );

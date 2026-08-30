@@ -8,7 +8,7 @@ services:
       - "443:443"
     volumes:
       - /opt/sos-sales/Caddyfile:/etc/caddy/Caddyfile:ro
-      - /opt/sos-sales/dist:/var/www/html:ro
+      - ${SOS_SALES_RELEASE_ROOT:-/opt/sos-sales/current}/web/dist:/var/www/html:ro
       - /opt/sos-sales/landing:/var/www/landing:ro
       - /opt/sos-sales/caddy_data:/data
       - /opt/sos-sales/caddy_config:/config
@@ -18,17 +18,25 @@ services:
       - sos-sales-api
 
   sos-sales-api:
-    build:
-      context: /opt/sos-sales/api
-      dockerfile: Dockerfile
+    image: node:20-alpine
     container_name: sos-sales-api
     restart: unless-stopped
+    working_dir: /app
+    command: ["node", "dist/index.js"]
+    volumes:
+      - ${SOS_SALES_RELEASE_ROOT:-/opt/sos-sales/current}/api/dist:/app/dist:ro
+      - ${SOS_SALES_RELEASE_ROOT:-/opt/sos-sales/current}/api/node_modules:/app/node_modules:ro
+      - ${SOS_SALES_RELEASE_ROOT:-/opt/sos-sales/current}/api/package.json:/app/package.json:ro
+      - ${SOS_SALES_RELEASE_ROOT:-/opt/sos-sales/current}/api/production-runtime.mjs:/app/production-runtime.mjs:ro
+      - ${SOS_SALES_RELEASE_ROOT:-/opt/sos-sales/current}/certs/supabase-ca.crt:/run/secrets/supabase-ca.crt:ro
     env_file:
-      - /opt/sos-sales/.env.production
+      - ${SOS_SALES_ENV_FILE:-/opt/sos-sales/.env.production}
     environment:
       - NODE_ENV=production
       - PORT=4334
       - HOST=0.0.0.0
+      - SOS_SALES_RUNTIME_FACTORY=/app/production-runtime.mjs
+      - DATABASE_SSL_CA_FILE=/run/secrets/supabase-ca.crt
     networks:
       - sos-network
     depends_on:
@@ -58,7 +66,7 @@ services:
       WHATSAPP_DEFAULT_ENGINE: WEBJS
       WAHA_DASHBOARD_ENABLED: "true"
       WHATSAPP_SWAGGER_ENABLED: "true"
-      WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY is required}
       WAHA_LOG_FORMAT: JSON
       TZ: America/Sao_Paulo
     volumes:

@@ -22,6 +22,9 @@ import {
   WahaWebhookAdapter,
   PostgresWorkspaceProvisioningGateway,
   PostgresWabaChannelInfoGateway,
+  buildReadinessStatuses,
+  normalizeDatabaseHostname,
+  resolveDatabaseSslConfig,
 } from './dist/index.js';
 
 const { Pool } = pg;
@@ -37,14 +40,13 @@ export async function createProductionRuntime() {
   const jwksUrl = process.env.SUPABASE_JWKS_URL || 'https://yiiuebhyqixzluguxsqi.supabase.co/auth/v1/.well-known/jwks.json';
   const jwtAudience = process.env.SUPABASE_JWT_AUDIENCE || 'authenticated';
 
-  const isLocalDb = databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1') || databaseUrl.includes('postgres-lab') || databaseUrl.includes('host.docker.internal') || process.env.DATABASE_SSL === 'false';
-  const sslConfig = isLocalDb ? false : (process.env.DATABASE_SSL_CA ? { rejectUnauthorized: true, ca: process.env.DATABASE_SSL_CA } : { rejectUnauthorized: true });
+  const sslConfig = resolveDatabaseSslConfig(databaseUrl);
 
   let poolConfig;
   try {
     const u = new URL(databaseUrl);
     poolConfig = {
-      host: u.hostname,
+      host: normalizeDatabaseHostname(u.hostname),
       port: Number(u.port) || 5432,
       user: decodeURIComponent(u.username),
       password: decodeURIComponent(u.password),
@@ -145,9 +147,7 @@ export async function createProductionRuntime() {
         return [
           { name: 'database', healthy: dbHealthy },
           { name: 'redis', healthy: redisHealthy },
-          { name: 'waha-inbound-worker', healthy: worker.isHealthy() },
-          ...(workers.outbound ? [{ name: 'outbound-worker', healthy: workers.outbound.isHealthy() }] : []),
-          ...(workers.receptionist ? [{ name: 'receptionist-worker', healthy: workers.receptionist.isHealthy() }] : []),
+          ...buildReadinessStatuses(worker, workers),
         ];
       },
     }),

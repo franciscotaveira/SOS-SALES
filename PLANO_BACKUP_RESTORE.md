@@ -13,7 +13,7 @@
 | **Redis (Cache & Idempotência)** | Deduplicação de webhooks, rate limit, locks de dispatch | Container `sos-sales-redis` (`/data/dump.rdb`) | Volume persistente Docker `sos-sales-redis-data` | 24 horas | 5 min |
 | **Sessões WhatsApp (WAHA)** | Chaves de sessão, tokens SQLite/Chromium de pareamento QR | Container `sos-sales-waha` (`/app/.waha`) | Volume persistente Docker `waha-data` | 6 horas | 15 min |
 | **Configuração Caddy & Certificados** | Certificados TLS/SSL Let's Encrypt, regras de proxy | Container `sos-sales-caddy` (`/data`) | Volume persistente `caddy_data` + backup de `/opt/sos-sales/Caddyfile` | 24 horas | 10 min |
-| **Artefatos e Código da API** | Bundles compilados, manifests de release | `/opt/sos-sales/api/dist` | Versionamento Git + Backup de rollback (`/opt/sos-sales/backup_dist`) | 0 min | 2 min |
+| **Release da aplicação** | Frontend, API, runtime, CA e compose compatíveis | `/opt/sos-sales/releases/<commit>` | Release imutável + ponteiros atômicos `current`/`previous` | 0 min | 2 min |
 
 ---
 
@@ -40,10 +40,13 @@ pg_dump "postgres://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-ca-central-1.pooler.
 tar -czvf /opt/sos-sales/backups/waha_sessions_$(date +%Y%m%d_%H%M%S).tar.gz /var/lib/docker/volumes/sos-sales_waha-data/_data
 ```
 
-### 3.3. Snapshot Pré-Deploy dos Artefatos
+### 3.3. Stage Pré-Deploy dos Artefatos
 ```bash
-# Salvar estado atual do build anterior
-cp -r /opt/sos-sales/api/dist /opt/sos-sales/backup_dist_$(date +%Y%m%d_%H%M%S)
+# Valida e envia um release completo, sem alterar produção.
+bash scripts/stage-production-release.sh
+
+# O release ativo e o anterior devem sempre ser resolvíveis.
+ssh vps "readlink -f /opt/sos-sales/current; readlink -f /opt/sos-sales/previous"
 ```
 
 ---
@@ -54,19 +57,16 @@ cp -r /opt/sos-sales/api/dist /opt/sos-sales/backup_dist_$(date +%Y%m%d_%H%M%S)
 > A restauração NUNCA deve ser testada diretamente no banco de produção. Sempre utilizar um schema isolado ou container local de teste.
 
 ```bash
-# 1. Parar temporariamente o processador de fila
-ssh vps "docker stop sos-sales-api"
+# 1. Para rollback de aplicação, restaurar o release completo
+bash scripts/rollback-production-release.sh
 
-# 2. Restaurar dump no PostgreSQL
+# 2. Restauração de banco é procedimento separado e somente para desastre de dados
 pg_restore -d "postgres://..." --clean --if-exists /opt/sos-sales/backups/db_backup_TIMESTAMP.dump
 
 # 3. Restaurar sessões WAHA se necessário
 tar -xzvf /opt/sos-sales/backups/waha_sessions_TIMESTAMP.tar.gz -C /
 
-# 4. Reiniciar serviços
-ssh vps "docker start sos-sales-api"
-
-# 5. Executar health check e probe de readiness
+# 4. Executar health check e probe de readiness
 curl -f https://crm.iaparavendas.tech/health
 curl -f https://crm.iaparavendas.tech/ready
 ```
