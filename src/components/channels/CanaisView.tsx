@@ -122,6 +122,10 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
     phoneNumberId?: string;
     qualityRating?: string;
   } | null>(null);
+  const [metaBusinessAgentEligibility, setMetaBusinessAgentEligibility] = React.useState<{
+    status: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
+    reason?: string;
+  } | null>(null);
 
   const fetchWabaChannelInfo = React.useCallback(async () => {
     try {
@@ -144,6 +148,29 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
     const interval = setInterval(fetchWabaChannelInfo, 10000);
     return () => clearInterval(interval);
   }, [fetchWabaChannelInfo]);
+
+  const fetchMetaBusinessAgentEligibility = React.useCallback(async () => {
+    try {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/meta-business-agent/eligibility`);
+      if (!res.ok) {
+        setMetaBusinessAgentEligibility({ status: 'UNKNOWN' });
+        return;
+      }
+      const payload = await res.json();
+      const data = payload?.data;
+      if (data?.status === 'ELIGIBLE' || data?.status === 'INELIGIBLE' || data?.status === 'UNKNOWN') {
+        setMetaBusinessAgentEligibility({ status: data.status, reason: data.reason });
+      } else {
+        setMetaBusinessAgentEligibility({ status: 'UNKNOWN' });
+      }
+    } catch {
+      setMetaBusinessAgentEligibility({ status: 'UNKNOWN' });
+    }
+  }, [workspace.id]);
+
+  React.useEffect(() => {
+    fetchMetaBusinessAgentEligibility();
+  }, [fetchMetaBusinessAgentEligibility]);
 
   // Live Channel Status State — shape mirrors real WAHA /api/sessions/:name response
   const [channelStatus, setChannelStatus] = React.useState<{
@@ -185,6 +212,12 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   const [actionFeedback, setActionFeedback] = React.useState<string | null>(null);
 
   const isOwnerOrAdmin = role === 'owner' || role === 'operator';
+  const isWabaConnected = Boolean(wabaChannelInfo?.configured && wabaChannelInfo?.phoneNumberId);
+  const metaAgentLabel = metaBusinessAgentEligibility?.status === 'ELIGIBLE'
+    ? 'Elegível para agente Meta'
+    : metaBusinessAgentEligibility?.status === 'INELIGIBLE'
+      ? 'Não elegível para agente Meta'
+      : 'Elegibilidade do agente: verificar';
 
   // Fetch QR Code
   const fetchQrCode = async () => {
@@ -559,9 +592,13 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                     </div>
                   </div>
 
-                  <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 self-start">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Meta Cloud Conectada
+                  <span className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black border self-start ${
+                    isWabaConnected
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : 'bg-amber-50 text-amber-800 border-amber-300'
+                  }`}>
+                    <span className={`w-2.5 h-2.5 rounded-full ${isWabaConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                    {isWabaConnected ? 'Meta Cloud conectada' : 'Meta Cloud não conectada'}
                   </span>
                 </div>
 
@@ -570,25 +607,25 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                   <div className="p-3 bg-white/90 border border-emerald-100 rounded-xl text-center shadow-2xs">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Número Ativo</span>
                     <span className="text-xs font-mono font-bold text-emerald-800 block truncate mt-0.5">
-                      {wabaChannelInfo?.phoneNumber || workspace.channels[0]?.phoneNumber || '+55 49 8837-0054'}
+                      {wabaChannelInfo?.phoneNumber || 'Não informado'}
                     </span>
                   </div>
                   <div className="p-3 bg-white/90 border border-emerald-100 rounded-xl text-center shadow-2xs">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Qualidade da Conta</span>
                     <span className="text-xs font-mono font-black text-emerald-700 block mt-0.5">
-                      🟢 Verde (Alto)
+                      {wabaChannelInfo?.qualityRating || 'Não informado'}
                     </span>
                   </div>
                   <div className="p-3 bg-white/90 border border-emerald-100 rounded-xl text-center shadow-2xs">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Capacidade / Dia</span>
                     <span className="text-xs font-mono font-bold text-slate-800 block mt-0.5">
-                      Tier 2 (10k msgs)
+                      Não informado
                     </span>
                   </div>
                   <div className="p-3 bg-white/90 border border-emerald-100 rounded-xl text-center shadow-2xs">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Latência Meta</span>
                     <span className="text-xs font-mono font-bold text-slate-800 block mt-0.5">
-                      ~38ms
+                      Não informado
                     </span>
                   </div>
                 </div>
@@ -597,9 +634,13 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                 <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-slate-600 bg-white/60 p-2.5 rounded-xl border border-emerald-100">
                   <span className="font-semibold text-slate-800">Empresa: {wabaChannelInfo?.verifiedName || workspace.name}</span>
                   <span className="text-slate-300">·</span>
-                  <span className="font-mono text-slate-500">WABA ID: {wabaChannelInfo?.wabaId || '1749193841879179'}</span>
+                  <span className="font-mono text-slate-500">WABA ID: {wabaChannelInfo?.wabaId || 'Não informado'}</span>
                   <span className="text-slate-300">·</span>
                   <span className="font-mono text-slate-500">Graph API v20.0 Direct Cloud</span>
+                  <span className="text-slate-300">·</span>
+                  <span className={metaBusinessAgentEligibility?.status === 'ELIGIBLE' ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}>
+                    {metaAgentLabel}
+                  </span>
                 </div>
               </div>
 
