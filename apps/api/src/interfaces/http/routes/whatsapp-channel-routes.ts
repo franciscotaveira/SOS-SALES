@@ -858,31 +858,6 @@ export async function whatsappChannelRoutes(
         }
       } catch {}
 
-      // Strategy 3: Known business IDs fallback (e.g. BM - Nail Spa & Beauty: 174535097257968)
-      const knownBizIds = ['174535097257968'];
-      for (const bizId of knownBizIds) {
-        try {
-          const bizRes = await fetch(`https://graph.facebook.com/v20.0/${bizId}/owned_whatsapp_business_accounts?access_token=${encodeURIComponent(token)}&fields=id,name`);
-          if (bizRes.ok) {
-            const bizData = (await bizRes.json()) as any;
-            if (Array.isArray(bizData?.data)) {
-              for (const waba of bizData.data) {
-                if (waba.id && !seenWabaIds.has(waba.id)) {
-                  seenWabaIds.add(waba.id);
-                  const phonesRes = await fetch(`https://graph.facebook.com/v20.0/${waba.id}/phone_numbers?access_token=${encodeURIComponent(token)}&fields=id,display_phone_number,verified_name`);
-                  let phoneNumbers: any[] = [];
-                  if (phonesRes.ok) {
-                    const phonesData = (await phonesRes.json()) as any;
-                    phoneNumbers = phonesData?.data || [];
-                  }
-                  accounts.push({ id: waba.id, name: waba.name || 'BM - Nail Spa WABA', phoneNumbers });
-                }
-              }
-            }
-          }
-        } catch {}
-      }
-
       return { success: true, accounts };
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });
