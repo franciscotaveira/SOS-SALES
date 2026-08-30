@@ -182,23 +182,31 @@ export const MassBroadcastView: React.FC<MassBroadcastViewProps> = ({ workspace 
 
       const data = await res.json();
       if (res.ok && data.success) {
+        const sentCount = typeof data.sentCount === 'number' ? data.sentCount : 0;
+        const failedCount = typeof data.failedCount === 'number'
+          ? data.failedCount
+          : Math.max(0, targetList.length - sentCount);
         setBroadcastProgress((prev) => ({
           ...prev,
-          sent: data.sentCount || targetList.length,
-          failed: data.failedCount || 0,
+          sent: sentCount,
+          failed: failedCount,
           status: 'completed',
         }));
         setLogs((prev) => [
           ...prev,
           {
             time: new Date().toLocaleTimeString('pt-BR'),
-            text: `Disparo concluído! ${data.sentCount || targetList.length} enviados com sucesso.`,
-            status: 'ok',
+            text: sentCount > 0
+              ? `Disparo concluído: ${sentCount} enviados e ${failedCount} falharam.`
+              : `Nenhuma mensagem foi aceita pelo provedor. ${failedCount} falharam.`,
+            status: sentCount > 0 ? 'ok' : 'err',
           },
         ]);
         setFeedback({
-          type: 'success',
-          message: `Disparo em massa concluído com sucesso para ${data.sentCount || targetList.length} contatos!`,
+          type: sentCount > 0 ? 'success' : 'error',
+          message: sentCount > 0
+            ? `Disparo concluído: ${sentCount} enviados e ${failedCount} falharam.`
+            : 'Nenhuma mensagem foi enviada. Consulte os erros do provedor antes de tentar novamente.',
         });
       } else {
         throw new Error(data.error || 'Erro ao processar lote no servidor.');

@@ -1275,8 +1275,8 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     workspaceId: string,
     journeyId: string,
     text: string,
-  ): Promise<{ success: boolean; messageId: string; sentAt: string }> {
-    return this.request<{ success: boolean; messageId: string; sentAt: string }>(
+  ): Promise<{ success: boolean; dispatchId: string; status: string; message: string }> {
+    return this.request<{ success: boolean; dispatchId: string; status: string; message: string }>(
       `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/send-message`,
       {
         method: 'POST',
@@ -1290,8 +1290,8 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     journeyId: string,
     textContent: string,
     idempotencyKey = crypto.randomUUID(),
-  ): Promise<{ dispatchId: string; journeyId: string; textContent: string; state: string }> {
-    const response = await this.request<ApiEnvelope<{ dispatchId: string; journeyId: string; textContent: string; state: string }>>(
+  ): Promise<{ dispatchId: string; status: string; idempotent: boolean }> {
+    const response = await this.request<ApiEnvelope<{ dispatchId: string; status: string; idempotent: boolean }>>(
       `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/outbound-drafts`,
       {
         method: 'POST',
@@ -1306,8 +1306,8 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     workspaceId: string,
     dispatchId: string,
     idempotencyKey = crypto.randomUUID(),
-  ): Promise<{ dispatchId: string; state: string }> {
-    const response = await this.request<ApiEnvelope<{ dispatchId: string; state: string }>>(
+  ): Promise<{ dispatchId: string; status: string; idempotent: boolean }> {
+    const response = await this.request<ApiEnvelope<{ dispatchId: string; status: string; idempotent: boolean }>>(
       `/workspaces/${encodeURIComponent(workspaceId)}/outbound-dispatches/${encodeURIComponent(dispatchId)}/approve`,
       {
         method: 'POST',
@@ -1323,8 +1323,8 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     dispatchId: string,
     reason: string,
     idempotencyKey = crypto.randomUUID(),
-  ): Promise<{ dispatchId: string; state: string }> {
-    const response = await this.request<ApiEnvelope<{ dispatchId: string; state: string }>>(
+  ): Promise<{ dispatchId: string; status: string; idempotent: boolean }> {
+    const response = await this.request<ApiEnvelope<{ dispatchId: string; status: string; idempotent: boolean }>>(
       `/workspaces/${encodeURIComponent(workspaceId)}/outbound-dispatches/${encodeURIComponent(dispatchId)}/cancel`,
       {
         method: 'POST',
@@ -1338,8 +1338,8 @@ export class HttpSalesOsGateway implements SalesOsGateway {
   async getOutboundDispatch(
     workspaceId: string,
     dispatchId: string,
-  ): Promise<{ dispatchId: string; state: string; textContent: string }> {
-    const response = await this.request<ApiEnvelope<{ dispatchId: string; state: string; textContent: string }>>(
+  ): Promise<{ dispatchId: string; status: string; textContent: string }> {
+    const response = await this.request<ApiEnvelope<{ dispatchId: string; status: string; textContent: string }>>(
       `/workspaces/${encodeURIComponent(workspaceId)}/outbound-dispatches/${encodeURIComponent(dispatchId)}`,
     );
     return response.data;

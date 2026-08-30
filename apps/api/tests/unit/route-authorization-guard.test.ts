@@ -10,6 +10,7 @@ import { abacatePayRoutes } from '../../src/interfaces/http/routes/abacatepay-ro
 import { AbacatePayGateway } from '../../src/infrastructure/billing/abacatepay-gateway.js';
 import { OperatorAuthenticator, AuthenticatedActor } from '../../src/application/ports/operator-authenticator.js';
 import { WorkspaceDirectory, AccessibleWorkspace } from '../../src/application/ports/workspace-directory.js';
+import { OutboundDispatchGateway } from '../../src/application/ports/outbound-dispatch-gateway.js';
 
 describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation Guards', () => {
   const mockAuthenticator: OperatorAuthenticator = {
@@ -51,11 +52,27 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
     }));
   });
 
-  async function buildTestApp(deps?: { authenticator?: OperatorAuthenticator; workspaceDirectory?: WorkspaceDirectory }) {
+  const outboundDispatchGateway: OutboundDispatchGateway = {
+    createDraft: async () => ({ dispatchId: '30000000-0000-4000-8000-000000000001', status: 'DRAFT', idempotent: false }),
+    approve: async () => ({ dispatchId: '30000000-0000-4000-8000-000000000001', status: 'APPROVED', idempotent: false }),
+    cancel: async () => ({ dispatchId: '30000000-0000-4000-8000-000000000001', status: 'CANCELLED', idempotent: false }),
+    get: async () => null,
+    listClaimableDispatches: async () => [],
+    claimDispatch: async () => null,
+    recordProviderAcceptance: async () => null,
+    recordProviderFailure: async () => null,
+  };
+
+  async function buildTestApp(deps?: {
+    authenticator?: OperatorAuthenticator;
+    workspaceDirectory?: WorkspaceDirectory;
+    outboundDispatchGateway?: OutboundDispatchGateway;
+  }) {
     const app = Fastify();
     await app.register(whatsappChannelRoutes, {
       authenticator: deps !== undefined ? deps.authenticator : mockAuthenticator,
       workspaceDirectory: deps !== undefined ? deps.workspaceDirectory : mockWorkspaceDirectory,
+      outboundDispatchGateway: deps?.outboundDispatchGateway ?? outboundDispatchGateway,
     });
     await app.register(aiCopilotRoutes, {
       authenticator: deps !== undefined ? deps.authenticator : mockAuthenticator,
@@ -156,6 +173,86 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
       headers: { authorization: 'Bearer valid_token_tenant_a_viewer.part2.part3' },
     });
     expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('AUTH-18: Legacy cockpit send only queues a supervised dispatch and never calls a provider directly', async () => {
+    const calls: string[] = [];
+    const app = await buildTestApp({
+      authenticator: mockAuthenticator,
+      workspaceDirectory: mockWorkspaceDirectory,
+      outboundDispatchGateway: {
+        ...outboundDispatchGateway,
+        createDraft: async (_actor, input) => {
+          calls.push(`draft:${input.workspaceId}:${input.journeyId}:${input.textContent}`);
+          return { dispatchId: '30000000-0000-4000-8000-000000000001', status: 'DRAFT', idempotent: false };
+        },
+        approve: async (_actor, input) => {
+          calls.push(`approve:${input.dispatchId}`);
+          return { dispatchId: input.dispatchId, status: 'APPROVED', idempotent: false };
+        },
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/journeys/30000000-0000-4000-8000-000000000002/send-message',
+      headers: { authorization: 'Bearer valid_token_tenant_a_owner.part2.part3' },
+      payload: { text: '  Mensagem segura  ' },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({ success: true, status: 'APPROVED' });
+    expect(calls).toEqual([
+      'draft:11111111-1111-1111-1111-111111111111:30000000-0000-4000-8000-000000000002:Mensagem segura',
+      'approve:30000000-0000-4000-8000-000000000001',
+    ]);
+    await app.close();
+  });
+
+  it('AUTH-19: Legacy cockpit send is denied before creating a draft for another tenant', async () => {
+    let calls = 0;
+    const app = await buildTestApp({
+      authenticator: mockAuthenticator,
+      workspaceDirectory: mockWorkspaceDirectory,
+      outboundDispatchGateway: {
+        ...outboundDispatchGateway,
+        createDraft: async () => { calls += 1; return null; },
+      },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/22222222-2222-2222-2222-222222222222/journeys/30000000-0000-4000-8000-000000000002/send-message',
+      headers: { authorization: 'Bearer valid_token_tenant_a_owner.part2.part3' },
+      payload: { text: 'Não deve enfileirar' },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(calls).toBe(0);
+    await app.close();
+  });
+
+  it('AUTH-20: WABA group broadcast is rejected instead of reporting a fabricated send', async () => {
+    const app = await buildTestApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/groups/broadcast',
+      headers: { authorization: 'Bearer valid_token_tenant_a_owner.part2.part3' },
+      payload: { engine: 'waba', message: 'Teste', targetGroupIds: ['120000000000@g.us'] },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ code: 'WABA_GROUP_BROADCAST_UNSUPPORTED' });
+    await app.close();
+  });
+
+  it('AUTH-21: WABA contact broadcast is rejected until a supervised Meta pipeline exists', async () => {
+    const app = await buildTestApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/channels/broadcast',
+      headers: { authorization: 'Bearer valid_token_tenant_a_owner.part2.part3' },
+      payload: { engine: 'waba', message: 'Teste', targets: [{ phone: '+5549999999999' }] },
+    });
+    expect(response.statusCode).toBe(501);
+    expect(response.json()).toMatchObject({ code: 'WABA_BROADCAST_NOT_IMPLEMENTED' });
     await app.close();
   });
 

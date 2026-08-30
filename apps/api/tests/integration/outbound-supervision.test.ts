@@ -10,8 +10,11 @@ describe('P0 supervised WAHA outbound contract', () => {
   const operatorId = randomUUID();
   const outsiderId = randomUUID();
   const channelId = randomUUID();
+  const metaChannelId = randomUUID();
   const contactId = randomUUID();
+  const metaContactId = randomUUID();
   const journeyId = randomUUID();
+  const metaJourneyId = randomUUID();
 
   async function asAuthenticated<T>(userId: string, action: (client: PoolClient) => Promise<T>): Promise<T> {
     const client = await dbPool.connect();
@@ -42,8 +45,11 @@ describe('P0 supervised WAHA outbound contract', () => {
     await query(`INSERT INTO workspaces (id, name, slug, active) VALUES ($1, 'Outbound test', 'outbound-${workspaceId.slice(0, 8)}', true), ($2, 'Other tenant', 'other-${otherWorkspaceId.slice(0, 8)}', true)`, [workspaceId, otherWorkspaceId]);
     await query(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'operator')`, [workspaceId, ownerId, operatorId]);
     await query(`INSERT INTO channel_connections (id, workspace_id, provider, phone_number, name, public_config, status) VALUES ($1, $2, 'waha', '+55499991111', 'Outbound WAHA', '{}'::jsonb, 'CONNECTED')`, [channelId, workspaceId]);
+    await query(`INSERT INTO channel_connections (id, workspace_id, provider, phone_number, name, public_config, status) VALUES ($1, $2, 'meta_cloud', '+55499993333', 'Outbound Meta', '{"phoneNumberId":"meta-phone-id"}'::jsonb, 'CONNECTED')`, [metaChannelId, workspaceId]);
     await query(`INSERT INTO contacts (id, workspace_id, phone, name) VALUES ($1, $2, '+55499992222', 'Outbound contact')`, [contactId, workspaceId]);
+    await query(`INSERT INTO contacts (id, workspace_id, phone, name) VALUES ($1, $2, '+55499994444', 'Outbound Meta contact')`, [metaContactId, workspaceId]);
     await query(`INSERT INTO commercial_journeys (id, workspace_id, contact_id, channel_connection_id, status) VALUES ($1, $2, $3, $4, 'OPEN')`, [journeyId, workspaceId, contactId, channelId]);
+    await query(`INSERT INTO commercial_journeys (id, workspace_id, contact_id, channel_connection_id, status) VALUES ($1, $2, $3, $4, 'OPEN')`, [metaJourneyId, workspaceId, metaContactId, metaChannelId]);
   });
 
   afterAll(async () => {
@@ -119,5 +125,31 @@ describe('P0 supervised WAHA outbound contract', () => {
     await expect(asAuthenticated(outsiderId, (client) => client.query(
       'SELECT public.create_outbound_draft($1, $2, $3, $4)', [workspaceId, journeyId, 'Tentativa indevida', 'outbound-cross-tenant-0001'],
     ))).rejects.toThrow(/Unauthorized workspace operation/);
+  });
+
+  it('OUT-03: claims a connected Meta Cloud dispatch without changing the selected provider', async () => {
+    const draft = await asAuthenticated(operatorId, (client) => client.query(
+      'SELECT public.create_outbound_draft($1, $2, $3, $4) AS result',
+      [workspaceId, metaJourneyId, 'Mensagem pelo número oficial.', 'outbound-meta-draft-0001'],
+    ));
+    const dispatchId = draft.rows[0].result.dispatchId;
+    await asAuthenticated(operatorId, (client) => client.query(
+      'SELECT public.approve_outbound_dispatch($1, $2, $3)',
+      [workspaceId, dispatchId, 'outbound-meta-approve-0001'],
+    ));
+    await asAuthenticated(ownerId, (client) => client.query(
+      'SELECT public.set_channel_outbound_control($1, $2, true, $3, $4)',
+      [workspaceId, metaChannelId, 'Homologação Meta Cloud', 'channel-meta-outbound-0001'],
+    ));
+
+    const claimed = await asService((client) => client.query(
+      'SELECT public.claim_outbound_dispatch($1, $2, $3) AS result',
+      [dispatchId, 'meta-outbound-worker', 60],
+    ));
+    expect(claimed.rows[0].result).toMatchObject({
+      dispatchId,
+      channelConnectionId: metaChannelId,
+      contactId: metaContactId,
+    });
   });
 });

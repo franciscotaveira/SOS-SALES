@@ -861,26 +861,8 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     if (!selectedJourneyId) return;
     setActionInProgress(true);
     try {
-      // Optimistic update so message shows instantly in UI
-      if (cockpit.state === "ready") {
-        const optimisticMsg: ApiMessage = {
-          id: `temp-${Date.now()}`,
-          direction: 'outbound',
-          senderType: 'operator',
-          textContent: text,
-          sentAt: new Date().toISOString(),
-        };
-        setCockpit({
-          state: 'ready',
-          value: {
-            ...cockpit.value,
-            messages: [...cockpit.value.messages, optimisticMsg],
-          },
-        });
-      }
-
-      await gateway.sendDirectMessage(workspaceId, selectedJourneyId, text);
-      showNotification("success", "Mensagem enviada com sucesso ao cliente!");
+      const queued = await gateway.sendDirectMessage(workspaceId, selectedJourneyId, text);
+      showNotification("success", queued.message || "Mensagem enfileirada para envio seguro.");
       await refresh(true);
     } catch (err) {
       showNotification("error", err instanceof Error ? err.message : "Erro ao enviar mensagem.");

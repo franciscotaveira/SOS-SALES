@@ -120,6 +120,11 @@ export interface WhatsappChannelRouteDependencies {
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
+  /**
+   * Supervised durable outbound lifecycle. Legacy cockpit routes enqueue here
+   * instead of choosing a provider and sending synchronously.
+   */
+  outboundDispatchGateway?: import('../../../application/ports/outbound-dispatch-gateway.js').OutboundDispatchGateway;
 }
 
 export async function whatsappChannelRoutes(
@@ -1229,39 +1234,44 @@ export async function whatsappChannelRoutes(
     if (!message || !message.trim()) {
       return reply.status(400).send({ error: 'Mensagem de broadcast não pode ser vazia.' });
     }
+    if (engine !== 'waha') {
+      return reply.status(422).send({
+        error: 'A API Cloud da Meta não oferece broadcast para grupos. Use um canal WAHA conectado.',
+        code: 'WABA_GROUP_BROADCAST_UNSUPPORTED',
+      });
+    }
+    if (targetGroupIds.length === 0) {
+      return reply.status(400).send({ error: 'Selecione ao menos um grupo para o broadcast.' });
+    }
 
     const sessionName = getSessionName(workspaceId);
     let sentCount = 0;
     const errors: string[] = [];
 
-    if (engine === 'waha' && targetGroupIds.length > 0) {
-      for (const groupId of targetGroupIds) {
-        try {
-          const wahaUrl = `${WAHA_BASE_URL}/api/sendText`;
-          const res = await fetch(wahaUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Api-Key': getWahaApiKey(),
-            },
-            body: JSON.stringify({
-              session: sessionName,
-              chatId: groupId.includes('@') ? groupId : `${groupId}@g.us`,
-              text: message.trim(),
-            }),
-          });
-          if (res.ok) {
-            sentCount++;
-          } else {
-            const errData = await res.text();
-            errors.push(`Grupo ${groupId}: ${errData}`);
-          }
-        } catch (e: any) {
-          errors.push(`Grupo ${groupId}: ${e.message}`);
+    for (const groupId of targetGroupIds) {
+      try {
+        const wahaUrl = `${WAHA_BASE_URL}/api/sendText`;
+        const res = await fetch(wahaUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Api-Key': getWahaApiKey(),
+          },
+          body: JSON.stringify({
+            session: sessionName,
+            chatId: groupId.includes('@') ? groupId : `${groupId}@g.us`,
+            text: message.trim(),
+          }),
+        });
+        if (res.ok) {
+          sentCount++;
+        } else {
+          const errData = await res.text();
+          errors.push(`Grupo ${groupId}: ${errData}`);
         }
+      } catch (e: any) {
+        errors.push(`Grupo ${groupId}: ${e.message}`);
       }
-    } else {
-      sentCount = targetGroupIds.length || 1;
     }
 
     return reply.status(200).send({
@@ -1295,6 +1305,12 @@ export async function whatsappChannelRoutes(
     if (!Array.isArray(targets) || targets.length === 0) {
       return reply.status(400).send({ error: 'Lista de contatos alvo não pode ser vazia.' });
     }
+    if (engine !== 'waha') {
+      return reply.status(501).send({
+        error: 'Broadcast Meta Cloud ainda não possui fila, template e rastreio homologados.',
+        code: 'WABA_BROADCAST_NOT_IMPLEMENTED',
+      });
+    }
 
     const sessionName = getSessionName(workspaceId);
     let sentCount = 0;
@@ -1316,31 +1332,26 @@ export async function whatsappChannelRoutes(
       }
 
       try {
-        if (engine === 'waha') {
-          const chatId = `${rawPhone}@c.us`;
-          const wahaUrl = `${WAHA_BASE_URL}/api/sendText`;
-          const res = await fetch(wahaUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Api-Key': getWahaApiKey(),
-            },
-            body: JSON.stringify({
-              session: sessionName,
-              chatId,
-              text: message.trim(),
-            }),
-          });
-          if (res.ok) {
-            sentCount++;
-          } else {
-            failedCount++;
-            const errData = await res.text();
-            errors.push(`Contato +${rawPhone}: ${errData}`);
-          }
-        } else {
-          // WABA Cloud API Dispatch
+        const chatId = `${rawPhone}@c.us`;
+        const wahaUrl = `${WAHA_BASE_URL}/api/sendText`;
+        const res = await fetch(wahaUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Api-Key': getWahaApiKey(),
+          },
+          body: JSON.stringify({
+            session: sessionName,
+            chatId,
+            text: message.trim(),
+          }),
+        });
+        if (res.ok) {
           sentCount++;
+        } else {
+          failedCount++;
+          const errData = await res.text();
+          errors.push(`Contato +${rawPhone}: ${errData}`);
         }
       } catch (err: any) {
         failedCount++;
@@ -1493,7 +1504,10 @@ export async function whatsappChannelRoutes(
     }
   });
 
-  // 16. Live Send Message to Journey Contact (WAHA / WABA)
+  // 16. Queue a message to a Journey Contact through the supervised outbound
+  // lifecycle. This endpoint intentionally does not call WABA or WAHA itself:
+  // a direct fallback could silently use another business number and an
+  // ambiguous provider failure must never appear as a successful send.
   app.post('/api/v1/workspaces/:workspaceId/journeys/:journeyId/send-message', async (request: FastifyRequest<{
     Params: { workspaceId: string; journeyId: string };
     Body: { text: string };
@@ -1505,108 +1519,40 @@ export async function whatsappChannelRoutes(
       return reply.status(400).send({ error: 'Texto da mensagem não pode ser vazio.' });
     }
 
-    const client = await dbPool.connect();
+    const actor = request.operatorActor;
+    if (!actor) return reply.status(401).send({ error: 'Operador não autenticado.', statusCode: 401 });
+    if (!dependencies.outboundDispatchGateway) {
+      return reply.status(503).send({ error: 'Fila segura de envio indisponível.', statusCode: 503 });
+    }
+
     try {
-      const journeyRes = await client.query(`
-        SELECT j.id, j.contact_id, c.phone, c.whatsapp_id, j.channel_connection_id
-        FROM public.commercial_journeys j
-        JOIN public.contacts c ON c.id = j.contact_id AND c.workspace_id = j.workspace_id
-        WHERE j.workspace_id = $1 AND j.id = $2
-      `, [workspaceId, journeyId]);
+      const draft = await dependencies.outboundDispatchGateway.createDraft(actor, {
+        workspaceId,
+        journeyId,
+        textContent: text.trim(),
+        idempotencyKey: crypto.randomUUID(),
+      });
+      if (!draft) return reply.status(404).send({ error: 'Jornada não encontrada.', statusCode: 404 });
 
-      if (journeyRes.rowCount === 0) {
-        return reply.status(404).send({ error: 'Jornada não encontrada.' });
-      }
+      const approved = await dependencies.outboundDispatchGateway.approve(actor, {
+        workspaceId,
+        dispatchId: draft.dispatchId,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      if (!approved) return reply.status(404).send({ error: 'Mensagem não encontrada.', statusCode: 404 });
 
-      const row = journeyRes.rows[0];
-      const contactPhone = row.phone || '';
-      const cleanDigits = contactPhone.replace(/\D/g, '');
-      const whatsappTarget = row.whatsapp_id || (cleanDigits ? `${cleanDigits}@c.us` : (contactPhone.includes('@') ? contactPhone : `${contactPhone}@c.us`));
-      const sessionName = getSessionName(workspaceId);
-      let channelConnectionId = row.channel_connection_id;
-
-      if (!channelConnectionId) {
-        const ch = await client.query(`SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1`, [workspaceId]);
-        if (ch.rowCount && ch.rowCount > 0) {
-          channelConnectionId = ch.rows[0].id;
-        }
-      }
-
-      let providerMessageId: string = crypto.randomUUID();
-      let sentVia = 'none';
-
-      // 1. Check if WABA (Meta Cloud API) is configured
-      const wabaCreds = await getWabaCreds(workspaceId);
-      if (wabaCreds?.phoneNumberId && wabaCreds?.accessToken) {
-        try {
-          const waba = new WabaClient();
-          const recipientNumber = cleanDigits || contactPhone.replace(/\D/g, '');
-          const wabaRes = await waba.sendText({
-            phoneNumberId: wabaCreds.phoneNumberId,
-            accessToken: wabaCreds.accessToken,
-            recipientPhone: recipientNumber,
-            text: text.trim(),
-          });
-          if (wabaRes?.messageId) {
-            providerMessageId = wabaRes.messageId;
-            sentVia = 'waba';
-          }
-        } catch (wabaErr: any) {
-          request.log.warn({ err: wabaErr }, 'WABA send error, attempting WAHA fallback');
-        }
-      }
-
-      // 2. If not sent via WABA, attempt WAHA dispatch
-      if (sentVia === 'none') {
-        try {
-          const wahaRes = await fetch(`${WAHA_BASE_URL}/api/sendText`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Api-Key': getWahaApiKey(),
-            },
-            body: JSON.stringify({
-              session: sessionName,
-              chatId: whatsappTarget,
-              text: text.trim(),
-            }),
-          });
-
-          if (wahaRes.ok) {
-            const wahaJson = (await wahaRes.json().catch(() => ({}))) as any;
-            if (wahaJson?.id) {
-              providerMessageId = wahaJson.id;
-              sentVia = 'waha';
-            }
-          }
-        } catch (err: any) {
-          request.log.error({ err }, 'WAHA send error (saving locally)');
-        }
-      }
-
-      const msgRes = await client.query(`
-        INSERT INTO public.conversation_messages (
-          id, workspace_id, channel_connection_id, journey_id, contact_id,
-          direction, sender_type, provider_message_id, text_content, sent_at
-        ) VALUES (
-          gen_random_uuid(), $1, $2, $3, $4, 'outbound', 'operator', $5, $6, NOW()
-        ) RETURNING id, sent_at
-      `, [workspaceId, channelConnectionId, journeyId, row.contact_id, providerMessageId, text.trim()]);
-
-      await client.query(`UPDATE public.commercial_journeys SET updated_at = NOW() WHERE id = $1`, [journeyId]);
-
-      const inserted = msgRes.rows[0];
-      return reply.code(200).send({
+      return reply.code(202).send({
         success: true,
-        messageId: inserted.id,
-        sentAt: inserted.sent_at,
-        providerMessageId,
-        channel: sentVia,
+        dispatchId: approved.dispatchId,
+        status: approved.status,
+        message: 'Mensagem enfileirada para envio pelo canal da conversa.',
       });
     } catch (err: any) {
-      return reply.status(500).send({ error: err.message, statusCode: 500 });
-    } finally {
-      client.release();
+      request.log.warn({ err, workspaceId, journeyId }, 'Unable to queue supervised outbound message');
+      return reply.status(409).send({
+        error: 'Não foi possível enfileirar a mensagem com segurança.',
+        statusCode: 409,
+      });
     }
   });
 
@@ -1666,10 +1612,13 @@ export async function whatsappChannelRoutes(
     Body: { phone: string; name?: string; message?: string; templateName?: string; templateParams?: string[] };
   }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
-    const { phone, name, message, templateName, templateParams } = request.body || {};
+    const { phone, name, message, templateName, templateParams = [] } = request.body || {};
 
     if (!phone || !phone.trim()) {
       return reply.status(400).send({ error: 'Número de telefone é obrigatório.' });
+    }
+    if (message?.trim() && !dependencies.outboundDispatchGateway) {
+      return reply.status(503).send({ error: 'Fila segura de envio indisponível.', statusCode: 503 });
     }
 
     let cleanPhone = phone.replace(/\D/g, '');
@@ -1685,13 +1634,18 @@ export async function whatsappChannelRoutes(
       const chRes = await client.query(`
         SELECT id, provider FROM public.channel_connections 
         WHERE workspace_id = $1 AND status = 'CONNECTED' 
-        ORDER BY CASE WHEN provider = 'waha' THEN 1 ELSE 2 END 
+        ORDER BY CASE WHEN provider = 'meta_cloud' THEN 1 WHEN provider = 'waha' THEN 2 ELSE 3 END
         LIMIT 1
       `, [workspaceId]);
 
       let channelConnectionId = chRes.rowCount && chRes.rowCount > 0 ? chRes.rows[0].id : null;
       if (!channelConnectionId) {
-        const anyCh = await client.query(`SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1`, [workspaceId]);
+        const anyCh = await client.query(`
+          SELECT id FROM public.channel_connections
+          WHERE workspace_id = $1
+          ORDER BY CASE WHEN provider = 'meta_cloud' THEN 1 WHEN provider = 'waha' THEN 2 ELSE 3 END
+          LIMIT 1
+        `, [workspaceId]);
         channelConnectionId = anyCh.rowCount && anyCh.rowCount > 0 ? anyCh.rows[0].id : null;
       }
 
@@ -1729,85 +1683,79 @@ export async function whatsappChannelRoutes(
         journeyId = newJourney.rows[0].id;
       }
 
-      // 4. Send initial message if provided
-      let messageId: string | null = null;
+      // 4. Queue an initial text through the same durable lifecycle used by
+      // the cockpit. The worker selects the journey's persisted channel; this
+      // route never falls back across WABA/WAHA or manufactures a message ID.
+      let dispatchId: string | null = null;
+      let templateMessageId: string | null = null;
       if (message && message.trim()) {
-        const textContent = message.trim();
-        const sessionName = getSessionName(workspaceId);
-        let providerMsgId: string = crypto.randomUUID();
-        let sentVia = 'none';
-
-        // 1. Attempt dispatch via WABA if configured
-        const wabaCreds = await getWabaCreds(workspaceId);
-        if (wabaCreds?.phoneNumberId && wabaCreds?.accessToken) {
-          try {
-            const waba = new WabaClient();
-            if (templateName) {
-              const wabaRes = await waba.sendTemplate({
-                phoneNumberId: wabaCreds.phoneNumberId,
-                accessToken: wabaCreds.accessToken,
-                recipientPhone: cleanPhone,
-                templateName,
-                languageCode: 'pt_BR',
-                bodyParameters: templateParams || [],
-              });
-              if (wabaRes?.messageId) {
-                providerMsgId = wabaRes.messageId;
-                sentVia = 'waba';
-              }
-            } else {
-              const wabaRes = await waba.sendText({
-                phoneNumberId: wabaCreds.phoneNumberId,
-                accessToken: wabaCreds.accessToken,
-                recipientPhone: cleanPhone,
-                text: textContent,
-              });
-              if (wabaRes?.messageId) {
-                providerMsgId = wabaRes.messageId;
-                sentVia = 'waba';
-              }
-            }
-          } catch (wabaErr: any) {
-            request.log.warn({ err: wabaErr }, 'WABA send error on start conversation, falling back to WAHA');
-          }
+        const actor = request.operatorActor;
+        if (!actor || !dependencies.outboundDispatchGateway) {
+          return reply.status(503).send({ error: 'Fila segura de envio indisponível.', statusCode: 503 });
         }
+        const draft = await dependencies.outboundDispatchGateway.createDraft(actor, {
+          workspaceId,
+          journeyId,
+          textContent: message.trim(),
+          idempotencyKey: crypto.randomUUID(),
+        });
+        if (!draft) return reply.status(409).send({ error: 'Não foi possível preparar a mensagem.', statusCode: 409 });
+        const approved = await dependencies.outboundDispatchGateway.approve(actor, {
+          workspaceId,
+          dispatchId: draft.dispatchId,
+          idempotencyKey: crypto.randomUUID(),
+        });
+        if (!approved) return reply.status(409).send({ error: 'Não foi possível liberar a mensagem.', statusCode: 409 });
+        dispatchId = approved.dispatchId;
+      }
 
-        // 2. Fallback to WAHA
-        if (sentVia === 'none') {
-          try {
-            const wahaRes = await fetch(`${WAHA_BASE_URL}/api/sendText`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Api-Key': getWahaApiKey() },
-              body: JSON.stringify({ session: sessionName, chatId: whatsappTarget, text: textContent }),
-            });
-            if (wahaRes.ok) {
-              const data = (await wahaRes.json()) as any;
-              if (data?.id) {
-                providerMsgId = data.id;
-                sentVia = 'waha';
-              }
-            }
-          } catch {
-            // ignore network dispatch error
-          }
+      // Templates are an explicit Meta Cloud operation. They are never
+      // rerouted through WAHA, and the local message record is created only
+      // after Meta returns a provider message id.
+      if (templateName) {
+        const selectedChannel = await client.query(`
+          SELECT cc.id
+          FROM public.commercial_journeys j
+          JOIN public.channel_connections cc ON cc.id = j.channel_connection_id
+          WHERE j.id = $1
+            AND j.workspace_id = $2
+            AND cc.workspace_id = $2
+            AND cc.provider = 'meta_cloud'
+            AND cc.status = 'CONNECTED'
+          LIMIT 1
+        `, [journeyId, workspaceId]);
+        if (!selectedChannel.rowCount) {
+          return reply.status(409).send({
+            error: 'Esta conversa não está vinculada a um canal Meta Cloud conectado para envio de template.',
+            statusCode: 409,
+          });
         }
-
-        // Store message in database
-        if (channelConnectionId) {
-          const msgRes = await client.query(`
-            INSERT INTO public.conversation_messages (
-              id, workspace_id, channel_connection_id, journey_id, contact_id,
-              direction, sender_type, provider_message_id, text_content, sent_at
-            ) VALUES (
-              gen_random_uuid(), $1, $2, $3, $4, 'outbound', 'operator', $5, $6, NOW()
-            )
-            ON CONFLICT (channel_connection_id, provider_message_id) DO NOTHING
-            RETURNING id
-          `, [workspaceId, channelConnectionId, journeyId, contactId, providerMsgId, textContent]);
-          if (msgRes.rowCount && msgRes.rowCount > 0) {
-            messageId = msgRes.rows[0].id;
-          }
+        const creds = await getWabaCreds(workspaceId);
+        if (!creds?.phoneNumberId || !creds.accessToken) {
+          return reply.status(409).send({ error: 'Credenciais Meta Cloud indisponíveis para este workspace.', statusCode: 409 });
         }
+        const result = await new WabaClient().sendTemplate({
+          phoneNumberId: creds.phoneNumberId,
+          accessToken: creds.accessToken,
+          recipientPhone: cleanPhone,
+          templateName,
+          languageCode: 'pt_BR',
+          bodyParameters: templateParams,
+        });
+        templateMessageId = result?.messageId || null;
+        if (!templateMessageId) {
+          return reply.status(502).send({ error: 'A Meta não confirmou o envio do template.', statusCode: 502 });
+        }
+        await client.query(`
+          INSERT INTO public.conversation_messages (
+            id, workspace_id, channel_connection_id, journey_id, contact_id,
+            direction, sender_type, provider_message_id, text_content, sent_at
+          ) VALUES (
+            gen_random_uuid(), $1, $2, $3, $4,
+            'outbound', 'operator', $5, $6, NOW()
+          )
+          ON CONFLICT (channel_connection_id, provider_message_id) DO NOTHING
+        `, [workspaceId, selectedChannel.rows[0].id, journeyId, contactId, templateMessageId, `[Template] ${templateName}`]);
       }
 
       return {
@@ -1816,8 +1764,13 @@ export async function whatsappChannelRoutes(
         contactId,
         phone: cleanPhone,
         name: contactName,
-        messageId,
-        message: 'Conversa iniciada com sucesso!',
+        dispatchId,
+        templateMessageId,
+        message: dispatchId
+          ? 'Conversa criada e mensagem enfileirada para envio seguro.'
+          : templateMessageId
+            ? 'Conversa criada e template aceito pela Meta.'
+          : 'Conversa iniciada com sucesso!',
       };
     } catch (err: any) {
       return reply.status(500).send({ error: err.message, statusCode: 500 });

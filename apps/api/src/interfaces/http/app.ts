@@ -294,6 +294,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
     wabaChannelInfoGateway: dependencies.wabaChannelInfoGateway,
+    outboundDispatchGateway: dependencies.outboundDispatchGateway,
   });
 
   app.register(aiCopilotRoutes, {
