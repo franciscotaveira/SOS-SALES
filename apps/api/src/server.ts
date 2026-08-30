@@ -34,6 +34,7 @@ import { AppointmentGateway } from './application/ports/appointment-gateway.js';
 import { NotesGateway } from './application/ports/notes-gateway.js';
 import { WorkspaceProvisioningGateway } from './application/ports/workspace-provisioning-gateway.js';
 import { WabaChannelInfoGateway } from './application/ports/waba-channel-info-gateway.js';
+import { MetaBusinessAgentGateway } from './application/ports/meta-business-agent-gateway.js';
 import { PostgresWorkspaceProvisioningGateway } from './infrastructure/database/postgres-workspace-provisioning-gateway.js';
 import { CompositeDependencyHealthProvider } from './infrastructure/health/composite-dependency-health-provider.js';
 import { createProductionRuntimeFromEnvironment } from './infrastructure/runtime/production-runtime.js';
@@ -70,6 +71,7 @@ export interface RuntimeDependencies {
   notesGateway?: NotesGateway;
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
+  metaBusinessAgentGateway?: MetaBusinessAgentGateway;
   trustProxy?: TrustProxyOption;
   logger?: boolean | Record<string, unknown>;
   /** Releases runtime-owned resources after HTTP and worker shutdown. */
@@ -210,6 +212,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     notesGateway,
     workspaceProvisioningGateway: new PostgresWorkspaceProvisioningGateway(dbPool),
     wabaChannelInfoGateway: new PostgresWabaChannelInfoGateway(dbPool),
+    metaBusinessAgentGateway: new (await import('./infrastructure/database/postgres-meta-business-agent-gateway.js')).PostgresMetaBusinessAgentGateway(dbPool),
     trustProxy: false,
     logger: {
       transport: {
@@ -325,6 +328,7 @@ async function startComposedServer(
     notesGateway: runtime.notesGateway,
     workspaceProvisioningGateway: runtime.workspaceProvisioningGateway,
     wabaChannelInfoGateway: runtime.wabaChannelInfoGateway,
+    metaBusinessAgentGateway: runtime.metaBusinessAgentGateway,
     wabaWebhook: wabaWebhookConfig,
     logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? true : { level: 'info' }),
     trustProxy: runtime.trustProxy ?? false,

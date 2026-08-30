@@ -22,6 +22,7 @@ import {
   WahaWebhookAdapter,
   PostgresWorkspaceProvisioningGateway,
   PostgresWabaChannelInfoGateway,
+  PostgresMetaBusinessAgentGateway,
   buildReadinessStatuses,
   normalizeDatabaseHostname,
   resolveDatabaseSslConfig,
@@ -95,6 +96,7 @@ export async function createProductionRuntime() {
   const notesGateway = new PostgresNotesGateway(pool);
   const workspaceProvisioningGateway = new PostgresWorkspaceProvisioningGateway(pool);
   const wabaChannelInfoGateway = new PostgresWabaChannelInfoGateway(pool);
+  const metaBusinessAgentGateway = new PostgresMetaBusinessAgentGateway(pool);
   const ingestionGateway = new PostgresInboundIngestionGateway(pool);
   const outboxGateway = new PostgresOutboxProcessingGateway(pool);
   const secretProvider = {
@@ -134,6 +136,7 @@ export async function createProductionRuntime() {
     notesGateway,
     workspaceProvisioningGateway,
     wabaChannelInfoGateway,
+    metaBusinessAgentGateway,
     trustProxy: true,
     logger: true,
     createHealthProvider: (worker, workers = {}) => ({

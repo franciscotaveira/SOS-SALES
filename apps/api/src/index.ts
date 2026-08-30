@@ -3,6 +3,8 @@ export { WahaLidIdentityResolver } from './infrastructure/channels/waha/waha-lid
 export { PostgresNotesGateway } from './infrastructure/database/postgres-notes-gateway.js';
 export { PostgresWorkspaceProvisioningGateway } from './infrastructure/database/postgres-workspace-provisioning-gateway.js';
 export { PostgresWabaChannelInfoGateway } from './infrastructure/database/postgres-waba-channel-info-gateway.js';
+export { PostgresMetaBusinessAgentGateway } from './infrastructure/database/postgres-meta-business-agent-gateway.js';
+export { MetaBusinessAgentClient } from './infrastructure/channels/meta/meta-business-agent-client.js';
 export { PostgresWorkspaceDirectory } from './infrastructure/database/postgres-workspace-directory.js';
 export { PostgresCockpitReadGateway } from './infrastructure/database/postgres-cockpit-read-gateway.js';
 export { PostgresHandoffOperationsGateway } from './infrastructure/database/postgres-handoff-operations-gateway.js';

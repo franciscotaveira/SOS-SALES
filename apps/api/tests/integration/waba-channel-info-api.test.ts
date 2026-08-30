@@ -135,4 +135,51 @@ describe('WABA channel info runtime gateway', () => {
     });
     await app.close();
   });
+
+  it('returns Meta Business Agent eligibility as an explicit tri-state result', async () => {
+    const checkEligibility = vi.fn().mockResolvedValue({
+      status: 'UNKNOWN',
+      phoneNumberId: 'phone-id',
+      checkedAt: '2026-08-30T00:00:00.000Z',
+      reason: 'UPSTREAM_UNAVAILABLE',
+    });
+    const app = buildApp(dependencies({ metaBusinessAgentGateway: { checkEligibility } }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${workspaceId}/meta-business-agent/eligibility`,
+      headers: { authorization: 'Bearer test.jwt.token' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: expect.objectContaining({ status: 'UNKNOWN', reason: 'UPSTREAM_UNAVAILABLE' }) });
+    expect(checkEligibility).toHaveBeenCalledWith(workspaceId);
+    await app.close();
+  });
+
+  it('fails Meta Business Agent eligibility closed when the adapter is absent', async () => {
+    const app = buildApp(dependencies());
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${workspaceId}/meta-business-agent/eligibility`,
+      headers: { authorization: 'Bearer test.jwt.token' },
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ code: 'META_BUSINESS_AGENT_GATEWAY_UNAVAILABLE' });
+    await app.close();
+  });
+
+  it('does not misrepresent an eligibility adapter failure as ineligible', async () => {
+    const app = buildApp(dependencies({
+      metaBusinessAgentGateway: { checkEligibility: vi.fn().mockRejectedValue(new Error('database timeout')) },
+    }));
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/workspaces/${workspaceId}/meta-business-agent/eligibility`,
+      headers: { authorization: 'Bearer test.jwt.token' },
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ code: 'META_BUSINESS_AGENT_ELIGIBILITY_UNAVAILABLE' });
+    await app.close();
+  });
 });

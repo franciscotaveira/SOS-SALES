@@ -257,6 +257,16 @@ prova de credenciais Meta, webhook ou entrega em produção.
 **[KNOWN]** Não há implementação atual de elegibilidade, onboarding, configuração,
 allowlist, teste/eval ou thread control do Meta Business Agent para WhatsApp.
 
+#### Primeira fundação implementada em 2026-08-30
+
+O endpoint autenticado `GET /api/v1/workspaces/:workspaceId/meta-business-agent/eligibility`
+consulta o número Meta Cloud conectado com `X-API-Version: 2.0.0` e devolve
+`ELIGIBLE`, `INELIGIBLE` ou `UNKNOWN`. Falha de token, rede, contrato ou
+permissão externa nunca é tratada como inelegibilidade. A URL-base é configurável
+por `META_BUSINESS_AGENT_BASE_URL`; o padrão é o domínio documentado pela Meta.
+
+Isso ainda não habilita, configura ou toma controle de nenhum agente.
+
 Criar um módulo isolado, não rotas dispersas:
 
 ```text

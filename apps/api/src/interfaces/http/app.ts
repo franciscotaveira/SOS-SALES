@@ -22,6 +22,7 @@ import { AppointmentGateway } from '../../application/ports/appointment-gateway.
 import { NotesGateway } from '../../application/ports/notes-gateway.js';
 import { WorkspaceProvisioningGateway } from '../../application/ports/workspace-provisioning-gateway.js';
 import { WabaChannelInfoGateway } from '../../application/ports/waba-channel-info-gateway.js';
+import { MetaBusinessAgentGateway } from '../../application/ports/meta-business-agent-gateway.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { publicSupplierRoutes } from './routes/public-supplier-routes.js';
@@ -33,6 +34,7 @@ import { aiCopilotRoutes } from './routes/ai-copilot-routes.js';
 import { whatsappChannelRoutes } from './routes/whatsapp-channel-routes.js';
 import { agentRoutes } from './routes/agent-routes.js';
 import { metaPartnerRoutes } from './routes/meta-partner-routes.js';
+import { metaBusinessAgentRoutes } from './routes/meta-business-agent-routes.js';
 
 function loadReleaseManifest() {
   let manifest: Record<string, unknown> = {};
@@ -119,6 +121,8 @@ export interface AppDependencies {
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
   /** Production-owned read gateway for connected Meta WABA channel metadata. */
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
+  /** Optional capability adapter for Meta Business Agent Platform. */
+  metaBusinessAgentGateway?: MetaBusinessAgentGateway;
   logger?: boolean | Record<string, unknown>;
   rateLimit?: RateLimitOptions | false;
   /**
@@ -309,6 +313,12 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   app.register(metaPartnerRoutes, {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
+  });
+
+  app.register(metaBusinessAgentRoutes, {
+    authenticator: dependencies.authenticator,
+    workspaceDirectory: dependencies.workspaceDirectory,
+    metaBusinessAgentGateway: dependencies.metaBusinessAgentGateway,
   });
 
   const releaseManifest = loadReleaseManifest();
