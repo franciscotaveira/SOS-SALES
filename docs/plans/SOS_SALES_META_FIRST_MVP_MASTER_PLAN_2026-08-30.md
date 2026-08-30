@@ -317,9 +317,17 @@ estados comerciais precisam de contrato backend ou de rótulo explícito de rasc
 
 - toda rota exige ator autenticado e membership/role;
 - provider ID nunca substitui `workspace_id` sem mapeamento único;
+- descoberta de WABA/Business Manager não pode consultar IDs de negócios
+  codificados como fallback (por exemplo, `knownBizIds`): a fonte permitida é
+  exclusivamente o canal conectado e o cofre do respectivo `workspace_id`;
 - tokens não retornam ao frontend nem entram em log;
 - credenciais ficam em cofre/referência, com rotação e último teste;
 - teste cruzado entre dois tenants é gate de release.
+
+**Achado de auditoria em 2026-08-30.** A rota de descoberta ainda contém um
+`knownBizIds` histórico. Não há evidência de que seja usado pelo fluxo autenticado
+atual, mas sua existência é incompatível com este contrato e deve ser removida ou
+substituída por um mapeamento persistido, com teste de isolamento antes da promoção.
 
 ## 7. Plano de execução por ondas
 
