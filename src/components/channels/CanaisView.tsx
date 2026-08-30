@@ -848,14 +848,14 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                     Canal Oficial Meta Ativo & Conectado
                   </span>
                   <span className="text-[9.5px] font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-200">
-                    {wabaChannelInfo?.qualityRating === 'GREEN' ? 'Qualidade: Verde' : 'Qualidade: Verde'}
+                    Qualidade: {wabaChannelInfo?.qualityRating || 'não informada'}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-1.5 text-[10.5px] text-emerald-900 pt-1 border-t border-emerald-200/60 font-mono">
-                  <div>Número: <strong className="text-emerald-950">{wabaChannelInfo?.phoneNumber || '+55 49 8837-0054'}</strong></div>
+                  <div>Número: <strong className="text-emerald-950">{wabaChannelInfo?.phoneNumber || 'não informado'}</strong></div>
                   <div>Empresa: <strong className="text-emerald-950">{wabaChannelInfo?.verifiedName || workspace.name}</strong></div>
-                  <div>WABA ID: <strong className="text-emerald-950">{wabaChannelInfo?.wabaId || '1749193841879179'}</strong></div>
-                  <div>Phone ID: <strong className="text-emerald-950">{wabaChannelInfo?.phoneNumberId || '2498930403536552'}</strong></div>
+                  <div>WABA ID: <strong className="text-emerald-950">{wabaChannelInfo?.wabaId || 'não informado'}</strong></div>
+                  <div>Phone ID: <strong className="text-emerald-950">{wabaChannelInfo?.phoneNumberId || 'não informado'}</strong></div>
                 </div>
               </div>
             )}
