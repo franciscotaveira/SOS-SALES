@@ -254,6 +254,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
         target: 'pino-pretty',
         options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
       },
+      serializers: productionLogger.serializers,
     },
     createHealthProvider: (worker, workers) => new CompositeDependencyHealthProvider([
       { name: 'database', check: async () => (await databaseHealth.checkAll()).every((status) => status.healthy) },
