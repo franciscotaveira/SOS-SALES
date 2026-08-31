@@ -561,7 +561,10 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       const data = await res.json();
       if (res.ok && data.success) {
         setWabaTemplateModalOpen(false);
-        setFeedback({ type: "success", message: "Mensagem de reativação enviada com sucesso! Janela de 24h reaberta." });
+        setFeedback({
+          type: "success",
+          message: "Template aceito pela Meta. A janela de atendimento só é atualizada quando o cliente responder.",
+        });
         await refresh();
       } else {
         setFeedback({ type: "error", message: data.error || "Falha ao enviar template WABA." });
