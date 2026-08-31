@@ -154,6 +154,7 @@ function AppContent({
   }) => Promise<void>;
 }) {
   const { isFeatureEnabled } = useFeatureFlags();
+  const isProductionMvp = salesOsRuntimeConfig.mode === 'api';
 
   const [conversationsMode, setConversationsMode] = React.useState<'list' | 'kanban' | 'wallboard'>('list');
   const [intelligenceSubTab, setIntelligenceSubTab] = React.useState<any>('knowledge');
@@ -193,6 +194,26 @@ function AppContent({
       setActiveTab('agora');
     }
   }, [activeTab, isFeatureEnabled, setActiveTab]);
+
+  // Keep non-core modules preserved for future tiers without leaving direct
+  // URLs, history entries or stale localStorage able to reopen them in the
+  // production MVP. The operational workflow is intentionally limited to
+  // inbox, pipeline mode inside Conversations, outcomes and configuration.
+  React.useEffect(() => {
+    const hiddenProductionTabs: NavigationTab[] = [
+      'kanban',
+      'agenda',
+      'anotacoes',
+      'clientes',
+      'grupos',
+      'playbook',
+      'simulador',
+      'analytics',
+    ];
+    if (isProductionMvp && hiddenProductionTabs.includes(activeTab)) {
+      setActiveTab('agora');
+    }
+  }, [activeTab, isProductionMvp, setActiveTab]);
 
   const pendingCount = journeys.filter((j) => j.handoffStatus === 'pending_operator').length;
   const pendingGroupsCount = agencyGroups.filter(

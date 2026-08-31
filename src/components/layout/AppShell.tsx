@@ -162,9 +162,13 @@ export const AppShell: React.FC<AppShellProps> = ({
   }, []);
 
   const showKanban = isFeatureEnabled('commercial_kanban');
-  const showGroups = isFeatureEnabled('agency_groups');
+  // The production MVP intentionally exposes one operational path. Extra
+  // modules remain available in the codebase for future tiers, but must not
+  // compete with WhatsApp, pipeline and outcome work in the live navigation.
+  const isProductionMvp = salesOsRuntimeConfig.mode === 'api';
+  const showGroups = !isProductionMvp && isFeatureEnabled('agency_groups');
   const showTrafficProof = isFeatureEnabled('traffic_proof');
-  const showQaSimulator = isFeatureEnabled('qa_simulator');
+  const showQaSimulator = !isProductionMvp && isFeatureEnabled('qa_simulator');
 
   // RBAC permissions based on role
   const isOwner = role === 'owner';
@@ -310,7 +314,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         },
         {
           id: 'conversas',
-          label: 'Conversas & Funil',
+          label: 'Conversas',
           icon: MessageSquare,
           roleRequired: 'operator',
           visible: true,
@@ -329,56 +333,49 @@ export const AppShell: React.FC<AppShellProps> = ({
           label: 'Agenda',
           icon: CalendarDays,
           roleRequired: 'operator',
-          visible: true,
+          visible: !isProductionMvp,
         },
       ],
     },
-    {
+    ...(showTrafficProof ? [{
       title: 'GESTÃO',
       items: [
         {
-          id: 'clientes',
-          label: 'Gestão de Clientes',
-          icon: Building2,
-          roleRequired: 'admin',
+          id: 'resultados' as NavigationTab,
+          label: 'Resultados',
+          icon: Megaphone,
+          roleRequired: 'admin' as OperatorRole,
           visible: true,
         },
-        {
-          id: 'resultados',
-          label: 'Gestão de Campanhas',
-          icon: Megaphone,
-          roleRequired: 'admin',
-          visible: showTrafficProof,
-        },
       ],
-    },
-    {
+    }] : []),
+    ...(!isProductionMvp ? [{
       title: 'INTELIGÊNCIA',
       items: [
         {
-          id: 'playbook',
+          id: 'playbook' as NavigationTab,
           label: 'Inteligência',
           icon: Bot,
-          roleRequired: 'admin',
+          roleRequired: 'admin' as OperatorRole,
           visible: true,
         },
         {
-          id: 'simulador',
+          id: 'simulador' as NavigationTab,
           label: 'Simulador',
           icon: Zap,
-          roleRequired: 'admin',
+          roleRequired: 'admin' as OperatorRole,
           visible: salesOsRuntimeConfig.mode !== 'api' && (showQaSimulator || isAdmin),
         },
       ],
-    },
+    }] : []),
     {
       title: 'SISTEMA',
       items: [
         {
-          id: 'configuracoes',
+          id: 'configuracoes' as NavigationTab,
           label: 'Configurações',
           icon: Settings,
-          roleRequired: 'owner',
+          roleRequired: 'owner' as OperatorRole,
           visible: true,
         },
       ],
@@ -403,16 +400,22 @@ export const AppShell: React.FC<AppShellProps> = ({
     { id: 'agora', label: 'Cockpit Agora (Prioridades)', icon: Flame, section: 'Operação', roleRequired: 'operator' },
     { id: 'conversas', label: 'Todas as Conversas (Lista 1:1)', icon: MessageSquare, section: 'Operação', roleRequired: 'operator', conversationsMode: 'list' },
     { id: 'conversas', label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação', roleRequired: 'operator', conversationsMode: 'kanban' },
-    { id: 'agenda', label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação', roleRequired: 'operator' },
-    { id: 'anotacoes', label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação', roleRequired: 'operator' },
+    ...(!isProductionMvp ? [
+      { id: 'agenda' as NavigationTab, label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação', roleRequired: 'operator' as OperatorRole },
+      { id: 'anotacoes' as NavigationTab, label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação', roleRequired: 'operator' as OperatorRole },
+    ] : []),
     ...(showGroups ? [{ id: 'grupos' as NavigationTab, label: 'Grupos WhatsApp', icon: Users, section: 'Operação', roleRequired: 'operator' as OperatorRole }] : []),
-    { id: 'clientes', label: 'Gestão de Clientes & Sub-contas (Matriz)', icon: Building2, section: 'Gestão', roleRequired: 'admin' },
+    ...(!isProductionMvp ? [
+      { id: 'clientes' as NavigationTab, label: 'Gestão de Clientes & Sub-contas (Matriz)', icon: Building2, section: 'Gestão', roleRequired: 'admin' as OperatorRole },
+    ] : []),
     ...(showTrafficProof ? [
       { id: 'resultados' as NavigationTab, label: 'Analytics & ROI da IA', icon: PieChart, section: 'Gestão', subTab: 'analytics', roleRequired: 'admin' as OperatorRole },
       { id: 'resultados' as NavigationTab, label: 'Resultados & Proof of Traffic', icon: BarChart3, section: 'Gestão', subTab: 'proof', roleRequired: 'admin' as OperatorRole },
     ] : []),
-    { id: 'playbook', label: 'Sales AI Playbook & Inteligência', icon: Bot, section: 'Inteligência', roleRequired: 'admin' },
-    ...(salesOsRuntimeConfig.mode !== 'api' && (showQaSimulator || isAdmin) ? [
+    ...(!isProductionMvp ? [
+      { id: 'playbook' as NavigationTab, label: 'Sales AI Playbook & Inteligência', icon: Bot, section: 'Inteligência', roleRequired: 'admin' as OperatorRole },
+    ] : []),
+    ...(!isProductionMvp && (showQaSimulator || isAdmin) ? [
       { id: 'simulador' as NavigationTab, label: 'Simulador de QA & Estresse', icon: Zap, section: 'Inteligência', roleRequired: 'admin' as OperatorRole },
     ] : []),
     { id: 'configuracoes', label: 'Configurações do Workspace', icon: Settings, section: 'Sistema', roleRequired: 'owner' },
