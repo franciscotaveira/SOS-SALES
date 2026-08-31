@@ -368,6 +368,7 @@ async function startComposedServer(
     metaBusinessAgentGateway: runtime.metaBusinessAgentGateway,
     wabaWebhook: wabaWebhookConfig,
     logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? productionLogger : { level: 'info' }),
+    disableRequestLogging: process.env.NODE_ENV === 'production',
     trustProxy: runtime.trustProxy ?? false,
   });
 

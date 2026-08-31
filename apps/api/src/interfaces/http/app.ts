@@ -126,6 +126,8 @@ export interface AppDependencies {
   /** Optional capability adapter for Meta Business Agent Platform. */
   metaBusinessAgentGateway?: MetaBusinessAgentGateway;
   logger?: boolean | Record<string, unknown>;
+  /** Disable Fastify's automatic request/response logs when URLs may carry webhook secrets. */
+  disableRequestLogging?: boolean;
   rateLimit?: RateLimitOptions | false;
   /**
    * Trust-proxy setting for the Fastify server.
@@ -171,6 +173,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
 
   const app = Fastify<RawServerDefault>({
     logger: dependencies.logger !== undefined ? dependencies.logger : { level: 'info' },
+    disableRequestLogging: dependencies.disableRequestLogging ?? false,
     trustProxy,
   });
 
