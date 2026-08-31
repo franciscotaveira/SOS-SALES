@@ -73,6 +73,24 @@ if [[ "${manifest_commit}" != "${current_commit}" ]]; then
   exit 1
 fi
 
+# The browser bundle is fail-closed in production. A valid API release is not
+# sufficient if Vite was compiled without the public API and Supabase runtime
+# values: the customer would see the safe configuration screen instead of the
+# authenticated application.
+for frontend_value in \
+  "https://crm.iaparavendas.tech/api/v1" \
+  "https://yiiuebhyqixzluguxsqi.supabase.co"; do
+  if ! grep -R -F -q -- "${frontend_value}" "${REPO_ROOT}/dist"; then
+    echo "[preflight] frontend bundle is missing required production runtime value: ${frontend_value}" >&2
+    exit 1
+  fi
+done
+
+if ! grep -R -E -q -- 'eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}' "${REPO_ROOT}/dist"; then
+  echo "[preflight] frontend bundle is missing a Supabase public anon/publishable key" >&2
+  exit 1
+fi
+
 WAHA_API_KEY=preflight-only SOS_SALES_ENV_FILE=/dev/null docker compose \
   -f "${REPO_ROOT}/deploy/docker-compose.prod.yml" \
   config --quiet
