@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/interfaces/http/app.js';
 
 const workspaceId = '22222222-2222-2222-2222-222222222222';
@@ -27,6 +27,10 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe('WABA channel info runtime gateway', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('uses the injected production-owned gateway and returns persisted metadata', async () => {
     const findConnectedByWorkspaceId = vi.fn().mockResolvedValue({
       verifiedPhone: '+5549999999999',
@@ -180,6 +184,29 @@ describe('WABA channel info runtime gateway', () => {
     });
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({ code: 'META_BUSINESS_AGENT_ELIGIBILITY_UNAVAILABLE' });
+    await app.close();
+  });
+
+  it('does not present an invalid Meta token as a valid empty account list', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ error: { message: 'Invalid OAuth access token.' } }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )));
+    const app = buildApp(dependencies({
+      workspaceDirectory: {
+        listForActor: async () => [{ id: workspaceId, name: 'Haven', slug: 'haven', role: 'operator' as const }],
+      },
+    }));
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/channels/waba/list-accounts`,
+      headers: { authorization: 'Bearer test.jwt.token' },
+      payload: { accessToken: 'invalid-token' },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ code: 'META_TOKEN_INVALID_OR_UNAUTHORIZED' });
     await app.close();
   });
 });
