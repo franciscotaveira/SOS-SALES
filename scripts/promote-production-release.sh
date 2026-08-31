@@ -69,6 +69,12 @@ verify_active_release() {
 
 recreate_active_release() {
   cd "${root}"
+  # caddy and the API intentionally have stable container names. Compose can
+  # otherwise retain an orphan from the previous symlinked release and refuse
+  # the replacement before it has a chance to attach the new mount. Removing
+  # only these two disposable runtime containers makes the switch deterministic;
+  # Redis and WAHA sessions are never recreated here.
+  docker rm -f sos-sales-api sos-sales-caddy >/dev/null 2>&1 || true
   SOS_SALES_RELEASE_ROOT="${current}" docker compose \
     -p sos-sales \
     --env-file .env.production \
