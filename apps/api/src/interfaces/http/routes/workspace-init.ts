@@ -79,4 +79,24 @@ export async function workspaceInitRoutes(
       throw error;
     }
   });
+
+  app.delete('/workspaces/:workspaceId', async (request, reply) => {
+    const actor = actorOrUnauthorized(request, reply);
+    if (!actor) return reply;
+    if (!dependencies.workspaceProvisioningGateway) return unavailable(reply);
+    const workspaceId = z.string().uuid().safeParse(
+      (request.params as { workspaceId?: string }).workspaceId,
+    );
+    if (!workspaceId.success) return invalid(reply);
+
+    try {
+      await dependencies.workspaceProvisioningGateway.deactivateWorkspace(actor, workspaceId.data);
+      return { data: { workspaceId: workspaceId.data, status: 'deactivated' } };
+    } catch (error) {
+      if (error instanceof Error && error.message === 'WORKSPACE_DEACTIVATION_FORBIDDEN_OR_NOT_FOUND') {
+        return reply.code(403).send({ statusCode: 403, error: 'Forbidden', message: 'Workspace owner role required or workspace unavailable' });
+      }
+      throw error;
+    }
+  });
 }

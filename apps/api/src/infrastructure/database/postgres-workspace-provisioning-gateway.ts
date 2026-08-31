@@ -170,6 +170,30 @@ export class PostgresWorkspaceProvisioningGateway implements WorkspaceProvisioni
     });
   }
 
+  async deactivateWorkspace(actor: AuthenticatedActor, workspaceId: string): Promise<void> {
+    return this.withServiceRole(async (client) => {
+      // Deactivation is intentionally not a DELETE: messages, journeys and
+      // audit evidence remain intact and no phone number can be reassigned by
+      // accident. Only an owner of this exact workspace may perform it.
+      const result = await client.query(
+        `UPDATE public.workspaces w
+         SET active = false
+         WHERE w.id = $1
+           AND w.active = true
+           AND EXISTS (
+             SELECT 1
+             FROM public.workspace_memberships wm
+             WHERE wm.workspace_id = w.id
+               AND wm.user_id = $2
+               AND wm.role = 'owner'
+           )`,
+        [workspaceId, actor.userId],
+      );
+
+      if (result.rowCount !== 1) throw new Error('WORKSPACE_DEACTIVATION_FORBIDDEN_OR_NOT_FOUND');
+    });
+  }
+
   private workspaceSlug(name: string): string {
     const base = name
       .normalize('NFD')

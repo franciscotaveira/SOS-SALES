@@ -43,4 +43,13 @@ export interface WorkspaceProvisioningGateway {
     actor: AuthenticatedActor,
     input: ClientWorkspaceInput,
   ): Promise<ClientWorkspaceResult>;
+
+  /**
+   * Removes a client workspace from the active operation without deleting its
+   * commercial history. Reactivation remains an explicit back-office action.
+   */
+  deactivateWorkspace(
+    actor: AuthenticatedActor,
+    workspaceId: string,
+  ): Promise<void>;
 }

@@ -372,6 +372,13 @@ export const AppShell: React.FC<AppShellProps> = ({
       title: 'SISTEMA',
       items: [
         {
+          id: 'clientes' as NavigationTab,
+          label: 'Clientes',
+          icon: Building2,
+          roleRequired: 'owner' as OperatorRole,
+          visible: true,
+        },
+        {
           id: 'configuracoes' as NavigationTab,
           label: 'Configurações',
           icon: Settings,
@@ -405,9 +412,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       { id: 'anotacoes' as NavigationTab, label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação', roleRequired: 'operator' as OperatorRole },
     ] : []),
     ...(showGroups ? [{ id: 'grupos' as NavigationTab, label: 'Grupos WhatsApp', icon: Users, section: 'Operação', roleRequired: 'operator' as OperatorRole }] : []),
-    ...(!isProductionMvp ? [
-      { id: 'clientes' as NavigationTab, label: 'Gestão de Clientes & Sub-contas (Matriz)', icon: Building2, section: 'Gestão', roleRequired: 'admin' as OperatorRole },
-    ] : []),
+    { id: 'clientes' as NavigationTab, label: 'Clientes e Sub-contas', icon: Building2, section: 'Sistema', roleRequired: 'owner' as OperatorRole },
     ...(showTrafficProof ? [
       { id: 'resultados' as NavigationTab, label: 'Analytics & ROI da IA', icon: PieChart, section: 'Gestão', subTab: 'analytics', roleRequired: 'admin' as OperatorRole },
       { id: 'resultados' as NavigationTab, label: 'Resultados & Proof of Traffic', icon: BarChart3, section: 'Gestão', subTab: 'proof', roleRequired: 'admin' as OperatorRole },

@@ -120,6 +120,7 @@ function AppContent({
   userEmail,
   onSignOut,
   onCreateWorkspace,
+  onDeactivateWorkspace,
 }: {
   workspaces: Workspace[];
   currentWorkspace: Workspace;
@@ -152,6 +153,7 @@ function AppContent({
     whatsappNumber: string;
     provider: 'waba' | 'waha';
   }) => Promise<void>;
+  onDeactivateWorkspace?: (workspace: Workspace) => Promise<void>;
 }) {
   const { isFeatureEnabled } = useFeatureFlags();
   const isProductionMvp = salesOsRuntimeConfig.mode === 'api';
@@ -204,7 +206,6 @@ function AppContent({
       'kanban',
       'agenda',
       'anotacoes',
-      'clientes',
       'grupos',
       'playbook',
       'simulador',
@@ -398,6 +399,7 @@ function AppContent({
             currentWorkspace={currentWorkspace}
             onSelectWorkspace={onSelectWorkspace}
             onCreateWorkspace={onCreateWorkspace}
+            onDeactivateWorkspace={onDeactivateWorkspace}
             onNavigateTab={(tab, subTab) => {
               setActiveTab(tab);
               if (tab === 'playbook' && subTab) {
@@ -798,6 +800,24 @@ function OperationalApp({
     });
   };
 
+  const handleDeactivateWorkspace = async (workspace: Workspace) => {
+    if (!(salesOsGateway instanceof HttpSalesOsGateway)) {
+      throw new Error('A desativação de clientes só está disponível na operação autenticada.');
+    }
+    if (workspace.id === currentWorkspace?.id) {
+      throw new Error('Troque para outro cliente antes de desativar esta conta.');
+    }
+    await salesOsGateway.deactivateWorkspace(workspace.id);
+    setWorkspaces((previous) => previous.filter((item) => item.id !== workspace.id));
+    try {
+      if (localStorage.getItem('sos_selected_workspace_id') === workspace.id) {
+        localStorage.removeItem('sos_selected_workspace_id');
+      }
+    } catch {
+      // Browser storage is only a convenience, never a source of truth.
+    }
+  };
+
   const handleSimulateIncomingLeadMessage = async () => {
     if (!selectedJourneyId) return;
     try {
@@ -922,6 +942,7 @@ function OperationalApp({
           userEmail={userEmail}
           onSignOut={onSignOut}
           onCreateWorkspace={handleCreateWorkspace}
+          onDeactivateWorkspace={handleDeactivateWorkspace}
         />
       </FeatureFlagProvider>
     </>

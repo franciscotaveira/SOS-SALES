@@ -939,6 +939,13 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     )).data;
   }
 
+  async deactivateWorkspace(workspaceId: string): Promise<void> {
+    await this.request<ApiEnvelope<{ workspaceId: string; status: 'deactivated' }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}`,
+      { method: 'DELETE' },
+    );
+  }
+
   async listPriorities(workspaceId: string, limit = 5): Promise<ApiPriority[]> {
     const params = new URLSearchParams({ limit: String(this.bounded(limit, 1, 50)) });
     return (await this.request<ApiEnvelope<ApiPriority[]>>(`/workspaces/${encodeURIComponent(workspaceId)}/priorities?${params}`)).data;

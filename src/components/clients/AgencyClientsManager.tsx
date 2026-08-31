@@ -40,6 +40,7 @@ interface AgencyClientsManagerProps {
     provider: 'waba' | 'waha';
   }) => Promise<void>;
   onNavigateTab?: (tab: any, subTab?: string) => void;
+  onDeactivateWorkspace?: (workspace: Workspace) => Promise<void>;
 }
 
 export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
@@ -48,6 +49,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
   onSelectWorkspace,
   onCreateWorkspace,
   onNavigateTab,
+  onDeactivateWorkspace,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'hair_salon' | 'auto_film' | 'general_services'>('all');
@@ -65,6 +67,10 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [workspacePendingDeactivation, setWorkspacePendingDeactivation] = useState<Workspace | null>(null);
+  const [deactivationConfirmation, setDeactivationConfirmation] = useState('');
+  const [deactivationError, setDeactivationError] = useState<string | null>(null);
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
   // Filtered Workspaces
   const filteredWorkspaces = useMemo(() => {
@@ -136,6 +142,26 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
       setSubmitError(err?.message || 'Falha ao provisionar nova conta de cliente.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const confirmDeactivation = async () => {
+    const workspace = workspacePendingDeactivation;
+    if (!workspace || !onDeactivateWorkspace) return;
+    if (deactivationConfirmation.trim() !== workspace.name) {
+      setDeactivationError('Digite o nome completo da empresa para confirmar.');
+      return;
+    }
+    setIsDeactivating(true);
+    setDeactivationError(null);
+    try {
+      await onDeactivateWorkspace(workspace);
+      setWorkspacePendingDeactivation(null);
+      setDeactivationConfirmation('');
+    } catch (error) {
+      setDeactivationError(error instanceof Error ? error.message : 'Não foi possível desativar esta conta.');
+    } finally {
+      setIsDeactivating(false);
     }
   };
 
@@ -448,6 +474,19 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
                 >
                   <Bot className="w-4 h-4 text-purple-400" />
                 </button>
+                {!isSelected && onDeactivateWorkspace && (
+                  <button
+                    onClick={() => {
+                      setWorkspacePendingDeactivation(ws);
+                      setDeactivationConfirmation('');
+                      setDeactivationError(null);
+                    }}
+                    className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-rose-300 hover:border-rose-800/70 transition-colors cursor-pointer"
+                    title="Desativar cliente sem apagar histórico"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -618,6 +657,32 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {workspacePendingDeactivation && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <section className="w-full max-w-md rounded-2xl border border-rose-900/70 bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/15 text-rose-300"><AlertCircle className="h-5 w-5" /></div>
+              <div>
+                <h2 className="text-base font-bold text-white">Desativar cliente?</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-400">A conta sairá da operação ativa e não poderá receber ou disparar mensagens. Jornadas, mensagens e evidências permanecem preservadas.</p>
+              </div>
+            </div>
+            <label className="mt-5 block text-xs font-bold uppercase tracking-wider text-slate-300">Digite <span className="normal-case text-rose-300">{workspacePendingDeactivation.name}</span> para confirmar</label>
+            <input
+              value={deactivationConfirmation}
+              onChange={(event) => setDeactivationConfirmation(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-xs text-white outline-none focus:border-rose-500"
+              autoFocus
+            />
+            {deactivationError && <p className="mt-2 text-xs text-rose-300">{deactivationError}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setWorkspacePendingDeactivation(null)} disabled={isDeactivating} className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-300">Cancelar</button>
+              <button onClick={() => void confirmDeactivation()} disabled={isDeactivating} className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60">{isDeactivating ? 'Desativando…' : 'Desativar conta'}</button>
+            </div>
+          </section>
         </div>
       )}
     </div>
