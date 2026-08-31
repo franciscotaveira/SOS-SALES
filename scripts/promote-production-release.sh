@@ -5,6 +5,7 @@ VPS_ALIAS="${VPS_ALIAS:-vps}"
 PRODUCTION_URL="${PRODUCTION_URL:-https://crm.iaparavendas.tech}"
 RELEASE_SHA="${1:-}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SUPABASE_PROJECT_REF="${SUPABASE_PROJECT_REF:-yiiuebhyqixzluguxsqi}"
 
 if [[ ! "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "usage: $0 <40-character-release-sha>" >&2
@@ -17,7 +18,10 @@ fi
 # VPS can switch the release symlink.
 verify_linked_schema_ledger() {
   local listing expected
-  listing="$(cd "${REPO_ROOT}/apps/api" && npx supabase migration list)"
+  # A release worktree is intentionally isolated from a developer's local
+  # Supabase link metadata. Supplying the explicit project ref keeps this
+  # production gate authoritative without copying credentials into a checkout.
+  listing="$(cd "${REPO_ROOT}/apps/api" && npx supabase migration list --project-ref "${SUPABASE_PROJECT_REF}")"
   expected="$(find "${REPO_ROOT}/apps/api/supabase/migrations" -maxdepth 1 -type f -name '*.sql' -exec basename {} \; | sed -E 's/^([0-9]{14})_.*/\1/' | sort)"
   printf '%s\n' "${listing}" | node -e '
     const fs = require("node:fs");
