@@ -1,4 +1,4 @@
-import Fastify, { FastifyInstance, FastifyRequest } from 'fastify';
+import Fastify, { FastifyInstance, FastifyRequest, RawServerDefault } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
@@ -75,13 +75,12 @@ export interface RateLimitOptions {
  * Valid values:
  *   false        — no proxy; use socket remote address (default for dev/test)
  *   true         — trust all X-Forwarded-For hops (ONLY valid behind a controlled LB)
- *   number       — trust the last N hops (recommended for single-hop reverse proxies)
  *   string/array — trust only requests from the listed CIDR ranges
  *
  * Never use `true` unless the application is behind a load balancer that
  * strips client-supplied X-Forwarded-For headers before forwarding.
  */
-export type TrustProxyOption = boolean | string | string[] | number;
+export type TrustProxyOption = boolean | string | string[];
 const REQUIRED_READINESS_DEPENDENCIES = ['database', 'redis', 'worker'] as const;
 
 export interface AppDependencies {
@@ -167,7 +166,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   // trustProxy MUST be set explicitly — no implicit fallback to trusting all headers.
   const trustProxy: TrustProxyOption = dependencies.trustProxy ?? false;
 
-  const app = Fastify({
+  const app = Fastify<RawServerDefault>({
     logger: dependencies.logger !== undefined ? dependencies.logger : { level: 'info' },
     trustProxy,
   });
