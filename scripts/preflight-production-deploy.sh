@@ -34,7 +34,7 @@ required_artifacts=(
   "apps/api/supabase/config.toml"
   "scripts/verify-production-schema.mjs"
   "scripts/PRODUCTION_MIGRATIONS_OPERATOR.md"
-  "apps/api/node_modules/.package-lock.json"
+  "apps/api/package-lock.json"
   "docker-compose.prod.yml"
   "deploy/docker-compose.prod.yml"
   "certs/supabase-ca.crt"
