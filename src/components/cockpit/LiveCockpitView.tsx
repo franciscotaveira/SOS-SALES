@@ -403,6 +403,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   const [journeys, setJourneys] = React.useState<LoadState<ApiJourney[]>>({ state: "loading" });
   const [cockpit, setCockpit] = React.useState<LoadState<ApiCockpitView>>({ state: "loading" });
   const [refreshing, setRefreshing] = React.useState(false);
+  const [syncError, setSyncError] = React.useState<string | null>(null);
   const [feedback, setFeedback] = React.useState<{ type: "success" | "error"; message: string } | null>(null);
   const [operationalSettings, setOperationalSettings] = React.useState<ApiWorkspaceOperationalSettings | null>(null);
   const [operationalSettingsLoading, setOperationalSettingsLoading] = React.useState(true);
@@ -578,12 +579,14 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       setJourneys(journeyPage.data.length ? { state: "ready", value: journeyPage.data } : { state: "empty" });
       const firstId = priorityData[0]?.journeyId || journeyPage.data[0]?.id;
       if (!selectedJourneyRef.current && firstId) onSelectedJourneyChange(firstId);
+      return true;
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível carregar a fila autenticada.";
       if (!silent) {
-        const message = error instanceof Error ? error.message : "Não foi possível carregar a fila autenticada.";
         setPriorities({ state: "error", message });
         setJourneys({ state: "error", message });
       }
+      return false;
     }
   }, [gateway, onSelectedJourneyChange, workspaceId]);
 
@@ -620,20 +623,25 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
 
   const refresh = React.useCallback(async (silent = true) => {
     if (!silent) setRefreshing(true);
-    await loadQueue(silent);
+    const queueUpdated = await loadQueue(silent);
+    let cockpitUpdated = !selectedJourneyId;
+    let refreshMessage = queueUpdated ? null : "A fila não pôde ser atualizada.";
     if (selectedJourneyId) {
       try {
         const data = await gateway.getCockpit(workspaceId, selectedJourneyId);
         setCockpit({ state: "ready", value: data });
+        cockpitUpdated = true;
       } catch (error) {
+        refreshMessage = error instanceof Error ? error.message : "A conversa não pôde ser atualizada.";
         if (!silent) {
           setCockpit({
             state: "error",
-            message: error instanceof Error ? error.message : "Não foi possível atualizar a jornada.",
+            message: refreshMessage,
           });
         }
       }
     }
+    setSyncError(queueUpdated && cockpitUpdated ? null : refreshMessage ?? "A atualização automática foi interrompida.");
     if (!silent) setRefreshing(false);
   }, [gateway, loadQueue, selectedJourneyId, workspaceId]);
 
@@ -1125,6 +1133,23 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             className="rounded p-1 text-slate-500 hover:bg-black/5"
           >
             <X size={14} />
+          </button>
+        </div>
+      )}
+      {syncError && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-950 shadow-2xs shrink-0">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={15} />
+            <span>Sincronização interrompida: {syncError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refresh(false)}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-bold hover:bg-amber-100 disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
+            Tentar novamente
           </button>
         </div>
       )}

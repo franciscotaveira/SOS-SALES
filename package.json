@@ -20,7 +20,8 @@
     "check": "npm run check:web && npm run check:api",
     "generate:openapi": "npm --prefix apps/api run generate:openapi",
     "smoke": "bash scripts/smoke-test.sh",
-    "audit:contracts": "node scripts/audit-frontend-backend-contract.mjs"
+    "audit:contracts": "node scripts/audit-frontend-backend-contract.mjs",
+    "test:live-sync": "node scripts/test-live-cockpit-sync.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

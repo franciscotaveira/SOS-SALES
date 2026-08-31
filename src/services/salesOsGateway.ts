@@ -1597,6 +1597,7 @@ export class HttpSalesOsGateway implements SalesOsGateway {
         method: options.method ?? 'GET',
         headers,
         body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        cache: (options.method ?? 'GET') === 'GET' ? 'no-store' : undefined,
       });
     } catch {
       throw new SalesOsTransportError('Não foi possível alcançar a API do SOS Sales.');
