@@ -160,25 +160,24 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
 
   async claimDispatch(params: { dispatchId: string; workerId: string; leaseSeconds?: number }): Promise<ClaimedOutboundDispatch | null> {
     return this.withServiceRole(async (client) => {
-      try {
-        const query = await client.query<RpcRow>(
-          'SELECT public.claim_outbound_dispatch($1, $2, $3) AS result',
-          [params.dispatchId, params.workerId, params.leaseSeconds ?? 60],
-        );
-        const raw = query.rows[0]?.result;
-        if (!raw) return null;
-        const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Record<string, string>;
+      const query = await client.query<RpcRow>(
+        'SELECT public.claim_outbound_dispatch($1, $2, $3) AS result',
+        [params.dispatchId, params.workerId, params.leaseSeconds ?? 60],
+      );
+      const raw = query.rows[0]?.result;
+      if (!raw) return null;
+      const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Record<string, string>;
 
-        const detailsQuery = await client.query<{
-          phone: string;
-          session_name: string | null;
-          provider: string;
-          public_config: Record<string, unknown> | string;
-          secret_payload: Record<string, unknown> | string | null;
-          message_kind: string;
-          message_payload: Record<string, unknown> | string | null;
-        }>(
-          `SELECT c.phone, cc.session_name, cc.provider, cc.public_config,
+      const detailsQuery = await client.query<{
+        phone: string;
+        session_name: string | null;
+        provider: string;
+        public_config: Record<string, unknown> | string;
+        secret_payload: Record<string, unknown> | string | null;
+        message_kind: string;
+        message_payload: Record<string, unknown> | string | null;
+      }>(
+        `SELECT c.phone, cc.public_config->>'session' AS session_name, cc.provider, cc.public_config,
           secrets.secret_payload, od.message_kind, od.message_payload
            FROM public.outbound_dispatches od
            JOIN public.contacts c ON c.id = od.contact_id
@@ -195,34 +194,31 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
            WHERE od.id = $1`,
           [params.dispatchId],
         );
-        const details = detailsQuery.rows[0];
-        const publicConfig = typeof details?.public_config === 'string'
-          ? JSON.parse(details.public_config)
-          : (details?.public_config || {});
-        const secretPayload = typeof details?.secret_payload === 'string'
-          ? JSON.parse(details.secret_payload)
-          : (details?.secret_payload || {});
-        const messagePayload = typeof details?.message_payload === 'string'
-          ? JSON.parse(details.message_payload)
-          : (details?.message_payload || {});
+      const details = detailsQuery.rows[0];
+      const publicConfig = typeof details?.public_config === 'string'
+        ? JSON.parse(details.public_config)
+        : (details?.public_config || {});
+      const secretPayload = typeof details?.secret_payload === 'string'
+        ? JSON.parse(details.secret_payload)
+        : (details?.secret_payload || {});
+      const messagePayload = typeof details?.message_payload === 'string'
+        ? JSON.parse(details.message_payload)
+        : (details?.message_payload || {});
 
-        return {
-          dispatchId: parsed.dispatchId,
-          claimToken: parsed.claimToken,
-          textContent: parsed.textContent,
-          messageKind: (details?.message_kind || 'TEXT') as ClaimedOutboundDispatch['messageKind'],
-          messagePayload,
-          channelConnectionId: parsed.channelConnectionId,
-          contactId: parsed.contactId,
-          contactPhone: details?.phone,
-          session: details?.session_name ?? undefined,
-          provider: details?.provider === 'meta_cloud' ? 'meta_cloud' : 'waha',
-          wabaPhoneNumberId: typeof publicConfig.phoneNumberId === 'string' ? publicConfig.phoneNumberId : undefined,
-          wabaAccessToken: typeof secretPayload.accessToken === 'string' ? secretPayload.accessToken : undefined,
-        };
-      } catch (error) {
-        return null;
-      }
+      return {
+        dispatchId: parsed.dispatchId,
+        claimToken: parsed.claimToken,
+        textContent: parsed.textContent,
+        messageKind: (details?.message_kind || 'TEXT') as ClaimedOutboundDispatch['messageKind'],
+        messagePayload,
+        channelConnectionId: parsed.channelConnectionId,
+        contactId: parsed.contactId,
+        contactPhone: details?.phone,
+        session: details?.session_name ?? undefined,
+        provider: details?.provider === 'meta_cloud' ? 'meta_cloud' : 'waha',
+        wabaPhoneNumberId: typeof publicConfig.phoneNumberId === 'string' ? publicConfig.phoneNumberId : undefined,
+        wabaAccessToken: typeof secretPayload.accessToken === 'string' ? secretPayload.accessToken : undefined,
+      };
     });
   }
 
@@ -286,6 +282,7 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
     try {
       await client.query('BEGIN');
       await client.query('SET LOCAL ROLE service_role');
+      await client.query("SELECT pg_catalog.set_config('request.jwt.claim.role', 'service_role', true)");
       const result = await action(client);
       await client.query('COMMIT');
       return result;

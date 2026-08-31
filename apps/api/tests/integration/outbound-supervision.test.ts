@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { dbPool, query } from '../../src/infrastructure/database/pool.js';
+import { PostgresOutboundDispatchGateway } from '../../src/infrastructure/database/postgres-outbound-dispatch-gateway.js';
 
 describe('P0 supervised WAHA outbound contract', () => {
   const workspaceId = randomUUID();
@@ -46,6 +47,7 @@ describe('P0 supervised WAHA outbound contract', () => {
     await query(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'operator')`, [workspaceId, ownerId, operatorId]);
     await query(`INSERT INTO channel_connections (id, workspace_id, provider, phone_number, name, public_config, status) VALUES ($1, $2, 'waha', '+55499991111', 'Outbound WAHA', '{}'::jsonb, 'CONNECTED')`, [channelId, workspaceId]);
     await query(`INSERT INTO channel_connections (id, workspace_id, provider, phone_number, name, public_config, status) VALUES ($1, $2, 'meta_cloud', '+55499993333', 'Outbound Meta', '{"phoneNumberId":"meta-phone-id"}'::jsonb, 'CONNECTED')`, [metaChannelId, workspaceId]);
+    await query(`INSERT INTO channel_connection_secrets (channel_connection_id, workspace_id, secret_kind, secret_payload) VALUES ($1, $2, 'meta_bearer_token', '{"accessToken":"meta-test-token"}'::jsonb)`, [metaChannelId, workspaceId]);
     await query(`INSERT INTO contacts (id, workspace_id, phone, name) VALUES ($1, $2, '+55499992222', 'Outbound contact')`, [contactId, workspaceId]);
     await query(`INSERT INTO contacts (id, workspace_id, phone, name) VALUES ($1, $2, '+55499994444', 'Outbound Meta contact')`, [metaContactId, workspaceId]);
     await query(`INSERT INTO commercial_journeys (id, workspace_id, contact_id, channel_connection_id, status) VALUES ($1, $2, $3, $4, 'OPEN')`, [journeyId, workspaceId, contactId, channelId]);
@@ -142,14 +144,15 @@ describe('P0 supervised WAHA outbound contract', () => {
       [workspaceId, metaChannelId, 'Homologação Meta Cloud', 'channel-meta-outbound-0001'],
     ));
 
-    const claimed = await asService((client) => client.query(
-      'SELECT public.claim_outbound_dispatch($1, $2, $3) AS result',
-      [dispatchId, 'meta-outbound-worker', 60],
-    ));
-    expect(claimed.rows[0].result).toMatchObject({
+    const gateway = new PostgresOutboundDispatchGateway(dbPool);
+    const claimed = await gateway.claimDispatch({ dispatchId, workerId: 'meta-outbound-worker', leaseSeconds: 60 });
+    expect(claimed).toMatchObject({
       dispatchId,
       channelConnectionId: metaChannelId,
       contactId: metaContactId,
+      provider: 'meta_cloud',
+      wabaPhoneNumberId: 'meta-phone-id',
+      wabaAccessToken: 'meta-test-token',
     });
   });
 });
