@@ -15,7 +15,6 @@ import {
   PostgresNotesGateway,
   PostgresInboundIngestionGateway,
   PostgresOutboxProcessingGateway,
-  EnvironmentWebhookSecretProvider,
   PostgresDependencyHealthProvider,
   RedisDependencyHealthProvider,
   WahaLidIdentityResolver,
@@ -99,11 +98,21 @@ export async function createProductionRuntime() {
   const metaBusinessAgentGateway = new PostgresMetaBusinessAgentGateway(pool);
   const ingestionGateway = new PostgresInboundIngestionGateway(pool);
   const outboxGateway = new PostgresOutboxProcessingGateway(pool);
-  // Prefer a per-channel secret when it exists, but preserve the canonical
-  // global secret used by the current VPS. This matches the verified webhook
-  // provider contract and prevents a restart from making every WAHA callback
-  // fail closed solely because a duplicate environment variable was absent.
-  const secretProvider = new EnvironmentWebhookSecretProvider();
+  // Production provider: prefer a scoped secret, with an explicit fallback to
+  // the canonical VPS secret during the channel-secret migration. The generic
+  // environment provider is deliberately disabled in production because it
+  // permits development defaults; this provider has no default and fails
+  // closed when neither configured secret is available.
+  const globalWebhookSecret = process.env.WAHA_WEBHOOK_SECRET?.trim();
+  const secretProvider = {
+    getWebhookSecret: async (channelConnectionId) => {
+      const envKey = `WAHA_WEBHOOK_SECRET_${channelConnectionId.replace(/-/g, '_')}`;
+      const scoped = process.env[envKey]?.trim();
+      if (scoped) return scoped;
+      if (globalWebhookSecret) return globalWebhookSecret;
+      throw new Error(`Missing WAHA webhook secret for channel: ${channelConnectionId}`);
+    },
+  };
   const wahaAdapter = new WahaWebhookAdapter();
 
   const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim();
