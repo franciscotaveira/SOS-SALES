@@ -86,7 +86,7 @@ for frontend_value in \
   fi
 done
 
-if ! grep -R -E -q -- 'eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}' "${REPO_ROOT}/dist"; then
+if ! grep -R -E -q -- '(eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}|sb_publishable_[A-Za-z0-9_-]{12,})' "${REPO_ROOT}/dist"; then
   echo "[preflight] frontend bundle is missing a Supabase public anon/publishable key" >&2
   exit 1
 fi
