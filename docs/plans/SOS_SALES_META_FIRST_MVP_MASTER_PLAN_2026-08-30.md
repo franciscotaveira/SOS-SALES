@@ -258,6 +258,58 @@ Não tratar essa integração parcial como entrega reconciliada no canário.
 Essas mudanças foram provadas no Supabase Lab com testes de integração; não são
 prova de credenciais Meta, webhook ou entrega em produção.
 
+#### Contrato de fechamento: ações WABA interativas
+
+**Decisão.** Botão, lista, Flow, template e mídia não devem chamar a Meta diretamente
+do Cockpit. O clique do operador é a aprovação humana, mas a operação será executada
+somente pelo worker durável. Isso elimina os dois resultados perigosos atuais:
+"enviado" sem registro após reload e reenvio cego quando uma chamada expira.
+
+Fluxo único a implementar:
+
+```text
+Cockpit (ação tipada) → POST draft WABA + idempotency key → DRAFT
+→ aprovação explícita do operador → APPROVED
+→ worker com lease/fencing → Meta Cloud API
+→ messageId obrigatório → mensagem/evento persistidos → ACCEPTED
+                                     └─ timeout/ambiguidade → FAILED para reconciliação humana
+```
+
+Contrato mínimo do banco e worker:
+
+| Campo/contrato | Regra |
+|---|---|
+| `message_kind` | `TEXT`, `WABA_TEMPLATE`, `WABA_BUTTONS`, `WABA_LIST`, `WABA_FLOW` ou `WABA_MEDIA`; tipos fechados, nunca payload livre |
+| `message_payload` | JSONB canônico validado na rota antes de ser armazenado; sem token, telefone ou segredo |
+| canal | tipos `WABA_*` exigem que a jornada aponte para `meta_cloud` `CONNECTED`; não há fallback para WAHA |
+| `text_content` | resumo humano do envio para a timeline, sem fingir que é o payload entregue |
+| aceite | só `messages[0].id` da Meta permite `ACCEPTED` e criação de `conversation_messages`/`SENT` |
+| timeout | `WABA_DELIVERY_UNCONFIRMED`; sem retry automático e com referência de dispatch para reconciliação |
+
+Sequência de implementação, sem criar uma segunda fila:
+
+1. migration aditiva: permitir os tipos acima e acrescentar `message_payload`; manter
+   os dispatches `TEXT` existentes válidos;
+2. criar RPC `create_waba_outbound_draft` que verifica RBAC, jornada aberta, canal Meta
+   da própria jornada e idempotência antes de inserir `DRAFT_CREATED`;
+3. expor `POST /workspaces/:workspaceId/journeys/:journeyId/waba-outbound-drafts`, com
+   schemas Zod discriminados por `messageKind`; rotas antigas de envio direto tornam-se
+   compatibilidade documentada, mas o Cockpit deixa de chamá-las;
+4. estender `ClaimedOutboundDispatch` e `WahaOutboundWorker` para despachar cada payload
+   pelo método correspondente de `WabaClient`; WAHA continua aceitando apenas `TEXT`;
+5. trocar os handlers `handleSendWabaButtons/List/Flow/Template` e
+   `WabaActionsModal` para criar/aprovar o dispatch e mostrar **"envio aprovado, aguardando
+   aceite da Meta"**, nunca **"enviado"** antes de `ACCEPTED`;
+6. cobrir: tenant cruzado, payload inválido, canal WAHA, token ausente, sem `messageId`,
+   timeout ambíguo, idempotência, reload e prova de que nenhum adaptador WAHA é chamado;
+7. canário controlado: um workspace/número autorizado, uma ação de cada tipo, consulta
+   de `outbound_dispatches`, `conversation_messages` e evento `SENT`, seguida de limpeza.
+
+**Fora desta entrega.** Pix, catálogo, carrossel e convite de chamada atualmente exibidos
+no modal não possuem adaptador Meta tipado e contrato de persistência equivalente.
+Eles permanecem classificados como `CAPABILITY_PENDENTE`: não podem apresentar sucesso
+de envio nem ser promovidos como recurso do MVP até receberem o mesmo contrato acima.
+
 ### P0.4 — Meta Business Agent: fundação de elegibilidade concluída; ativação ainda ausente
 
 **[KNOWN]** A elegibilidade já possui contrato autenticado no SOS Sales. Onboarding,
