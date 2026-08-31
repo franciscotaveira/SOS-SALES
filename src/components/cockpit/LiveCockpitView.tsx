@@ -48,12 +48,12 @@ import {
   ApiJourney,
   ApiPriority,
   ApiMessage,
+  ApiWorkspaceOperationalSettings,
   HttpSalesOsGateway,
   SalesOsTransportError,
 } from "../../services/salesOsGateway";
 import { getSupabaseClient } from "../../services/supabaseAuth";
 import { authenticatedFetch } from "../../services/authenticatedFetch";
-import { analyzeConversationDossier } from "../../utils/cognitiveAnalyzer";
 import { normalizeStage } from "../kanban/LiveCommercialKanbanView";
 import { MessageMediaRenderer, MessageMediaPayload } from "./MessageMediaRenderer";
 import { SalesMediaVaultModal } from "./SalesMediaVaultModal";
@@ -61,7 +61,11 @@ import { SalesMediaResource } from "../../data/salesMediaVault";
 import { ContactAvatar } from "./ContactAvatar";
 import { ExternalAgendaDrawer, getExternalAgendaConfig } from "./ExternalAgendaDrawer";
 import { StartConversationModal } from "../conversations/StartConversationModal";
-import { getWorkspaceCommercialConfig } from "../../services/workspaceCommercialConfig";
+import {
+  getWorkspaceCommercialConfig,
+  normalizeWorkspaceCommercialConfig,
+  WorkspaceCommercialConfig,
+} from "../../services/workspaceCommercialConfig";
 import { QuickToolsPopover, QuickToolItem } from "./QuickToolsPopover";
 import { DossierFocusModal } from "./DossierFocusModal";
 import { WabaActionsModal } from "./WabaActionsModal";
@@ -116,7 +120,7 @@ function valueToText(value: unknown): string {
 }
 
 function stageLabel(value: string | null): string {
-  if (!value) return "1. Novo Lead";
+  if (!value) return "Estágio não informado";
   const normalized = normalizeStage(value);
   const match = PIPELINE_STAGES.find((s) => s.value === normalized);
   return match ? match.label : value;
@@ -142,60 +146,60 @@ function detectServiceAndIntent(item: ApiPriority | ApiJourney) {
   const text = `${name} ${rawService} ${lastMsg} ${reason}`.toLowerCase();
 
   // 1. Verificação explícita por palavras-chave de serviços
-  if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || text.includes('chapinha') || text.includes('secagem') || text.includes('lavagem') || name.includes('rosy') || name.includes('haven')) {
+  if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || text.includes('chapinha') || text.includes('secagem') || text.includes('lavagem')) {
     return {
       service: '💇‍♀️ Escova Modelada & Lavagem',
       badgeClass: 'bg-purple-100/90 text-purple-900 border-purple-200 font-extrabold',
-      preview: lastMsg || 'Interesse em agendar Escova Express ou Modelada',
+      preview: lastMsg || 'Sem mensagem registrada',
     };
   }
-  if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('alongamento') || text.includes('fibra') || text.includes('manicure') || text.includes('pedicure') || name.includes('thaís') || name.includes('thais')) {
+  if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('alongamento') || text.includes('fibra') || text.includes('manicure') || text.includes('pedicure')) {
     return {
       service: '💅 Esmaltação & Unhas em Gel',
       badgeClass: 'bg-pink-100/90 text-pink-900 border-pink-200 font-extrabold',
-      preview: lastMsg || 'Interesse em Alongamento de Fibra ou Esmaltação em Gel',
+      preview: lastMsg || 'Sem mensagem registrada',
     };
   }
-  if (text.includes('corte') || text.includes('visagismo') || text.includes('pontas') || text.includes('franja') || name.includes('édina') || name.includes('edina')) {
+  if (text.includes('corte') || text.includes('visagismo') || text.includes('pontas') || text.includes('franja')) {
     return {
       service: '✂️ Corte Feminino & Visagismo',
       badgeClass: 'bg-indigo-100/90 text-indigo-900 border-indigo-200 font-extrabold',
-      preview: lastMsg || 'Interesse em Corte com Visagismo ou Repicado',
+      preview: lastMsg || 'Sem mensagem registrada',
     };
   }
   if (text.includes('loiro') || text.includes('mechas') || text.includes('luzes') || text.includes('morena') || text.includes('color') || text.includes('tinta')) {
     return {
       service: '🎨 Mechas, Loiro & Morena Ilum.',
       badgeClass: 'bg-amber-100/90 text-amber-950 border-amber-300 font-extrabold',
-      preview: lastMsg || 'Interesse em Avaliação para Mechas / Coloração',
+      preview: lastMsg || 'Sem mensagem registrada',
     };
   }
-  if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('cronograma') || text.includes('ozonio') || text.includes('detox') || name.includes('sōra') || name.includes('sora')) {
+  if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('cronograma') || text.includes('ozonio') || text.includes('detox')) {
     return {
       service: '🧴 Tratamento Truss & Spa Capilar',
       badgeClass: 'bg-emerald-100/90 text-emerald-950 border-emerald-300 font-extrabold',
-      preview: lastMsg || 'Interesse em Cronograma de Reconstrução Truss',
+      preview: lastMsg || 'Sem mensagem registrada',
     };
   }
   if (text.includes('make') || text.includes('maquiagem') || text.includes('penteado') || text.includes('noiva') || text.includes('casamento') || text.includes('festa')) {
     return {
       service: '💄 Make & Produção de Eventos',
       badgeClass: 'bg-rose-100/90 text-rose-950 border-rose-300 font-extrabold',
-      preview: lastMsg || 'Interesse em Maquiagem e Penteado para Evento',
+      preview: lastMsg || 'Sem mensagem registrada',
     };
   }
-  if (text.includes('preço') || text.includes('valor') || text.includes('quanto') || text.includes('tabela') || name.includes('ju')) {
+  if (text.includes('preço') || text.includes('valor') || text.includes('quanto') || text.includes('tabela')) {
     return {
       service: '💰 Consulta de Valores & Tabela',
       badgeClass: 'bg-blue-100/90 text-blue-900 border-blue-200 font-extrabold',
-      preview: lastMsg || 'Dúvida sobre Tabela de Valores e Pacotes',
+      preview: lastMsg || 'Sem mensagem registrada',
     };
   }
   if (text.includes('horario') || text.includes('horário') || text.includes('vaga') || text.includes('hoje') || text.includes('amanha') || text.includes('amanhã') || text.includes('sabado') || text.includes('sábado')) {
     return {
       service: '📅 Agendamento de Horário',
       badgeClass: 'bg-sky-100/90 text-sky-900 border-sky-200 font-extrabold',
-      preview: lastMsg || 'Solicitação de horário disponível para atendimento',
+      preview: lastMsg || 'Sem mensagem registrada',
     };
   }
 
@@ -212,7 +216,7 @@ function detectServiceAndIntent(item: ApiPriority | ApiJourney) {
   return {
     service: '💬 Atendimento Geral / Dúvidas',
     badgeClass: 'bg-slate-100 text-slate-800 border-slate-200 font-bold',
-    preview: lastMsg || (reason || 'Cliente aguardando resposta no WhatsApp'),
+    preview: lastMsg || reason || 'Sem mensagem registrada',
   };
 }
 
@@ -222,7 +226,7 @@ export function detectCustomerLoyalty(
   item: ApiPriority | ApiJourney,
   loyaltyMap?: Record<string, CustomerLoyaltyType>
 ): {
-  type: CustomerLoyaltyType;
+  type: CustomerLoyaltyType | null;
   label: string;
   badgeClass: string;
   description: string;
@@ -249,37 +253,11 @@ export function detectCustomerLoyalty(
     }
   }
 
-  // Detecção automática por nome ou contexto
-  const name = (item.contactName || '').toLowerCase();
-  const text = (('lastMessageText' in item ? item.lastMessageText : '') || '').toLowerCase();
-
-  const isKnownOld =
-    name.includes('suzana') ||
-    name.includes('sidi') ||
-    name.includes('diogo') ||
-    name.includes('mateus') ||
-    name.includes('amato') ||
-    name.includes('leandro') ||
-    name.includes('vip') ||
-    text.includes('mesmo de sempre') ||
-    text.includes('como sempre') ||
-    text.includes('novamente') ||
-    text.includes('já fiz');
-
-  if (isKnownOld) {
-    return {
-      type: 'RECURRING',
-      label: '⭐ Recorrente',
-      badgeClass: 'bg-purple-100 text-purple-900 border-purple-300 font-extrabold',
-      description: 'Cliente fidelizado com histórico anterior',
-    };
-  }
-
   return {
-    type: 'NEW',
-    label: '🌱 Novo Lead',
-    badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300 font-extrabold',
-    description: 'Lead em primeiro contato comercial',
+    type: null,
+    label: '◌ Não classificado',
+    badgeClass: 'bg-slate-100 text-slate-700 border-slate-300 font-bold',
+    description: 'Sem classificação de fidelidade persistida',
   };
 }
 
@@ -299,7 +277,8 @@ function QueueCard({
   const hasPriority = "priorityReason" in item;
   const title = item.contactName || (item.contactPhone ? `Cliente ${item.contactPhone.slice(-4)}` : "Contato sem nome");
   const time = hasPriority ? item.lastMessageAt : item.updatedAt;
-  const urgent = hasPriority && item.slaState === "OVERDUE";
+  const slaState = hasPriority ? (item as ApiPriority).slaState : undefined;
+  const urgent = slaState === "OVERDUE";
   const avatarUrl = (item as any).contactAvatar || (item as any).avatarUrl;
   
   // Detecção inteligente do serviço e resumo de intenção
@@ -310,7 +289,8 @@ function QueueCard({
   const timeDisplay = React.useMemo(() => {
     try {
       const d = new Date(time || Date.now());
-      if (isNaN(d.getTime())) return "Hoje";
+      if (!time) return "Sem horário";
+      if (isNaN(d.getTime())) return "Data indisponível";
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     } catch {
       return "Agora";
@@ -319,46 +299,29 @@ function QueueCard({
 
   // Origem do Lead
   const sourceTag = React.useMemo(() => {
-    const text = (item.contactName + " " + intent.preview).toLowerCase();
-    if (text.includes("anúncio") || text.includes("ctwa") || text.includes("click_wa") || text.includes("campanha") || text.includes("59")) {
-      return { label: "🎯 Click WA", bg: "bg-emerald-50 text-emerald-800 border-emerald-200" };
+    const text = `${item.contactName || ''} ${intent.preview || ''}`.toLowerCase();
+    if (text.includes("anúncio") || text.includes("ctwa") || text.includes("click_wa") || text.includes("campanha")) {
+      return { label: "🎯 Menção de anúncio", bg: "bg-emerald-50 text-emerald-800 border-emerald-200" };
     }
     if (text.includes("instagram") || text.includes("insta")) {
-      return { label: "📸 Insta Ads", bg: "bg-pink-50 text-pink-800 border-pink-200" };
+      return { label: "📸 Menção de Instagram", bg: "bg-pink-50 text-pink-800 border-pink-200" };
     }
     return { label: "💬 WhatsApp", bg: "bg-slate-50 text-slate-700 border-slate-200" };
   }, [item.contactName, intent.preview]);
 
-  // Classificação Inteligente de Potencial de Lead (Motor Invisível de IA)
+  // A fila não recebe score de conversão no contrato autenticado. Exiba
+  // apenas fatos persistidos (SLA/estágio), nunca percentuais heurísticos.
   const leadPotential = React.useMemo(() => {
-    const stage = item.pipelineStage;
-    const isOverdue = hasPriority && item.slaState === "OVERDUE";
-    const text = (item.contactName + " " + intent.preview).toLowerCase();
-
-    if (
-      isOverdue ||
-      stage === "PROPOSAL" ||
-      stage === "NEGOTIATION" ||
-      text.includes("pix") ||
-      text.includes("horário") ||
-      text.includes("fechar") ||
-      text.includes("agendar") ||
-      text.includes("truss") ||
-      text.includes("mechas")
-    ) {
-      return { label: "🔥 85% Quente", color: "text-amber-950 bg-amber-100 border-amber-300" };
+    const isOverdue = slaState === "OVERDUE";
+    if (isOverdue) {
+      return { label: "SLA vencido", color: "text-rose-950 bg-rose-100 border-rose-300" };
     }
-    if (
-      stage === "QUALIFIED" ||
-      stage === "IN_PROGRESS" ||
-      text.includes("preço") ||
-      text.includes("valor") ||
-      text.includes("quanto")
-    ) {
-      return { label: "⚡ 60% Proposta", color: "text-blue-950 bg-blue-100 border-blue-300" };
+    const stage = normalizeStage(item.pipelineStage);
+    if (stage === "PROPOSTA" || stage === "NEGOCIACAO") {
+      return { label: "Etapa avançada", color: "text-blue-950 bg-blue-100 border-blue-300" };
     }
-    return { label: "❄️ 20% Frio", color: "text-slate-700 bg-slate-100 border-slate-300" };
-  }, [item.pipelineStage, hasPriority, (item as any).slaState, item.contactName, intent.preview]);
+    return { label: "Sem score persistido", color: "text-slate-700 bg-slate-100 border-slate-300" };
+  }, [item.pipelineStage, slaState]);
 
   return (
     <button
@@ -381,7 +344,7 @@ function QueueCard({
             workspaceId={workspaceId}
             avatarUrl={avatarUrl}
             size="sm"
-            showOnlineBadge={hasPriority ? item.slaState === "OK" : true}
+            showOnlineBadge={false}
             className="shadow-2xs"
           />
         </div>
@@ -409,7 +372,7 @@ function QueueCard({
         <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold border shrink-0 ${loyalty.badgeClass}`}>
           {loyalty.label}
         </span>
-        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border shrink-0 ${sourceTag.bg}`}>
+            <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border shrink-0 ${sourceTag.bg}`}>
           {sourceTag.label}
         </span>
         <span className={`px-1.5 py-0.2 rounded text-[9px] font-medium border truncate max-w-[130px] ${intent.badgeClass}`}>
@@ -441,6 +404,8 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   const [cockpit, setCockpit] = React.useState<LoadState<ApiCockpitView>>({ state: "loading" });
   const [refreshing, setRefreshing] = React.useState(false);
   const [feedback, setFeedback] = React.useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [operationalSettings, setOperationalSettings] = React.useState<ApiWorkspaceOperationalSettings | null>(null);
+  const [operationalSettingsLoading, setOperationalSettingsLoading] = React.useState(true);
 
   // Modals & Action States
   const [followUpModalOpen, setFollowUpModalOpen] = React.useState(false);
@@ -472,6 +437,37 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       return next;
     });
   };
+
+  const loadOperationalSettings = React.useCallback(async () => {
+    setOperationalSettingsLoading(true);
+    try {
+      const settings = await gateway.getWorkspaceOperationalSettings(workspaceId);
+      setOperationalSettings(settings);
+      return settings;
+    } catch (error) {
+      setOperationalSettings(null);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error
+          ? `Configuração comercial indisponível: ${error.message}`
+          : "Configuração comercial indisponível.",
+      });
+      return null;
+    } finally {
+      setOperationalSettingsLoading(false);
+    }
+  }, [gateway, workspaceId]);
+
+  React.useEffect(() => {
+    void loadOperationalSettings();
+  }, [loadOperationalSettings]);
+
+  const commercialConfig = React.useMemo<WorkspaceCommercialConfig>(() => {
+    if (operationalSettings) {
+      return normalizeWorkspaceCommercialConfig(workspaceId, operationalSettings.commercialConfig);
+    }
+    return getWorkspaceCommercialConfig(workspaceId);
+  }, [operationalSettings, workspaceId]);
 
   const queueWabaAction = async (payload: Record<string, unknown>) => {
     if (!selectedJourneyId) throw new Error("Selecione uma conversa antes de preparar o envio WABA.");
@@ -817,35 +813,38 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   const [queueSearch, setQueueSearch] = React.useState('');
 
   // Loyalty Overrides State (⭐ Recorrente vs 🌱 Novo Lead)
-  const [loyaltyMap, setLoyaltyMap] = React.useState<Record<string, CustomerLoyaltyType>>(() => {
-    try {
-      const saved = localStorage.getItem(`sos_sales_loyalty_map_${workspaceId}`);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [loyaltyMap, setLoyaltyMap] = React.useState<Record<string, CustomerLoyaltyType>>({});
 
-  const handleToggleLoyalty = React.useCallback((id: string, phone?: string) => {
-    setLoyaltyMap((prev) => {
-      const cleanPhone = (phone || '').replace(/\D/g, '');
-      const current = prev[id] || (cleanPhone ? prev[cleanPhone] : undefined);
-      const currentType: CustomerLoyaltyType = current || 'NEW';
-      const nextType: CustomerLoyaltyType = currentType === 'RECURRING' ? 'NEW' : 'RECURRING';
-      const updated = { ...prev, [id]: nextType };
-      if (cleanPhone) {
-        updated[cleanPhone] = nextType;
-      }
-      try {
-        localStorage.setItem(`sos_sales_loyalty_map_${workspaceId}`, JSON.stringify(updated));
-      } catch {}
+  React.useEffect(() => {
+    setLoyaltyMap(operationalSettings?.loyaltyOverrides ?? {});
+  }, [operationalSettings?.loyaltyOverrides, workspaceId]);
+
+  const handleToggleLoyalty = React.useCallback(async (id: string, phone?: string) => {
+    const cleanPhone = (phone || '').replace(/\D/g, '');
+    const current = loyaltyMap[id] || (cleanPhone ? loyaltyMap[cleanPhone] : undefined);
+    const currentType: CustomerLoyaltyType = current || 'NEW';
+    const nextType: CustomerLoyaltyType = currentType === 'RECURRING' ? 'NEW' : 'RECURRING';
+    const updated = { ...loyaltyMap, [id]: nextType };
+    if (cleanPhone) updated[cleanPhone] = nextType;
+
+    setActionInProgress(true);
+    try {
+      const saved = await gateway.updateWorkspaceOperationalSettings(workspaceId, { loyaltyOverrides: updated });
+      setOperationalSettings(saved);
+      setLoyaltyMap(saved.loyaltyOverrides);
       setFeedback({
         type: 'success',
-        message: `Cliente classificado como ${nextType === 'RECURRING' ? '⭐ Cliente Recorrente' : '🌱 Novo Lead'}!`,
+        message: `Cliente classificado como ${nextType === 'RECURRING' ? '⭐ Cliente Recorrente' : '🌱 Novo Lead'} e salvo no workspace.`,
       });
-      return updated;
-    });
-  }, [workspaceId]);
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível salvar a classificação do cliente.',
+      });
+    } finally {
+      setActionInProgress(false);
+    }
+  }, [gateway, loyaltyMap, workspaceId]);
 
   const handleCreateOutboundDraft = async (text: string) => {
     if (!selectedJourneyId) return;
@@ -913,59 +912,50 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
-  const handleUpdateContactName = (newName: string) => {
-    if (cockpit.state === "ready") {
-      setCockpit({
-        state: "ready",
-        value: {
-          ...cockpit.value,
-          journey: {
-            ...cockpit.value.journey,
-            contact: {
-              ...cockpit.value.journey.contact,
-              name: newName,
-            },
-          },
-        },
-      });
+  const handleUpdateContactName = async (newName: string) => {
+    if (cockpit.state !== "ready" || !newName.trim()) return;
+    setActionInProgress(true);
+    try {
+      const saved = await gateway.updateContactName(workspaceId, cockpit.value.journey.contact.id, newName.trim());
+      await refresh(true);
+      showNotification("success", `Nome atualizado para "${saved.name || newName.trim()}" e salvo no banco.`);
+    } catch (error) {
+      showNotification("error", error instanceof Error ? error.message : "Não foi possível salvar o nome do contato.");
+    } finally {
+      setActionInProgress(false);
     }
-    if (journeys.state === "ready") {
-      setJourneys({
-        state: "ready",
-        value: journeys.value.map((j) =>
-          j.id === selectedJourneyId ? { ...j, contactName: newName } : j
-        ),
-      });
-    }
-    showNotification("success", `Nome atualizado para "${newName}".`);
   };
 
   const prioritiesList = priorities.state === "ready" ? priorities.value : [];
   const journeysList = journeys.state === "ready" ? journeys.value : [];
 
-  // Meta diária customizável pelo usuário por workspace (com persistência local)
-  const [dailyTargetRevenue, setDailyTargetRevenue] = React.useState<number>(() => {
-    try {
-      const saved = localStorage.getItem(`sos_sales_daily_target_revenue_${workspaceId}`);
-      if (saved) {
-        const parsed = parseFloat(saved);
-        if (!isNaN(parsed) && parsed > 0) return parsed;
-      }
-    } catch {}
-    return 2000;
-  });
+  const [dailyTargetRevenue, setDailyTargetRevenue] = React.useState<number>(0);
 
-  const handleEditDailyTarget = () => {
-    const currentVal = dailyTargetRevenue.toString();
+  React.useEffect(() => {
+    setDailyTargetRevenue((operationalSettings?.dailyTargetRevenueMinor ?? 0) / 100);
+  }, [operationalSettings?.dailyTargetRevenueMinor, workspaceId]);
+
+  const handleEditDailyTarget = async () => {
+    const currentVal = dailyTargetRevenue > 0 ? dailyTargetRevenue.toString() : "";
     const input = window.prompt("Definir nova Meta Diária de Vendas (R$):", currentVal);
     if (input !== null) {
       const parsed = parseFloat(input.replace(/[^\d.,]/g, '').replace(',', '.'));
-      if (!isNaN(parsed) && parsed > 0) {
-        setDailyTargetRevenue(parsed);
+      if (!isNaN(parsed) && parsed >= 0) {
+        setActionInProgress(true);
         try {
-          localStorage.setItem(`sos_sales_daily_target_revenue_${workspaceId}`, parsed.toString());
-        } catch {}
-        showNotification("success", `Meta diária atualizada para R$ ${parsed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}!`);
+          const saved = await gateway.updateWorkspaceOperationalSettings(workspaceId, {
+            dailyTargetRevenueMinor: Math.round(parsed * 100),
+          });
+          setOperationalSettings(saved);
+          setDailyTargetRevenue(saved.dailyTargetRevenueMinor / 100);
+          showNotification("success", parsed > 0
+            ? `Meta diária salva em R$ ${parsed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`
+            : "Meta diária removida.");
+        } catch (error) {
+          showNotification("error", error instanceof Error ? error.message : "Não foi possível salvar a meta diária.");
+        } finally {
+          setActionInProgress(false);
+        }
       }
     }
   };
@@ -974,17 +964,20 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     const journeys = journeysList;
     const closedJourneys = journeys.filter((j) => j.pipelineStage === 'WON' || (j as any).status === 'closed' || (j as any).status === 'ganho');
     const closedCount = closedJourneys.length;
-    const totalRevenue = closedJourneys.reduce((sum, j) => {
-      const val = (j as any).dealValue || (j as any).revenue || 0;
-      return sum + (typeof val === 'number' ? val : 0);
-    }, 0);
+    const revenueValues = closedJourneys
+      .map((j) => (j as ApiJourney & { totalRevenueMinor?: number }).totalRevenueMinor)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const totalRevenue = revenueValues.length > 0
+      ? revenueValues.reduce((sum, value) => sum + value, 0) / 100
+      : null;
     const targetRevenue = dailyTargetRevenue;
-    const progressPct = targetRevenue > 0 ? Math.min(100, Math.round((totalRevenue / targetRevenue) * 100)) : 0;
-    const missingRevenue = Math.max(0, targetRevenue - totalRevenue);
+    const progressPct = targetRevenue > 0 && totalRevenue !== null ? Math.min(100, Math.round((totalRevenue / targetRevenue) * 100)) : 0;
+    const missingRevenue = targetRevenue > 0 && totalRevenue !== null ? Math.max(0, targetRevenue - totalRevenue) : null;
 
     return {
       closedCount,
       totalRevenue,
+      revenueAvailable: totalRevenue !== null,
       targetRevenue,
       progressPct,
       missingRevenue,
@@ -1041,6 +1034,10 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   // Speedrun Mode: Global Keyboard Shortcuts for High-Volume Operators (Alt+J/K, Alt+Space, Alt+A, Alt+F, Alt+O)
   React.useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName) || target.isContentEditable)) {
+        return;
+      }
       const isAltKey = e.altKey;
 
       // 1. Alt + J or Alt + ArrowDown: Next Lead in Queue
@@ -1141,14 +1138,20 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             title="Clique para editar a meta diária de vendas"
           >
             <span className="text-amber-400">🎯 Meta do Dia:</span>
-            <span className="font-mono text-white font-extrabold">{formatMoney(dailyGoalStats.targetRevenue * 100)}</span>
+            <span className="font-mono text-white font-extrabold">
+              {dailyGoalStats.targetRevenue > 0 ? formatMoney(dailyGoalStats.targetRevenue * 100) : "Não definida"}
+            </span>
             <Edit2 size={11} className="text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
           <span className="text-slate-500 hidden sm:inline">•</span>
           <div className="flex items-center gap-1.5">
             <span className="text-emerald-400 font-bold">✅ Faturado Hoje:</span>
-            <span className="font-mono font-extrabold text-emerald-300">{formatMoney(dailyGoalStats.totalRevenue * 100)}</span>
-            <span className="text-[10px] text-slate-300 font-medium">({dailyGoalStats.closedCount} vendas)</span>
+            <span className="font-mono font-extrabold text-emerald-300">
+              {dailyGoalStats.revenueAvailable ? formatMoney((dailyGoalStats.totalRevenue || 0) * 100) : "Ainda indisponível"}
+            </span>
+            <span className="text-[10px] text-slate-300 font-medium">
+              ({dailyGoalStats.closedCount} vendas com valor persistido)
+            </span>
           </div>
         </div>
 
@@ -1163,9 +1166,14 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             </div>
             <span className="font-mono text-[10.5px] font-bold text-amber-300">{dailyGoalStats.progressPct}%</span>
           </div>
-          <span className="text-[10.5px] font-extrabold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-lg flex items-center gap-1">
-            <span>⚡</span> Falta {formatMoney(dailyGoalStats.missingRevenue * 100)} para a meta!
-          </span>
+          {dailyGoalStats.targetRevenue > 0 && (
+            <span className="text-[10.5px] font-extrabold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <span>⚡</span>
+              {dailyGoalStats.revenueAvailable && dailyGoalStats.missingRevenue !== null
+                ? `Falta ${formatMoney(dailyGoalStats.missingRevenue * 100)} para a meta`
+                : "Receita ainda não disponível para calcular a meta"}
+            </span>
+          )}
         </div>
       </div>
 
@@ -1364,6 +1372,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             <LiveJourneyBody
               view={view}
               workspaceId={workspaceId}
+              commercialConfig={commercialConfig}
               loyaltyMap={loyaltyMap}
               onToggleLoyalty={handleToggleLoyalty}
               isDossierCollapsed={isDossierCollapsed}
@@ -1395,6 +1404,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           onClose={() => setDossierFocusModalOpen(false)}
           view={view}
           workspaceId={workspaceId}
+          gateway={gateway}
           loyaltyMap={loyaltyMap}
           onToggleLoyalty={() => handleToggleLoyalty(view.journey.id, view.journey.contact.phone)}
           onStageChange={handleStageChange}
@@ -1513,6 +1523,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
 function LiveJourneyBody({
   view,
   workspaceId,
+  commercialConfig,
   isDossierCollapsed = false,
   onToggleDossier,
   onOpenDossierFocus,
@@ -1535,8 +1546,9 @@ function LiveJourneyBody({
 }: {
   view: ApiCockpitView;
   workspaceId: string;
+  commercialConfig: WorkspaceCommercialConfig;
   loyaltyMap?: Record<string, CustomerLoyaltyType>;
-  onToggleLoyalty?: (id: string, phone?: string) => void;
+  onToggleLoyalty?: (id: string, phone?: string) => void | Promise<void>;
   isDossierCollapsed?: boolean;
   onToggleDossier?: () => void;
   onOpenDossierFocus?: () => void;
@@ -1552,18 +1564,14 @@ function LiveJourneyBody({
   onOpenSalesVaultModal: () => void;
   onCreateOutboundDraft: (text: string) => void;
   onClearCurrentJourney?: () => void;
-  onUpdateContactName?: (newName: string) => void;
+  onUpdateContactName?: (newName: string) => void | Promise<void>;
   actionInProgress: boolean;
 }) {
   const { journey, acquisitionContexts, messages, decisionState, recommendation, handoff, outcome, knownFacts } = view;
   const acquisition = acquisitionContexts[0] ?? null;
   const contactFirstName = (journey.contact.name || "Cliente").split(" ")[0];
-  const commercialConfig = React.useMemo(() => {
-    return getWorkspaceCommercialConfig(workspaceId);
-  }, [workspaceId]);
-
   const externalAgendaConfig = React.useMemo(() => getExternalAgendaConfig(workspaceId), [workspaceId]);
-  const agendaProviderLabel = externalAgendaConfig.providerLabel || commercialConfig.agendaProviderName || "Google Agenda / Externa";
+  const agendaProviderLabel = commercialConfig.agendaProviderName || externalAgendaConfig.providerLabel || "Agenda não configurada";
 
   const externalAgendaSlots = React.useMemo(() => {
     try {
@@ -1572,7 +1580,7 @@ function LiveJourneyBody({
         return cfg.availableSlotsToday.slice(0, 3).join(", ");
       }
     } catch {}
-    return "14:00, 15:30 ou 16:45";
+    return "";
   }, [workspaceId]);
 
   const [macroAppliedFeedback, setMacroAppliedFeedback] = React.useState<string | null>(null);
@@ -1599,6 +1607,7 @@ function LiveJourneyBody({
   const loyalty = React.useMemo(() => detectCustomerLoyalty(journey as any, loyaltyMap), [journey, loyaltyMap]);
   const [draftText, setDraftText] = React.useState("");
   const [isGeneratingCopilot, setIsGeneratingCopilot] = React.useState(false);
+  const [copilotError, setCopilotError] = React.useState<string | null>(null);
   const [isGeneratingResurrection, setIsGeneratingResurrection] = React.useState(false);
 
   // Calculate time since last interaction for Level 4 Ghosting Resurrection Engine
@@ -1664,7 +1673,9 @@ function LiveJourneyBody({
     if (finalProb >= 75) {
       sentimentTier = "HOT_CLOSER";
       sentimentLabel = "🔥 Super Quente";
-      tacticalRecommendation = "Momento de Ouro: Confirme o horário ou envie os dados de pagamento/Pix agora.";
+      tacticalRecommendation = commercialConfig.pixKey?.trim()
+        ? "Confirme o próximo passo e, se o cliente pedir pagamento, use a chave Pix cadastrada."
+        : "Confirme o próximo passo do atendimento com base nos dados persistidos.";
     } else if (finalProb >= 50) {
       sentimentTier = "WARM_INTEREST";
       sentimentLabel = "⚡ Interesse Ativo";
@@ -1676,7 +1687,7 @@ function LiveJourneyBody({
     }
 
     return { closingProbability: finalProb, sentimentLabel, sentimentTier, tacticalRecommendation };
-  }, [messages]);
+  }, [messages, commercialConfig]);
 
   const objectionBreakers = React.useMemo(() => {
     const name = contactFirstName;
@@ -1688,25 +1699,25 @@ function LiveJourneyBody({
         id: "caro",
         icon: "💸",
         label: "Tá caro",
-        text: `Oi ${name}, compreendo totalmente! Esse valor já contempla nosso atendimento premium com produtos de altíssima qualidade e garantia total. Posso reservar o seu horário hoje?`,
+      text: `Oi ${name}, compreendo. Posso esclarecer o que está incluído na opção cadastrada e confirmar o próximo passo?`,
       },
       {
         id: "pensar",
         icon: "🤔",
         label: "Vou pensar",
-        text: `Com certeza, ${name}! Nossas vagas para esta semana costumam fechar rápido. Quer que eu reserve esse horário por 30 minutinhos sem compromisso para você não perder?`,
+      text: `Com certeza, ${name}. Qual ponto você gostaria de confirmar antes de decidir?`,
       },
       {
         id: "marido",
         icon: "👫",
         label: "Falar com marido",
-        text: `Super entendo, ${name}! Quer que eu te mande um resuminho com os valores e horários disponíveis para você mostrar para ele agora?`,
+      text: `Super entendo, ${name}. Posso enviar um resumo apenas com as informações confirmadas deste atendimento. O que você quer mostrar para ele?`,
       },
       {
         id: "tempo",
         icon: "⏰",
         label: "Sem tempo",
-        text: `Tranquilo, ${name}! Conseguimos um horário express de 45 minutos no início da manhã ou no fim da tarde. Fica melhor para a sua rotina?`,
+        text: `Tranquilo, ${name}! Posso conferir a disponibilidade real assim que a agenda estiver conectada. Qual período costuma funcionar melhor para você?`,
       },
       ...(pixKey ? [{
         id: "pix",
@@ -1727,39 +1738,23 @@ function LiveJourneyBody({
   const [quickToolsOpen, setQuickToolsOpen] = React.useState(false);
   const quickToolsList = React.useMemo<QuickToolItem[]>(() => {
     return [
-      {
+      ...(commercialConfig.pixKey?.trim() ? [{
         id: 'pix',
         category: 'financeiro',
         icon: <CreditCard size={15} className="text-emerald-600" />,
         label: 'Chave Pix Oficial',
         description: 'Envia dados da conta e chave Pix para pagamento imediato',
         action: () => {
-          const companyBundle = (() => {
-            try {
-              const raw = localStorage.getItem('sos_sales_intelligence_bundles_v2');
-              if (raw) {
-                const map = JSON.parse(raw);
-                return map[workspaceId]?.companyProfile;
-              }
-            } catch {}
-            return null;
-          })();
-          const pixKey = companyBundle?.pixKey || companyBundle?.taxId;
-          const companyName = companyBundle?.tradeName || companyBundle?.name || 'nossa empresa';
-          if (pixKey) {
-            setDraftText(`Chave Pix: ${pixKey} (${companyName}) - Envie o comprovante aqui para confirmação imediata!`);
-          } else {
-            setDraftText(`Olá! Para prosseguirmos com seu pedido/agendamento, segue nossa conta para transferência Pix. Envie o comprovante aqui.`);
-          }
+          setDraftText(`Chave Pix: ${commercialConfig.pixKey}${commercialConfig.pixReceiverName ? ` (${commercialConfig.pixReceiverName})` : ''} - Envie o comprovante aqui para confirmação imediata!`);
           setQuickToolsOpen(false);
         },
-      },
+      }] : []),
       {
         id: 'agenda',
         category: 'agenda',
         icon: <Calendar size={15} className="text-purple-600" />,
         label: 'Vagas & Horários Livres',
-        description: 'Consulta grade de horários da Agenda Trinks',
+        description: 'Abre a agenda bloqueada até existir disponibilidade persistida do provedor',
         action: () => {
           onOpenExternalAgenda?.();
           setQuickToolsOpen(false);
@@ -1809,17 +1804,17 @@ function LiveJourneyBody({
           setQuickToolsOpen(false);
         },
       },
-      {
+      ...(commercialConfig.businessAddress?.trim() ? [{
         id: 'location',
         category: 'localizacao',
         icon: <MapPin size={15} className="text-emerald-600" />,
         label: 'Enviar Localização & Endereço',
         description: 'Injeta mapa e ponto de referência no chat',
         action: () => {
-          setDraftText("📍 Nosso endereço: Av. Getúlio Vargas, 1000 - Centro, Chapecó - SC (Estacionamento conveniado no local).");
+          setDraftText(`📍 Nosso endereço: ${commercialConfig.businessAddress}`);
           setQuickToolsOpen(false);
         },
-      },
+      }] : []),
       ...objectionBreakers.map((obj) => ({
         id: `obj_${obj.id}`,
         category: 'objecoes' as const,
@@ -1831,26 +1826,41 @@ function LiveJourneyBody({
           setQuickToolsOpen(false);
         },
       })),
-    ];
-  }, [onOpenExternalAgenda, onOpenFollowUpModal, onOpenWabaButtonsModal, onOpenWabaTemplateModal, onOpenSalesVaultModal, objectionBreakers]);
+    ] as QuickToolItem[];
+  }, [commercialConfig, onOpenExternalAgenda, onOpenFollowUpModal, onOpenWabaButtonsModal, onOpenWabaTemplateModal, onOpenSalesVaultModal, objectionBreakers]);
 
   // Audio Recording & Attachment States
   const [isRecording, setIsRecording] = React.useState(false);
   const [recordingSeconds, setRecordingSeconds] = React.useState(0);
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = React.useRef<Blob[]>([]);
   const recordingTimerRef = React.useRef<any>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [mediaError, setMediaError] = React.useState<string | null>(null);
+  const channelProvider = (journey.channel?.provider || '').toLowerCase();
+  const supportsInlineMedia = channelProvider.includes('waha');
 
   const startRecordingAudio = async () => {
+    if (!supportsInlineMedia) {
+      setMediaError('Áudio bloqueado: este canal não possui upload de mídia homologado no backend.');
+      return;
+    }
+    setMediaError(null);
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = recorder;
-        recorder.start();
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        throw new Error('Este navegador não disponibiliza gravação de áudio.');
       }
-    } catch {
-      // Microphone fallback simulated
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+    } catch (error) {
+      setMediaError(error instanceof Error ? error.message : 'Não foi possível acessar o microfone.');
+      return;
     }
     setIsRecording(true);
     setRecordingSeconds(0);
@@ -1864,16 +1874,31 @@ function LiveJourneyBody({
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    const recorder = mediaRecorderRef.current;
+    const sec = recordingSeconds;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = () => {
+        recorder.stream.getTracks().forEach((t) => t.stop());
+        if (cancel || sec <= 0) return;
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        if (!blob.size) {
+          setMediaError('A gravação não produziu áudio. Nenhum envio foi criado.');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+          if (dataUrl) onCreateOutboundDraft(`[Áudio] Mensagem de voz (${sec}s):::${dataUrl}`);
+        };
+        reader.readAsDataURL(blob);
+      };
       try {
-        mediaRecorderRef.current.stop();
-        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
-      } catch {}
-    }
-
-    if (!cancel && recordingSeconds > 0) {
-      const sec = recordingSeconds;
-      onCreateOutboundDraft(`[Áudio] Mensagem de voz gravada pelo atendente (${sec}s)`);
+        recorder.stop();
+      } catch (error) {
+        setMediaError(error instanceof Error ? error.message : 'Não foi possível finalizar a gravação.');
+      }
+    } else if (!cancel && sec > 0) {
+      setMediaError('A gravação não ficou disponível. Nenhum envio foi criado.');
     }
 
     setIsRecording(false);
@@ -1883,6 +1908,18 @@ function LiveJourneyBody({
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!supportsInlineMedia) {
+      setMediaError('Anexo bloqueado: este canal ainda exige upload público homologado no backend. Nenhum envio foi criado.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setMediaError('Anexo bloqueado: o limite para envio direto é 8 MB.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    setMediaError(null);
 
     const fileName = file.name;
     const isImage = file.type.startsWith('image/');
@@ -1916,13 +1953,9 @@ function LiveJourneyBody({
     return `${m}:${sec < 10 ? '0' : ''}${sec}`;
   };
 
-  const inferredDossier = React.useMemo(
-    () => analyzeConversationDossier(messages || [], journey.contact.name),
-    [messages, journey.contact.name]
-  );
-
   const handleGenerateCopilotSuggestion = async () => {
     setIsGeneratingCopilot(true);
+    setCopilotError(null);
     try {
       const lastCust = [...messages].reverse().find((m) => m.direction === "inbound");
       const customerText = lastCust?.textContent || "";
@@ -1931,23 +1964,24 @@ function LiveJourneyBody({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          journeyStage: journey.pipelineStage || inferredDossier.suggestedStage,
+          journeyStage: journey.pipelineStage || "LEAD",
           contactName: journey.contact.name || "Cliente",
           lastCustomerMessage: customerText,
-          businessName: "SOS Sales",
-          facts: (knownFacts && knownFacts.length > 0 ? knownFacts : inferredDossier.knownFacts)?.map((f) => `${f.key}: ${f.value}`) || [],
+          businessName: commercialConfig.businessName || "Workspace autenticado",
+          facts: knownFacts?.map((f) => `${f.key}: ${f.value}`) || [],
         }),
       });
       const data = await res.json();
-      if (data.suggestedMessage) {
-        setDraftText(data.suggestedMessage);
-      } else if (inferredDossier.suggestedDraftText) {
-        setDraftText(inferredDossier.suggestedDraftText);
+      if (!res.ok) {
+        throw new Error(data?.message || `A API de IA retornou ${res.status}.`);
       }
-    } catch {
-      if (inferredDossier.suggestedDraftText) {
-        setDraftText(inferredDossier.suggestedDraftText);
+      if (!data?.suggestedMessage || typeof data.suggestedMessage !== 'string') {
+        throw new Error('A IA não retornou uma sugestão utilizável para esta conversa.');
       }
+      setDraftText(data.suggestedMessage.trim());
+    } catch (error) {
+      setDraftText('');
+      setCopilotError(error instanceof Error ? error.message : 'Copilot indisponível no momento.');
     } finally {
       setIsGeneratingCopilot(false);
     }
@@ -1978,7 +2012,9 @@ function LiveJourneyBody({
 
     if (diffHours >= 2) {
       const formattedHours = diffHours >= 24 ? `${Math.floor(diffHours / 24)}d` : `${Math.floor(diffHours)}h`;
-      const suggestedReactivation = `Oi ${contactFirstName}, tudo bem? Passando para te avisar que liberamos um horário extra hoje às ${externalAgendaSlots.split(',')[0] || '16:00'}. Quer que eu segure sua vaga antes que preencha?`;
+      const suggestedReactivation = externalAgendaSlots
+        ? `Oi ${contactFirstName}, tudo bem? Passando para te avisar que liberamos um horário extra hoje às ${externalAgendaSlots.split(',')[0]}. Quer que eu segure sua vaga antes que preencha?`
+        : `Oi ${contactFirstName}, tudo bem? Passando para saber se ainda posso ajudar. Quer que eu confira a disponibilidade real para você?`;
 
       return {
         hoursAgoText: formattedHours,
@@ -1989,12 +2025,9 @@ function LiveJourneyBody({
     return null;
   }, [messages, contactFirstName, externalAgendaSlots]);
 
-  const handleUpdateContactName = (newName: string) => {
-    if (journey.contact) {
-      journey.contact.name = newName;
-    }
+  const handleUpdateContactName = async (newName: string) => {
     if (onUpdateContactName) {
-      onUpdateContactName(newName);
+      await onUpdateContactName(newName);
     }
   };
 
@@ -2074,7 +2107,7 @@ function LiveJourneyBody({
                   onClick={() => {
                     const promptVal = window.prompt("Editar nome do contato:", journey.contact.name || "");
                     if (promptVal !== null && promptVal.trim()) {
-                      handleUpdateContactName(promptVal.trim());
+                      void handleUpdateContactName(promptVal.trim());
                     }
                   }}
                   title="Editar nome do contato"
@@ -2101,7 +2134,7 @@ function LiveJourneyBody({
                 <span className="font-mono text-[11px]">{journey.contact.phone}</span>
                 <span className="text-slate-300">•</span>
                 <span className="text-[11px] font-semibold text-slate-700 truncate max-w-[150px]">
-                  {acquisition?.campaignName || inferredDossier.originLabel}
+                  {acquisition?.campaignName || "Origem não atribuída"}
                 </span>
               </div>
             </div>
@@ -2261,20 +2294,25 @@ function LiveJourneyBody({
                 <span className="font-black text-emerald-950 text-[10.5px] uppercase tracking-wider">
                   💡 Menor Próximo Movimento:
                 </span>
-                {inferredDossier.offerHook && (
-                  <span className="hidden md:inline px-1.5 py-0.2 rounded-md bg-emerald-100 border border-emerald-300 text-emerald-800 text-[9.5px] font-bold">
-                    🎯 {inferredDossier.offerHook}
-                  </span>
-                )}
               </div>
               <span className="text-emerald-900 truncate text-[11px] font-medium italic">
-                "{recommendation?.suggestedDraftText || inferredDossier.suggestedDraftText || liveSentiment.tacticalRecommendation}"
+                "{recommendation?.suggestedDraftText || 'Nenhuma sugestão persistida para esta conversa.'}"
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
-                onClick={() => setDraftText(recommendation?.suggestedDraftText || inferredDossier.suggestedDraftText || liveSentiment.tacticalRecommendation)}
+                onClick={() => void handleGenerateCopilotSuggestion()}
+                disabled={isGeneratingCopilot || actionInProgress}
+                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
+                title="Solicitar uma sugestão ao Copilot autenticado"
+              >
+                {isGeneratingCopilot ? 'Gerando…' : 'Gerar com IA'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDraftText(recommendation?.suggestedDraftText || '')}
+                disabled={!recommendation?.suggestedDraftText || isGeneratingCopilot || actionInProgress}
                 className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
                 title="Inserir resposta no campo de mensagem"
               >
@@ -2282,6 +2320,16 @@ function LiveJourneyBody({
               </button>
             </div>
           </div>
+          {copilotError && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-800">
+              Copilot indisponível: {copilotError}
+            </div>
+          )}
+          {mediaError && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900">
+              {mediaError}
+            </div>
+          )}
 
           {/* Audio Recording Active Strip */}
           {isRecording ? (
@@ -2328,7 +2376,7 @@ function LiveJourneyBody({
                     ? "border-emerald-500 bg-emerald-50 text-emerald-800"
                     : "border-slate-200 bg-slate-100/80 hover:bg-slate-200 text-slate-700"
                 }`}
-                title="Abrir Caixa de Ações Rápidas (Pix, Horários, Recursos)"
+                title="Abrir ações rápidas disponíveis para esta conversa"
               >
                 <Zap size={15} className="text-amber-500" />
                 <span className="hidden sm:inline">Atalhos</span>
@@ -2349,9 +2397,9 @@ function LiveJourneyBody({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={actionInProgress}
-                className="p-2 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-100/80 hover:bg-slate-200 text-slate-600 transition shrink-0 cursor-pointer shadow-2xs"
-                title="Anexar Foto, Vídeo, Áudio ou PDF"
+                disabled={actionInProgress || !supportsInlineMedia}
+                className="p-2 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-100/80 hover:bg-slate-200 text-slate-600 transition shrink-0 cursor-pointer shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                title={supportsInlineMedia ? "Anexar Foto, Vídeo, Áudio ou PDF" : "Anexos indisponíveis para este canal até o upload homologado"}
               >
                 <Paperclip size={15} />
               </button>
@@ -2360,9 +2408,9 @@ function LiveJourneyBody({
               <button
                 type="button"
                 onClick={startRecordingAudio}
-                disabled={actionInProgress}
-                className="p-2 rounded-xl border border-slate-200 hover:border-rose-300 bg-slate-100/80 hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition shrink-0 cursor-pointer shadow-2xs"
-                title="Gravar mensagem de voz ao vivo"
+                disabled={actionInProgress || !supportsInlineMedia}
+                className="p-2 rounded-xl border border-slate-200 hover:border-rose-300 bg-slate-100/80 hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition shrink-0 cursor-pointer shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                title={supportsInlineMedia ? "Gravar mensagem de voz ao vivo" : "Áudio indisponível para este canal até o upload homologado"}
               >
                 <Mic size={15} />
               </button>
@@ -2375,9 +2423,9 @@ function LiveJourneyBody({
                 placeholder="Digite uma mensagem ou use um atalho..."
                 className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600 shadow-2xs"
                 onKeyDown={(e) => {
-                  if (e.key === "Tab" && !draftText.trim() && (recommendation?.suggestedDraftText || inferredDossier.suggestedDraftText)) {
+                  if (e.key === "Tab" && !draftText.trim() && recommendation?.suggestedDraftText) {
                     e.preventDefault();
-                    setDraftText(recommendation?.suggestedDraftText || inferredDossier.suggestedDraftText || "");
+                    setDraftText(recommendation.suggestedDraftText);
                     return;
                   }
                   if (e.key === "Enter" && draftText.trim()) {
@@ -2455,20 +2503,16 @@ function LiveDossier({
 }) {
   const { journey, knownFacts, decisionState, handoff, outcome, acquisitionContexts, messages } = view;
 
-  const inferred = React.useMemo(() => {
-    return analyzeConversationDossier(messages || [], journey.contact.name);
-  }, [messages, journey.contact.name]);
-
-  const displayService = journey.primaryServiceOrProduct || inferred.primaryServiceOrProduct;
+  const displayService = journey.primaryServiceOrProduct || 'Serviço não informado';
   const primaryAcquisition = acquisitionContexts?.[0];
-  const displayOriginLabel = primaryAcquisition ? 'Anúncio WhatsApp (Meta Ads)' : inferred.originLabel;
-  const displayCampaignName = primaryAcquisition?.campaignName || inferred.campaignName;
-  const displayOfferHook = primaryAcquisition?.offerHook || inferred.offerHook;
-  const displayEntryMessage = primaryAcquisition?.entryMessage || inferred.entryMessage;
+  const displayOriginLabel = primaryAcquisition ? 'Anúncio WhatsApp (Meta Ads)' : 'Origem não atribuída';
+  const displayCampaignName = primaryAcquisition?.campaignName || 'Sem campanha vinculada';
+  const displayOfferHook = primaryAcquisition?.offerHook;
+  const displayEntryMessage = primaryAcquisition?.entryMessage;
 
-  const displayFacts = knownFacts && knownFacts.length > 0 ? knownFacts : inferred.knownFacts;
-  const displayFriction = decisionState?.primaryFriction || inferred.primaryFriction;
-  const displayFrictionEvidence = decisionState?.frictionEvidence || inferred.frictionEvidence;
+  const displayFacts = knownFacts || [];
+  const displayFriction = decisionState?.primaryFriction;
+  const displayFrictionEvidence = decisionState?.frictionEvidence;
 
   // Local state for tactical operator notes
   const [operatorNotes, setOperatorNotes] = React.useState<Array<{ id: string; tag: string; text: string; time: string }>>([
@@ -2534,7 +2578,7 @@ function LiveDossier({
         <div className="flex items-center justify-between">
           <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 font-heading">Serviço Solicitado</p>
           <span className="rounded bg-blue-100 px-1.5 py-0.2 text-[9.5px] font-bold text-blue-800 uppercase">
-            {stageLabel(journey.pipelineStage || inferred.suggestedStage)}
+            {stageLabel(journey.pipelineStage)}
           </span>
         </div>
         <p className="mt-0.5 text-xs font-bold text-slate-900">

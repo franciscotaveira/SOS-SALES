@@ -761,30 +761,33 @@ function OperationalApp({
       setWorkspaces((prev) => [...prev, createdWs]);
     }
 
-    // Demo-only persistence. Authenticated API mode never stores client setup locally.
-    try {
-      const intelKey = 'sos_sales_intelligence_bundles_v2';
-      const existing = JSON.parse(localStorage.getItem(intelKey) || '{}');
-      existing[createdWs.id] = {
-        workspaceId: createdWs.id,
-        workspaceName: createdWs.name,
-        companyProfile: {
-          tradeName: createdWs.name,
-          legalName: createdWs.name,
-          cnpj: '',
-          tagline: data.tagline,
-          primaryColorHex: '#00A884',
-          whatsappNumber: data.whatsappNumber,
-          ownerEmail: data.ownerEmail,
-          officialChannelType: data.provider,
-          businessSegment: data.businessType,
-        },
-        catalog: [],
-        documents: [],
-        learningRecords: [],
-      };
-      localStorage.setItem(intelKey, JSON.stringify(existing));
-    } catch {}
+    // Demo-only persistence. Authenticated API mode keeps the backend as the
+    // sole source of truth for client workspaces and their configuration.
+    if (salesOsRuntimeConfig.mode !== 'api') {
+      try {
+        const intelKey = 'sos_sales_intelligence_bundles_v2';
+        const existing = JSON.parse(localStorage.getItem(intelKey) || '{}');
+        existing[createdWs.id] = {
+          workspaceId: createdWs.id,
+          workspaceName: createdWs.name,
+          companyProfile: {
+            tradeName: createdWs.name,
+            legalName: createdWs.name,
+            cnpj: '',
+            tagline: data.tagline,
+            primaryColorHex: '#00A884',
+            whatsappNumber: data.whatsappNumber,
+            ownerEmail: data.ownerEmail,
+            officialChannelType: data.provider,
+            businessSegment: data.businessType,
+          },
+          catalog: [],
+          documents: [],
+          learningRecords: [],
+        };
+        localStorage.setItem(intelKey, JSON.stringify(existing));
+      } catch {}
+    }
 
     // Auto switch to the new workspace
     await handleSelectWorkspace(createdWs);

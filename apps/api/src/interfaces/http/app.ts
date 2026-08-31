@@ -20,6 +20,7 @@ import { TrafficProofGateway } from '../../application/ports/traffic-proof-gatew
 import { KnownFactOperationsGateway } from '../../application/ports/known-fact-operations-gateway.js';
 import { AppointmentGateway } from '../../application/ports/appointment-gateway.js';
 import { NotesGateway } from '../../application/ports/notes-gateway.js';
+import { WorkspaceOperationalGateway } from '../../application/ports/workspace-operational-gateway.js';
 import { WorkspaceProvisioningGateway } from '../../application/ports/workspace-provisioning-gateway.js';
 import { WabaChannelInfoGateway } from '../../application/ports/waba-channel-info-gateway.js';
 import { MetaBusinessAgentGateway } from '../../application/ports/meta-business-agent-gateway.js';
@@ -116,6 +117,8 @@ export interface AppDependencies {
   appointmentGateway?: AppointmentGateway;
   /** Authenticated, RLS-scoped operational notes CRUD gateway. */
   notesGateway?: NotesGateway;
+  /** Authenticated, RLS-scoped workspace settings and contact mutations. */
+  workspaceOperationalGateway?: WorkspaceOperationalGateway;
   /** Authenticated first-login workspace auto-provisioning gateway. */
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
   /** Production-owned read gateway for connected Meta WABA channel metadata. */
@@ -276,6 +279,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     knownFactOperationsGateway: dependencies.knownFactOperationsGateway,
     appointmentGateway: dependencies.appointmentGateway,
     notesGateway: dependencies.notesGateway,
+    workspaceOperationalGateway: dependencies.workspaceOperationalGateway,
     workspaceProvisioningGateway: dependencies.workspaceProvisioningGateway,
   });
 

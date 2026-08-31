@@ -11,6 +11,7 @@ import { KnownFactOperationsGateway } from '../../../application/ports/known-fac
 import { AppointmentGateway } from '../../../application/ports/appointment-gateway.js';
 import { NotesGateway } from '../../../application/ports/notes-gateway.js';
 import { WorkspaceProvisioningGateway } from '../../../application/ports/workspace-provisioning-gateway.js';
+import { WorkspaceOperationalGateway } from '../../../application/ports/workspace-operational-gateway.js';
 import { cockpitReadRoutes } from './cockpit-read.js';
 import { handoffOperationRoutes } from './handoff-operations.js';
 import { journeyOperationRoutes } from './journey-operations.js';
@@ -23,6 +24,7 @@ import { notesRoutes } from './notes.js';
 import { workspaceInitRoutes } from './workspace-init.js';
 import { atlasToolsRoutes } from './atlas-tools.js';
 import { autonomousRevenueRoutes } from './autonomous-revenue-routes.js';
+import { workspaceOperationalRoutes } from './workspace-operational.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -43,6 +45,7 @@ export interface OperatorAuthRouteDependencies {
   appointmentGateway?: AppointmentGateway;
   notesGateway?: NotesGateway;
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
+  workspaceOperationalGateway?: WorkspaceOperationalGateway;
 }
 
 function readBearerToken(authorization: string | undefined): string | null {
@@ -147,6 +150,9 @@ export async function operatorAuthRoutes(
   });
   app.register(workspaceInitRoutes, {
     workspaceProvisioningGateway: dependencies.workspaceProvisioningGateway,
+  });
+  app.register(workspaceOperationalRoutes, {
+    workspaceOperationalGateway: dependencies.workspaceOperationalGateway,
   });
   app.register(atlasToolsRoutes, {
     cockpitReadGateway: dependencies.cockpitReadGateway,

@@ -21,7 +21,9 @@ import {
 import {
   ApiCockpitView,
   ApiMessage,
+  HttpSalesOsGateway,
 } from '../../services/salesOsGateway';
+import { OperationalNote } from '../../types/agendaAndNotes';
 import { ContactAvatar } from './ContactAvatar';
 import { MessageMediaRenderer } from './MessageMediaRenderer';
 import { normalizeStage } from '../kanban/LiveCommercialKanbanView';
@@ -33,8 +35,9 @@ interface DossierFocusModalProps {
   onClose: () => void;
   view: ApiCockpitView;
   workspaceId: string;
+  gateway: HttpSalesOsGateway;
   loyaltyMap?: Record<string, CustomerLoyaltyType>;
-  onToggleLoyalty?: () => void;
+  onToggleLoyalty?: () => void | Promise<void>;
   onStageChange: (stage: string) => void;
   onOpenOutcomeModal: () => void;
   onOpenFollowUpModal: () => void;
@@ -44,7 +47,7 @@ interface DossierFocusModalProps {
   onOpenWabaTemplateModal: () => void;
   onOpenFactModal: () => void;
   onCreateOutboundDraft: (text: string) => void;
-  onUpdateContactName?: (name: string) => void;
+  onUpdateContactName?: (name: string) => void | Promise<void>;
   actionInProgress: boolean;
 }
 
@@ -53,6 +56,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
   onClose,
   view,
   workspaceId,
+  gateway,
   loyaltyMap,
   onToggleLoyalty,
   onStageChange,
@@ -73,32 +77,90 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
 
   const [draftText, setDraftText] = React.useState('');
   const [quickToolsOpen, setQuickToolsOpen] = React.useState(false);
-  const [isRecording, setIsRecording] = React.useState(false);
-  const [recordingSeconds, setRecordingSeconds] = React.useState(0);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const [mediaError, setMediaError] = React.useState<string | null>(null);
+  const supportsInlineMedia = (journey.channel?.provider || '').toLowerCase().includes('waha');
+
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!supportsInlineMedia) {
+      setMediaError('Anexos indisponíveis neste canal até o upload homologado. Nenhum envio foi criado.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setMediaError('Anexo bloqueado: o limite para envio direto é 8 MB.');
+      event.target.value = '';
+      return;
+    }
+    setMediaError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+      if (!dataUrl) {
+        setMediaError('Não foi possível ler o anexo. Nenhum envio foi criado.');
+        return;
+      }
+      const kind = file.type.startsWith('image/') ? 'Foto' : file.type.startsWith('video/') ? 'Vídeo' : file.type.startsWith('audio/') ? 'Áudio' : 'Documento';
+      onCreateOutboundDraft(`[${kind}] ${file.name}:::${dataUrl}`);
+    };
+    reader.onerror = () => setMediaError('Não foi possível ler o anexo. Nenhum envio foi criado.');
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
 
   // Notes state
   const [newNoteText, setNewNoteText] = React.useState('');
   const [newNoteTag, setNewNoteTag] = React.useState('Preferência');
   const [isAddingNote, setIsAddingNote] = React.useState(false);
-  const [operatorNotes, setOperatorNotes] = React.useState<Array<{ id: string; text: string; tag: string; time: string }>>([
-    { id: '1', text: 'Cliente prefere horários no final da tarde (após 17h30)', tag: 'Preferência', time: '10:45' },
-  ]);
+  const [operatorNotes, setOperatorNotes] = React.useState<OperationalNote[]>([]);
+  const [notesLoading, setNotesLoading] = React.useState(false);
+  const [notesError, setNotesError] = React.useState<string | null>(null);
 
-  const handleAddNote = () => {
+  React.useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    setNotesLoading(true);
+    setNotesError(null);
+    gateway.listNotes(workspaceId)
+      .then((notes) => {
+        if (active) setOperatorNotes(notes);
+      })
+      .catch((error) => {
+        if (active) {
+          setOperatorNotes([]);
+          setNotesError(error instanceof Error ? error.message : 'Não foi possível carregar as notas salvas.');
+        }
+      })
+      .finally(() => {
+        if (active) setNotesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [gateway, isOpen, journey.id, workspaceId]);
+
+  const handleAddNote = async () => {
     if (!newNoteText.trim()) return;
-    setOperatorNotes((prev) => [
-      ...prev,
-      {
-        id: String(Date.now()),
-        text: newNoteText.trim(),
-        tag: newNoteTag,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      },
-    ]);
-    setNewNoteText('');
     setIsAddingNote(false);
+    try {
+      const note = await gateway.createNote(workspaceId, {
+        title: newNoteTag,
+        content: newNoteText.trim(),
+        category: 'general',
+        tags: [newNoteTag, `journey:${journey.id}`],
+        pinned: false,
+        color: 'purple',
+      });
+      setOperatorNotes((prev) => [note, ...prev]);
+      setNewNoteText('');
+      setNotesError(null);
+    } catch (error) {
+      setNotesError(error instanceof Error ? error.message : 'Não foi possível salvar a nota.');
+      setIsAddingNote(true);
+    }
   };
 
   // Keyboard shortcut: ESC to close
@@ -134,22 +196,11 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
 
   const quickToolsList: QuickToolItem[] = [
     {
-      id: 'pix',
-      category: 'financeiro',
-      icon: <CreditCard size={15} className="text-emerald-600" />,
-      label: 'Chave Pix Oficial',
-      description: 'Envia dados da conta e chave Pix para pagamento imediato',
-      action: () => {
-        setDraftText('Olá! Segue nossa chave Pix para confirmação do seu agendamento/pedido. Envie o comprovante aqui para confirmação imediata!');
-        setQuickToolsOpen(false);
-      },
-    },
-    {
       id: 'agenda',
       category: 'agenda',
       icon: <Calendar size={15} className="text-purple-600" />,
-      label: 'Vagas & Horários Livres',
-      description: 'Consulta grade de horários da Agenda Trinks',
+      label: 'Agenda (integração necessária)',
+      description: 'Abre o estado bloqueado até existir disponibilidade persistida do provedor',
       action: () => {
         onOpenExternalAgenda?.();
         setQuickToolsOpen(false);
@@ -185,17 +236,6 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
       description: 'Áudios gravados, fotos de antes/depois e tabelas',
       action: () => {
         onOpenSalesVaultModal?.();
-        setQuickToolsOpen(false);
-      },
-    },
-    {
-      id: 'location',
-      category: 'localizacao',
-      icon: <MapPin size={15} className="text-emerald-600" />,
-      label: 'Enviar Localização & Endereço',
-      description: 'Injeta mapa e ponto de referência no chat',
-      action: () => {
-        setDraftText('📍 Nosso endereço: Av. Getúlio Vargas, 1000 - Centro, Chapecó - SC (Estacionamento conveniado no local).');
         setQuickToolsOpen(false);
       },
     },
@@ -338,12 +378,13 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                   <span className="font-extrabold text-emerald-950 text-[11px] shrink-0">💡 Próximo Passo:</span>
                   <span className="text-emerald-900 truncate text-[11px] italic">
-                    "{recommendation?.suggestedDraftText || 'Ofereça opções de horários ou chave Pix para fechar'}"
+                    "{recommendation?.suggestedDraftText || 'Nenhuma recomendação persistida para esta conversa.'}"
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setDraftText(recommendation?.suggestedDraftText || '')}
+                  disabled={!recommendation?.suggestedDraftText || actionInProgress}
                   className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer shrink-0"
                 >
                   Usar Resposta
@@ -354,12 +395,11 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
               <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar text-[10.5px]">
                 <span className="text-[9.5px] font-extrabold uppercase text-slate-400 shrink-0">Quebrar:</span>
                 {[
-                  { label: "💰 Tá caro", text: "Entendo perfeitamente! Mas se dividirmos pelo resultado que você vai ter, sai menos de R$ 3 por dia. Vamos garantir sua vaga com essa condição especial?" },
+                  { label: "💰 Tá caro", text: "Entendo perfeitamente. Posso esclarecer o que está incluído e verificar a melhor opção para você. Qual é a sua principal dúvida?" },
                   { label: "🤔 Vou pensar", text: "Claro! Para te ajudar a decidir, qual é o ponto principal que ficou com dúvida? Assim já te passo a resposta certinha." },
                   { label: "👨‍👩‍👧 Falar com marido", text: "Super justo! Se você quiser, posso te mandar um resumo dos benefícios e horários livres para você mostrar pra ele." },
-                  { label: "⏰ Sem tempo", text: "Pensando nisso, nosso atendimento é ultra-otimizado e pontual. Temos horários no início da manhã ou no fim da tarde. Qual prefere?" },
-                  { label: "💳 Enviar Pix", text: "Olá! Segue nossa chave Pix para confirmação. Envie o comprovante aqui para confirmação imediata!" },
-                  { label: "📍 Endereço", text: "📍 Nosso endereço: Av. Getúlio Vargas, 1000 - Centro, Chapecó - SC (Estacionamento conveniado no local)." },
+                  { label: "⏰ Sem tempo", text: "Entendo. Qual período costuma funcionar melhor para você? Assim verifico uma disponibilidade real." },
+                  { label: "📍 Endereço", text: "Posso confirmar o endereço cadastrado do nosso workspace antes de enviar. Quer que eu verifique?" },
                 ].map((obj, i) => (
                   <button
                     key={i}
@@ -372,8 +412,15 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                 ))}
               </div>
 
-              {/* Input Row */}
+            {/* Input Row */}
               <div className="flex items-center gap-1.5 relative">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleFileInputChange}
+                  accept="image/*,video/*,audio/*,application/pdf"
+                />
                 <QuickToolsPopover
                   isOpen={quickToolsOpen}
                   onClose={() => setQuickToolsOpen(false)}
@@ -393,8 +440,9 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-2 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer shadow-2xs shrink-0"
-                  title="Anexar Arquivo"
+                  disabled={!supportsInlineMedia || actionInProgress}
+                  className="p-2 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer shadow-2xs shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={supportsInlineMedia ? "Anexar Arquivo" : "Anexos indisponíveis neste canal até o upload homologado"}
                 >
                   <Paperclip size={15} />
                 </button>
@@ -428,6 +476,9 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                   <Send size={13} /> Enviar
                 </button>
               </div>
+              {mediaError && (
+                <p className="text-[11px] text-amber-800">{mediaError}</p>
+              )}
             </div>
           </div>
 
@@ -520,35 +571,38 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
             <div className="rounded-2xl border border-emerald-300 bg-emerald-50/50 p-3.5 space-y-2 shadow-2xs">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-black text-emerald-950 flex items-center gap-1.5 font-heading uppercase tracking-wider">
-                  <CheckCheck size={14} className="text-emerald-700" /> Fechamento em 1 Toque
+                  <CheckCheck size={14} className="text-emerald-700" /> Próximo passo sugerido
                 </p>
-                <span className="text-[10px] font-mono text-emerald-800 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
-                  Pronto para Enviar
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${recommendation?.suggestedDraftText
+                  ? 'text-emerald-800 bg-emerald-100'
+                  : 'text-slate-600 bg-slate-100'
+                }`}>
+                  {recommendation?.suggestedDraftText ? 'Recomendação persistida' : 'Sem recomendação persistida'}
                 </span>
               </div>
               <p className="text-xs text-emerald-950 italic bg-white p-2 rounded-xl border border-emerald-200">
-                "{recommendation?.suggestedDraftText || 'Olá! Temos horários disponíveis amanhã às 14h e às 17h. Qual período fica melhor para você?'}"
+                "{recommendation?.suggestedDraftText || 'Nenhuma recomendação persistida para esta conversa.'}"
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => {
-                    onCreateOutboundDraft("Temos horários livres amanhã às 14h e 17h. Qual desses fica melhor para você?");
-                    onClose();
+                    if (!recommendation?.suggestedDraftText) return;
+                    // A recommendation is a draft, never an implicit send.
+                    // Keep the operator in the composer for review/editing.
+                    setDraftText(recommendation.suggestedDraftText);
                   }}
-                  className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer flex items-center justify-center gap-1"
+                  disabled={!recommendation?.suggestedDraftText || actionInProgress}
+                  className="p-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer flex items-center justify-center gap-1"
                 >
-                  <Clock size={12} /> 2 Horários da Tarde
+                  <Send size={12} /> Editar no campo
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    onCreateOutboundDraft("Olá! Segue nossa chave Pix para confirmação do sinal. Envie o comprovante para confirmação imediata!");
-                    onClose();
-                  }}
+                  onClick={onOpenExternalAgenda}
                   className="p-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer flex items-center justify-center gap-1"
                 >
-                  <CreditCard size={12} /> Chave Pix Sinal
+                  <Calendar size={12} /> Ver agenda
                 </button>
               </div>
             </div>
@@ -557,7 +611,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
             <div className="rounded-2xl border border-slate-200 bg-white p-3.5 space-y-2 shadow-2xs">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5 font-heading uppercase tracking-wider">
-                  <FileText size={13} className="text-slate-700" /> Anotações do Atendente ({operatorNotes.length})
+                  <FileText size={13} className="text-slate-700" /> Anotações salvas ({operatorNotes.length})
                 </p>
                 <button
                   type="button"
@@ -593,6 +647,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                   <button
                     type="button"
                     onClick={handleAddNote}
+                    disabled={isAddingNote && (!newNoteText.trim() || actionInProgress)}
                     className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold cursor-pointer"
                   >
                     Salvar Nota
@@ -600,16 +655,23 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                 </div>
               )}
 
+              {notesLoading && <p className="text-[11px] text-slate-500">Carregando notas do workspace…</p>}
+              {notesError && <p className="text-[11px] text-rose-700">{notesError}</p>}
+              {!notesLoading && !notesError && operatorNotes.length === 0 && (
+                <p className="text-[11px] text-slate-500">Nenhuma nota salva para este workspace.</p>
+              )}
               <div className="space-y-1.5">
                 {operatorNotes.map((note) => (
                   <div key={note.id} className="p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs space-y-0.5">
                     <div className="flex items-center justify-between">
                       <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-800 rounded font-bold text-[9.5px]">
-                        {note.tag}
+                        {note.tags?.[0] || note.category}
                       </span>
-                      <span className="text-[10px] text-slate-400 font-mono">{note.time}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {new Date(note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
                     </div>
-                    <p className="text-slate-800 text-[11.5px] leading-snug">{note.text}</p>
+                    <p className="text-slate-800 text-[11.5px] leading-snug">{note.content}</p>
                   </div>
                 ))}
               </div>

@@ -133,7 +133,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
 
   // Meta Login Auth States
   const [metaTab, setMetaTab] = useState<'login_auth' | 'manual'>('login_auth');
-  const [metaAppId, setMetaAppId] = useState('2294262161340902');
+  const [metaAppId, setMetaAppId] = useState('');
 
   const [fetchingDatasets, setFetchingDatasets] = useState(false);
   const [discoveredDatasets, setDiscoveredDatasets] = useState<Array<{
@@ -197,6 +197,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   };
 
   const [campaignMappings, setCampaignMappings] = useState<CampaignMappingItem[]>(() => {
+    if (salesOsRuntimeConfig.mode === 'api') return [];
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) return JSON.parse(saved);
@@ -400,7 +401,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   const [isAddingCampaign, setIsAddingCampaign] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState('');
   const [newUtmSource, setNewUtmSource] = useState('instagram');
-  const [newProduct, setNewProduct] = useState('Escova Express');
+  const [newProduct, setNewProduct] = useState('');
   const [newHook, setNewHook] = useState('');
 
   // Save Meta Tracking to Backend API & LocalStorage
@@ -1061,90 +1062,16 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
         )}
       </div>
 
-      {/* Gerador de Links Click WA com UTMs em 1-Clique */}
-      <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 rounded-2xl p-6 border border-emerald-500/30 shadow-md text-white space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-emerald-800/40">
-          <div>
-            <h3 className="text-base font-bold text-emerald-400 flex items-center gap-2">
-              <Link2 className="w-5 h-5 text-emerald-400" />
-              Gerador de Links Click WA para Anúncios Meta Ads
-            </h3>
-            <p className="text-xs text-slate-300 mt-0.5">
-              Gere links diretos com gancho e tags UTM embutidas para colar nos criativos de Instagram e campanhas de anúncios.
-            </p>
-          </div>
-          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
-            Click WA · Atribuição 100%
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Número do WhatsApp:</label>
-            <input
-              type="text"
-              defaultValue="554933401014"
-              id="click-wa-phone"
-              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-emerald-300 font-mono text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Código do Criativo / Anúncio:</label>
-            <input
-              type="text"
-              defaultValue="CRTV_ESC_01"
-              id="click-wa-crtv"
-              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-200 font-mono text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Campanha:</label>
-            <select
-              id="click-wa-camp"
-              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-200 text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
-            >
-              <option value="escova_express_haven">Meta Ads — Escova Express R$59</option>
-              <option value="nanoblading_suzana">Instagram — Nanoblading Suzana</option>
-              <option value="promocao_geral">Campanha Geral / Bio</option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-slate-300 text-xs font-semibold mb-1">Mensagem Inicial do Cliente (com Tag de Rastreamento):</label>
-          <input
-            type="text"
-            id="click-wa-msg"
-            defaultValue="Olá! Vi a promoção da Escova Express por R$ 59 no Instagram e quero agendar hoje."
-            className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-100 text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
-          />
-        </div>
-
-        <div className="p-3.5 bg-black/40 border border-emerald-500/20 rounded-xl space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-400">🔗 Link Pronto para o Gerenciador de Anúncios da Meta:</span>
-            <button
-              type="button"
-              onClick={() => {
-                const phone = (document.getElementById('click-wa-phone') as HTMLInputElement)?.value || '554933401014';
-                const crtv = (document.getElementById('click-wa-crtv') as HTMLInputElement)?.value || 'CRTV_ESC_01';
-                const camp = (document.getElementById('click-wa-camp') as HTMLSelectElement)?.value || 'escova_express';
-                const msg = (document.getElementById('click-wa-msg') as HTMLInputElement)?.value || 'Olá!';
-                const fullMsg = `${msg} [ref: ${crtv}] utm_source=instagram&utm_campaign=${camp}`;
-                const generatedUrl = `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(fullMsg)}`;
-                navigator.clipboard.writeText(generatedUrl);
-                setFeedback({ success: true, message: 'Link Click WA copiado para a área de transferência!' });
-              }}
-              className="px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition cursor-pointer shadow-xs"
-            >
-              Copiar Link Click WA
-            </button>
-          </div>
-          <p className="text-[11px] font-mono text-emerald-200/80 break-all bg-slate-900/60 p-2 rounded-lg border border-slate-800">
-            https://wa.me/554933401014?text=Ol%C3%A1%21%20Vi%20a%20promo%C3%A7%C3%A3o%20da%20Escova%20Express%20por%20R%24%2059%20no%20Instagram%20e%20quero%20agendar%20hoje.%20%5Bref%3A%20CRTV_ESC_01%5D%20utm_source%3Dinstagram%26utm_campaign%3Descova_express_haven
+      {/* Link Click WA só volta quando houver criação e atribuição persistidas pela API. */}
+      {salesOsRuntimeConfig.mode === 'api' && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
+          <p className="flex items-center gap-2 text-sm font-bold"><ShieldCheck className="h-4 w-4" /> Link Click WA indisponível neste release</p>
+          <p className="mt-1 text-xs leading-5 text-amber-800">
+            O gerador anterior criava links locais e alegava atribuição sem registrar campanha, criativo ou origem no backend.
+            Ele permanece bloqueado até que a criação e a reconciliação sejam auditáveis pela API.
           </p>
         </div>
-      </div>
+      )}
 
 
       {/* Modal Add Campaign */}

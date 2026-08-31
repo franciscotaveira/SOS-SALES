@@ -22,6 +22,7 @@ import { getSupabaseClient } from '../../services/supabaseAuth';
 import { ContactAvatar } from '../cockpit/ContactAvatar';
 import { StartConversationModal } from '../conversations/StartConversationModal';
 import { getWorkspaceCommercialConfig } from '../../services/workspaceCommercialConfig';
+import { salesOsRuntimeConfig } from '../../config/runtime';
 
 interface LiveCommercialKanbanViewProps {
   workspaceId: string;
@@ -416,8 +417,9 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   onSelectJourney,
   onSwitchToCockpit,
 }) => {
+  const isLiveApi = salesOsRuntimeConfig.mode === 'api';
   const commercialConfig = useMemo(() => getWorkspaceCommercialConfig(workspaceId), [workspaceId]);
-  const isHairSalon = (commercialConfig.businessType === 'hair_salon') || workspaceId.toLowerCase().includes('haven') || workspaceId.toLowerCase().includes('escovaria');
+  const isHairSalon = commercialConfig.businessType === 'hair_salon';
   const availablePipelines = isHairSalon ? SALON_PIPELINES : UNIVERSAL_PIPELINES;
 
   const [journeys, setJourneys] = useState<ApiJourney[]>([]);
@@ -430,6 +432,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [customColumnsMap, setCustomColumnsMap] = useState<Record<string, { title: string; subtitle?: string }>>(() => {
+    if (isLiveApi) return {};
     try {
       const saved = localStorage.getItem(`sos_sales_custom_kanban_${workspaceId}`);
       if (saved) return JSON.parse(saved);
@@ -449,6 +452,10 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   }, [availablePipelines, activePipelineId, customColumnsMap]);
 
   const handleCustomizePipeline = () => {
+    if (isLiveApi) {
+      setError('Nomes personalizados do funil ainda não têm contrato persistido no backend. Nenhuma alteração local foi aplicada.');
+      return;
+    }
     const colListStr = activePipeline.columns.map((c) => c.title).join(' | ');
     const promptVal = window.prompt(
       'Renomeie as 5 etapas do funil separadas por barra vertical " | " (ex: 1. Novo Lead | 2. Qualificação | 3. Proposta | 4. Negociação | 5. Fechado):',
@@ -464,9 +471,11 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
           }
         });
         setCustomColumnsMap(newMap);
-        try {
-          localStorage.setItem(`sos_sales_custom_kanban_${workspaceId}`, JSON.stringify(newMap));
-        } catch {}
+        if (!isLiveApi) {
+          try {
+            localStorage.setItem(`sos_sales_custom_kanban_${workspaceId}`, JSON.stringify(newMap));
+          } catch {}
+        }
       }
     }
   };

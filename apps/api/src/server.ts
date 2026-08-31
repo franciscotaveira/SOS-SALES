@@ -33,9 +33,11 @@ import { KnownFactOperationsGateway } from './application/ports/known-fact-opera
 import { AppointmentGateway } from './application/ports/appointment-gateway.js';
 import { NotesGateway } from './application/ports/notes-gateway.js';
 import { WorkspaceProvisioningGateway } from './application/ports/workspace-provisioning-gateway.js';
+import { WorkspaceOperationalGateway } from './application/ports/workspace-operational-gateway.js';
 import { WabaChannelInfoGateway } from './application/ports/waba-channel-info-gateway.js';
 import { MetaBusinessAgentGateway } from './application/ports/meta-business-agent-gateway.js';
 import { PostgresWorkspaceProvisioningGateway } from './infrastructure/database/postgres-workspace-provisioning-gateway.js';
+import { PostgresWorkspaceOperationalGateway } from './infrastructure/database/postgres-workspace-operational-gateway.js';
 import { CompositeDependencyHealthProvider } from './infrastructure/health/composite-dependency-health-provider.js';
 import { createProductionRuntimeFromEnvironment } from './infrastructure/runtime/production-runtime.js';
 import { Redis } from 'ioredis';
@@ -70,6 +72,7 @@ export interface RuntimeDependencies {
   appointmentGateway?: AppointmentGateway;
   notesGateway?: NotesGateway;
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
+  workspaceOperationalGateway?: WorkspaceOperationalGateway;
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
   metaBusinessAgentGateway?: MetaBusinessAgentGateway;
   trustProxy?: TrustProxyOption;
@@ -133,6 +136,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     { PostgresKnownFactOperationsGateway },
     { PostgresAppointmentGateway },
     { PostgresNotesGateway },
+    { PostgresWorkspaceOperationalGateway },
     { PostgresWabaChannelInfoGateway },
     { dbPool },
   ] = await Promise.all([
@@ -153,6 +157,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     import('./infrastructure/database/postgres-known-fact-operations-gateway.js'),
     import('./infrastructure/database/postgres-appointment-gateway.js'),
     import('./infrastructure/database/postgres-notes-gateway.js'),
+    import('./infrastructure/database/postgres-workspace-operational-gateway.js'),
     import('./infrastructure/database/postgres-waba-channel-info-gateway.js'),
     import('./infrastructure/database/pool.js'),
   ]);
@@ -210,6 +215,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     knownFactOperationsGateway,
     appointmentGateway,
     notesGateway,
+    workspaceOperationalGateway: new PostgresWorkspaceOperationalGateway(dbPool),
     workspaceProvisioningGateway: new PostgresWorkspaceProvisioningGateway(dbPool),
     wabaChannelInfoGateway: new PostgresWabaChannelInfoGateway(dbPool),
     metaBusinessAgentGateway: new (await import('./infrastructure/database/postgres-meta-business-agent-gateway.js')).PostgresMetaBusinessAgentGateway(dbPool),
@@ -326,6 +332,7 @@ async function startComposedServer(
     knownFactOperationsGateway: runtime.knownFactOperationsGateway,
     appointmentGateway: runtime.appointmentGateway,
     notesGateway: runtime.notesGateway,
+    workspaceOperationalGateway: runtime.workspaceOperationalGateway,
     workspaceProvisioningGateway: runtime.workspaceProvisioningGateway,
     wabaChannelInfoGateway: runtime.wabaChannelInfoGateway,
     metaBusinessAgentGateway: runtime.metaBusinessAgentGateway,

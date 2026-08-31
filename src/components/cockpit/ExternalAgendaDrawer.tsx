@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { salesOsRuntimeConfig } from '../../config/runtime';
 import {
   Calendar,
   ExternalLink,
@@ -248,6 +249,21 @@ interface ExternalAgendaDrawerProps {
 export const DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY = 'sos_sales_external_agenda_config_v3';
 
 export function getExternalAgendaConfig(wsId: string): ExternalAgendaConfig {
+  // Production has no availability contract yet. Never read or synthesize a
+  // browser-side agenda configuration there; the drawer will render its
+  // explicit blocked state instead of exposing fixture slots or URLs.
+  if (salesOsRuntimeConfig.mode !== 'demo') {
+    return {
+      enabled: false,
+      provider: 'custom',
+      providerLabel: '',
+      url: '',
+      autoSyncMinutes: 0,
+      targetDate: 'hoje',
+      selectedServiceId: '',
+    };
+  }
+
   try {
     const saved = localStorage.getItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${wsId}`);
     if (saved) return JSON.parse(saved);
@@ -719,9 +735,11 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
         lastSyncedAt: now.toISOString(),
       };
       setConfig(updated);
-      try {
-        localStorage.setItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${workspaceId}`, JSON.stringify(updated));
-      } catch {}
+      if (salesOsRuntimeConfig.mode === 'demo') {
+        try {
+          localStorage.setItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${workspaceId}`, JSON.stringify(updated));
+        } catch {}
+      }
       setIsSyncing(false);
       setSyncNotice(`Grade ${config.providerLabel || 'de Horários'} reanalisada: Linha do tempo e janelas livres recalculadas!`);
       setTimeout(() => setSyncNotice(null), 3500);
@@ -744,9 +762,11 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
       url: editUrl.trim() || preset.defaultUrl,
     };
     setConfig(updated);
-    try {
-      localStorage.setItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${workspaceId}`, JSON.stringify(updated));
-    } catch {}
+    if (salesOsRuntimeConfig.mode === 'demo') {
+      try {
+        localStorage.setItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${workspaceId}`, JSON.stringify(updated));
+      } catch {}
+    }
     setActiveTab('portal');
     setSyncNotice(`Configurações salvas: Conectado a ${updated.providerLabel}!`);
     setTimeout(() => setSyncNotice(null), 3000);

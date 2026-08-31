@@ -1,6 +1,7 @@
 export { WahaWebhookAdapter } from './infrastructure/channels/waha/waha-webhook-adapter.js';
 export { WahaLidIdentityResolver } from './infrastructure/channels/waha/waha-lid-identity-resolver.js';
 export { PostgresNotesGateway } from './infrastructure/database/postgres-notes-gateway.js';
+export { PostgresWorkspaceOperationalGateway } from './infrastructure/database/postgres-workspace-operational-gateway.js';
 export { PostgresWorkspaceProvisioningGateway } from './infrastructure/database/postgres-workspace-provisioning-gateway.js';
 export { PostgresWabaChannelInfoGateway } from './infrastructure/database/postgres-waba-channel-info-gateway.js';
 export { PostgresMetaBusinessAgentGateway } from './infrastructure/database/postgres-meta-business-agent-gateway.js';

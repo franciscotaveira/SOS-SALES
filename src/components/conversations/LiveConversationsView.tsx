@@ -30,6 +30,7 @@ import { LiveWallboardView } from '../monitoring/LiveWallboardView';
 import { ContactAvatar } from '../cockpit/ContactAvatar';
 import { StartConversationModal } from './StartConversationModal';
 import { getWorkspaceCommercialConfig } from '../../services/workspaceCommercialConfig';
+import { salesOsRuntimeConfig } from '../../config/runtime';
 
 interface LiveConversationsViewProps {
   workspaceId: string;
@@ -131,8 +132,9 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
   onSwitchToCockpit,
   initialViewMode = 'list',
 }) => {
+  const isLiveApi = salesOsRuntimeConfig.mode === 'api';
   const commercialConfig = useMemo(() => getWorkspaceCommercialConfig(workspaceId), [workspaceId]);
-  const isHairSalon = (commercialConfig.businessType === 'hair_salon') || workspaceId.toLowerCase().includes('haven') || workspaceId.toLowerCase().includes('escovaria');
+  const isHairSalon = commercialConfig.businessType === 'hair_salon';
 
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'notes' | 'wallboard'>(initialViewMode);
 
@@ -148,6 +150,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [serviceFilter, setServiceFilter] = useState<string>('all');
   const [customServices, setCustomServices] = useState<Array<{ id: string; label: string }>>(() => {
+    if (isLiveApi) return [];
     try {
       const saved = localStorage.getItem(`sos_sales_custom_services_${workspaceId}`);
       if (saved) return JSON.parse(saved);
@@ -193,6 +196,10 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
   }, [customServices, isHairSalon, journeys]);
 
   const handleCustomizeServices = () => {
+    if (isLiveApi) {
+      setError('Filtros personalizados ainda não têm contrato persistido no backend. Nenhuma alteração local foi aplicada.');
+      return;
+    }
     const currentListStr = availableServiceCategories.map((c) => c.label.replace(/^[^\w\s]+\s*/, '')).join(', ');
     const promptVal = window.prompt(
       'Defina as categorias/serviços da sua empresa separados por vírgula (ex: Vendas B2B, Consultoria, Orçamento, Suporte):',
@@ -208,9 +215,11 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
           label: `✨ ${s}`,
         }));
       setCustomServices(items);
-      try {
-        localStorage.setItem(`sos_sales_custom_services_${workspaceId}`, JSON.stringify(items));
-      } catch {}
+      if (!isLiveApi) {
+        try {
+          localStorage.setItem(`sos_sales_custom_services_${workspaceId}`, JSON.stringify(items));
+        } catch {}
+      }
     }
   };
 

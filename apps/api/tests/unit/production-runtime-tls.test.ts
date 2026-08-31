@@ -27,6 +27,8 @@ describe('production database TLS contract', () => {
       expect(source).toContain('resolveDatabaseSslConfig');
       expect(source).toContain('buildReadinessStatuses');
       expect(source).not.toMatch(/rejectUnauthorized\s*:\s*false/);
+      expect(source).not.toContain('EnvironmentWebhookSecretProvider');
+      expect(source).toContain('globalWebhookSecret');
     });
   }
 
@@ -120,7 +122,7 @@ describe('production database TLS contract', () => {
     const promote = readFileSync(PROMOTE_SCRIPT, 'utf8');
     const rollback = readFileSync(ROLLBACK_SCRIPT, 'utf8');
 
-    expect(stage).toContain('apps/api/node_modules/');
+    expect(stage).toContain("${REMOTE_STAGING}/api/node_modules");
     expect(stage).toContain("grep -Eq '^META_VERIFY_TOKEN=[[:space:]]*[^[:space:]]'");
     expect(stage).toContain("grep -Eq '^META_APP_SECRET=[[:space:]]*[^[:space:]]'");
     // Production accepts the single canonical WAHA webhook secret. Requiring
@@ -130,7 +132,7 @@ describe('production database TLS contract', () => {
     expect(stage).not.toContain('WAHA_WEBHOOK_SECRET_[A-Za-z0-9_]');
     expect(promote).toContain('verify_active_release');
     expect(promote).toContain('require_base_release');
-    expect(promote).toContain('verify_release_schema');
+    expect(promote).toContain('verify_linked_schema_ledger');
     expect(promote).toContain('|| return 1');
     expect(promote).toContain('automatic restoration both failed');
     expect(rollback).toContain('recreate_and_verify');

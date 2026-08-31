@@ -15,12 +15,12 @@ import {
   PostgresNotesGateway,
   PostgresInboundIngestionGateway,
   PostgresOutboxProcessingGateway,
-  EnvironmentWebhookSecretProvider,
   PostgresDependencyHealthProvider,
   RedisDependencyHealthProvider,
   WahaLidIdentityResolver,
   WahaWebhookAdapter,
   PostgresWorkspaceProvisioningGateway,
+  PostgresWorkspaceOperationalGateway,
   PostgresWabaChannelInfoGateway,
   PostgresMetaBusinessAgentGateway,
   buildReadinessStatuses,
@@ -94,16 +94,25 @@ export async function createProductionRuntime() {
   const knownFactOperationsGateway = new PostgresKnownFactOperationsGateway(pool);
   const appointmentGateway = new PostgresAppointmentGateway(pool);
   const notesGateway = new PostgresNotesGateway(pool);
+  const workspaceOperationalGateway = new PostgresWorkspaceOperationalGateway(pool);
   const workspaceProvisioningGateway = new PostgresWorkspaceProvisioningGateway(pool);
   const wabaChannelInfoGateway = new PostgresWabaChannelInfoGateway(pool);
   const metaBusinessAgentGateway = new PostgresMetaBusinessAgentGateway(pool);
   const ingestionGateway = new PostgresInboundIngestionGateway(pool);
   const outboxGateway = new PostgresOutboxProcessingGateway(pool);
-  // Prefer a per-channel secret when it exists, but preserve the canonical
-  // global secret used by the current VPS. This matches the verified webhook
-  // provider contract and prevents a restart from making every WAHA callback
-  // fail closed solely because a duplicate environment variable was absent.
-  const secretProvider = new EnvironmentWebhookSecretProvider();
+  // Production provider: resolve only explicit channel/global secrets. The
+  // development-only environment adapter is intentionally not constructed in
+  // this process because it is disabled when NODE_ENV=production.
+  const globalWebhookSecret = process.env.WAHA_WEBHOOK_SECRET?.trim();
+  const secretProvider = {
+    getWebhookSecret: async (channelConnectionId) => {
+      const envKey = `WAHA_WEBHOOK_SECRET_${channelConnectionId.replace(/-/g, '_')}`;
+      const scoped = process.env[envKey]?.trim();
+      if (scoped) return scoped;
+      if (globalWebhookSecret) return globalWebhookSecret;
+      throw new Error(`Missing WAHA webhook secret for channel: ${channelConnectionId}`);
+    },
+  };
   const wahaAdapter = new WahaWebhookAdapter();
 
   const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim();
@@ -129,6 +138,7 @@ export async function createProductionRuntime() {
     knownFactOperationsGateway,
     appointmentGateway,
     notesGateway,
+    workspaceOperationalGateway,
     workspaceProvisioningGateway,
     wabaChannelInfoGateway,
     metaBusinessAgentGateway,

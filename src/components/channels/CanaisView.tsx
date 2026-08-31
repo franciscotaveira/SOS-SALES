@@ -40,9 +40,6 @@ interface CanaisViewProps {
   role?: string;
 }
 
-const DEFAULT_SYSTEM_APP_ID = '2294262161340902';
-
-
 export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'operator' }) => {
   const [activeChannelTab, setActiveChannelTab] = React.useState<'whatsapp' | 'meta_omnichannel'>('whatsapp');
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -54,11 +51,10 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   const [phoneNumberId, setPhoneNumberId] = React.useState('');
   const [wabaId, setWabaId] = React.useState('');
   const [accessToken, setAccessToken] = React.useState('');
-  const [verifyToken, setVerifyToken] = React.useState('mct_waba_verify_2026');
   const [wabaSaving, setWabaSaving] = React.useState(false);
   const [wabaFeedback, setWabaFeedback] = React.useState<{ success?: boolean; message?: string } | null>(null);
   const [wabaTab, setWabaTab] = React.useState<'login_auth' | 'manual'>('login_auth');
-  const [metaAppId, setMetaAppId] = React.useState(DEFAULT_SYSTEM_APP_ID);
+  const [metaAppId, setMetaAppId] = React.useState('');
 
   React.useEffect(() => {
     const defaults = resolveWorkspaceTrackingDefaults(workspace.id, workspace.name);
@@ -289,7 +285,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/configure`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumberId, wabaId, accessToken, verifyToken }),
+        body: JSON.stringify({ phoneNumberId, wabaId, accessToken }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -390,7 +386,11 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
 
   // Popup Facebook Login Trigger
   const triggerFacebookPopupLogin = async () => {
-    const appIdToUse = (metaAppId.trim() || DEFAULT_SYSTEM_APP_ID);
+    const appIdToUse = metaAppId.trim();
+    if (!appIdToUse) {
+      setWabaFeedback({ success: false, message: 'Informe o Meta App ID antes de abrir o login OAuth.' });
+      return;
+    }
     setWabaSaving(true);
     setWabaFeedback(null);
     try {
@@ -892,9 +892,19 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-slate-800 block text-[11px]">Método 1: Login com Popup do Facebook</span>
                         <span className="text-[10px] font-mono text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                          App: {metaAppId || DEFAULT_SYSTEM_APP_ID}
+                          App: {metaAppId || 'não informado'}
                         </span>
                       </div>
+                      <label className="block space-y-1">
+                        <span className="text-[10px] font-bold text-slate-600">Meta App ID</span>
+                        <input
+                          value={metaAppId}
+                          onChange={(event) => setMetaAppId(event.target.value.trim())}
+                          inputMode="numeric"
+                          placeholder="ID público do aplicativo Meta"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
                       <button
 
                         type="button"
@@ -1178,12 +1188,11 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                       https://crm.iaparavendas.tech/api/v1/channels/waba/webhook
                     </code>
                   </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block font-semibold">Token de Verificação (Verify Token):</span>
-                    <code className="text-[11px] font-mono text-emerald-800 select-all block font-bold bg-white px-2 py-1 rounded border border-emerald-200">
-                      mct_waba_verify_2026
-                    </code>
-                  </div>
+                  <p className="text-[10px] leading-relaxed text-slate-600">
+                    O <strong>Verify Token</strong> é um segredo do servidor. Configure o mesmo valor em
+                    <code className="mx-1 rounded bg-white px-1 py-0.5 font-mono text-emerald-800">META_VERIFY_TOKEN</code>
+                    no runtime e no painel da Meta; ele nunca é exibido nem enviado pelo navegador.
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
