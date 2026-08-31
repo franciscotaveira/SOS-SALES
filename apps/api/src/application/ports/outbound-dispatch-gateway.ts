@@ -2,11 +2,24 @@ import { AuthenticatedActor } from './operator-authenticator.js';
 
 export const OUTBOUND_DISPATCH_STATUSES = ['DRAFT', 'APPROVED', 'CLAIMED', 'ACCEPTED', 'FAILED', 'CANCELLED'] as const;
 export type OutboundDispatchStatus = (typeof OUTBOUND_DISPATCH_STATUSES)[number];
+export const WABA_OUTBOUND_MESSAGE_KINDS = ['WABA_TEMPLATE', 'WABA_BUTTONS', 'WABA_LIST', 'WABA_FLOW', 'WABA_MEDIA'] as const;
+export type WabaOutboundMessageKind = (typeof WABA_OUTBOUND_MESSAGE_KINDS)[number];
+export type OutboundMessageKind = 'TEXT' | WabaOutboundMessageKind;
 
 export interface CreateOutboundDraftInput {
   workspaceId: string;
   journeyId: string;
   textContent: string;
+  idempotencyKey: string;
+}
+
+/** Canonical, secret-free payload persisted before an irreversible Meta call. */
+export interface CreateWabaOutboundDraftInput {
+  workspaceId: string;
+  journeyId: string;
+  messageKind: WabaOutboundMessageKind;
+  textContent: string;
+  messagePayload: Record<string, unknown>;
   idempotencyKey: string;
 }
 
@@ -26,8 +39,9 @@ export interface OutboundDispatchRecord {
   journeyId: string;
   contactId: string;
   channelConnectionId: string;
-  messageKind: 'TEXT';
+  messageKind: OutboundMessageKind;
   textContent: string;
+  messagePayload?: Record<string, unknown>;
   status: OutboundDispatchStatus;
   createdAt: string;
   approvedAt?: string;
@@ -56,6 +70,8 @@ export interface ClaimedOutboundDispatch {
   dispatchId: string;
   claimToken: string;
   textContent: string;
+  messageKind?: OutboundMessageKind;
+  messagePayload?: Record<string, unknown>;
   channelConnectionId: string;
   contactId: string;
   contactPhone?: string;
@@ -70,6 +86,7 @@ export interface ClaimedOutboundDispatch {
  */
 export interface OutboundDispatchGateway {
   createDraft(actor: AuthenticatedActor, input: CreateOutboundDraftInput): Promise<OutboundDispatchMutationResult | null>;
+  createWabaDraft?(actor: AuthenticatedActor, input: CreateWabaOutboundDraftInput): Promise<OutboundDispatchMutationResult | null>;
   approve(actor: AuthenticatedActor, input: ApproveOutboundDispatchInput): Promise<OutboundDispatchMutationResult | null>;
   cancel(actor: AuthenticatedActor, input: CancelOutboundDispatchInput): Promise<OutboundDispatchMutationResult | null>;
   get(actor: AuthenticatedActor, workspaceId: string, dispatchId: string): Promise<OutboundDispatchRecord | null>;

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { OutboundDispatchGateway } from '../../application/ports/outbound-dispatch-gateway.js';
+import { ClaimedOutboundDispatch, OutboundDispatchGateway } from '../../application/ports/outbound-dispatch-gateway.js';
 import { WahaOutboundAdapter } from '../channels/waha/waha-outbound-adapter.js';
 import { WabaClient } from '../channels/meta/waba-client.js';
 
@@ -119,12 +119,7 @@ export class WahaOutboundWorker {
             sendResult = { success: false, failureCode: 'WABA_CHANNEL_NOT_CONFIGURED' };
           } else {
             try {
-              const wabaResult = await this.wabaClient.sendText({
-                phoneNumberId: claimed.wabaPhoneNumberId,
-                accessToken: claimed.wabaAccessToken,
-                recipientPhone: claimed.contactPhone,
-                text,
-              });
+              const wabaResult = await this.sendMetaDispatch(claimed);
               sendResult = wabaResult.messageId
                 ? { success: true, providerMessageId: wabaResult.messageId }
                 : { success: false, failureCode: 'WABA_PROVIDER_ID_MISSING' };
@@ -202,6 +197,24 @@ export class WahaOutboundWorker {
     } finally {
       this.isProcessing = false;
     }
+  }
+
+  private async sendMetaDispatch(claimed: ClaimedOutboundDispatch): Promise<{ messageId: string }> {
+    const common = {
+      phoneNumberId: claimed.wabaPhoneNumberId!,
+      accessToken: claimed.wabaAccessToken!,
+      recipientPhone: claimed.contactPhone!,
+    };
+    const payload = claimed.messagePayload || {};
+    switch (claimed.messageKind || 'TEXT') {
+      case 'TEXT': return this.wabaClient.sendText({ ...common, text: claimed.textContent });
+      case 'WABA_TEMPLATE': return this.wabaClient.sendTemplate({ ...common, templateName: String(payload.templateName), languageCode: String(payload.languageCode || 'pt_BR'), headerMediaUrl: typeof payload.headerMediaUrl === 'string' ? payload.headerMediaUrl : undefined, bodyParameters: Array.isArray(payload.bodyParameters) ? payload.bodyParameters.map(String) : [] });
+      case 'WABA_BUTTONS': return this.wabaClient.sendInteractiveButtons({ ...common, bodyText: String(payload.bodyText), headerText: typeof payload.headerText === 'string' ? payload.headerText : undefined, footerText: typeof payload.footerText === 'string' ? payload.footerText : undefined, buttons: Array.isArray(payload.buttons) ? payload.buttons.map((item: any) => ({ id: String(item.id), title: String(item.title) })) : [] });
+      case 'WABA_LIST': return this.wabaClient.sendInteractiveList({ ...common, bodyText: String(payload.bodyText), buttonLabel: String(payload.buttonLabel), headerText: typeof payload.headerText === 'string' ? payload.headerText : undefined, footerText: typeof payload.footerText === 'string' ? payload.footerText : undefined, sections: Array.isArray(payload.sections) ? payload.sections as any : [] });
+      case 'WABA_FLOW': return this.wabaClient.sendFlow({ ...common, flowId: String(payload.flowId), flowCta: String(payload.flowCta), bodyText: String(payload.bodyText), headerText: typeof payload.headerText === 'string' ? payload.headerText : undefined, footerText: typeof payload.footerText === 'string' ? payload.footerText : undefined, screenId: typeof payload.screenId === 'string' ? payload.screenId : undefined, flowData: payload.flowData as Record<string, unknown> | undefined });
+      case 'WABA_MEDIA': return this.wabaClient.sendMedia({ ...common, mediaType: payload.mediaType as 'image' | 'audio' | 'video' | 'document', mediaUrl: String(payload.mediaUrl), caption: typeof payload.caption === 'string' ? payload.caption : undefined, filename: typeof payload.filename === 'string' ? payload.filename : undefined });
+    }
+    throw new Error('Unsupported WABA outbound message kind');
   }
 
   private scheduleNextTick(delayMs: number): void {

@@ -5,6 +5,7 @@ import {
   CancelOutboundDispatchInput,
   ClaimedOutboundDispatch,
   CreateOutboundDraftInput,
+  CreateWabaOutboundDraftInput,
   OutboundDispatchConflictError,
   OutboundDispatchGateway,
   OutboundDispatchMutationResult,
@@ -23,8 +24,9 @@ interface DispatchRow {
   journey_id: string;
   contact_id: string;
   channel_connection_id: string;
-  message_kind: 'TEXT';
+  message_kind: string;
   text_content: string;
+  message_payload: Record<string, unknown> | string | null;
   status: string;
   created_at: Date | string;
   approved_at: Date | string | null;
@@ -80,6 +82,16 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
     });
   }
 
+  async createWabaDraft(actor: AuthenticatedActor, input: CreateWabaOutboundDraftInput): Promise<OutboundDispatchMutationResult | null> {
+    return this.mutate(actor, async (client) => {
+      const query = await client.query<RpcRow>(
+        'SELECT public.create_waba_outbound_draft($1, $2, $3, $4, $5, $6) AS result',
+        [input.workspaceId, input.journeyId, input.messageKind, input.textContent, JSON.stringify(input.messagePayload), input.idempotencyKey],
+      );
+      return parseMutation(query.rows[0]?.result);
+    });
+  }
+
   async approve(actor: AuthenticatedActor, input: ApproveOutboundDispatchInput): Promise<OutboundDispatchMutationResult | null> {
     return this.mutate(actor, async (client) => {
       const query = await client.query<RpcRow>(
@@ -103,21 +115,23 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
   async get(actor: AuthenticatedActor, workspaceId: string, dispatchId: string): Promise<OutboundDispatchRecord | null> {
     return this.withActor(actor, async (client) => {
       const query = await client.query<DispatchRow>(
-        `SELECT id, journey_id, contact_id, channel_connection_id, message_kind, text_content, status,
+        `SELECT id, journey_id, contact_id, channel_connection_id, message_kind, text_content, message_payload, status,
                 created_at, approved_at, cancelled_at, provider_accepted_at, provider_failure_code, provider_failure_at
          FROM public.outbound_dispatches
          WHERE workspace_id = $1 AND id = $2`,
         [workspaceId, dispatchId],
       );
       const row = query.rows[0];
-      if (!row || !isStatus(row.status) || row.message_kind !== 'TEXT') return null;
+      if (!row || !isStatus(row.status) || !['TEXT', 'WABA_TEMPLATE', 'WABA_BUTTONS', 'WABA_LIST', 'WABA_FLOW', 'WABA_MEDIA'].includes(row.message_kind)) return null;
+      const messagePayload = typeof row.message_payload === 'string' ? JSON.parse(row.message_payload) : row.message_payload;
       return {
         dispatchId: row.id,
         journeyId: row.journey_id,
         contactId: row.contact_id,
         channelConnectionId: row.channel_connection_id,
-        messageKind: 'TEXT',
+        messageKind: row.message_kind as OutboundDispatchRecord['messageKind'],
         textContent: row.text_content,
+        ...(messagePayload && typeof messagePayload === 'object' && Object.keys(messagePayload).length > 0 ? { messagePayload } : {}),
         status: row.status,
         createdAt: toIso(row.created_at),
         ...(row.approved_at ? { approvedAt: toIso(row.approved_at) } : {}),
@@ -161,9 +175,11 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
           provider: string;
           public_config: Record<string, unknown> | string;
           secret_payload: Record<string, unknown> | string | null;
+          message_kind: string;
+          message_payload: Record<string, unknown> | string | null;
         }>(
           `SELECT c.phone, cc.session_name, cc.provider, cc.public_config,
-                  secrets.secret_payload
+          secrets.secret_payload, od.message_kind, od.message_payload
            FROM public.outbound_dispatches od
            JOIN public.contacts c ON c.id = od.contact_id
            JOIN public.channel_connections cc ON cc.id = od.channel_connection_id
@@ -186,11 +202,16 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
         const secretPayload = typeof details?.secret_payload === 'string'
           ? JSON.parse(details.secret_payload)
           : (details?.secret_payload || {});
+        const messagePayload = typeof details?.message_payload === 'string'
+          ? JSON.parse(details.message_payload)
+          : (details?.message_payload || {});
 
         return {
           dispatchId: parsed.dispatchId,
           claimToken: parsed.claimToken,
           textContent: parsed.textContent,
+          messageKind: (details?.message_kind || 'TEXT') as ClaimedOutboundDispatch['messageKind'],
+          messagePayload,
           channelConnectionId: parsed.channelConnectionId,
           contactId: parsed.contactId,
           contactPhone: details?.phone,

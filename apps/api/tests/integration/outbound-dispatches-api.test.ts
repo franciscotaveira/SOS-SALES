@@ -94,6 +94,21 @@ describe('Outbound dispatch API — explicit human supervised outbound lifecycle
     await server.close();
   });
 
+  it('OUTBOUND-API-WABA-01: accepts only a typed WABA draft and preserves the JWT actor', async () => {
+    let received: any;
+    const server = app(gateway({ createWabaDraft: async (actor, input) => {
+      received = { actor, input };
+      return { dispatchId: dispatchA, status: 'DRAFT', idempotent: false };
+    } }));
+    const response = await server.inject({ method: 'POST', url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyA}/waba-outbound-drafts`, headers: { authorization, 'idempotency-key': keyA }, payload: { messageKind: 'WABA_BUTTONS', bodyText: 'Como deseja seguir?', buttons: [{ id: 'book', title: 'Agendar' }] } });
+    expect(response.statusCode).toBe(200);
+    expect(received).toMatchObject({ actor: verifiedActor, input: { workspaceId: workspaceA, journeyId: journeyA, messageKind: 'WABA_BUTTONS', textContent: 'Como deseja seguir?', idempotencyKey: keyA } });
+    expect(received.input.messagePayload).toMatchObject({ messageKind: 'WABA_BUTTONS', buttons: [{ id: 'book', title: 'Agendar' }] });
+    const invalid = await server.inject({ method: 'POST', url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyA}/waba-outbound-drafts`, headers: { authorization, 'idempotency-key': keyA }, payload: { messageKind: 'WABA_BUTTONS', bodyText: 'x', buttons: [] } });
+    expect(invalid.statusCode).toBe(422);
+    await server.close();
+  });
+
   it('OUTBOUND-API-02: approves and cancels only with UUID idempotency keys and validated cancellation evidence', async () => {
     let approved: ApproveOutboundDispatchInput | undefined;
     let cancelled: CancelOutboundDispatchInput | undefined;

@@ -50,6 +50,25 @@ describe('WAHA Outbound Worker — Supervised Message Sending', () => {
     }));
   });
 
+  it('OUTBOUND-WORKER-WABA-INTERACTIVE-01: sends typed WABA buttons only through Meta', async () => {
+    const dispatchId = 'd0000000-0000-4000-8000-000000000011';
+    const gateway = {
+      createDraft: vi.fn(), approve: vi.fn(), cancel: vi.fn(), get: vi.fn(),
+      listClaimableDispatches: vi.fn().mockResolvedValue([{ dispatchId, workspaceId: 'w' }]),
+      claimDispatch: vi.fn().mockResolvedValue({ dispatchId, claimToken: 'c0000000-0000-4000-8000-000000000011', textContent: 'Escolha uma opção', messageKind: 'WABA_BUTTONS', messagePayload: { bodyText: 'Escolha uma opção', buttons: [{ id: 'book', title: 'Agendar' }] }, channelConnectionId: 'cc', contactId: 'ct', contactPhone: '+5511999998888', provider: 'meta_cloud', wabaPhoneNumberId: 'meta-phone-id', wabaAccessToken: 'meta-token' }),
+      recordProviderAcceptance: vi.fn().mockResolvedValue({ dispatchId, status: 'ACCEPTED', idempotent: false }), recordProviderFailure: vi.fn(),
+    } as unknown as OutboundDispatchGateway;
+    const waha = new WahaOutboundAdapter({ endpoint: 'http://localhost:3002' });
+    const wahaSend = vi.spyOn(waha, 'sendText');
+    const waba = { sendInteractiveButtons: vi.fn().mockResolvedValue({ messageId: 'wamid.interactive-1' }) };
+    const worker = new WahaOutboundWorker({ dispatchGateway: gateway, outboundAdapter: waha, wabaClient: waba as any, workerId: 'waba-interactive-test' });
+
+    await expect(worker.processSingleBatch()).resolves.toBe(1);
+    expect(waba.sendInteractiveButtons).toHaveBeenCalledWith({ phoneNumberId: 'meta-phone-id', accessToken: 'meta-token', recipientPhone: '+5511999998888', bodyText: 'Escolha uma opção', headerText: undefined, footerText: undefined, buttons: [{ id: 'book', title: 'Agendar' }] });
+    expect(wahaSend).not.toHaveBeenCalled();
+    expect(gateway.recordProviderAcceptance).toHaveBeenCalledWith(expect.objectContaining({ providerMessageId: 'wamid.interactive-1' }));
+  });
+
   it('OUTBOUND-WORKER-01: claims approved dispatches, sends via WAHA and records provider acceptance', async () => {
     const dispatchId = 'd1000000-0000-4000-8000-000000000001';
     const claimToken = 'c1000000-0000-4000-8000-000000000001';
