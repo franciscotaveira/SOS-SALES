@@ -67,6 +67,7 @@ verify_active_release() {
 recreate_active_release() {
   cd "${root}"
   SOS_SALES_RELEASE_ROOT="${current}" docker compose \
+    -p sos-sales \
     --env-file .env.production \
     -f "${current}/docker-compose.yml" \
     up -d --no-deps --force-recreate sos-sales-api caddy || return 1
