@@ -1,12 +1,13 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { NotesGateway } from '../../../application/ports/notes-gateway.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface NotesRouteDependencies {
   notesGateway?: NotesGateway;
 }
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const workspaceParamsSchema = z.object({ workspaceId: uuid });
 const noteParamsSchema = z.object({ workspaceId: uuid, noteId: uuid });
 

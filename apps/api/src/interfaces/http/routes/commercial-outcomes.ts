@@ -9,12 +9,13 @@ import {
 import { CapiClient } from '../../../infrastructure/channels/meta/capi-client.js';
 import { dbPool } from '../../../infrastructure/database/pool.js';
 import { PlaybookEvolutionEngine } from '../../../application/services/playbook-evolution-engine.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface CommercialOutcomeRouteDependencies {
   commercialOutcomeGateway?: CommercialOutcomeGateway;
 }
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const paramsSchema = z.object({ workspaceId: uuid, journeyId: uuid });
 const idempotencySchema = z.object({ 'idempotency-key': uuid });
 const bodySchema = z.object({

@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { WorkspaceProvisioningGateway } from '../../../application/ports/workspace-provisioning-gateway.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface WorkspaceInitRouteDependencies {
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
@@ -60,7 +61,7 @@ export async function workspaceInitRoutes(
     if (!actor) return reply;
     if (!dependencies.workspaceProvisioningGateway) return unavailable(reply);
     const body = clientWorkspaceBodySchema.safeParse(request.body || {});
-    const parentWorkspaceId = z.string().uuid().safeParse(
+    const parentWorkspaceId = canonicalUuid.safeParse(
       (request.params as { parentWorkspaceId?: string }).parentWorkspaceId,
     );
     if (!body.success || !parentWorkspaceId.success) return invalid(reply);
@@ -84,7 +85,7 @@ export async function workspaceInitRoutes(
     const actor = actorOrUnauthorized(request, reply);
     if (!actor) return reply;
     if (!dependencies.workspaceProvisioningGateway) return unavailable(reply);
-    const workspaceId = z.string().uuid().safeParse(
+    const workspaceId = canonicalUuid.safeParse(
       (request.params as { workspaceId?: string }).workspaceId,
     );
     if (!workspaceId.success) return invalid(reply);

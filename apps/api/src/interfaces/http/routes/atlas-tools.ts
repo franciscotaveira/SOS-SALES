@@ -8,13 +8,14 @@ const WAHA_BASE_URL = process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000';
 const WAHA_API_KEY = process.env.WAHA_API_KEY || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
 
 import { getSessionName } from './whatsapp-channel-routes.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface AtlasToolsRouteDependencies {
   cockpitReadGateway?: CockpitReadGateway;
   knownFactOperationsGateway?: KnownFactOperationsGateway;
 }
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const workspaceParamsSchema = z.object({ workspaceId: uuid });
 
 function actorOrUnauthorized(request: FastifyRequest, reply: FastifyReply) {

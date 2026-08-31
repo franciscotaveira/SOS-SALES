@@ -5,12 +5,13 @@ import {
   OutboundDispatchGateway,
   OutboundDispatchRuleViolationError,
 } from '../../../application/ports/outbound-dispatch-gateway.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface OutboundDispatchRouteDependencies {
   outboundDispatchGateway?: OutboundDispatchGateway;
 }
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const journeyParamsSchema = z.object({ workspaceId: uuid, journeyId: uuid });
 const dispatchParamsSchema = z.object({ workspaceId: uuid, dispatchId: uuid });
 const idempotencySchema = z.object({ 'idempotency-key': uuid });
