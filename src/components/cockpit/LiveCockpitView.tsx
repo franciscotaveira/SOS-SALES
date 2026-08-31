@@ -1453,6 +1453,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           workspaceId={workspaceId}
           recipientPhone={view.journey.contact.phone}
           contactName={view.journey.contact.name}
+          onQueueWabaAction={queueWabaAction}
           onSuccessNotification={(msg) => showNotification("success", msg)}
           onError={(err) => showNotification("error", err)}
         />

@@ -36,6 +36,7 @@ interface WabaActionsModalProps {
   onSuccess?: (msg: string) => void;
   onSuccessNotification?: (msg: string) => void;
   onError?: (err: string) => void;
+  onQueueWabaAction?: (payload: Record<string, unknown>) => Promise<void>;
 }
 
 type WabaActionTab = 'flow' | 'pix' | 'buttons' | 'location' | 'product' | 'carousel' | 'call';
@@ -91,6 +92,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
   onSuccess,
   onSuccessNotification,
   onError,
+  onQueueWabaAction,
 }) => {
   const activePhone =
     recipientPhone ||
@@ -198,13 +200,13 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
         if (!mounted) return;
         const available = data?.capabilities || {};
         setCapabilities({
-          flow: available.flow === true,
-          buttons: available.buttons === true,
-          call: available.call === true,
-          pix: available.orderDetails === true,
-          location: available.locationRequest === true,
-          product: available.product === true || available.multiProduct === true,
-          carousel: available.carousel === true,
+          flow: onQueueWabaAction !== undefined && available.flow === true,
+          buttons: onQueueWabaAction !== undefined && available.buttons === true,
+          call: false,
+          pix: false,
+          location: false,
+          product: false,
+          carousel: false,
         });
       })
       .catch(() => {
@@ -214,7 +216,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     return () => {
       mounted = false;
     };
-  }, [isOpen, workspaceId]);
+  }, [isOpen, workspaceId, onQueueWabaAction]);
 
   useEffect(() => {
     if (!capabilities[activeTab]) {
@@ -362,22 +364,12 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     setIsSubmitting(true);
     setFeedback(null);
     try {
-      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-flow`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipientPhone: activePhone,
-          flowId,
-          flowCta,
-          bodyText: flowBodyText,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Erro ao disparar Flow na Meta');
+      if (!onQueueWabaAction) throw new Error('Este fluxo precisa ser aberto dentro de uma conversa supervisionada.');
+      await onQueueWabaAction({ messageKind: 'WABA_FLOW', flowId, flowCta, bodyText: flowBodyText });
 
-      setFeedback({ success: true, message: 'WhatsApp Flow disparado com sucesso no celular do cliente!' });
-      onSuccessNotification?.('WhatsApp Flow enviado!');
-      onSuccess?.(`Flow ${flowId} enviado`);
+      setFeedback({ success: true, message: 'Flow aprovado. Aguardando aceite da Meta.' });
+      onSuccessNotification?.('Flow aprovado; aguardando aceite da Meta.');
+      onSuccess?.(`Flow ${flowId} aprovado`);
       setTimeout(onClose, 1500);
     } catch (err: any) {
       setFeedback({ success: false, message: err.message });
@@ -404,21 +396,12 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
         buttonsList.push({ id: 'btn_opt_3', title: btn3.trim() });
       }
 
-      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-buttons`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipientPhone: activePhone,
-          bodyText: buttonBodyText,
-          buttons: buttonsList,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Erro ao enviar botões interativos');
+      if (!onQueueWabaAction) throw new Error('Este fluxo precisa ser aberto dentro de uma conversa supervisionada.');
+      await onQueueWabaAction({ messageKind: 'WABA_BUTTONS', bodyText: buttonBodyText, buttons: buttonsList });
 
-      setFeedback({ success: true, message: 'Botões interativos enviados com sucesso!' });
-      onSuccessNotification?.('Botões WABA enviados!');
-      onSuccess?.('Botões de resposta rápida enviados');
+      setFeedback({ success: true, message: 'Botões aprovados. Aguardando aceite da Meta.' });
+      onSuccessNotification?.('Botões aprovados; aguardando aceite da Meta.');
+      onSuccess?.('Botões de resposta rápida aprovados');
       setTimeout(onClose, 1500);
     } catch (err: any) {
       setFeedback({ success: false, message: err.message });
