@@ -18,7 +18,7 @@ fi
 verify_linked_schema_ledger() {
   local listing expected
   listing="$(cd "${REPO_ROOT}/apps/api" && npx supabase migration list)"
-  expected="$(find "${REPO_ROOT}/apps/api/supabase/migrations" -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | sed -E 's/^([0-9]{14})_.*/\1/' | sort)"
+  expected="$(find "${REPO_ROOT}/apps/api/supabase/migrations" -maxdepth 1 -type f -name '*.sql' -exec basename {} \; | sed -E 's/^([0-9]{14})_.*/\1/' | sort)"
   printf '%s\n' "${listing}" | node -e '
     const fs = require("node:fs");
     const output = fs.readFileSync(0, "utf8");
