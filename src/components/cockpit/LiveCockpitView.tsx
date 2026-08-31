@@ -473,23 +473,34 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     });
   };
 
+  const queueWabaAction = async (payload: Record<string, unknown>) => {
+    if (!selectedJourneyId) throw new Error("Selecione uma conversa antes de preparar o envio WABA.");
+    const draft = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/journeys/${selectedJourneyId}/waba-outbound-drafts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "idempotency-key": crypto.randomUUID() },
+      body: JSON.stringify(payload),
+    });
+    const draftData = await draft.json();
+    if (!draft.ok || !draftData?.data?.dispatchId) throw new Error(draftData?.message || "Não foi possível preparar o envio WABA.");
+    const approval = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/outbound-dispatches/${draftData.data.dispatchId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "idempotency-key": crypto.randomUUID() },
+      body: JSON.stringify({}),
+    });
+    const approvalData = await approval.json();
+    if (!approval.ok) throw new Error(approvalData?.message || "Não foi possível aprovar o envio WABA.");
+    return approvalData.data;
+  };
+
   const handleSendWabaButtons = async (bodyText: string, buttons: Array<{ id: string; title: string }>) => {
     if (!selectedJourneyId || cockpit.state !== "ready") return;
     setActionInProgress(true);
     try {
-      const recipientPhone = cockpit.value.journey.contact.phone;
-      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-buttons`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipientPhone, bodyText, buttons }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      await queueWabaAction({ messageKind: "WABA_BUTTONS", bodyText, buttons });
+      {
         setWabaButtonsModalOpen(false);
-        setFeedback({ type: "success", message: "Botões interativos WABA enviados com sucesso!" });
+        setFeedback({ type: "success", message: "Botões aprovados. Aguardando aceite da Meta." });
         await refresh();
-      } else {
-        setFeedback({ type: "error", message: data.error || "Falha ao enviar botões WABA." });
       }
     } catch (err: any) {
       setFeedback({ type: "error", message: err.message });
@@ -502,19 +513,11 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     if (!selectedJourneyId || cockpit.state !== "ready") return;
     setActionInProgress(true);
     try {
-      const recipientPhone = cockpit.value.journey.contact.phone;
-      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-list`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipientPhone, bodyText, buttonLabel, sections }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      await queueWabaAction({ messageKind: "WABA_LIST", bodyText, buttonLabel, sections });
+      {
         setWabaButtonsModalOpen(false);
-        setFeedback({ type: "success", message: "Menu de lista WABA enviado com sucesso!" });
+        setFeedback({ type: "success", message: "Menu aprovado. Aguardando aceite da Meta." });
         await refresh();
-      } else {
-        setFeedback({ type: "error", message: data.error || "Falha ao enviar lista WABA." });
       }
     } catch (err: any) {
       setFeedback({ type: "error", message: err.message });
@@ -527,19 +530,11 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     if (!selectedJourneyId || cockpit.state !== "ready") return;
     setActionInProgress(true);
     try {
-      const recipientPhone = cockpit.value.journey.contact.phone;
-      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-flow`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipientPhone, flowId, flowCta, bodyText, screenId }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      await queueWabaAction({ messageKind: "WABA_FLOW", flowId, flowCta, bodyText, screenId });
+      {
         setWabaButtonsModalOpen(false);
-        setFeedback({ type: "success", message: "WhatsApp Flow disparado com sucesso!" });
+        setFeedback({ type: "success", message: "Flow aprovado. Aguardando aceite da Meta." });
         await refresh();
-      } else {
-        setFeedback({ type: "error", message: data.error || "Falha ao disparar Flow." });
       }
     } catch (err: any) {
       setFeedback({ type: "error", message: err.message });
@@ -552,22 +547,14 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     if (!selectedJourneyId || cockpit.state !== "ready") return;
     setActionInProgress(true);
     try {
-      const recipientPhone = cockpit.value.journey.contact.phone;
-      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/waba/send-template`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipientPhone, templateName, languageCode, bodyParameters }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      await queueWabaAction({ messageKind: "WABA_TEMPLATE", templateName, languageCode, bodyParameters });
+      {
         setWabaTemplateModalOpen(false);
         setFeedback({
           type: "success",
-          message: "Template aceito pela Meta. A janela de atendimento só é atualizada quando o cliente responder.",
+          message: "Template aprovado. Aguardando aceite da Meta; a janela só é atualizada quando o cliente responder.",
         });
         await refresh();
-      } else {
-        setFeedback({ type: "error", message: data.error || "Falha ao enviar template WABA." });
       }
     } catch (err: any) {
       setFeedback({ type: "error", message: err.message });
