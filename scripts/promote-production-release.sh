@@ -62,10 +62,20 @@ require_migration_gate() {
 }
 
 verify_release_schema() {
-  DATABASE_SSL_CA_FILE="${release}/certs/supabase-ca.crt" \
-    node "${release}/scripts/verify-production-schema.mjs" \
+  # The VPS intentionally has no host Node.js runtime. Reuse the API image so
+  # this read-only schema gate executes with the same Linux dependencies that
+  # will run the release itself. The staged release is mounted read-only.
+  local node_image
+  node_image="$(docker inspect sos-sales-api --format '{{.Config.Image}}')"
+  docker run --rm \
+    --env-file "${root}/.env.production" \
+    -e DATABASE_SSL_CA_FILE=/release/certs/supabase-ca.crt \
+    -v "${release}:/release:ro" \
+    -w /release/api \
+    "${node_image}" \
+    node /release/scripts/verify-production-schema.mjs \
       --env-file "${root}/.env.production" \
-      --migrations-dir "${release}/api/supabase/migrations"
+      --migrations-dir /release/api/supabase/migrations
 }
 
 require_base_release "${release}"
