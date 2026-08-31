@@ -108,6 +108,15 @@ export class WabaClient {
     return digits;
   }
 
+  /** Meta acceptance is not proven without its provider message identifier. */
+  private requireMessageId(data: unknown, operation: string): string {
+    const messageId = (data as { messages?: Array<{ id?: unknown }> })?.messages?.[0]?.id;
+    if (typeof messageId !== 'string' || messageId.trim().length === 0) {
+      throw new Error(`Meta WABA did not return a message ID for ${operation}`);
+    }
+    return messageId;
+  }
+
   /** Calculate natural human typing delay in ms based on text length */
   public calculateHumanTypingDelay(text: string): number {
     if (!text) return 600;
@@ -144,7 +153,7 @@ export class WabaClient {
     if (!response.ok || data.error) {
       throw new Error(data.error?.message || `Erro Meta WABA: HTTP ${response.status}`);
     }
-    return { messageId: data.messages?.[0]?.id };
+    return { messageId: this.requireMessageId(data, 'text') };
   }
 
   /** Send rich media (Image, Audio voice note, Document, Video) */
@@ -179,7 +188,7 @@ export class WabaClient {
     if (!response.ok || data.error) {
       throw new Error(data.error?.message || `Erro Meta WABA Media: HTTP ${response.status}`);
     }
-    return { messageId: data.messages?.[0]?.id };
+    return { messageId: this.requireMessageId(data, 'media') };
   }
 
   /** Send interactive quick reply buttons (up to 3 buttons) */
@@ -224,7 +233,7 @@ export class WabaClient {
     if (!response.ok || data.error) {
       throw new Error(data.error?.message || `Erro Meta WABA Buttons: HTTP ${response.status}`);
     }
-    return { messageId: data.messages?.[0]?.id };
+    return { messageId: this.requireMessageId(data, 'interactive buttons') };
   }
 
   /** Send interactive list message (menus & catalogs) */
@@ -274,7 +283,7 @@ export class WabaClient {
     if (!response.ok || data.error) {
       throw new Error(data.error?.message || `Erro Meta WABA List: HTTP ${response.status}`);
     }
-    return { messageId: data.messages?.[0]?.id };
+    return { messageId: this.requireMessageId(data, 'interactive list') };
   }
 
   /** Send approved Meta HSM Template (Reopens 24h window) */
@@ -329,7 +338,7 @@ export class WabaClient {
     if (!response.ok || data.error) {
       throw new Error(data.error?.message || `Erro Meta WABA Template: HTTP ${response.status}`);
     }
-    return { messageId: data.messages?.[0]?.id };
+    return { messageId: this.requireMessageId(data, 'template') };
   }
 
   /** Mark incoming message as read (Blue checks) */
@@ -493,7 +502,6 @@ export class WabaClient {
     if (!response.ok || data.error) {
       throw new Error(data.error?.message || `Erro Meta WABA Flow: HTTP ${response.status}`);
     }
-    return { messageId: data.messages?.[0]?.id };
+    return { messageId: this.requireMessageId(data, 'flow') };
   }
 }
-
