@@ -23,8 +23,14 @@ verify_linked_schema_ledger() {
     const fs = require("node:fs");
     const output = fs.readFileSync(0, "utf8");
     const expected = process.argv.slice(1);
-    const matches = [...output.matchAll(/`(\d{14})`\s*\|\s*`(\d{14})`/g)];
-    const remote = new Map(matches.map(([, local, applied]) => [local, applied]));
+    let remote;
+    try {
+      const parsed = JSON.parse(output);
+      remote = new Map((parsed.migrations || []).map(({ local, remote }) => [local, remote]));
+    } catch {
+      const matches = [...output.matchAll(/`(\d{14})`\s*\|\s*`(\d{14})`/g)];
+      remote = new Map(matches.map(([, local, applied]) => [local, applied]));
+    }
     const missing = expected.filter((version) => remote.get(version) !== version);
     if (missing.length) {
       throw new Error(`Supabase migration ledger mismatch: ${missing.join(", ")}`);
