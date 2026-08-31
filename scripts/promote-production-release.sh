@@ -71,10 +71,11 @@ verify_release_schema() {
     --env-file "${root}/.env.production" \
     -e DATABASE_SSL_CA_FILE=/release/certs/supabase-ca.crt \
     -v "${release}:/release:ro" \
+    -v "${root}/.env.production:/runtime.env:ro" \
     -w /release/api \
     "${node_image}" \
-    node /release/scripts/verify-production-schema.mjs \
-      --env-file "${root}/.env.production" \
+    node -- /release/scripts/verify-production-schema.mjs \
+      --env-file /runtime.env \
       --migrations-dir /release/api/supabase/migrations
 }
 
