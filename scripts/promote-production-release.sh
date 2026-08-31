@@ -60,8 +60,11 @@ atomic_link() {
 }
 
 verify_active_release() {
-  curl --retry 6 --retry-delay 2 --retry-connrefused -fsS "${production_url}/health" >/dev/null || return 1
-  curl --retry 6 --retry-delay 2 --retry-connrefused -fsS "${production_url}/ready" >/dev/null || return 1
+  # Caddy may need to reopen HTTPS listeners after a release mount changes.
+  # Keep the release candidate alive long enough for this expected warm-up,
+  # while still restoring automatically on a persistent failure.
+  curl --retry 20 --retry-delay 2 --retry-connrefused -fsS "${production_url}/health" >/dev/null || return 1
+  curl --retry 20 --retry-delay 2 --retry-connrefused -fsS "${production_url}/ready" >/dev/null || return 1
 }
 
 recreate_active_release() {
