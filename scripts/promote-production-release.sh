@@ -4,11 +4,36 @@ set -euo pipefail
 VPS_ALIAS="${VPS_ALIAS:-vps}"
 PRODUCTION_URL="${PRODUCTION_URL:-https://crm.iaparavendas.tech}"
 RELEASE_SHA="${1:-}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [[ ! "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "usage: $0 <40-character-release-sha>" >&2
   exit 1
 fi
+
+# The runtime DATABASE_URL intentionally uses the application database role,
+# which must not read Supabase's internal migration ledger. Verify that ledger
+# from the operator machine using the authenticated Supabase CLI before the
+# VPS can switch the release symlink.
+verify_linked_schema_ledger() {
+  local listing expected
+  listing="$(cd "${REPO_ROOT}/apps/api" && npx supabase migration list)"
+  expected="$(find "${REPO_ROOT}/apps/api/supabase/migrations" -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | sed -E 's/^([0-9]{14})_.*/\1/' | sort)"
+  printf '%s\n' "${listing}" | node -e '
+    const fs = require("node:fs");
+    const output = fs.readFileSync(0, "utf8");
+    const expected = process.argv.slice(1);
+    const matches = [...output.matchAll(/`(\d{14})`\s*\|\s*`(\d{14})`/g)];
+    const remote = new Map(matches.map(([, local, applied]) => [local, applied]));
+    const missing = expected.filter((version) => remote.get(version) !== version);
+    if (missing.length) {
+      throw new Error(`Supabase migration ledger mismatch: ${missing.join(", ")}`);
+    }
+  ' ${expected}
+  echo "[schema-gate] verified linked Supabase migration ledger"
+}
+
+verify_linked_schema_ledger
 
 ssh "${VPS_ALIAS}" "bash -s -- '${RELEASE_SHA}' '${PRODUCTION_URL}'" <<'REMOTE_SCRIPT'
 set -euo pipefail
@@ -61,31 +86,8 @@ require_migration_gate() {
   find "${candidate}/api/supabase/migrations" -type f -name '*.sql' -print -quit | grep -q .
 }
 
-verify_release_schema() {
-  # The VPS intentionally has no host Node.js runtime. Reuse the API image so
-  # this read-only schema gate executes with the same Linux dependencies that
-  # will run the release itself. The staged release is mounted read-only.
-  local node_image
-  node_image="$(docker inspect sos-sales-api --format '{{.Config.Image}}')"
-  docker run --rm \
-    --env-file "${root}/.env.production" \
-    -e DATABASE_SSL_CA_FILE=/release/certs/supabase-ca.crt \
-    -v "${release}:/release:ro" \
-    -v "${root}/.env.production:/runtime.env:ro" \
-    -w /release/api \
-    "${node_image}" \
-    node -- /release/scripts/verify-production-schema.mjs \
-      --env-file /runtime.env \
-      --migrations-dir /release/api/supabase/migrations
-}
-
 require_base_release "${release}"
 require_migration_gate "${release}"
-
-# This must happen before touching current/previous. The verifier is read-only
-# and fails closed when the database has not recorded every migration bundled
-# with this immutable release.
-verify_release_schema
 
 if [[ -L "${current}" ]]; then
   old_release="$(readlink -f "${current}")"
