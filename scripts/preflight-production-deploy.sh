@@ -30,6 +30,10 @@ required_artifacts=(
   "apps/api/dist/release-manifest.json"
   "apps/api/production-runtime.mjs"
   "apps/api/package.json"
+  "apps/api/supabase/migrations/20260814000000_supabase_roles.sql"
+  "apps/api/supabase/config.toml"
+  "scripts/verify-production-schema.mjs"
+  "scripts/PRODUCTION_MIGRATIONS_OPERATOR.md"
   "apps/api/node_modules/.package-lock.json"
   "docker-compose.prod.yml"
   "deploy/docker-compose.prod.yml"
@@ -87,4 +91,11 @@ if ! WAHA_API_KEY=preflight-only SOS_SALES_ENV_FILE=/dev/null docker compose \
   exit 1
 fi
 
-echo "[preflight] production artifacts, release manifest, compose, and Supabase CA are valid"
+if ! WAHA_API_KEY=preflight-only SOS_SALES_ENV_FILE=/dev/null docker compose \
+  -f "${REPO_ROOT}/deploy/docker-compose.prod.yml" \
+  config | grep -F 'APP_ENV: production' >/dev/null; then
+  echo "[preflight] APP_ENV=production is missing from canonical compose" >&2
+  exit 1
+fi
+
+echo "[preflight] production artifacts, migrations, release manifest, compose, and Supabase CA are valid"

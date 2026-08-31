@@ -1456,8 +1456,13 @@ export async function whatsappChannelRoutes(
       });
 
       if (!wahaRes.ok) {
-        const errJson = await wahaRes.json().catch(() => ({}));
-        return reply.status(wahaRes.status).send({ error: errJson.message || 'Falha ao enviar mensagem ao grupo via WAHA.' });
+        const errJson: unknown = await wahaRes.json().catch(() => ({}));
+        const providerMessage = errJson
+          && typeof errJson === 'object'
+          && typeof (errJson as { message?: unknown }).message === 'string'
+          ? (errJson as { message: string }).message
+          : 'Falha ao enviar mensagem ao grupo via WAHA.';
+        return reply.status(wahaRes.status).send({ error: providerMessage });
       }
 
       return { success: true, sentAt: new Date().toISOString() };

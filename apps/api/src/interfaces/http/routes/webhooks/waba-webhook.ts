@@ -61,6 +61,116 @@ export interface WabaWebhookPluginOptions {
   appSecret: string;
 }
 
+type WabaChannelInfo = { id: string | null; workspace_id: string | null };
+type WabaStatusQuery = typeof dbPool.query;
+
+function optionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/** Meta returns errors only for failed message statuses. Preserve them in the
+ * immutable lifecycle event; never put the provider message id or error text in
+ * an application log. */
+export function extractWabaStatusError(statusObj: Record<string, unknown>): {
+  code: string | null;
+  message: string | null;
+} {
+  const errors = Array.isArray(statusObj.errors) ? statusObj.errors : [];
+  const error = errors[0];
+  if (!error || typeof error !== 'object') return { code: null, message: null };
+
+  const candidate = error as Record<string, unknown>;
+  const code = candidate.code === undefined || candidate.code === null
+    ? null
+    : String(candidate.code).trim() || null;
+  const message = optionalString(candidate.message)
+    || optionalString(candidate.title)
+    || optionalString(candidate.error_user_msg);
+  return { code, message };
+}
+
+function messageIdSuffix(messageId: string): string {
+  return messageId.slice(-8);
+}
+
+/**
+ * Persist a Meta lifecycle status. A status without a local message is not a
+ * successful no-op: it is retained as an immutable unmatched webhook receipt
+ * and logged with a redacted message-id suffix for operational reconciliation.
+ */
+export async function persistWabaStatus(
+  params: {
+    channelInfo: WabaChannelInfo;
+    wabaMessageId: string;
+    status: string;
+    providerTimestamp: Date;
+    statusObj: Record<string, unknown>;
+  },
+  log: FastifyRequest['log'],
+  query: WabaStatusQuery = dbPool.query,
+): Promise<{ correlated: boolean }> {
+  const { channelInfo, wabaMessageId, status, providerTimestamp, statusObj } = params;
+  if (!channelInfo.id || !channelInfo.workspace_id) {
+    throw new Error('WABA status persistence requires a resolved channel and workspace');
+  }
+
+  const providerEventId = `waba_status_${wabaMessageId}_${status}_${String(statusObj.timestamp || 'unknown')}`;
+  const providerError = extractWabaStatusError(statusObj);
+  const persisted = await query(
+    `INSERT INTO public.conversation_message_events (
+       id, workspace_id, channel_connection_id, message_id,
+       provider_event_id, status, provider_timestamp, error_code, error_message, raw_payload, created_at
+     )
+     SELECT gen_random_uuid(), m.workspace_id, m.channel_connection_id, m.id,
+            $1, $2, $3, $4, $5, $6, NOW()
+     FROM public.conversation_messages m
+     WHERE m.provider_message_id = $7
+       AND m.channel_connection_id = $8
+     LIMIT 1
+     ON CONFLICT (channel_connection_id, provider_event_id) DO NOTHING
+     RETURNING id`,
+    [
+      providerEventId,
+      status,
+      providerTimestamp.toISOString(),
+      providerError.code,
+      providerError.message,
+      JSON.stringify(statusObj),
+      wabaMessageId,
+      channelInfo.id,
+    ],
+  );
+
+  if ((persisted.rowCount ?? persisted.rows.length) > 0) {
+    return { correlated: true };
+  }
+
+  await query(
+    `INSERT INTO public.inbound_channel_events (
+       id, workspace_id, channel_connection_id, provider, provider_event_id, event_type, raw_payload, received_at
+     ) VALUES (
+       gen_random_uuid(), $1, $2, 'meta_cloud', $3, 'waba.status.unmatched', $4, NOW()
+     ) ON CONFLICT (workspace_id, provider, provider_event_id) DO NOTHING`,
+    [
+      channelInfo.workspace_id,
+      channelInfo.id,
+      `waba_unmatched_status_${wabaMessageId}_${status}_${String(statusObj.timestamp || 'unknown')}`,
+      JSON.stringify(statusObj),
+    ],
+  );
+  log.warn(
+    {
+      channelConnectionId: channelInfo.id,
+      status,
+      providerMessageIdSuffix: messageIdSuffix(wabaMessageId),
+      hasProviderError: Boolean(providerError.code || providerError.message),
+      providerErrorCode: providerError.code,
+    },
+    'WABA status has no matching local outbound message; retained for reconciliation',
+  );
+  return { correlated: false };
+}
+
 function safeCompare(a: string, b: string): boolean {
   const bufA = Buffer.from(a, 'utf8');
   const bufB = Buffer.from(b, 'utf8');
@@ -172,32 +282,16 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
           const providerTimestamp = statusObj.timestamp
             ? new Date(Number(statusObj.timestamp) * 1000)
             : new Date();
-          const providerEventId = `waba_status_${wabaMessageId}_${status}_${statusObj.timestamp || 'unknown'}`;
-
           try {
-            await dbPool.query(
-              `INSERT INTO public.conversation_message_events (
-                 id, workspace_id, channel_connection_id, message_id,
-                 provider_event_id, status, provider_timestamp, raw_payload, created_at
-               )
-               SELECT gen_random_uuid(), m.workspace_id, m.channel_connection_id, m.id,
-                      $1, $2, $3, $4, NOW()
-               FROM public.conversation_messages m
-               WHERE m.provider_message_id = $5
-                 AND m.channel_connection_id = $6
-               LIMIT 1
-               ON CONFLICT (channel_connection_id, provider_event_id) DO NOTHING`,
-              [
-                providerEventId,
-                status,
-                providerTimestamp.toISOString(),
-                JSON.stringify(statusObj),
-                wabaMessageId,
-                resolvedChannelInfo.id,
-              ]
-            );
+            await persistWabaStatus({
+              channelInfo: resolvedChannelInfo,
+              wabaMessageId,
+              status,
+              providerTimestamp,
+              statusObj,
+            }, request.log);
           } catch (err) {
-            request.log.error({ err, providerEventId }, 'Failed to persist WABA message status');
+            request.log.error({ err, status }, 'Failed to persist WABA message status');
             throw err;
           }
         }

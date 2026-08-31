@@ -2,6 +2,7 @@ import { Pool, QueryResult, QueryResultRow } from 'pg';
 import dotenv from 'dotenv';
 
 import { validateLabEnvironmentIsolation } from '../security/lab-environment-guard.js';
+import { resolveDatabaseSslConfig } from '../runtime/production-runtime-helpers.js';
 
 dotenv.config();
 validateLabEnvironmentIsolation();
@@ -12,31 +13,14 @@ const connectionString =
   process.env.DATABASE_URL ||
   'postgresql://postgres:postgres@localhost:55432/postgres';
 
-function getSslConfig(url: string) {
-  const isLocalOrNoSsl =
-    url.includes('localhost') ||
-    url.includes('127.0.0.1') ||
-    url.includes('postgres-lab') ||
-    url.includes('host.docker.internal') ||
-    url.includes('sslmode=disable') ||
-    process.env.DATABASE_SSL === 'false';
-
-  if (isLocalOrNoSsl) {
-    return false;
-  }
-
-  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false' ? false : true;
-  const sslCa = process.env.DATABASE_SSL_CA || process.env.PGSSLROOTCERT;
-  if (sslCa) {
-    return {
-      rejectUnauthorized,
-      ca: sslCa,
-    };
-  }
-
-  return {
-    rejectUnauthorized,
-  };
+/**
+ * Keep the application pool on exactly the same verified-TLS contract as the
+ * production runtime. In particular, a remote database never silently falls
+ * back to the system CA store or `DATABASE_SSL=false`: the trusted CA must be
+ * supplied inline or through DATABASE_SSL_CA_FILE.
+ */
+export function getSslConfig(url: string) {
+  return resolveDatabaseSslConfig(url);
 }
 
 function createPool(): Pool {

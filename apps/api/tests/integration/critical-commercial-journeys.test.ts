@@ -49,8 +49,8 @@ describe('TX Commercial Core — Phase 6: Critical Commercial Journeys QA', () =
     await query(`INSERT INTO workspaces (id, name, slug, active) VALUES ($1, 'Haven Escovaria QA', 'haven-qa', true)`, [workspaceId]);
     await query(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'operator')`, [workspaceId, ownerId, operatorId]);
     await query(`
-      INSERT INTO channel_connections (id, workspace_id, provider, phone_number, name, public_config)
-      VALUES ($1, $2, 'waha', '+554933401014', 'Haven WhatsApp Web', '{"session":"haven-session"}'::jsonb)
+      INSERT INTO channel_connections (id, workspace_id, provider, phone_number, name, public_config, status)
+      VALUES ($1, $2, 'waha', '+554933401014', 'Haven WhatsApp Web', '{"session":"haven-session"}'::jsonb, 'CONNECTED')
     `, [channelId, workspaceId]);
   });
 
@@ -95,7 +95,7 @@ describe('TX Commercial Core — Phase 6: Critical Commercial Journeys QA', () =
     });
     expect(ingest.isDuplicate).toBe(false);
 
-    await worker.processSingleBatch();
+    expect(await worker.processSingleBatch()).toBe(1);
 
     // Verify contact
     const contactRes = await query<{ id: string; phone: string }>(

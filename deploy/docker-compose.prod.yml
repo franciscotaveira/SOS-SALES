@@ -32,6 +32,7 @@ services:
     env_file:
       - ${SOS_SALES_ENV_FILE:-/opt/sos-sales/.env.production}
     environment:
+      - APP_ENV=production
       - NODE_ENV=production
       - PORT=4334
       - HOST=0.0.0.0
