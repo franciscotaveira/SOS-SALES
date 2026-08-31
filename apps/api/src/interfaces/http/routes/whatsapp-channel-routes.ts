@@ -1891,6 +1891,7 @@ export async function whatsappChannelRoutes(
         meta_capi_access_token: _legacyCapiAccessToken,
         _secret_token: _legacySecretToken,
         pageAccessToken: _legacyPageAccessToken,
+        verifyToken: _legacyVerifyToken,
         ...safePublicConfig
       } = publicConfig;
 
