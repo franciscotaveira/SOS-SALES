@@ -233,6 +233,12 @@ O envio humano e o envio de IA devem compartilhar outbox/worker durável, idempo
 retry controlado e DLQ. O aceite do provedor e a persistência precisam ser conciliados;
 falha após aceite não pode gerar reenvio cego.
 
+**Achado de auditoria em 2026-08-30.** O adaptador WABA já rejeita respostas sem
+`messageId`, portanto não confirma aceite vazio. Porém, os recursos interativos
+(botões, listas e Flows) ainda precisam entrar no mesmo ciclo de `outbound_dispatches`
+para que o aceite seja gravado como mensagem/evento e sobreviva ao reload do Cockpit.
+Não tratar essa integração parcial como entrega reconciliada no canário.
+
 #### Implementação local validada em 2026-08-30
 
 - o envio do cockpit agora cria e aprova um dispatch supervisionado, retornando
