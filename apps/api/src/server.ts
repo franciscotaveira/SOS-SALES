@@ -94,6 +94,35 @@ export interface ServerInstance {
   stop: () => Promise<void>;
 }
 
+function redactWebhookVerificationToken(url: string | undefined): string | undefined {
+  if (!url?.includes('hub.verify_token=')) return url;
+
+  try {
+    const [path, query = ''] = url.split('?', 2);
+    const params = new URLSearchParams(query);
+    if (!params.has('hub.verify_token')) return url;
+    params.set('hub.verify_token', '[REDACTED]');
+    return `${path}?${params.toString()}`;
+  } catch {
+    return '[REDACTED_WEBHOOK_VERIFICATION_URL]';
+  }
+}
+
+const productionLogger = {
+  level: 'info',
+  serializers: {
+    req(request: { method?: string; url?: string; host?: string; remoteAddress?: string; remotePort?: number }) {
+      return {
+        method: request.method,
+        url: redactWebhookVerificationToken(request.url),
+        host: request.host,
+        remoteAddress: request.remoteAddress,
+        remotePort: request.remotePort,
+      };
+    },
+  },
+};
+
 export function assertProductionRuntime(runtime: RuntimeDependencies | undefined): asserts runtime is RuntimeDependencies {
   if (!runtime) {
     throw new Error(
@@ -337,7 +366,7 @@ async function startComposedServer(
     wabaChannelInfoGateway: runtime.wabaChannelInfoGateway,
     metaBusinessAgentGateway: runtime.metaBusinessAgentGateway,
     wabaWebhook: wabaWebhookConfig,
-    logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? true : { level: 'info' }),
+    logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? productionLogger : { level: 'info' }),
     trustProxy: runtime.trustProxy ?? false,
   });
 
