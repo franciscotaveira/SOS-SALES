@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Sliders,
   Smartphone,
@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   Zap,
   Radio,
+  UserPlus,
+  Trash2,
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
 import { EmbeddedSignupModal } from './EmbeddedSignupModal';
@@ -32,6 +34,7 @@ interface WorkspaceMember {
   role: 'owner' | 'operator' | 'viewer';
   createdAt: string;
   isCurrentActor: boolean;
+  email?: string | null;
 }
 
 function normalizeTab(tab: string): 'canais' | 'sla' | 'membros' {
@@ -73,6 +76,12 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   }>({ state: 'loading' });
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [membersState, setMembersState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [memberEmail, setMemberEmail] = useState('');
+  const [memberRole, setMemberRole] = useState<'operator' | 'viewer'>('operator');
+  const [memberActionError, setMemberActionError] = useState<string | null>(null);
+  const [isSavingMember, setIsSavingMember] = useState(false);
+  const [removingMembershipId, setRemovingMembershipId] = useState<string | null>(null);
+  const [createdInvite, setCreatedInvite] = useState<{ code: string; email: string; expiresAt: string } | null>(null);
 
   const handleTabChange = (tab: string) => {
     const normalized = normalizeTab(tab);
@@ -116,24 +125,64 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
       .catch(() => undefined);
   }, [workspace.id]);
 
-  useEffect(() => {
-    let active = true;
+  const loadMembers = useCallback(async () => {
     setMembersState('loading');
-    authenticatedFetch(`/api/v1/workspaces/${workspace.id}/members`)
-      .then(async (response) => {
-        if (!response.ok) throw new Error('Não foi possível consultar os membros do workspace.');
-        return response.json();
-      })
-      .then((payload) => {
-        if (!active) return;
-        setMembers(Array.isArray(payload?.data) ? payload.data : []);
-        setMembersState('ready');
-      })
-      .catch(() => {
-        if (active) setMembersState('error');
-      });
-    return () => { active = false; };
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/members`);
+      if (!response.ok) throw new Error('Não foi possível consultar os membros do workspace.');
+      const payload = await response.json();
+      setMembers(Array.isArray(payload?.data) ? payload.data : []);
+      setMembersState('ready');
+    } catch {
+      setMembersState('error');
+    }
   }, [workspace.id]);
+
+  useEffect(() => {
+    void loadMembers();
+  }, [loadMembers]);
+
+  const handleAddMember = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setMemberActionError(null);
+    setIsSavingMember(true);
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/member-invitations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: memberEmail, role: memberRole }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || 'Não foi possível adicionar este operador.');
+      }
+      const payload = await response.json();
+      setCreatedInvite({ code: payload.data.code, email: payload.data.email, expiresAt: payload.data.expiresAt });
+      setMemberEmail('');
+    } catch (error) {
+      setMemberActionError(error instanceof Error ? error.message : 'Não foi possível adicionar este operador.');
+    } finally {
+      setIsSavingMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (member: WorkspaceMember) => {
+    if (!window.confirm(`Remover o acesso de ${member.email || 'este operador'}?`)) return;
+    setMemberActionError(null);
+    setRemovingMembershipId(member.membershipId);
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/members/${member.membershipId}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || 'Não foi possível remover este operador.');
+      }
+      await loadMembers();
+    } catch (error) {
+      setMemberActionError(error instanceof Error ? error.message : 'Não foi possível remover este operador.');
+    } finally {
+      setRemovingMembershipId(null);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -401,6 +450,33 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                 </span>
               </div>
 
+              <form onSubmit={handleAddMember} className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_150px_auto]">
+                <input
+                  type="email"
+                  required
+                  value={memberEmail}
+                  onChange={(event) => setMemberEmail(event.target.value)}
+                  placeholder="E-mail de quem receberá o acesso"
+                  className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                />
+                <select value={memberRole} onChange={(event) => setMemberRole(event.target.value as 'operator' | 'viewer')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-emerald-500">
+                  <option value="operator">Operador</option>
+                  <option value="viewer">Visualização</option>
+                </select>
+                <button type="submit" disabled={isSavingMember} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60">
+                  <UserPlus className="h-3.5 w-3.5" />{isSavingMember ? 'Gerando...' : 'Gerar acesso'}
+                </button>
+                <p className="sm:col-span-3 text-[11px] text-slate-500">Você compartilhará um código de uso único. A pessoa precisa entrar com este mesmo e-mail para aceitar.</p>
+              </form>
+              {memberActionError && <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{memberActionError}</p>}
+              {createdInvite && (
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+                  <p className="font-bold">Acesso gerado para {createdInvite.email}</p>
+                  <p className="mt-1">Compartilhe este código uma única vez. Ele expira em {new Date(createdInvite.expiresAt).toLocaleDateString('pt-BR')}.</p>
+                  <code className="mt-2 block select-all break-all rounded-lg border border-emerald-200 bg-white px-3 py-2 font-mono text-[11px] text-slate-800">{createdInvite.code}</code>
+                </div>
+              )}
+
               <div className="mt-4 divide-y divide-slate-100">
                 {membersState === 'loading' && <p className="py-4 text-xs text-slate-500">Carregando acessos reais...</p>}
                 {membersState === 'error' && <p className="py-4 text-xs text-rose-700">Não foi possível carregar os acessos. Tente atualizar a página.</p>}
@@ -413,17 +489,24 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-bold text-slate-900">{member.isCurrentActor ? 'Você' : 'Operador vinculado'}</p>
-                        <p className="mt-0.5 font-mono text-[10px] text-slate-400">ID {member.userId}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-slate-500">{member.email || `ID ${member.userId}`}</p>
                       </div>
                     </div>
-                    <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-bold ${member.role === 'owner' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
-                      {member.role === 'owner' && <Crown className="mr-1 inline h-3 w-3 text-amber-600" />}{roleLabel[member.role]}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${member.role === 'owner' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                        {member.role === 'owner' && <Crown className="mr-1 inline h-3 w-3 text-amber-600" />}{roleLabel[member.role]}
+                      </span>
+                      {member.role !== 'owner' && (
+                        <button type="button" onClick={() => void handleRemoveMember(member)} disabled={removingMembershipId === member.membershipId} aria-label={`Remover ${member.email || 'operador'}`} className="rounded-md border border-rose-200 p-1.5 text-rose-700 transition hover:bg-rose-50 disabled:opacity-50">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
-            <p className="px-1 text-[11px] text-slate-500">Para convidar ou remover pessoas, o produto precisa primeiro concluir o fluxo seguro de convite pelo provedor de autenticação. Esta tela não simula convites nem alterações locais.</p>
+            <p className="px-1 text-[11px] text-slate-500">O proprietário é protegido contra remoção nesta tela. Para trocar propriedade, use um processo administrativo auditado.</p>
           </div>
         )}
       </div>

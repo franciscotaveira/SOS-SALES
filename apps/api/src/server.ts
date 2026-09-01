@@ -34,10 +34,12 @@ import { AppointmentGateway } from './application/ports/appointment-gateway.js';
 import { NotesGateway } from './application/ports/notes-gateway.js';
 import { WorkspaceProvisioningGateway } from './application/ports/workspace-provisioning-gateway.js';
 import { WorkspaceOperationalGateway } from './application/ports/workspace-operational-gateway.js';
+import { WorkspaceMembershipGateway } from './application/ports/workspace-membership-gateway.js';
 import { WabaChannelInfoGateway } from './application/ports/waba-channel-info-gateway.js';
 import { MetaBusinessAgentGateway } from './application/ports/meta-business-agent-gateway.js';
 import { PostgresWorkspaceProvisioningGateway } from './infrastructure/database/postgres-workspace-provisioning-gateway.js';
 import { PostgresWorkspaceOperationalGateway } from './infrastructure/database/postgres-workspace-operational-gateway.js';
+import { PostgresWorkspaceMembershipGateway } from './infrastructure/database/postgres-workspace-membership-gateway.js';
 import { CompositeDependencyHealthProvider } from './infrastructure/health/composite-dependency-health-provider.js';
 import { createProductionRuntimeFromEnvironment } from './infrastructure/runtime/production-runtime.js';
 import { Redis } from 'ioredis';
@@ -73,6 +75,7 @@ export interface RuntimeDependencies {
   notesGateway?: NotesGateway;
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
   workspaceOperationalGateway?: WorkspaceOperationalGateway;
+  workspaceMembershipGateway?: WorkspaceMembershipGateway;
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
   metaBusinessAgentGateway?: MetaBusinessAgentGateway;
   trustProxy?: TrustProxyOption;
@@ -245,6 +248,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     appointmentGateway,
     notesGateway,
     workspaceOperationalGateway: new PostgresWorkspaceOperationalGateway(dbPool),
+    workspaceMembershipGateway: new PostgresWorkspaceMembershipGateway(dbPool),
     workspaceProvisioningGateway: new PostgresWorkspaceProvisioningGateway(dbPool),
     wabaChannelInfoGateway: new PostgresWabaChannelInfoGateway(dbPool),
     metaBusinessAgentGateway: new (await import('./infrastructure/database/postgres-meta-business-agent-gateway.js')).PostgresMetaBusinessAgentGateway(dbPool),
@@ -363,6 +367,7 @@ async function startComposedServer(
     appointmentGateway: runtime.appointmentGateway,
     notesGateway: runtime.notesGateway,
     workspaceOperationalGateway: runtime.workspaceOperationalGateway,
+    workspaceMembershipGateway: runtime.workspaceMembershipGateway,
     workspaceProvisioningGateway: runtime.workspaceProvisioningGateway,
     wabaChannelInfoGateway: runtime.wabaChannelInfoGateway,
     metaBusinessAgentGateway: runtime.metaBusinessAgentGateway,

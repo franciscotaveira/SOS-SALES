@@ -770,3 +770,23 @@
 - **Operational gate:** Migration e código foram validados somente no Docker Lab. Produção permanece sem deploy e com decisão `NOT_READY_FOR_PRODUCTION_DEPLOY` até checkout limpo, canário controlado e autorização explícita.
 - **Evidence:** `docs/audits/SOS_SALES_FRONT_BACK_ASSURANCE_2026-08-25.md`
 - **Date:** 2026-08-25
+
+---
+
+## Task 31: Acesso multiatendimento por convite vinculado ao e-mail autenticado
+- **Decision:** A associação de operadores ao workspace será concedida por convite de uso único, armazenado somente como hash e aceito apenas por uma sessão Supabase cujo e-mail corresponda ao destinatário. O serviço não consulta nem altera `auth.users`.
+- **Rationale:**
+  1. O runtime de produção possui as permissões de domínio necessárias, mas não recebe `SELECT` em `auth.users`; tentar criar um diretório de usuários pelo backend quebraria o fluxo ou exigiria privilégio excessivo.
+  2. O código cru aparece somente uma vez para o proprietário; banco e logs guardam somente SHA-256, com validade de sete dias.
+  3. O proprietário pode convidar operadores/visualizadores e remover os dois papéis; owner continua protegido contra remoção.
+  4. O convite não cria contas nem assume identidades: o destinatário entra com a própria conta e o JWT verificado é a única fonte do e-mail e `user_id` usados na associação.
+- **Scope:**
+  - `apps/api/supabase/migrations/20260901093000_workspace_member_invitations.sql`
+  - `apps/api/src/application/ports/workspace-membership-gateway.ts`
+  - `apps/api/src/infrastructure/database/postgres-workspace-membership-gateway.ts`
+  - `apps/api/src/interfaces/http/routes/operator-auth.ts`
+  - `src/components/settings/LiveSettingsView.tsx`
+  - `src/components/workspace/WorkspaceInitModal.tsx`
+  - `src/App.tsx`
+- **Operational gate:** Requer migration aditiva aplicada e canário com dois usuários reais de e-mails distintos. Não enviar códigos a terceiros nem alterar a base de usuários durante o deploy.
+- **Date:** 2026-09-01

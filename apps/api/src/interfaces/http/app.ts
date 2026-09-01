@@ -24,6 +24,7 @@ import { WorkspaceOperationalGateway } from '../../application/ports/workspace-o
 import { WorkspaceProvisioningGateway } from '../../application/ports/workspace-provisioning-gateway.js';
 import { WabaChannelInfoGateway } from '../../application/ports/waba-channel-info-gateway.js';
 import { MetaBusinessAgentGateway } from '../../application/ports/meta-business-agent-gateway.js';
+import { WorkspaceMembershipGateway } from '../../application/ports/workspace-membership-gateway.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { publicSupplierRoutes } from './routes/public-supplier-routes.js';
@@ -125,6 +126,8 @@ export interface AppDependencies {
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
   /** Optional capability adapter for Meta Business Agent Platform. */
   metaBusinessAgentGateway?: MetaBusinessAgentGateway;
+  /** Owner-governed member read/add/remove operations. */
+  workspaceMembershipGateway?: WorkspaceMembershipGateway;
   logger?: boolean | Record<string, unknown>;
   /** Disable Fastify's automatic request/response logs when URLs may carry webhook secrets. */
   disableRequestLogging?: boolean;
@@ -284,6 +287,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     notesGateway: dependencies.notesGateway,
     workspaceOperationalGateway: dependencies.workspaceOperationalGateway,
     workspaceProvisioningGateway: dependencies.workspaceProvisioningGateway,
+    workspaceMembershipGateway: dependencies.workspaceMembershipGateway,
   });
 
   // ─── 1. Public Supplier Webhooks & Crypto Handshakes (Protected by Provider Secrets & HMAC) ───

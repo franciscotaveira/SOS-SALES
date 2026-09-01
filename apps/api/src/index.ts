@@ -7,6 +7,7 @@ export { PostgresWabaChannelInfoGateway } from './infrastructure/database/postgr
 export { PostgresMetaBusinessAgentGateway } from './infrastructure/database/postgres-meta-business-agent-gateway.js';
 export { MetaBusinessAgentClient } from './infrastructure/channels/meta/meta-business-agent-client.js';
 export { PostgresWorkspaceDirectory } from './infrastructure/database/postgres-workspace-directory.js';
+export { PostgresWorkspaceMembershipGateway } from './infrastructure/database/postgres-workspace-membership-gateway.js';
 export { PostgresCockpitReadGateway } from './infrastructure/database/postgres-cockpit-read-gateway.js';
 export { PostgresHandoffOperationsGateway } from './infrastructure/database/postgres-handoff-operations-gateway.js';
 export { PostgresJourneyOperationsGateway } from './infrastructure/database/postgres-journey-operations-gateway.js';

@@ -654,7 +654,10 @@ function OperationalApp({
         setCurrentWorkspace(defaultWs ?? null);
 
         if (!defaultWs) {
-          setOperationalError('Sua conta não possui nenhum workspace disponível.');
+          // A signed-in operator may be entering for the first time, either to
+          // create a workspace or to redeem an owner-issued access code.
+          // This is an expected state, not an operational failure.
+          setOperationalError(null);
           return;
         }
 
@@ -904,6 +907,27 @@ function OperationalApp({
               }
             } catch (err: any) {
               setOperationalError(err?.message || 'Falha ao inicializar o workspace.');
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          onAcceptInvite={async (code) => {
+            setIsLoading(true);
+            try {
+              if (!(salesOsGateway instanceof HttpSalesOsGateway)) {
+                throw new Error('O ingresso por convite exige uma sessão autenticada.');
+              }
+              await salesOsGateway.acceptWorkspaceInvitation(code);
+              const wsList = await salesOsGateway.getWorkspaces();
+              if (wsList.length === 0) throw new Error('O convite foi aceito, mas nenhum workspace pôde ser carregado. Atualize a página.');
+              const defaultWs = wsList[0];
+              setOperationalError(null);
+              setWorkspaces(wsList);
+              setCurrentWorkspace(defaultWs);
+              if (defaultWs.operatorRole) setRole(defaultWs.operatorRole);
+            } catch (err: any) {
+              setOperationalError(err?.message || 'Não foi possível aceitar o convite.');
+              throw err;
             } finally {
               setIsLoading(false);
             }

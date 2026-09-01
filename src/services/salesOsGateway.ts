@@ -67,6 +67,11 @@ export interface ApiWorkspaceMember {
   isCurrentActor: boolean;
 }
 
+export interface ApiAcceptedWorkspaceInvitation {
+  workspaceId: string;
+  role: 'owner' | 'operator' | 'viewer';
+}
+
 export type ApiCustomerLoyaltyType = 'NEW' | 'RECURRING';
 
 export interface ApiWorkspaceOperationalSettings {
@@ -324,6 +329,7 @@ export interface SalesOsGateway {
 
   getWorkspaceOperationalSettings(workspaceId: string): Promise<ApiWorkspaceOperationalSettings>;
   listWorkspaceMembers(workspaceId: string): Promise<ApiWorkspaceMember[]>;
+  acceptWorkspaceInvitation(code: string): Promise<ApiAcceptedWorkspaceInvitation>;
   updateWorkspaceOperationalSettings(
     workspaceId: string,
     input: ApiWorkspaceOperationalSettingsPatch,
@@ -919,6 +925,10 @@ export class MockSalesOsGateway implements SalesOsGateway {
     return [];
   }
 
+  async acceptWorkspaceInvitation(_code: string): Promise<ApiAcceptedWorkspaceInvitation> {
+    throw new SalesOsOperationUnavailableError('Aceitar convite de workspace');
+  }
+
   async updateWorkspaceOperationalSettings(
     workspaceId: string,
     input: ApiWorkspaceOperationalSettingsPatch,
@@ -1227,6 +1237,13 @@ export class HttpSalesOsGateway implements SalesOsGateway {
   async listWorkspaceMembers(workspaceId: string): Promise<ApiWorkspaceMember[]> {
     return (await this.request<ApiEnvelope<ApiWorkspaceMember[]>>(
       `/workspaces/${encodeURIComponent(workspaceId)}/members`,
+    )).data;
+  }
+
+  async acceptWorkspaceInvitation(code: string): Promise<ApiAcceptedWorkspaceInvitation> {
+    return (await this.request<ApiEnvelope<ApiAcceptedWorkspaceInvitation>>(
+      '/workspace-member-invitations/accept',
+      { method: 'POST', body: { code } },
     )).data;
   }
 
