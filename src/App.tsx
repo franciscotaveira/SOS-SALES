@@ -791,6 +791,9 @@ function OperationalApp({
 
     // Auto switch to the new workspace
     await handleSelectWorkspace(createdWs);
+    // The next useful action for a new entry-plan customer is connecting the
+    // real WhatsApp channel; do not strand them on an administrative list.
+    setActiveTab('configuracoes');
   };
 
   const handleUpdateJourney = (updated: Journey) => {

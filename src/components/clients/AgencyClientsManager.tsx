@@ -63,7 +63,6 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
   const [newTagline, setNewTagline] = useState('');
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
   const [newWhatsappNumber, setNewWhatsappNumber] = useState('');
-  const [newProvider, setNewProvider] = useState<'waba' | 'waha'>('waba');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -125,7 +124,10 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
           tagline: newTagline.trim() || `Operação comercial dedicada para ${newName.trim()}`,
           ownerEmail: newOwnerEmail.trim(),
           whatsappNumber: newWhatsappNumber.trim(),
-          provider: newProvider,
+          // The entry product starts every account in the official Meta
+          // onboarding path. WAHA remains a controlled fallback in channel
+          // settings, not a technical decision required at account creation.
+          provider: 'waba',
         });
       }
       setSubmitSuccess(true);
@@ -186,7 +188,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
-              Painel central para visualizar workspaces confirmados pelo backend. Criação de subcontas e conexão de WhatsApp exigem contratos operacionais próprios.
+              Crie a empresa primeiro. A conexão oficial do WhatsApp é guiada no próximo passo, sem exigir configuração técnica nesta tela.
             </p>
           </div>
         </div>
@@ -566,19 +568,9 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
                   </select>
                 </div>
 
-                {/* WhatsApp Engine */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Motor de WhatsApp
-                  </label>
-                  <select
-                    value={newProvider}
-                    onChange={(e) => setNewProvider(e.target.value as any)}
-                    className="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-[#00a884]"
-                  >
-                    <option value="waba">Meta WABA Oficial (Cloud API v23.0)</option>
-                    <option value="waha">WhatsApp Web (WAHA Local)</option>
-                  </select>
+                <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 px-3 py-2.5 text-xs text-emerald-100">
+                  <p className="font-bold">WhatsApp Oficial</p>
+                  <p className="mt-1 leading-5 text-emerald-200/80">A conexão Meta Cloud será feita depois da criação. WAHA só aparece se for necessário como alternativa técnica.</p>
                 </div>
               </div>
 
@@ -586,7 +578,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Telefone WhatsApp do Cliente
+                    Telefone WhatsApp do Cliente <span className="normal-case font-normal text-slate-500">(opcional)</span>
                   </label>
                   <input
                     type="text"
@@ -599,7 +591,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    E-mail de referência do cliente
+                    E-mail de referência do cliente <span className="normal-case font-normal text-slate-500">(opcional)</span>
                   </label>
                   <input
                     type="email"
