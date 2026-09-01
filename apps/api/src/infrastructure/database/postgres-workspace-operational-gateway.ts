@@ -45,6 +45,7 @@ function mapRow(row: SettingsRow | undefined, workspaceId: string): WorkspaceOpe
     commercialConfig: parseObject(row?.commercial_config),
     loyaltyOverrides: parseLoyalty(row?.loyalty_overrides),
     dailyTargetRevenueMinor: Math.max(0, Number(row?.daily_target_revenue_minor ?? 0)),
+    slaPolicy: { firstResponseMinutes: 15 },
     updatedAt: row?.updated_at
       ? (row.updated_at instanceof Date ? row.updated_at.toISOString() : new Date(row.updated_at).toISOString())
       : null,
@@ -67,7 +68,13 @@ export class PostgresWorkspaceOperationalGateway implements WorkspaceOperational
           WHERE workspace_id = $1`,
         [workspaceId],
       );
-      return mapRow(result.rows[0], workspaceId);
+      const settings = mapRow(result.rows[0], workspaceId);
+      const sla = await client.query<{ first_response_minutes: number }>(
+        `SELECT first_response_minutes FROM public.workspace_sla_policies WHERE workspace_id = $1`,
+        [workspaceId],
+      );
+      settings.slaPolicy = { firstResponseMinutes: sla.rows[0]?.first_response_minutes ?? 15 };
+      return settings;
     });
   }
 
@@ -108,7 +115,20 @@ export class PostgresWorkspaceOperationalGateway implements WorkspaceOperational
           dailyTargetRevenueMinor,
         ],
       );
-      return mapRow(result.rows[0], workspaceId);
+      if (input.slaPolicy) {
+        await client.query(
+          `INSERT INTO public.workspace_sla_policies (workspace_id, first_response_minutes, changed_by_user_id, changed_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (workspace_id) DO UPDATE SET
+             first_response_minutes = EXCLUDED.first_response_minutes,
+             changed_by_user_id = EXCLUDED.changed_by_user_id,
+             changed_at = NOW()`,
+          [workspaceId, input.slaPolicy.firstResponseMinutes, actor.userId],
+        );
+      }
+      const settings = mapRow(result.rows[0], workspaceId);
+      settings.slaPolicy = { firstResponseMinutes: input.slaPolicy?.firstResponseMinutes ?? current.slaPolicy.firstResponseMinutes };
+      return settings;
     });
   }
 

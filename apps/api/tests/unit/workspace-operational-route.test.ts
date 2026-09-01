@@ -17,6 +17,7 @@ function settings(overrides: Partial<WorkspaceOperationalSettings> = {}): Worksp
     commercialConfig: {},
     loyaltyOverrides: {},
     dailyTargetRevenueMinor: 0,
+    slaPolicy: { firstResponseMinutes: 15 },
     updatedAt: null,
     ...overrides,
   };
@@ -62,6 +63,7 @@ describe('workspace operational routes', () => {
         commercialConfig: input.commercialConfig ?? {},
         loyaltyOverrides: input.loyaltyOverrides ?? {},
         dailyTargetRevenueMinor: input.dailyTargetRevenueMinor ?? 0,
+        slaPolicy: input.slaPolicy ?? { firstResponseMinutes: 15 },
         updatedAt: '2026-08-31T00:00:00.000Z',
       })),
       updateContactName: vi.fn(),
@@ -85,6 +87,7 @@ describe('workspace operational routes', () => {
         commercialConfig: { businessName: 'Cliente real', pixKey: 'pix-real' },
         loyaltyOverrides: { [contactId]: 'RECURRING' },
         dailyTargetRevenueMinor: 125000,
+        slaPolicy: { firstResponseMinutes: 10 },
       },
     });
     expect(update.statusCode).toBe(200);
@@ -93,9 +96,15 @@ describe('workspace operational routes', () => {
         commercialConfig: { businessName: 'Cliente real', pixKey: 'pix-real' },
         loyaltyOverrides: { [contactId]: 'RECURRING' },
         dailyTargetRevenueMinor: 125000,
+        slaPolicy: { firstResponseMinutes: 10 },
       },
     });
     expect(gateway.updateSettings).toHaveBeenCalledTimes(1);
+    expect(gateway.updateSettings).toHaveBeenCalledWith(
+      expect.anything(),
+      workspaceId,
+      expect.objectContaining({ slaPolicy: { firstResponseMinutes: 10 } }),
+    );
 
     await app.close();
   });

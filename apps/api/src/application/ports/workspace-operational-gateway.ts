@@ -12,6 +12,7 @@ export interface WorkspaceOperationalSettings {
   commercialConfig: Record<string, unknown>;
   loyaltyOverrides: Record<string, CustomerLoyaltyType>;
   dailyTargetRevenueMinor: number;
+  slaPolicy: { firstResponseMinutes: number };
   updatedAt: string | null;
 }
 
@@ -19,6 +20,7 @@ export interface UpdateWorkspaceOperationalSettingsInput {
   commercialConfig?: Record<string, unknown>;
   loyaltyOverrides?: Record<string, CustomerLoyaltyType>;
   dailyTargetRevenueMinor?: number;
+  slaPolicy?: { firstResponseMinutes: number };
 }
 
 export interface UpdatedContact {

@@ -66,6 +66,7 @@ export interface ApiWorkspaceOperationalSettings {
   commercialConfig: Record<string, unknown>;
   loyaltyOverrides: Record<string, ApiCustomerLoyaltyType>;
   dailyTargetRevenueMinor: number;
+  slaPolicy: { firstResponseMinutes: number };
   updatedAt: string | null;
 }
 
@@ -73,6 +74,7 @@ export interface ApiWorkspaceOperationalSettingsPatch {
   commercialConfig?: Record<string, unknown>;
   loyaltyOverrides?: Record<string, ApiCustomerLoyaltyType>;
   dailyTargetRevenueMinor?: number;
+  slaPolicy?: { firstResponseMinutes: number };
 }
 
 export interface ApiUpdatedContact {
@@ -898,6 +900,7 @@ export class MockSalesOsGateway implements SalesOsGateway {
       commercialConfig: {},
       loyaltyOverrides: {},
       dailyTargetRevenueMinor: 0,
+      slaPolicy: { firstResponseMinutes: 15 },
       updatedAt: null,
     };
     return JSON.parse(JSON.stringify(settings));
@@ -914,6 +917,7 @@ export class MockSalesOsGateway implements SalesOsGateway {
       commercialConfig: input.commercialConfig ?? current.commercialConfig,
       loyaltyOverrides: input.loyaltyOverrides ?? current.loyaltyOverrides,
       dailyTargetRevenueMinor: input.dailyTargetRevenueMinor ?? current.dailyTargetRevenueMinor,
+      slaPolicy: input.slaPolicy ?? current.slaPolicy,
       updatedAt: new Date().toISOString(),
     };
     this.operationalSettings.set(workspaceId, next);

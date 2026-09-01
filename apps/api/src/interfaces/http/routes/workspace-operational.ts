@@ -35,6 +35,9 @@ const updateSettingsSchema = z.object({
   commercialConfig: commercialConfigSchema.optional(),
   loyaltyOverrides: loyaltyOverridesSchema.optional(),
   dailyTargetRevenueMinor: z.number().int().min(0).max(1_000_000_000_000).optional(),
+  slaPolicy: z.object({
+    firstResponseMinutes: z.number().int().min(1).max(1440),
+  }).strict().optional(),
 }).strict();
 
 const updateContactSchema = z.object({

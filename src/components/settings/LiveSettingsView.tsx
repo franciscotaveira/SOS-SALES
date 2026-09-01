@@ -33,8 +33,9 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
 }) => {
   const [currentTab, setCurrentTab] = useState(activeSubTab);
   const [firstResponseMins, setFirstResponseMins] = useState(15);
-  const [resolutionHours, setResolutionHours] = useState(24);
   const [savedSlaToast, setSavedSlaToast] = useState(false);
+  const [slaError, setSlaError] = useState<string | null>(null);
+  const [isSavingSla, setIsSavingSla] = useState(false);
   const [isEmbeddedModalOpen, setIsEmbeddedModalOpen] = useState(false);
 
   // Live QR Code Modal state
@@ -55,11 +56,37 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
     onChangeSubTab?.(tab);
   };
 
-  const handleSaveSla = (e: React.FormEvent) => {
+  const handleSaveSla = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSavedSlaToast(true);
-    setTimeout(() => setSavedSlaToast(false), 3000);
+    setIsSavingSla(true);
+    setSlaError(null);
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/operational-settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slaPolicy: { firstResponseMinutes: firstResponseMins } }),
+      });
+      if (!response.ok) throw new Error('Não foi possível salvar a política de SLA.');
+      const payload = await response.json();
+      setFirstResponseMins(payload?.data?.slaPolicy?.firstResponseMinutes ?? firstResponseMins);
+      setSavedSlaToast(true);
+      setTimeout(() => setSavedSlaToast(false), 3000);
+    } catch (error) {
+      setSlaError(error instanceof Error ? error.message : 'Não foi possível salvar a política de SLA.');
+    } finally {
+      setIsSavingSla(false);
+    }
   };
+
+  useEffect(() => {
+    authenticatedFetch(`/api/v1/workspaces/${workspace.id}/operational-settings`)
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        const value = payload?.data?.slaPolicy?.firstResponseMinutes;
+        if (typeof value === 'number') setFirstResponseMins(value);
+      })
+      .catch(() => undefined);
+  }, [workspace.id]);
 
   useEffect(() => {
     let active = true;
@@ -281,6 +308,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                 <span className="font-semibold">Políticas de SLA salvas com sucesso no banco de dados!</span>
               </div>
             )}
+            {slaError && <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{slaError}</p>}
 
             <form onSubmit={handleSaveSla} className="space-y-4">
               <div>
@@ -300,26 +328,13 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                 </span>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 font-heading">
-                  Tempo Limite para Resolução / Follow-up (Horas)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={720}
-                  value={resolutionHours}
-                  onChange={(e) => setResolutionHours(Number(e.target.value))}
-                  className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-2xs"
-                />
-              </div>
-
               <div className="pt-2">
                 <button
                   type="submit"
+                  disabled={isSavingSla}
                   className="px-5 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                 >
-                  Salvar Políticas de SLA
+                  {isSavingSla ? 'Salvando...' : 'Salvar SLA de primeira resposta'}
                 </button>
               </div>
             </form>
