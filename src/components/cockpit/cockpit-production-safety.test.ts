@@ -24,6 +24,19 @@ describe('cockpit production safety policy', () => {
     expect(source).not.toContain('Quer que eu segure sua vaga antes que preencha?');
   });
 
+  it('keeps the Agora first layer focused on real operator actions', () => {
+    const source = read('./LiveCockpitView.tsx');
+
+    expect(source).toContain('Assumir');
+    expect(source).toContain('Follow-up');
+    expect(source).toContain('Concluir');
+    expect(source).toContain('Mais');
+    expect(source).toContain('onAcceptHandoff(handoff.id)');
+    expect(source).toContain('onResolveHandoff(handoff.id)');
+    expect(source).toContain('copilotPanelOpen &&');
+    expect(source).not.toContain('>Objeções</span>');
+  });
+
   it('keeps the entry SaaS navigation focused without deleting administration', () => {
     const source = read('../layout/AppShell.tsx');
 

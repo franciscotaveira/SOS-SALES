@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   Link2,
   MessageSquare,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Send,
@@ -1630,6 +1631,8 @@ function LiveJourneyBody({
   const [draftText, setDraftText] = React.useState("");
   const [isGeneratingCopilot, setIsGeneratingCopilot] = React.useState(false);
   const [copilotError, setCopilotError] = React.useState<string | null>(null);
+  const [copilotPanelOpen, setCopilotPanelOpen] = React.useState(false);
+  const [moreActionsOpen, setMoreActionsOpen] = React.useState(false);
   const [isGeneratingResurrection, setIsGeneratingResurrection] = React.useState(false);
 
   // Calculate time since last interaction for Level 4 Ghosting Resurrection Engine
@@ -2162,6 +2165,26 @@ function LiveJourneyBody({
 
           {/* Direita: Ações Essenciais */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {isHandoffActive && !handoff.acceptedAt && (
+              <button
+                type="button"
+                onClick={() => onAcceptHandoff(handoff.id)}
+                disabled={actionInProgress}
+                className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
+              >
+                <UserCheck size={13} /> Assumir
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onOpenFollowUpModal}
+              disabled={actionInProgress}
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
+            >
+              <Clock size={13} /> Follow-up
+            </button>
+
             {/* Etapa do Funil */}
             <select
               value={currentNormalized}
@@ -2176,39 +2199,79 @@ function LiveJourneyBody({
               ))}
             </select>
 
-            {/* Desfecho Comercial */}
+            {/* Conclusão comercial */}
             <button
               type="button"
               onClick={onOpenOutcomeModal}
               disabled={actionInProgress}
               className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-2xs"
             >
-              <DollarSign size={13} /> Desfecho
+              <CheckCircle2 size={13} /> Concluir
             </button>
 
-            {/* Dossiê & Modo Foco em Tela Cheia */}
-            <button
-              type="button"
-              onClick={onOpenDossierFocus || onToggleDossier}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 px-3 py-1 text-xs font-bold transition cursor-pointer shadow-2xs"
-              title="Abrir Dossiê & Modo Foco em Tela Cheia (ESC para fechar)"
-            >
-              <Sparkles size={13} className="text-indigo-600 animate-pulse" />
-              <span>Dossiê Completo</span>
-            </button>
-
-            {/* Limpar conversa */}
-            {onClearCurrentJourney && (
+            <div className="relative">
               <button
                 type="button"
-                onClick={onClearCurrentJourney}
-                disabled={actionInProgress}
-                className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer shadow-2xs"
-                title="Limpar histórico da conversa"
+                onClick={() => setMoreActionsOpen((open) => !open)}
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2 py-1 text-xs font-bold transition cursor-pointer"
+                aria-expanded={moreActionsOpen}
+                aria-label="Mais ações da conversa"
               >
-                <Trash2 size={13} />
+                <MoreHorizontal size={14} /> Mais
               </button>
-            )}
+              {moreActionsOpen && (
+                <div className="absolute right-0 top-full z-40 mt-1 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreActionsOpen(false);
+                      (onOpenDossierFocus || onToggleDossier)?.();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <FileText size={14} /> Ver dossiê
+                  </button>
+                  {isHandoffActive && handoff.acceptedAt && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMoreActionsOpen(false);
+                          onOpenReturnAiModal();
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        <Bot size={14} /> Devolver à IA
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMoreActionsOpen(false);
+                          onResolveHandoff(handoff.id);
+                        }}
+                        disabled={actionInProgress}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        <UserMinus size={14} /> Encerrar atendimento
+                      </button>
+                    </>
+                  )}
+                  {onClearCurrentJourney && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMoreActionsOpen(false);
+                        onClearCurrentJourney();
+                      }}
+                      disabled={actionInProgress}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                    >
+                      <Trash2 size={14} /> Limpar histórico
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -2306,8 +2369,8 @@ function LiveJourneyBody({
 
         {/* 3. COMPOSER ACIONÁVEL UNIFICADO (Tudo em 1 Lugar) */}
         <section className="rounded-2xl border border-slate-200 bg-white p-2 shadow-xs shrink-0 space-y-1.5">
-          {/* Linha Tática Soberana do Motor Cognitivo (Tese v2) */}
-          <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs">
+          {/* Copiloto sob demanda: poder invisível, simplicidade visível. */}
+          {copilotPanelOpen && <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <div className="flex items-center gap-1.5 shrink-0">
@@ -2338,8 +2401,16 @@ function LiveJourneyBody({
               >
                 Usar Resposta
               </button>
+              <button
+                type="button"
+                onClick={() => setCopilotPanelOpen(false)}
+                className="p-1 text-emerald-800 hover:bg-emerald-100 rounded"
+                aria-label="Fechar sugestões da IA"
+              >
+                <X size={13} />
+              </button>
             </div>
-          </div>
+          </div>}
           {copilotError && (
             <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-800">
               Copilot indisponível: {copilotError}
@@ -2402,15 +2473,15 @@ function LiveJourneyBody({
                 <span className="hidden sm:inline">Atalhos</span>
               </button>
 
-              {/* Botão de Objeções (🛡️) */}
+              {/* Copiloto sob demanda */}
               <button
                 type="button"
-                onClick={() => setQuickToolsOpen(true)}
-                className="p-2 rounded-xl border border-slate-200 bg-slate-100/80 hover:bg-emerald-50 hover:border-emerald-300 text-slate-700 hover:text-emerald-900 transition cursor-pointer shadow-2xs shrink-0 flex items-center gap-1 font-bold text-xs"
-                title="Quebra de Objeções Rápidas (Tá caro, Vou pensar, Falar com marido, etc.)"
+                onClick={() => setCopilotPanelOpen((open) => !open)}
+                className={`p-2 rounded-xl border transition cursor-pointer shadow-2xs shrink-0 flex items-center gap-1 font-bold text-xs ${copilotPanelOpen ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-100/80 hover:bg-emerald-50 text-slate-700"}`}
+                title="Abrir sugestão de resposta com IA"
               >
-                <span>🛡️</span>
-                <span className="hidden md:inline">Objeções</span>
+                <Sparkles size={15} />
+                <span className="hidden md:inline">IA</span>
               </button>
 
               {/* Anexo */}
