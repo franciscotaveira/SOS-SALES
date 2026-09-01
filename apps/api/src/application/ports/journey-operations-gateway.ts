@@ -3,23 +3,13 @@ import { AuthenticatedActor } from './operator-authenticator.js';
 export const PIPELINE_STAGES = [
   'NEW',
   'CONTACTED',
-  'APPROACHED',
+  'LEAD',
   'QUALIFIED',
   'QUALIFICADO',
-  'ENGAGED',
   'PROPOSAL',
   'PROPOSTA',
   'NEGOTIATION',
   'NEGOCIACAO',
-  'FOLLOW_UP',
-  'SCHEDULED',
-  'AGENDADO',
-  'WON',
-  'GANHO',
-  'LOST',
-  'PERDIDO',
-  'CLOSED',
-  'LEAD',
 ] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 

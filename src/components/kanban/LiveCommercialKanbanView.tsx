@@ -543,6 +543,10 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   }, [workspaceId, fetchJourneys]);
 
   const updateStageDirectly = async (journeyId: string, nextStage: string) => {
+    if (nextStage === 'GANHO') {
+      setError('Para concluir uma venda ou agendamento, abra a conversa e use Concluir. Esse fluxo registra o resultado e o valor de forma auditável.');
+      return;
+    }
     setUpdatingId(journeyId);
     try {
       if ('setJourneyStage' in gateway && typeof (gateway as any).setJourneyStage === 'function') {

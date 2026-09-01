@@ -90,7 +90,6 @@ export const PIPELINE_STAGES = [
   { value: "QUALIFICADO", label: "2. Qualificado / Interesse" },
   { value: "PROPOSTA", label: "3. Proposta Enviada" },
   { value: "NEGOCIACAO", label: "4. Negociação / Horário" },
-  { value: "GANHO", label: "5. Agendado / Fechado" },
 ] as const;
 
 function formatDate(value: string | null | undefined): string {

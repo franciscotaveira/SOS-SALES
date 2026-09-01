@@ -39,16 +39,14 @@ function isFollowUpResult(value: unknown): value is FollowUpResult {
     && typeof (value as FollowUpResult).idempotent === 'boolean';
 }
 
-function toDbStage(stage: string): string {
+function toDbStage(stage: string): 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | null {
   const s = stage.toUpperCase().trim();
-  if (s === 'LEAD' || s === 'NEW') return 'LEAD';
+  if (s === 'LEAD' || s === 'NEW') return 'NEW';
   if (s === 'CONTACTED' || s === 'CONTATADO') return 'CONTACTED';
-  if (s === 'QUALIFIED' || s === 'QUALIFICADO' || s === 'APPROACHED' || s === 'ENGAGED') return 'QUALIFICADO';
-  if (s === 'PROPOSAL' || s === 'PROPOSTA') return 'PROPOSTA';
-  if (s === 'NEGOTIATION' || s === 'NEGOCIACAO' || s === 'FOLLOW_UP') return 'NEGOCIACAO';
-  if (s === 'SCHEDULED' || s === 'AGENDADO' || s === 'WON' || s === 'GANHO') return 'GANHO';
-  if (s === 'LOST' || s === 'PERDIDO') return 'LOST';
-  return s;
+  if (s === 'QUALIFIED' || s === 'QUALIFICADO' || s === 'APPROACHED' || s === 'ENGAGED') return 'QUALIFIED';
+  if (s === 'PROPOSAL' || s === 'PROPOSTA') return 'PROPOSAL';
+  if (s === 'NEGOTIATION' || s === 'NEGOCIACAO' || s === 'FOLLOW_UP') return 'NEGOTIATION';
+  return null;
 }
 
 function classify(error: unknown): never {
@@ -75,17 +73,15 @@ export class PostgresJourneyOperationsGateway implements JourneyOperationsGatewa
     try {
       return await this.withActor(actor, async (client) => {
         const dbStage = toDbStage(input.stage);
+        if (!dbStage) {
+          throw new JourneyOperationRuleViolationError('Commercial outcome must be recorded through the outcome workflow');
+        }
         const result = await client.query<RpcRow<JourneyStageResult>>(
           'SELECT public.set_journey_pipeline_stage($1, $2, $3, $4, $5) AS result',
           [input.workspaceId, input.journeyId, dbStage, input.reason ?? null, input.idempotencyKey],
         );
-        // Also persist exact canonical stage name
-        await client.query(
-          'UPDATE public.commercial_journeys SET pipeline_stage = $1, updated_at = NOW() WHERE id = $2 AND workspace_id = $3',
-          [input.stage.toUpperCase().trim(), input.journeyId, input.workspaceId]
-        );
         const parsed = parseResult(result.rows[0]?.result, isStageResult);
-        return { ...parsed, stage: input.stage };
+        return { ...parsed, stage: dbStage };
       });
     } catch (error) {
       try {
