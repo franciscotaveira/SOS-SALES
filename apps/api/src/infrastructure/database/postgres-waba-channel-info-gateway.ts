@@ -11,6 +11,7 @@ export class PostgresWabaChannelInfoGateway implements WabaChannelInfoGateway {
     const result = await this.pool.query<{
       verified_phone: string | null;
       display_phone: string | null;
+      connection_phone: string | null;
       verified_name: string | null;
       phone_number_id: string | null;
       waba_id: string | null;
@@ -19,6 +20,7 @@ export class PostgresWabaChannelInfoGateway implements WabaChannelInfoGateway {
       SELECT
         public_config::jsonb ->> 'verifiedPhone' AS verified_phone,
         public_config::jsonb ->> 'displayPhone' AS display_phone,
+        phone_number AS connection_phone,
         public_config::jsonb ->> 'verifiedName' AS verified_name,
         public_config::jsonb ->> 'phoneNumberId' AS phone_number_id,
         public_config::jsonb ->> 'wabaId' AS waba_id,
@@ -31,8 +33,8 @@ export class PostgresWabaChannelInfoGateway implements WabaChannelInfoGateway {
     if (!result.rowCount || result.rowCount === 0) return null;
     const row = result.rows[0];
     return {
-      verifiedPhone: row.verified_phone ?? undefined,
-      displayPhone: row.display_phone ?? undefined,
+      verifiedPhone: row.verified_phone ?? row.connection_phone ?? undefined,
+      displayPhone: row.display_phone ?? row.connection_phone ?? undefined,
       verifiedName: row.verified_name ?? undefined,
       phoneNumberId: row.phone_number_id ?? undefined,
       wabaId: row.waba_id ?? undefined,
