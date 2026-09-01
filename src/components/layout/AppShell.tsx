@@ -127,6 +127,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
   const [helpModalOpen, setHelpModalOpen] = React.useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = React.useState(false);
+  const [administrationOpen, setAdministrationOpen] = React.useState(false);
 
   // Toggle collapse state and persist preference
   const toggleCollapse = () => {
@@ -292,6 +293,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     roleRequired?: OperatorRole;
     visible?: boolean;
     tag?: string;
+    conversationsMode?: 'list' | 'kanban' | 'wallboard';
   }
 
   interface NavSection {
@@ -301,7 +303,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   const navSections: NavSection[] = [
     {
-      title: 'OPERAÇÃO',
+      title: 'ATENDIMENTO',
       items: [
         {
           id: 'agora',
@@ -318,6 +320,15 @@ export const AppShell: React.FC<AppShellProps> = ({
           icon: MessageSquare,
           roleRequired: 'operator',
           visible: true,
+          conversationsMode: 'list',
+        },
+        {
+          id: 'conversas',
+          label: 'Funil',
+          icon: Columns3,
+          roleRequired: 'operator',
+          visible: showKanban,
+          conversationsMode: 'kanban',
         },
         {
           id: 'grupos',
@@ -337,8 +348,8 @@ export const AppShell: React.FC<AppShellProps> = ({
         },
       ],
     },
-    ...(showTrafficProof ? [{
-      title: 'GESTÃO',
+    {
+      title: 'NEGÓCIO',
       items: [
         {
           id: 'resultados' as NavigationTab,
@@ -348,7 +359,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           visible: true,
         },
       ],
-    }] : []),
+    },
     ...(!isProductionMvp ? [{
       title: 'INTELIGÊNCIA',
       items: [
@@ -372,13 +383,6 @@ export const AppShell: React.FC<AppShellProps> = ({
       title: 'SISTEMA',
       items: [
         {
-          id: 'clientes' as NavigationTab,
-          label: 'Clientes',
-          icon: Building2,
-          roleRequired: 'owner' as OperatorRole,
-          visible: true,
-        },
-        {
           id: 'configuracoes' as NavigationTab,
           label: 'Configurações',
           icon: Settings,
@@ -387,9 +391,24 @@ export const AppShell: React.FC<AppShellProps> = ({
         },
       ],
     },
+    {
+      title: 'ADMINISTRAÇÃO',
+      items: [
+        {
+          id: 'clientes' as NavigationTab,
+          label: 'Empresas e subcontas',
+          icon: Building2,
+          roleRequired: 'owner' as OperatorRole,
+          visible: true,
+        },
+      ],
+    },
   ];
 
-  const handleNavClick = (tabId: NavigationTab) => {
+  const handleNavClick = (tabId: NavigationTab, conversationsMode?: 'list' | 'kanban' | 'wallboard') => {
+    if (tabId === 'conversas' && conversationsMode) {
+      onChangeConversationsMode?.(conversationsMode);
+    }
     onChangeTab(tabId);
     setMobileDrawerOpen(false);
   };
@@ -413,8 +432,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     ] : []),
     ...(showGroups ? [{ id: 'grupos' as NavigationTab, label: 'Grupos WhatsApp', icon: Users, section: 'Operação', roleRequired: 'operator' as OperatorRole }] : []),
     { id: 'clientes' as NavigationTab, label: 'Clientes e Sub-contas', icon: Building2, section: 'Sistema', roleRequired: 'owner' as OperatorRole },
+    { id: 'resultados' as NavigationTab, label: 'Resultados do atendimento', icon: PieChart, section: 'Negócio', subTab: 'analytics', roleRequired: 'admin' as OperatorRole },
     ...(showTrafficProof ? [
-      { id: 'resultados' as NavigationTab, label: 'Analytics & ROI da IA', icon: PieChart, section: 'Gestão', subTab: 'analytics', roleRequired: 'admin' as OperatorRole },
       { id: 'resultados' as NavigationTab, label: 'Resultados & Proof of Traffic', icon: BarChart3, section: 'Gestão', subTab: 'proof', roleRequired: 'admin' as OperatorRole },
     ] : []),
     ...(!isProductionMvp ? [
@@ -492,9 +511,22 @@ export const AppShell: React.FC<AppShellProps> = ({
             );
             if (visibleItems.length === 0) return null;
 
+            const isAdministration = section.title === 'ADMINISTRAÇÃO';
+            const sectionExpanded = !isAdministration || administrationOpen || visibleItems.some((item) => item.id === activeTab);
+
             return (
               <div key={section.title} className="space-y-1">
-                {!collapsed ? (
+                {!collapsed && isAdministration ? (
+                  <button
+                    type="button"
+                    onClick={() => setAdministrationOpen((open) => !open)}
+                    className="w-full px-2.5 py-1.5 text-xs font-bold tracking-wider text-slate-400 hover:text-slate-200 uppercase font-heading flex items-center justify-between"
+                    aria-expanded={sectionExpanded}
+                  >
+                    <span>{section.title}</span>
+                    <ChevronRight className={`h-3.5 w-3.5 transition-transform ${sectionExpanded ? 'rotate-90' : ''}`} />
+                  </button>
+                ) : !collapsed ? (
                               <div className="px-2.5 py-1.5 text-xs font-bold tracking-wider text-slate-400 uppercase font-heading">
                                 {section.title}
                               </div>
@@ -502,15 +534,17 @@ export const AppShell: React.FC<AppShellProps> = ({
                               <div className="h-px bg-slate-800/80 my-2 mx-1" />
                             )}
 
-                {visibleItems.map((item) => {
-                  const isActive = activeTab === item.id;
+                {sectionExpanded && visibleItems.map((item) => {
+                  const isActive = activeTab === item.id && (
+                    item.id !== 'conversas' || !item.conversationsMode || activeConversationsMode === item.conversationsMode
+                  );
                   const Icon = item.icon;
 
                   return (
-                    <React.Fragment key={item.id}>
+                    <React.Fragment key={`${item.id}-${item.conversationsMode || 'default'}`}>
                       <button
-                        id={`sidebar-nav-${item.id}`}
-                        onClick={() => handleNavClick(item.id)}
+                        id={`sidebar-nav-${item.id}${item.conversationsMode ? `-${item.conversationsMode}` : ''}`}
+                        onClick={() => handleNavClick(item.id, item.conversationsMode)}
                         aria-current={isActive ? 'page' : undefined}
                         title={collapsed ? item.label : undefined}
                         style={{

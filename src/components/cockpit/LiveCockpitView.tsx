@@ -2034,9 +2034,7 @@ function LiveJourneyBody({
 
     if (diffHours >= 2) {
       const formattedHours = diffHours >= 24 ? `${Math.floor(diffHours / 24)}d` : `${Math.floor(diffHours)}h`;
-      const suggestedReactivation = externalAgendaSlots
-        ? `Oi ${contactFirstName}, tudo bem? Passando para te avisar que liberamos um horário extra hoje às ${externalAgendaSlots.split(',')[0]}. Quer que eu segure sua vaga antes que preencha?`
-        : `Oi ${contactFirstName}, tudo bem? Passando para saber se ainda posso ajudar. Quer que eu confira a disponibilidade real para você?`;
+      const suggestedReactivation = `Oi ${contactFirstName}, tudo bem? Passando para saber se ainda posso ajudar. Quer que eu confira a disponibilidade real para você?`;
 
       return {
         hoursAgoText: formattedHours,
