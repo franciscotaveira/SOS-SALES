@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AuthenticatedActor } from '../../application/ports/operator-authenticator.js';
-import { AccessibleWorkspace, WorkspaceDirectory } from '../../application/ports/workspace-directory.js';
+import { AccessibleWorkspace, WorkspaceDirectory, WorkspaceMember } from '../../application/ports/workspace-directory.js';
 import { dbPool } from './pool.js';
 
 type PgConnector = Pick<Pool, 'connect'>;
@@ -36,6 +36,36 @@ export class PostgresWorkspaceDirectory implements WorkspaceDirectory {
           AND w.active = true
         ORDER BY w.name ASC, w.id ASC
       `, [actor.userId]);
+
+      await client.query('COMMIT');
+      return result.rows;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      await client.query('RESET ROLE').catch(() => undefined);
+      client.release();
+    }
+  }
+
+  async listMembers(actor: AuthenticatedActor, workspaceId: string): Promise<WorkspaceMember[]> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL ROLE sos_sales_runtime');
+      await client.query("SELECT pg_catalog.set_config('request.jwt.claim.role', 'authenticated', true)");
+      await client.query("SELECT pg_catalog.set_config('request.jwt.claim.sub', $1, true)", [actor.userId]);
+      await client.query("SELECT pg_catalog.set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: actor.userId, role: 'authenticated', email: actor.email })
+      ]);
+
+      const result = await client.query<WorkspaceMember>(`
+        SELECT id AS "membershipId", user_id AS "userId", role, created_at AS "createdAt"
+        FROM public.workspace_memberships
+        WHERE workspace_id = $1::uuid
+        ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'operator' THEN 1 ELSE 2 END,
+                 created_at ASC, id ASC
+      `, [workspaceId]);
 
       await client.query('COMMIT');
       return result.rows;

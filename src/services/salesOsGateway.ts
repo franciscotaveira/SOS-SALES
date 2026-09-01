@@ -59,6 +59,14 @@ export interface ApiWorkspace {
   role: 'owner' | 'operator' | 'viewer';
 }
 
+export interface ApiWorkspaceMember {
+  membershipId: string;
+  userId: string;
+  role: 'owner' | 'operator' | 'viewer';
+  createdAt: string;
+  isCurrentActor: boolean;
+}
+
 export type ApiCustomerLoyaltyType = 'NEW' | 'RECURRING';
 
 export interface ApiWorkspaceOperationalSettings {
@@ -315,6 +323,7 @@ export interface SalesOsGateway {
   deleteNote(workspaceId: string, noteId: string): Promise<void>;
 
   getWorkspaceOperationalSettings(workspaceId: string): Promise<ApiWorkspaceOperationalSettings>;
+  listWorkspaceMembers(workspaceId: string): Promise<ApiWorkspaceMember[]>;
   updateWorkspaceOperationalSettings(
     workspaceId: string,
     input: ApiWorkspaceOperationalSettingsPatch,
@@ -906,6 +915,10 @@ export class MockSalesOsGateway implements SalesOsGateway {
     return JSON.parse(JSON.stringify(settings));
   }
 
+  async listWorkspaceMembers(_workspaceId: string): Promise<ApiWorkspaceMember[]> {
+    return [];
+  }
+
   async updateWorkspaceOperationalSettings(
     workspaceId: string,
     input: ApiWorkspaceOperationalSettingsPatch,
@@ -1209,6 +1222,12 @@ export class HttpSalesOsGateway implements SalesOsGateway {
       `/workspaces/${encodeURIComponent(workspaceId)}/operational-settings`,
     );
     return response.data;
+  }
+
+  async listWorkspaceMembers(workspaceId: string): Promise<ApiWorkspaceMember[]> {
+    return (await this.request<ApiEnvelope<ApiWorkspaceMember[]>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/members`,
+    )).data;
   }
 
   async updateWorkspaceOperationalSettings(

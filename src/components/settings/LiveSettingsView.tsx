@@ -26,6 +26,20 @@ interface LiveSettingsViewProps {
   onChangeSubTab?: (subTab: string) => void;
 }
 
+interface WorkspaceMember {
+  membershipId: string;
+  userId: string;
+  role: 'owner' | 'operator' | 'viewer';
+  createdAt: string;
+  isCurrentActor: boolean;
+}
+
+const roleLabel: Record<WorkspaceMember['role'], string> = {
+  owner: 'Proprietário',
+  operator: 'Operador',
+  viewer: 'Visualização',
+};
+
 export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   workspace,
   activeSubTab = 'canais',
@@ -50,6 +64,8 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
     phoneNumber?: string | null;
     verifiedName?: string | null;
   }>({ state: 'loading' });
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [membersState, setMembersState] = useState<'loading' | 'ready' | 'error'>('loading');
 
   const handleTabChange = (tab: string) => {
     setCurrentTab(tab);
@@ -86,6 +102,25 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
         if (typeof value === 'number') setFirstResponseMins(value);
       })
       .catch(() => undefined);
+  }, [workspace.id]);
+
+  useEffect(() => {
+    let active = true;
+    setMembersState('loading');
+    authenticatedFetch(`/api/v1/workspaces/${workspace.id}/members`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Não foi possível consultar os membros do workspace.');
+        return response.json();
+      })
+      .then((payload) => {
+        if (!active) return;
+        setMembers(Array.isArray(payload?.data) ? payload.data : []);
+        setMembersState('ready');
+      })
+      .catch(() => {
+        if (active) setMembersState('error');
+      });
+    return () => { active = false; };
   }, [workspace.id]);
 
   useEffect(() => {
@@ -343,24 +378,40 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
 
         {currentTab === 'membros' && (
           <div className="max-w-4xl space-y-3">
-            <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-sm shadow-2xs">
-                  FR
-                </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-slate-900">Francisco Rios (Você)</span>
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
-                      <Crown className="w-3 h-3 text-amber-600" /> Owner (Proprietário)
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">franciscotaveira.mkt@gmail.com • Acesso total e soberano</p>
+                  <h2 className="text-sm font-bold text-slate-900">Acessos do workspace</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">Papéis e acessos persistidos para esta empresa. Status online e perfis pessoais não são inferidos.</p>
                 </div>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-600">
+                  {membersState === 'ready' ? `${members.length} ${members.length === 1 ? 'membro' : 'membros'}` : 'Consultando...'}
+                </span>
               </div>
 
-              <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">Ativo agora</span>
+              <div className="mt-4 divide-y divide-slate-100">
+                {membersState === 'loading' && <p className="py-4 text-xs text-slate-500">Carregando acessos reais...</p>}
+                {membersState === 'error' && <p className="py-4 text-xs text-rose-700">Não foi possível carregar os acessos. Tente atualizar a página.</p>}
+                {membersState === 'ready' && members.length === 0 && <p className="py-4 text-xs text-slate-500">Nenhum vínculo de acesso encontrado para este workspace.</p>}
+                {members.map((member) => (
+                  <div key={member.membershipId} className="flex items-center justify-between gap-4 py-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-600">
+                        {member.isCurrentActor ? 'EU' : 'OP'}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-slate-900">{member.isCurrentActor ? 'Você' : 'Operador vinculado'}</p>
+                        <p className="mt-0.5 font-mono text-[10px] text-slate-400">ID {member.userId}</p>
+                      </div>
+                    </div>
+                    <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-bold ${member.role === 'owner' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                      {member.role === 'owner' && <Crown className="mr-1 inline h-3 w-3 text-amber-600" />}{roleLabel[member.role]}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
+            <p className="px-1 text-[11px] text-slate-500">Para convidar ou remover pessoas, o produto precisa primeiro concluir o fluxo seguro de convite pelo provedor de autenticação. Esta tela não simula convites nem alterações locais.</p>
           </div>
         )}
       </div>

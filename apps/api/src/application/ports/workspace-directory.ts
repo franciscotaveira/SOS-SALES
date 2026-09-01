@@ -8,6 +8,15 @@ export interface AccessibleWorkspace {
   role: 'owner' | 'operator' | 'viewer';
 }
 
+/** A persisted workspace membership. Personal profile fields are deliberately
+ * absent: this table is the RBAC source of truth, not a user-directory mirror. */
+export interface WorkspaceMember {
+  membershipId: string;
+  userId: string;
+  role: 'owner' | 'operator' | 'viewer';
+  createdAt: string;
+}
+
 /**
  * Read port for the authenticated user's own workspace memberships.
  * It intentionally receives the verifier-derived actor rather than a
@@ -15,4 +24,7 @@ export interface AccessibleWorkspace {
  */
 export interface WorkspaceDirectory {
   listForActor(actor: AuthenticatedActor): Promise<AccessibleWorkspace[]>;
+  /** Optional while older composition roots are upgraded. Implementations must
+   * return members only after applying the actor's tenant context. */
+  listMembers?(actor: AuthenticatedActor, workspaceId: string): Promise<WorkspaceMember[]>;
 }

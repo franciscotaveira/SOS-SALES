@@ -25,6 +25,7 @@ import { workspaceInitRoutes } from './workspace-init.js';
 import { atlasToolsRoutes } from './atlas-tools.js';
 import { autonomousRevenueRoutes } from './autonomous-revenue-routes.js';
 import { workspaceOperationalRoutes } from './workspace-operational.js';
+import { normalizeWorkspaceUuid } from './whatsapp-channel-routes.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -116,6 +117,29 @@ export async function operatorAuthRoutes(
         error: 'Service Unavailable',
         message: 'Workspace directory is unavailable',
       });
+    }
+  });
+
+  app.get('/workspaces/:workspaceId/members', async (request, reply) => {
+    const actor = request.operatorActor;
+    const workspaceId = normalizeWorkspaceUuid((request.params as { workspaceId?: string }).workspaceId || '');
+    if (!actor) return unauthorized(reply);
+    if (!workspaceId) {
+      return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: 'Invalid workspace identifier' });
+    }
+    if (!dependencies.workspaceDirectory?.listMembers) {
+      return reply.code(503).send({ statusCode: 503, error: 'Service Unavailable', message: 'Workspace membership directory is not configured' });
+    }
+
+    try {
+      const accessible = await dependencies.workspaceDirectory.listForActor(actor);
+      if (!accessible.some((workspace) => workspace.id === workspaceId)) {
+        return reply.code(403).send({ statusCode: 403, error: 'Forbidden', message: 'Access to this workspace is forbidden for this user' });
+      }
+      const members = await dependencies.workspaceDirectory.listMembers(actor, workspaceId);
+      return { data: members.map((member) => ({ ...member, isCurrentActor: member.userId === actor.userId })) };
+    } catch {
+      return reply.code(503).send({ statusCode: 503, error: 'Service Unavailable', message: 'Workspace membership directory is unavailable' });
     }
   });
 
