@@ -383,9 +383,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
               </div>
             )}
 
-            {wabaChannel.state === 'connected' && (
-              <MetaBusinessAgentSettingsView workspaceId={workspace.id} />
-            )}
+            <MetaBusinessAgentSettingsView workspaceId={workspace.id} />
 
             {!showWahaFallback ? (
               <button

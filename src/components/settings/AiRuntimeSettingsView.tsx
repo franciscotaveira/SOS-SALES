@@ -74,7 +74,7 @@ export const AiRuntimeSettingsView: React.FC<AiRuntimeSettingsViewProps> = ({ wo
     <form onSubmit={save} className="mx-auto max-w-3xl space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
       <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
         <div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-700"><Bot size={19} /></div>
-        <div><h2 className="text-sm font-bold text-slate-900">Atendimento com IA</h2><p className="mt-1 text-xs text-slate-500">Uma configuração curta, publicada e auditável por empresa.</p></div>
+        <div><h2 className="text-sm font-bold text-slate-900">IA própria SOS Sales</h2><p className="mt-1 text-xs text-slate-500">Fallback operacional quando o Meta Business Agent não estiver elegível ou precisar de transbordo.</p></div>
       </div>
 
       {feedback && <div className={`flex items-center gap-2 rounded-xl border p-3 text-xs ${feedback.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-rose-200 bg-rose-50 text-rose-900'}`}>{feedback.type === 'success' ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}{feedback.message}</div>}

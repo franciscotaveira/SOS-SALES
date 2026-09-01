@@ -99,6 +99,12 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
         <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Fallback</span><p className="mt-1 text-xs font-bold text-slate-700">IA SOS Sales + humano</p></div>
       </div>
 
+      {eligibility.status === 'UNKNOWN' && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          Conecte primeiro um número <strong>WhatsApp Oficial (Meta Cloud API)</strong> em Configurações da Meta Cloud. A IA própria do SOS Sales continua sendo o fallback enquanto esta conexão não estiver disponível.
+        </div>
+      )}
+
       {feedback && <div className={`mt-3 rounded-xl border p-3 text-xs ${feedback.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-rose-200 bg-rose-50 text-rose-900'}`}>{feedback.message}</div>}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -122,4 +128,3 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
     </section>
   );
 };
-
