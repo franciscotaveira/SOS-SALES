@@ -25,6 +25,7 @@ import { EmbeddedSignupModal } from './EmbeddedSignupModal';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
 import { WabaTemplatesTab } from '../campaigns/WabaTemplatesTab';
 import { AiRuntimeSettingsView } from './AiRuntimeSettingsView';
+import { MetaBusinessAgentSettingsView } from './MetaBusinessAgentSettingsView';
 
 interface LiveSettingsViewProps {
   workspace: Workspace;
@@ -380,6 +381,10 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <WabaTemplatesTab workspace={workspace} />
               </div>
+            )}
+
+            {wabaChannel.state === 'connected' && (
+              <MetaBusinessAgentSettingsView workspaceId={workspace.id} />
             )}
 
             {!showWahaFallback ? (
