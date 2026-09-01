@@ -41,8 +41,29 @@ interface LiveConversationsViewProps {
   initialViewMode?: 'list' | 'kanban' | 'notes' | 'wallboard';
 }
 
-// Helper semântico para detecção de interesse nos cards da lista adaptável ao nicho
-function detectServiceAndIntent(item: ApiJourney, isHairSalon: boolean) {
+function serviceCategoryId(value: string): string {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '_');
+}
+
+// Demo mode may illustrate niche labels. Production only displays the service
+// explicitly persisted by the backend.
+function detectServiceAndIntent(item: ApiJourney, isHairSalon: boolean, isLiveApi = false) {
+  if (isLiveApi) {
+    const persisted = item.primaryServiceOrProduct?.trim();
+    return persisted && persisted !== 'Interessada em Serviços / Atendimento'
+      ? {
+          service: persisted,
+          badgeClass: 'bg-[var(--sos-operational-subtle)] text-[var(--sos-operational)] border-[var(--sos-operational)]/30 font-bold',
+          preview: persisted,
+          category: serviceCategoryId(persisted),
+        }
+      : {
+          service: 'Serviço não informado',
+          badgeClass: 'bg-[var(--sos-border)]/30 text-[var(--sos-muted)] border-[var(--sos-border)] font-bold',
+          preview: 'Sem classificação persistida',
+          category: 'geral',
+        };
+  }
   const name = (item.contactName || '').toLowerCase();
   const rawService = (item.primaryServiceOrProduct || '').toLowerCase();
   const text = `${name} ${rawService}`.toLowerCase();
@@ -161,6 +182,17 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
 
   const availableServiceCategories = useMemo(() => {
     if (customServices.length > 0) return customServices;
+    if (isLiveApi) {
+      const persistedServices = new Set<string>();
+      journeys.forEach((journey) => {
+        const value = journey.primaryServiceOrProduct?.trim();
+        if (value && value !== 'Interessada em Serviços / Atendimento') persistedServices.add(value);
+      });
+      return Array.from(persistedServices).slice(0, 8).map((service) => ({
+        id: serviceCategoryId(service),
+        label: service,
+      }));
+    }
     if (isHairSalon) {
       return [
         { id: 'escova', label: '💇‍♀️ Escovas' },
@@ -193,7 +225,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
       { id: 'duvidas', label: '❓ Dúvidas Gerais' },
       { id: 'suporte', label: '🛠️ Suporte & Pós-Venda' },
     ];
-  }, [customServices, isHairSalon, journeys]);
+  }, [customServices, isHairSalon, isLiveApi, journeys]);
 
   const handleCustomizeServices = () => {
     if (isLiveApi) {
@@ -288,7 +320,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
 
   const filtered = useMemo(() => {
     return journeys.filter((j) => {
-      const intent = detectServiceAndIntent(j, isHairSalon);
+      const intent = detectServiceAndIntent(j, isHairSalon, isLiveApi);
 
       // Search
       if (search.trim()) {
@@ -318,7 +350,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
 
       return true;
     });
-  }, [journeys, search, stageFilter, serviceFilter, isHairSalon]);
+  }, [journeys, search, stageFilter, serviceFilter, isHairSalon, isLiveApi]);
 
   // Map ApiJourney[] to Journey[] for LiveWallboardView if active
   const mappedJourneys: Journey[] = useMemo(() => {
@@ -519,7 +551,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
                   { id: 'QUALIFICADO', label: '2. Qualificados' },
                   { id: 'PROPOSTA', label: '3. Proposta' },
                   { id: 'NEGOCIACAO', label: '4. Negociação' },
-                  { id: 'GANHO', label: '5. Agendados / Ganho' },
+                  { id: 'GANHO', label: 'Concluídas' },
                 ].map((chip) => (
                   <button
                     key={chip.id}
@@ -549,7 +581,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
             </div>
 
             {/* Linha 2: Filtro por Serviço / Procedimento / Segmento Dinâmico */}
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {availableServiceCategories.length > 0 && <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <span className="text-xs font-extrabold uppercase tracking-wider text-[var(--sos-muted)] flex items-center gap-1 mr-1">
                 <Tag size={11} /> Segmento / Serviços:
               </span>
@@ -580,15 +612,15 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
                 </button>
               ))}
 
-              <button
+              {!isLiveApi && <button
                 type="button"
                 onClick={handleCustomizeServices}
                 className="px-2 py-0.5 rounded-md text-[11px] font-bold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition cursor-pointer flex items-center gap-1 ml-auto"
                 title="Personalizar serviços e categorias para o nicho da sua empresa"
               >
                 <Tag size={10} /> Personalizar Filtros
-              </button>
-            </div>
+              </button>}
+            </div>}
           </div>
 
           {error && (
@@ -622,7 +654,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
               ) : (
                 filtered.map((j) => {
                   const stage = formatStage(j.pipelineStage);
-                  const intent = detectServiceAndIntent(j, isHairSalon);
+                  const intent = detectServiceAndIntent(j, isHairSalon, isLiveApi);
                   const title = j.contactName || (j.contactPhone ? `Cliente ${j.contactPhone.slice(-4)}` : 'Lead Sem Nome');
 
                   // Format time

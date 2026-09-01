@@ -47,5 +47,51 @@ describe('cockpit production safety policy', () => {
     expect(source).toContain("label: 'Configurações'");
     expect(source).toContain("title: 'ADMINISTRAÇÃO'");
     expect(source).toContain('const [administrationOpen, setAdministrationOpen]');
+    expect(source).toContain("{ id: 'traffic_proof', label: 'Resultados dos anúncios' }");
+    expect(source).toContain("{ id: 'tracking', label: 'Conectar Meta Ads' }");
+    expect(source).toContain("{ id: 'canais', label: 'WhatsApp' }");
+    expect(source).toContain("{ id: 'ia', label: 'Atendimento com IA' }");
+    expect(source).toContain("{ id: 'sla', label: 'Tempo de resposta' }");
+    expect(source).toContain("{ id: 'membros', label: 'Equipe' }");
+  });
+
+  it('keeps the focus dossier under the same truth and simplification policy', () => {
+    const source = read('./DossierFocusModal.tsx');
+
+    expect(source).not.toContain('Recursos & Áudios Prontos');
+    expect(source).not.toContain('Ver agenda');
+    expect(source).not.toContain('Campanha Instagram / Meta Ads');
+    expect(source).not.toContain('Oferta de Mechas & Tratamento');
+    expect(source).not.toContain('Serviço de Beleza');
+    expect(source).toContain("journey.primaryServiceOrProduct || acquisition?.offerHook || 'Não informado'");
+  });
+
+  it('aligns owner-only AI and tracking controls with backend authorization', () => {
+    const shell = read('../layout/AppShell.tsx');
+
+    expect(shell).toContain("label: 'Conectar rastreamento Meta'");
+    expect(shell).toContain("roleRequired: 'owner' as OperatorRole");
+    expect(shell).toContain('disabled={aiModeLoading || !isOwner}');
+  });
+
+  it('does not expose blocked local-only tools in the authenticated cockpit', () => {
+    const source = read('./LiveCockpitView.tsx');
+
+    expect(source).not.toContain("label: 'Vagas & Horários Livres'");
+    expect(source).not.toContain("label: 'Recursos & Áudios Prontos'");
+    expect(source).not.toContain('Menção de anúncio');
+    expect(source).toContain('id="customer-filter"');
+    expect(source).toContain('id="channel-filter"');
+    expect(source).not.toContain("setQueueTab('recurring')");
+    expect(source).not.toContain("setQueueTab('new')");
+  });
+
+  it('keeps fake financial KPIs and the non-persisted won column out of the live funnel', () => {
+    const source = read('../kanban/LiveCommercialKanbanView.tsx');
+
+    expect(source).toContain("base.columns.filter((column) => column.id !== 'GANHO')");
+    expect(source).not.toContain('Taxa de Conversão</span>');
+    expect(source).not.toContain('Média por Lead</span>');
+    expect(source).not.toContain('R$ {col.totalColValue}');
   });
 });

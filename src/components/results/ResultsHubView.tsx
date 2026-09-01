@@ -8,7 +8,7 @@ import { CampaignLinksTab } from '../campaigns/CampaignLinksTab';
 import { WabaTemplatesTab } from '../campaigns/WabaTemplatesTab';
 import { MassBroadcastView } from '../campaigns/MassBroadcastView';
 import { TrackingSettings } from '../settings/TrackingSettings';
-import { LtvConfigManager } from '../settings/LtvConfigManager';
+import { MetaTrackingSetupView } from './MetaTrackingSetupView';
 import {
   PieChart,
   TrendingUp,
@@ -20,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-export type ResultsSubTab = 'analytics' | 'traffic_proof' | 'broadcast' | 'campaign_links' | 'waba_templates';
+export type ResultsSubTab = 'analytics' | 'traffic_proof' | 'tracking' | 'broadcast' | 'campaign_links' | 'waba_templates';
 
 interface ResultsHubViewProps {
   workspace: Workspace;
@@ -39,11 +39,23 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
   activeSubTab: externalActiveSubTab,
   onChangeSubTab: externalOnChangeSubTab,
 }) => {
-  const [internalSubTab, setInternalSubTab] = useState<ResultsSubTab>('analytics');
+  const canManageTracking = workspace.operatorRole === 'owner';
+  const [internalSubTab, setInternalSubTab] = useState<ResultsSubTab>(isAuthenticatedApiMode ? 'traffic_proof' : 'analytics');
   const activeSubTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalSubTab;
   const setActiveSubTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalSubTab;
 
-  const SUB_TABS = [
+  const SUB_TABS = isAuthenticatedApiMode ? [
+    {
+      id: 'traffic_proof' as ResultsSubTab,
+      label: 'Resultados',
+      icon: TrendingUp,
+    },
+    ...(canManageTracking ? [{
+      id: 'tracking' as ResultsSubTab,
+      label: 'Conectar Meta',
+      icon: Target,
+    }] : []),
+  ] : [
     {
       id: 'analytics' as ResultsSubTab,
       label: 'Analytics & ROI',
@@ -71,6 +83,12 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
     },
   ];
 
+  React.useEffect(() => {
+    if (isAuthenticatedApiMode && (activeSubTab !== 'traffic_proof' && !(activeSubTab === 'tracking' && canManageTracking))) {
+      setActiveSubTab('traffic_proof');
+    }
+  }, [activeSubTab, canManageTracking, isAuthenticatedApiMode, setActiveSubTab]);
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[var(--sos-canvas)] overflow-y-auto">
       {/* Top Header & Subcategory Switcher */}
@@ -83,14 +101,14 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
             <div>
               <div className="flex items-center gap-1.5">
                 <h1 className="text-sm font-bold text-[var(--sos-ink)] font-heading">
-                  Gestão de Campanhas & Tráfego
+                  Resultados dos anúncios
                 </h1>
                 <span className="bg-[var(--sos-success-subtle)] text-[var(--sos-success)] font-bold text-xs px-1.5 py-0.5 rounded-full border border-[var(--sos-success)]/30">
-                  Marketing & Atribuição
+                  Meta Ads
                 </span>
               </div>
               <p className="text-[10px] text-[var(--sos-muted)]">
-                Auditoria de ROI da IA, Atribuição Meta Ads, Links Click WA, Modelos de Mensagem e Traqueamento CAPI.
+                Atribuição dos leads e resultados confirmados enviados para otimização das campanhas.
               </p>
             </div>
           </div>
@@ -149,6 +167,12 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
 
         {activeSubTab === 'waba_templates' && (
           <WabaTemplatesTab workspace={workspace} />
+        )}
+
+        {activeSubTab === 'tracking' && canManageTracking && (
+          isAuthenticatedApiMode
+            ? <MetaTrackingSetupView workspaceId={workspace.id} />
+            : <TrackingSettings workspace={workspace} />
         )}
       </div>
     </div>

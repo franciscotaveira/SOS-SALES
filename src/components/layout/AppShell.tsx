@@ -96,11 +96,11 @@ export const AppShell: React.FC<AppShellProps> = ({
   onChangeRole,
   activeIntelligenceSubTab = 'knowledge',
   onChangeIntelligenceSubTab,
-  activeSettingsSubTab = 'engines',
+  activeSettingsSubTab = 'canais',
   onChangeSettingsSubTab,
   activeGroupSubTab = 'conversations',
   onChangeGroupSubTab,
-  activeResultsSubTab = 'analytics',
+  activeResultsSubTab = 'traffic_proof',
   onChangeResultsSubTab,
   activeConversationsMode = 'list',
   onChangeConversationsMode,
@@ -356,7 +356,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           label: 'Resultados',
           icon: Megaphone,
           roleRequired: 'admin' as OperatorRole,
-          visible: true,
+          visible: showTrafficProof,
         },
       ],
     },
@@ -432,9 +432,9 @@ export const AppShell: React.FC<AppShellProps> = ({
     ] : []),
     ...(showGroups ? [{ id: 'grupos' as NavigationTab, label: 'Grupos WhatsApp', icon: Users, section: 'Operação', roleRequired: 'operator' as OperatorRole }] : []),
     { id: 'clientes' as NavigationTab, label: 'Clientes e Sub-contas', icon: Building2, section: 'Sistema', roleRequired: 'owner' as OperatorRole },
-    { id: 'resultados' as NavigationTab, label: 'Resultados do atendimento', icon: PieChart, section: 'Negócio', subTab: 'analytics', roleRequired: 'admin' as OperatorRole },
     ...(showTrafficProof ? [
-      { id: 'resultados' as NavigationTab, label: 'Resultados & Proof of Traffic', icon: BarChart3, section: 'Gestão', subTab: 'proof', roleRequired: 'admin' as OperatorRole },
+      { id: 'resultados' as NavigationTab, label: 'Resultados dos anúncios', icon: PieChart, section: 'Negócio', subTab: 'traffic_proof', roleRequired: 'admin' as OperatorRole },
+      { id: 'resultados' as NavigationTab, label: 'Conectar rastreamento Meta', icon: BarChart3, section: 'Gestão', subTab: 'tracking', roleRequired: 'owner' as OperatorRole },
     ] : []),
     ...(!isProductionMvp ? [
       { id: 'playbook' as NavigationTab, label: 'Sales AI Playbook & Inteligência', icon: Bot, section: 'Inteligência', roleRequired: 'admin' as OperatorRole },
@@ -660,14 +660,17 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {/* Subcategories for Gestão de Campanhas */}
                       {item.id === 'resultados' && isActive && !collapsed && (
                         <div className="mt-1 pl-6 bg-slate-800/30 space-y-0.5">
-                          {[
+                          {(isProductionMvp ? [
+                            { id: 'traffic_proof', label: 'Resultados dos anúncios' },
+                            ...(isOwner ? [{ id: 'tracking', label: 'Conectar Meta Ads' }] : []),
+                          ] : [
                             { id: 'analytics', label: 'Analytics & ROI' },
                             { id: 'traffic_proof', label: 'Anúncios & CTWA' },
                             { id: 'broadcast', label: 'Disparo em Massa (Broadcast)' },
                             { id: 'campaign_links', label: 'Links & QR Code' },
                             { id: 'waba_templates', label: 'Modelos WABA' },
                             { id: 'tracking', label: 'Traqueamento' },
-                          ].map((sub) => {
+                          ]).map((sub) => {
                             const isSubActive = activeResultsSubTab === sub.id;
                             return (
                               <button
@@ -691,13 +694,18 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {/* Subcategories for Configurações */}
                       {item.id === 'configuracoes' && isActive && !collapsed && (
                         <div className="mt-1 pl-6 bg-slate-800/30 rounded-r-lg space-y-0.5">
-                          {[
+                          {(isProductionMvp ? [
+                            { id: 'canais', label: 'WhatsApp' },
+                            { id: 'ia', label: 'Atendimento com IA' },
+                            { id: 'sla', label: 'Tempo de resposta' },
+                            { id: 'membros', label: 'Equipe' },
+                          ] : [
                             { id: 'team', label: 'Equipe & Usuários' },
                             { id: 'api_webhooks', label: 'API & Webhooks' },
                             { id: 'channels', label: 'Canais de WhatsApp' },
                             { id: 'feature_flags', label: 'Parâmetros Globais' },
                             { id: 'engines', label: 'Infra & Modelos' },
-                          ].map((sub) => {
+                          ]).map((sub) => {
                             const isSubActive = activeSettingsSubTab === sub.id;
                             return (
                               <button
@@ -813,13 +821,13 @@ export const AppShell: React.FC<AppShellProps> = ({
               <button
                 type="button"
                 onClick={toggleGlobalAiMode}
-                disabled={aiModeLoading}
+                disabled={aiModeLoading || !isOwner}
                 className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                   globalAiMode === 'autonomous_24_7'
                     ? 'bg-[#00A884]/20 hover:bg-[#00A884]/30 text-emerald-300 border-[#00A884]/40'
                     : 'bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 border-indigo-800/60'
                 }`}
-                title={aiModeError || 'Alterar modo publicado da IA no backend'}
+                title={aiModeError || (isOwner ? 'Alterar modo publicado da IA no backend' : 'Somente o proprietário altera o modo da IA')}
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   {globalAiMode === 'autonomous_24_7' ? (
@@ -847,9 +855,9 @@ export const AppShell: React.FC<AppShellProps> = ({
               <button
                 type="button"
                 onClick={toggleGlobalAiMode}
-                disabled={aiModeLoading}
+                disabled={aiModeLoading || !isOwner}
                 className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 text-slate-300 transition-colors cursor-pointer"
-                title={aiModeError || `IA: ${globalAiMode === 'autonomous_24_7' ? '24/7 ativa no backend' : 'Copiloto supervisionado'}`}
+                title={aiModeError || (isOwner ? `IA: ${globalAiMode === 'autonomous_24_7' ? '24/7 ativa no backend' : 'Copiloto supervisionado'}` : 'Somente o proprietário altera o modo da IA')}
               >
                 {globalAiMode === 'autonomous_24_7' ? (
                   <Sparkles className="w-4 h-4 text-emerald-400" />

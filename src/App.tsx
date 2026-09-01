@@ -160,9 +160,11 @@ function AppContent({
 
   const [conversationsMode, setConversationsMode] = React.useState<'list' | 'kanban' | 'wallboard'>('list');
   const [intelligenceSubTab, setIntelligenceSubTab] = React.useState<any>('knowledge');
-  const [settingsSubTab, setSettingsSubTab] = React.useState<any>('channels');
+  const [settingsSubTab, setSettingsSubTab] = React.useState<any>('canais');
   const [groupSubTab, setGroupSubTab] = React.useState<any>('conversations');
-  const [resultsSubTab, setResultsSubTab] = React.useState<ResultsSubTab>('analytics');
+  const [resultsSubTab, setResultsSubTab] = React.useState<ResultsSubTab>(
+    isProductionMvp ? 'traffic_proof' : 'analytics',
+  );
   const [isAssistantOpen, setIsAssistantOpen] = React.useState(false);
 
   // Role-based security fallback: prevent unauthorized roles from viewing restricted tabs
@@ -472,8 +474,10 @@ function AppContent({
       )}
       </React.Suspense>
 
-        {/* Botão Flutuante Atlas IA: Assistente Circular */}
-        <div className="fixed bottom-6 right-6 z-50">
+        {/* O assistente experimental continua disponível no laboratório, mas
+            não ocupa a operação principal até possuir um contrato de setup
+            específico e alinhado às telas realmente publicadas. */}
+        {!isProductionMvp && <div className="fixed bottom-6 right-6 z-50">
           <button
             onClick={() => setIsAssistantOpen(true)}
             className="flex h-12 w-12 items-center justify-center rounded-full bg-[#020617] text-white shadow-2xl shadow-slate-950/80 hover:scale-110 active:scale-95 transition-all duration-200 border-2 border-emerald-500 group cursor-pointer relative"
@@ -483,10 +487,10 @@ function AppContent({
             <Bot className="h-6 w-6 text-emerald-400 group-hover:text-white transition-colors" />
             <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 animate-pulse" />
           </button>
-        </div>
+        </div>}
 
         {/* Modal Conversacional de Onboarding */}
-        <OnboardingSetupAssistantModal
+        {!isProductionMvp && <OnboardingSetupAssistantModal
           currentWorkspace={currentWorkspace}
           isOpen={isAssistantOpen}
           onClose={() => setIsAssistantOpen(false)}
@@ -494,7 +498,7 @@ function AppContent({
             setActiveTab(tab);
             setIsAssistantOpen(false);
           }}
-        />
+        />}
       </AppShell>
     );
   }

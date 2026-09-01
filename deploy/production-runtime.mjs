@@ -4,6 +4,7 @@ import { Redis } from 'ioredis';
 import {
   SupabaseJwtAuthenticator,
   PostgresWorkspaceDirectory,
+  PostgresWorkspaceMembershipGateway,
   PostgresCockpitReadGateway,
   PostgresHandoffOperationsGateway,
   PostgresJourneyOperationsGateway,
@@ -85,6 +86,7 @@ export async function createProductionRuntime() {
   });
 
   const workspaceDirectory = new PostgresWorkspaceDirectory(pool);
+  const workspaceMembershipGateway = new PostgresWorkspaceMembershipGateway(pool);
   const cockpitReadGateway = new PostgresCockpitReadGateway(pool);
   const handoffOperationsGateway = new PostgresHandoffOperationsGateway(pool);
   const journeyOperationsGateway = new PostgresJourneyOperationsGateway(pool);
@@ -129,6 +131,7 @@ export async function createProductionRuntime() {
     lidIdentityResolver,
     authenticator,
     workspaceDirectory,
+    workspaceMembershipGateway,
     cockpitReadGateway,
     handoffOperationsGateway,
     journeyOperationsGateway,

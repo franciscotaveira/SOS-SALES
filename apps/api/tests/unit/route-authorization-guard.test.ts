@@ -182,6 +182,18 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
     await app.close();
   });
 
+  it('AUTH-07B: Tracking credentials are owner-only', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/tracking',
+      headers: { authorization: 'Bearer valid_token_tenant_a_operator.part2.part3' },
+      payload: { metaDatasetId: '123456789', metaAccessToken: 'secret-not-logged' },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
   it('AUTH-18: Legacy cockpit send only queues a supervised dispatch and never calls a provider directly', async () => {
     const calls: string[] = [];
     const app = await buildTestApp({

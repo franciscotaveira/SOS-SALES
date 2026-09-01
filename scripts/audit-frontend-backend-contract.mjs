@@ -8,6 +8,7 @@ const frontendRoot = path.join(root, 'src');
 const backendRoot = path.join(root, 'apps/api/src');
 
 const OPERATOR_NESTED_ROUTE_FILES = new Set([
+  'operator-auth.ts',
   'cockpit-read.ts',
   'handoff-operations.ts',
   'journey-operations.ts',
@@ -18,6 +19,7 @@ const OPERATOR_NESTED_ROUTE_FILES = new Set([
   'appointments.ts',
   'notes.ts',
   'workspace-init.ts',
+  'workspace-operational.ts',
   'autonomous-revenue-routes.ts',
 ]);
 

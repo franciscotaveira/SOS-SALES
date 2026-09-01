@@ -17,10 +17,14 @@ import {
   Radio,
   UserPlus,
   Trash2,
+  FileText,
+  Bot,
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
 import { EmbeddedSignupModal } from './EmbeddedSignupModal';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
+import { WabaTemplatesTab } from '../campaigns/WabaTemplatesTab';
+import { AiRuntimeSettingsView } from './AiRuntimeSettingsView';
 
 interface LiveSettingsViewProps {
   workspace: Workspace;
@@ -37,9 +41,10 @@ interface WorkspaceMember {
   email?: string | null;
 }
 
-function normalizeTab(tab: string): 'canais' | 'sla' | 'membros' {
+function normalizeTab(tab: string): 'canais' | 'ia' | 'sla' | 'membros' {
   if (tab === 'channels' || tab === 'canais') return 'canais';
   if (tab === 'sla') return 'sla';
+  if (tab === 'ia') return 'ia';
   if (tab === 'membros') return 'membros';
   return 'canais';
 }
@@ -69,6 +74,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   const [isQrLoading, setIsQrLoading] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [showWahaFallback, setShowWahaFallback] = useState(false);
+  const [showWabaTemplates, setShowWabaTemplates] = useState(false);
   const [wabaChannel, setWabaChannel] = useState<{
     state: 'loading' | 'connected' | 'unconfigured' | 'error';
     phoneNumber?: string | null;
@@ -267,7 +273,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Gestão de canais do WhatsApp, limites de SLA comercial e membros do workspace.
+            WhatsApp, IA, tempo de resposta e equipe em uma única configuração essencial.
           </p>
         </div>
 
@@ -282,6 +288,16 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
             }`}
           >
             <Smartphone className="w-3.5 h-3.5" /> Canais WhatsApp
+          </button>
+          <button
+            onClick={() => handleTabChange('ia')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              currentTab === 'ia'
+                ? 'bg-slate-900 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5" /> Atendimento com IA
           </button>
           <button
             onClick={() => handleTabChange('sla')}
@@ -308,6 +324,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
 
       {/* Main Content Area */}
       <div className="mt-5 flex-1">
+        {currentTab === 'ia' && <AiRuntimeSettingsView workspaceId={workspace.id} />}
         {currentTab === 'canais' && (
           <div className="max-w-4xl space-y-4">
             {/* Meta WABA Official Cloud API Card */}
@@ -346,6 +363,24 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                 {wabaChannel.state === 'connected' ? 'Gerenciar conexão oficial' : 'Conectar WhatsApp oficial'}
               </button>
             </div>
+
+            {wabaChannel.state === 'connected' && (
+              <button
+                type="button"
+                onClick={() => setShowWabaTemplates((visible) => !visible)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-xs text-slate-600 transition hover:bg-slate-50"
+                aria-expanded={showWabaTemplates}
+              >
+                <span className="inline-flex items-center gap-2 font-bold text-slate-900"><FileText size={14} /> Modelos aprovados da Meta</span>
+                <span className="ml-2">{showWabaTemplates ? 'Ocultar' : 'Gerenciar templates para mensagens fora da janela de 24 horas'}</span>
+              </button>
+            )}
+
+            {showWabaTemplates && wabaChannel.state === 'connected' && (
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <WabaTemplatesTab workspace={workspace} />
+              </div>
+            )}
 
             {!showWahaFallback ? (
               <button

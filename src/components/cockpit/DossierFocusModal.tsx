@@ -3,11 +3,9 @@ import {
   X,
   Sparkles,
   DollarSign,
-  Calendar,
   Clock,
   Send,
   Paperclip,
-  Mic,
   CreditCard,
   Zap,
   MapPin,
@@ -41,8 +39,6 @@ interface DossierFocusModalProps {
   onStageChange: (stage: string) => void;
   onOpenOutcomeModal: () => void;
   onOpenFollowUpModal: () => void;
-  onOpenExternalAgenda: () => void;
-  onOpenSalesVaultModal: () => void;
   onOpenWabaButtonsModal: () => void;
   onOpenWabaTemplateModal: () => void;
   onOpenFactModal: () => void;
@@ -62,8 +58,6 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
   onStageChange,
   onOpenOutcomeModal,
   onOpenFollowUpModal,
-  onOpenExternalAgenda,
-  onOpenSalesVaultModal,
   onOpenWabaButtonsModal,
   onOpenWabaTemplateModal,
   onOpenFactModal,
@@ -81,6 +75,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
   const [mediaError, setMediaError] = React.useState<string | null>(null);
   const supportsInlineMedia = (journey.channel?.provider || '').toLowerCase().includes('waha');
+  const isWabaChannel = ['meta', 'waba'].some((provider) => (journey.channel?.provider || '').toLowerCase().includes(provider));
 
   const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -196,17 +191,6 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
 
   const quickToolsList: QuickToolItem[] = [
     {
-      id: 'agenda',
-      category: 'agenda',
-      icon: <Calendar size={15} className="text-purple-600" />,
-      label: 'Agenda (integração necessária)',
-      description: 'Abre o estado bloqueado até existir disponibilidade persistida do provedor',
-      action: () => {
-        onOpenExternalAgenda?.();
-        setQuickToolsOpen(false);
-      },
-    },
-    {
       id: 'followup',
       category: 'agenda',
       icon: <Clock size={15} className="text-blue-600" />,
@@ -217,9 +201,9 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
         setQuickToolsOpen(false);
       },
     },
-    {
+    ...(isWabaChannel ? [{
       id: 'waba_buttons',
-      category: 'waba',
+      category: 'waba' as const,
       icon: <Zap size={15} className="text-amber-600" />,
       label: 'Botões Interativos WABA',
       description: 'Dispara botões de resposta rápida no WhatsApp',
@@ -227,18 +211,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
         onOpenWabaButtonsModal?.();
         setQuickToolsOpen(false);
       },
-    },
-    {
-      id: 'vault',
-      category: 'midia',
-      icon: <Mic size={15} className="text-rose-600" />,
-      label: 'Recursos & Áudios Prontos',
-      description: 'Áudios gravados, fotos de antes/depois e tabelas',
-      action: () => {
-        onOpenSalesVaultModal?.();
-        setQuickToolsOpen(false);
-      },
-    },
+    }] : []),
   ];
 
   return (
@@ -277,8 +250,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-300">
                 <span className="font-mono">{journey.contact.phone}</span>
-                <span>•</span>
-                <span className="text-emerald-400 font-semibold">{acquisition?.campaignName || 'Meta Ads (Tráfego Pago)'}</span>
+                {acquisition?.campaignName && <><span>•</span><span className="text-emerald-400 font-semibold">{acquisition.campaignName}</span></>}
               </div>
             </div>
           </div>
@@ -519,22 +491,22 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
               </div>
             </div>
 
-            {/* 1. Origem do Lead & Gancho do Anúncio */}
-            <div className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-3.5 space-y-2 shadow-2xs">
+            {/* Origem is shown only when attribution was actually persisted. */}
+            {(acquisition?.campaignName || acquisition?.offerHook) && <div className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-3.5 space-y-2 shadow-2xs">
               <span className="text-[10px] font-extrabold text-indigo-950 uppercase tracking-wider flex items-center gap-1">
                 <Zap size={12} className="text-indigo-600" /> Origem Meta Ads & Gancho de Interesse
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <div className="p-2 bg-white rounded-xl border border-indigo-100 text-xs">
                   <span className="text-[9.5px] text-slate-400 font-bold uppercase block">Campanha:</span>
-                  <span className="font-bold text-slate-900">{acquisition?.campaignName || 'Campanha Instagram / Meta Ads'}</span>
+                  <span className="font-bold text-slate-900">{acquisition?.campaignName || 'Não informado'}</span>
                 </div>
                 <div className="p-2 bg-white rounded-xl border border-indigo-100 text-xs">
                   <span className="text-[9.5px] text-slate-400 font-bold uppercase block">Oferta de Interesse:</span>
-                  <span className="font-bold text-emerald-800">{acquisition?.offerHook || 'Oferta de Mechas & Tratamento'}</span>
+                  <span className="font-bold text-emerald-800">{acquisition?.offerHook || 'Não informado'}</span>
                 </div>
               </div>
-            </div>
+            </div>}
 
             {/* 2. Preferências & Fatos Confirmados */}
             <div className="rounded-2xl border border-slate-200 bg-white p-3.5 space-y-2.5 shadow-2xs">
@@ -555,7 +527,7 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   <div className="p-2 bg-slate-50 rounded-xl border border-slate-100 text-xs">
                     <span className="text-[9.5px] text-slate-400 font-bold uppercase block">Serviço Desejado:</span>
-                    <span className="font-bold text-slate-900">{acquisition?.offerHook || 'Serviço de Beleza'}</span>
+                    <span className="font-bold text-slate-900">{journey.primaryServiceOrProduct || acquisition?.offerHook || 'Não informado'}</span>
                   </div>
                   {knownFacts.map((fact) => (
                     <div key={fact.id} className="p-2 bg-slate-50 rounded-xl border border-slate-100 text-xs">
@@ -599,10 +571,10 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={onOpenExternalAgenda}
+                  onClick={onOpenFollowUpModal}
                   className="p-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer flex items-center justify-center gap-1"
                 >
-                  <Calendar size={12} /> Ver agenda
+                  <Clock size={12} /> Agendar follow-up
                 </button>
               </div>
             </div>

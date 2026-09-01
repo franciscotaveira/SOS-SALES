@@ -135,86 +135,23 @@ function availability(label: string, detail: string) {
   );
 }
 
-// Helper para detecção semântica e visual de interesse (Design cognitivo anti-sobrecarga TDAH)
+// The queue only presents persisted classification. Semantic inference belongs
+// to the backend decision pipeline, where it can be versioned and audited.
 function detectServiceAndIntent(item: ApiPriority | ApiJourney) {
-  const name = (item.contactName || '').toLowerCase();
-  const phone = (item.contactPhone || '');
   const rawService = ('primaryServiceOrProduct' in item ? item.primaryServiceOrProduct : null) || '';
   const lastMsg = ('lastMessageText' in item ? item.lastMessageText : null) || '';
   const reason = ('priorityReason' in item ? item.priorityReason : null) || '';
-  
-  const text = `${name} ${rawService} ${lastMsg} ${reason}`.toLowerCase();
 
-  // 1. Verificação explícita por palavras-chave de serviços
-  if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || text.includes('chapinha') || text.includes('secagem') || text.includes('lavagem')) {
-    return {
-      service: '💇‍♀️ Escova Modelada & Lavagem',
-      badgeClass: 'bg-purple-100/90 text-purple-900 border-purple-200 font-extrabold',
-      preview: lastMsg || 'Sem mensagem registrada',
-    };
-  }
-  if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('alongamento') || text.includes('fibra') || text.includes('manicure') || text.includes('pedicure')) {
-    return {
-      service: '💅 Esmaltação & Unhas em Gel',
-      badgeClass: 'bg-pink-100/90 text-pink-900 border-pink-200 font-extrabold',
-      preview: lastMsg || 'Sem mensagem registrada',
-    };
-  }
-  if (text.includes('corte') || text.includes('visagismo') || text.includes('pontas') || text.includes('franja')) {
-    return {
-      service: '✂️ Corte Feminino & Visagismo',
-      badgeClass: 'bg-indigo-100/90 text-indigo-900 border-indigo-200 font-extrabold',
-      preview: lastMsg || 'Sem mensagem registrada',
-    };
-  }
-  if (text.includes('loiro') || text.includes('mechas') || text.includes('luzes') || text.includes('morena') || text.includes('color') || text.includes('tinta')) {
-    return {
-      service: '🎨 Mechas, Loiro & Morena Ilum.',
-      badgeClass: 'bg-amber-100/90 text-amber-950 border-amber-300 font-extrabold',
-      preview: lastMsg || 'Sem mensagem registrada',
-    };
-  }
-  if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('cronograma') || text.includes('ozonio') || text.includes('detox')) {
-    return {
-      service: '🧴 Tratamento Truss & Spa Capilar',
-      badgeClass: 'bg-emerald-100/90 text-emerald-950 border-emerald-300 font-extrabold',
-      preview: lastMsg || 'Sem mensagem registrada',
-    };
-  }
-  if (text.includes('make') || text.includes('maquiagem') || text.includes('penteado') || text.includes('noiva') || text.includes('casamento') || text.includes('festa')) {
-    return {
-      service: '💄 Make & Produção de Eventos',
-      badgeClass: 'bg-rose-100/90 text-rose-950 border-rose-300 font-extrabold',
-      preview: lastMsg || 'Sem mensagem registrada',
-    };
-  }
-  if (text.includes('preço') || text.includes('valor') || text.includes('quanto') || text.includes('tabela')) {
-    return {
-      service: '💰 Consulta de Valores & Tabela',
-      badgeClass: 'bg-blue-100/90 text-blue-900 border-blue-200 font-extrabold',
-      preview: lastMsg || 'Sem mensagem registrada',
-    };
-  }
-  if (text.includes('horario') || text.includes('horário') || text.includes('vaga') || text.includes('hoje') || text.includes('amanha') || text.includes('amanhã') || text.includes('sabado') || text.includes('sábado')) {
-    return {
-      service: '📅 Agendamento de Horário',
-      badgeClass: 'bg-sky-100/90 text-sky-900 border-sky-200 font-extrabold',
-      preview: lastMsg || 'Sem mensagem registrada',
-    };
-  }
-
-  // 2. Fallback baseado no cadastro de serviço real
   if (rawService && rawService !== 'Interessada em Serviços / Atendimento') {
     return {
-      service: `✨ ${rawService}`,
+      service: rawService,
       badgeClass: 'bg-indigo-100 text-indigo-900 border-indigo-200 font-bold',
       preview: lastMsg || rawService,
     };
   }
 
-  // 3. Fallback inteligente padrão
   return {
-    service: '💬 Atendimento Geral / Dúvidas',
+    service: 'Serviço não informado',
     badgeClass: 'bg-slate-100 text-slate-800 border-slate-200 font-bold',
     preview: lastMsg || reason || 'Sem mensagem registrada',
   };
@@ -297,17 +234,16 @@ function QueueCard({
     }
   }, [time]);
 
-  // Origem do Lead
+  // Canal comes from the persisted provider, never from words typed by the customer.
   const sourceTag = React.useMemo(() => {
-    const text = `${item.contactName || ''} ${intent.preview || ''}`.toLowerCase();
-    if (text.includes("anúncio") || text.includes("ctwa") || text.includes("click_wa") || text.includes("campanha")) {
-      return { label: "🎯 Menção de anúncio", bg: "bg-emerald-50 text-emerald-800 border-emerald-200" };
+    const provider = String((item as any).channel?.provider || (item as any).origin || '').toLowerCase();
+    if (provider.includes('instagram')) return { label: 'Instagram', bg: 'bg-pink-50 text-pink-800 border-pink-200' };
+    if (provider.includes('messenger')) return { label: 'Messenger', bg: 'bg-blue-50 text-blue-800 border-blue-200' };
+    if (provider.includes('waha') || provider.includes('meta') || provider.includes('waba') || provider.includes('whatsapp')) {
+      return { label: 'WhatsApp', bg: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
     }
-    if (text.includes("instagram") || text.includes("insta")) {
-      return { label: "📸 Menção de Instagram", bg: "bg-pink-50 text-pink-800 border-pink-200" };
-    }
-    return { label: "💬 WhatsApp", bg: "bg-slate-50 text-slate-700 border-slate-200" };
-  }, [item.contactName, intent.preview]);
+    return { label: 'Canal não informado', bg: 'bg-slate-50 text-slate-700 border-slate-200' };
+  }, [item]);
 
   // A fila não recebe score de conversão no contrato autenticado. Exiba
   // apenas fatos persistidos (SLA/estágio), nunca percentuais heurísticos.
@@ -369,9 +305,9 @@ function QueueCard({
 
       {/* Linha 2: Chips de Inteligência (Origem + Recorrência + Serviço Detectado) */}
       <div className="flex items-center gap-1 overflow-hidden flex-wrap">
-        <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold border shrink-0 ${loyalty.badgeClass}`}>
+        {loyalty.type && <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold border shrink-0 ${loyalty.badgeClass}`}>
           {loyalty.label}
-        </span>
+        </span>}
             <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border shrink-0 ${sourceTag.bg}`}>
           {sourceTag.label}
         </span>
@@ -816,8 +752,9 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
-  type QueueTabType = 'all' | 'priorities' | 'in_progress' | 'recurring' | 'new';
+  type QueueTabType = 'all' | 'priorities' | 'in_progress';
   const [queueTab, setQueueTab] = React.useState<QueueTabType>('all');
+  const [customerFilter, setCustomerFilter] = React.useState<'all' | 'recurring' | 'new'>('all');
   const [queueSearch, setQueueSearch] = React.useState('');
 
   // Loyalty Overrides State (⭐ Recorrente vs 🌱 Novo Lead)
@@ -979,16 +916,17 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       ? prioritiesList
       : queueTab === 'in_progress'
         ? journeysList.filter((j) => (j as any).status === 'in_progress' || j.pipelineStage === 'QUALIFIED' || j.pipelineStage === 'PROPOSAL' || (j as any).priorityReason)
-        : queueTab === 'recurring'
-          ? journeysList.filter((j) => detectCustomerLoyalty(j, loyaltyMap).type === 'RECURRING')
-          : queueTab === 'new'
-            ? journeysList.filter((j) => detectCustomerLoyalty(j, loyaltyMap).type === 'NEW')
-            : journeysList.length > 0
-              ? journeysList
-              : prioritiesList;
+        : journeysList.length > 0
+          ? journeysList
+          : prioritiesList;
 
   const queue = React.useMemo(() => {
     let result: Array<ApiPriority | ApiJourney> = rawQueue;
+
+    if (customerFilter !== 'all') {
+      const expectedType = customerFilter === 'recurring' ? 'RECURRING' : 'NEW';
+      result = result.filter((item) => detectCustomerLoyalty(item, loyaltyMap).type === expectedType);
+    }
 
     // Filtro por canal
     if (channelFilter === 'whatsapp') {
@@ -1016,7 +954,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       const text = ('lastMessageText' in item ? (item.lastMessageText || '') : (item.primaryServiceOrProduct || '')).toLowerCase();
       return name.includes(q) || phone.includes(q) || text.includes(q);
     });
-  }, [rawQueue, queueSearch, channelFilter]);
+  }, [rawQueue, queueSearch, channelFilter, customerFilter, loyaltyMap]);
 
   // Speedrun Mode: Global Keyboard Shortcuts for High-Volume Operators (Alt+J/K, Alt+Space, Alt+A, Alt+F, Alt+O)
   React.useEffect(() => {
@@ -1231,86 +1169,32 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               </button>
             </div>
 
-            {/* Tab switchers: Linha 2 (Fidelidade: ⭐ Recorrentes vs 🌱 Novos) */}
-            <div className="grid grid-cols-2 gap-1 bg-slate-200/50 p-0.5 rounded-xl text-[10px] font-bold">
-              <button
-                type="button"
-                onClick={() => setQueueTab('recurring')}
-                className={`py-0.5 px-1 rounded-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
-                  queueTab === 'recurring'
-                    ? 'bg-purple-100 text-purple-950 border border-purple-300 shadow-2xs font-extrabold'
-                    : 'text-purple-900 hover:text-purple-950 hover:bg-purple-50/50'
-                }`}
-                title="Filtrar apenas Clientes Recorrentes / VIP"
+            {/* Secondary filters stay available without competing with the primary queue. */}
+            <div className="grid grid-cols-2 gap-1.5">
+              <label className="sr-only" htmlFor="customer-filter">Perfil do contato</label>
+              <select
+                id="customer-filter"
+                value={customerFilter}
+                onChange={(event) => setCustomerFilter(event.target.value as typeof customerFilter)}
+                className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10.5px] font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#00a884]"
               >
-                <span>⭐ Recorrentes</span>
-                <span className="text-[9px] font-mono px-1 rounded-full bg-purple-200/70 text-purple-900 font-bold">
-                  {journeysList.filter((j) => detectCustomerLoyalty(j, loyaltyMap).type === 'RECURRING').length}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setQueueTab('new')}
-                className={`py-0.5 px-1 rounded-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
-                  queueTab === 'new'
-                    ? 'bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-2xs font-extrabold'
-                    : 'text-emerald-900 hover:text-emerald-950 hover:bg-emerald-50/50'
-                }`}
-                title="Filtrar apenas Novos Leads (1ª compra)"
-              >
-                <span>🌱 Novos Leads</span>
-                <span className="text-[9px] font-mono px-1 rounded-full bg-emerald-200/70 text-emerald-900 font-bold">
-                  {journeysList.filter((j) => detectCustomerLoyalty(j, loyaltyMap).type === 'NEW').length}
-                </span>
-              </button>
-            </div>
+                <option value="all">Todos os perfis</option>
+                <option value="recurring">Recorrentes</option>
+                <option value="new">Novos leads</option>
+              </select>
 
-            {/* Tab switchers: Linha 3 (Canais: Todos / WhatsApp / Instagram Direct / Comentários) */}
-            <div className="flex items-center gap-1 bg-slate-200/40 p-0.5 rounded-lg text-[9.5px] font-bold overflow-x-auto no-scrollbar">
-              <button
-                type="button"
-                onClick={() => setChannelFilter('all')}
-                className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer shrink-0 ${
-                  channelFilter === 'all'
-                    ? 'bg-white text-slate-900 shadow-3xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+              <label className="sr-only" htmlFor="channel-filter">Canal</label>
+              <select
+                id="channel-filter"
+                value={channelFilter}
+                onChange={(event) => setChannelFilter(event.target.value as typeof channelFilter)}
+                className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10.5px] font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#00a884]"
               >
-                🌐 Todos
-              </button>
-              <button
-                type="button"
-                onClick={() => setChannelFilter('whatsapp')}
-                className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer shrink-0 ${
-                  channelFilter === 'whatsapp'
-                    ? 'bg-emerald-600 text-white shadow-3xs font-extrabold'
-                    : 'text-emerald-800 hover:text-emerald-950'
-                }`}
-              >
-                💬 WhatsApp
-              </button>
-              <button
-                type="button"
-                onClick={() => setChannelFilter('instagram_direct')}
-                className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer shrink-0 ${
-                  channelFilter === 'instagram_direct'
-                    ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-3xs font-extrabold'
-                    : 'text-purple-800 hover:text-purple-950'
-                }`}
-              >
-                📸 Direct
-              </button>
-              <button
-                type="button"
-                onClick={() => setChannelFilter('instagram_comment')}
-                className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer shrink-0 ${
-                  channelFilter === 'instagram_comment'
-                    ? 'bg-indigo-600 text-white shadow-3xs font-extrabold'
-                    : 'text-indigo-800 hover:text-indigo-950'
-                }`}
-              >
-                💬 Comentários
-              </button>
+                <option value="all">Todos os canais</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="instagram_direct">Instagram Direct</option>
+                <option value="instagram_comment">Comentários</option>
+              </select>
             </div>
 
             {/* Search Input and Nova Conversa CTA */}
@@ -1382,7 +1266,6 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               isDossierCollapsed={isDossierCollapsed}
               onToggleDossier={toggleDossierCollapse}
               onOpenDossierFocus={() => setDossierFocusModalOpen(true)}
-              onOpenExternalAgenda={() => setExternalAgendaDrawerOpen(true)}
               onAcceptHandoff={handleAcceptHandoff}
               onResolveHandoff={handleResolveHandoff}
               onOpenReturnAiModal={() => setReturnAiModalOpen(true)}
@@ -1391,7 +1274,6 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               onOpenOutcomeModal={() => setOutcomeModalOpen(true)}
               onOpenWabaButtonsModal={() => setWabaButtonsModalOpen(true)}
               onOpenWabaTemplateModal={() => setWabaTemplateModalOpen(true)}
-              onOpenSalesVaultModal={() => setSalesVaultModalOpen(true)}
               onCreateOutboundDraft={handleCreateOutboundDraft}
               onClearCurrentJourney={handleClearCurrentJourney}
               onUpdateContactName={handleUpdateContactName}
@@ -1414,8 +1296,6 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           onStageChange={handleStageChange}
           onOpenOutcomeModal={() => setOutcomeModalOpen(true)}
           onOpenFollowUpModal={() => setFollowUpModalOpen(true)}
-          onOpenExternalAgenda={() => setExternalAgendaDrawerOpen(true)}
-          onOpenSalesVaultModal={() => setSalesVaultModalOpen(true)}
           onOpenWabaButtonsModal={() => setWabaButtonsModalOpen(true)}
           onOpenWabaTemplateModal={() => setWabaTemplateModalOpen(true)}
           onOpenFactModal={() => setFactModalOpen(true)}
@@ -1531,7 +1411,6 @@ function LiveJourneyBody({
   isDossierCollapsed = false,
   onToggleDossier,
   onOpenDossierFocus,
-  onOpenExternalAgenda,
   onAcceptHandoff,
   onResolveHandoff,
   onOpenReturnAiModal,
@@ -1540,7 +1419,6 @@ function LiveJourneyBody({
   onOpenOutcomeModal,
   onOpenWabaButtonsModal,
   onOpenWabaTemplateModal,
-  onOpenSalesVaultModal,
   onCreateOutboundDraft,
   onClearCurrentJourney,
   onUpdateContactName,
@@ -1556,7 +1434,6 @@ function LiveJourneyBody({
   isDossierCollapsed?: boolean;
   onToggleDossier?: () => void;
   onOpenDossierFocus?: () => void;
-  onOpenExternalAgenda: () => void;
   onAcceptHandoff: (handoffCaseId: string) => void;
   onResolveHandoff: (handoffCaseId: string) => void;
   onOpenReturnAiModal: () => void;
@@ -1565,7 +1442,6 @@ function LiveJourneyBody({
   onOpenOutcomeModal: () => void;
   onOpenWabaButtonsModal: () => void;
   onOpenWabaTemplateModal: () => void;
-  onOpenSalesVaultModal: () => void;
   onCreateOutboundDraft: (text: string) => void;
   onClearCurrentJourney?: () => void;
   onUpdateContactName?: (newName: string) => void | Promise<void>;
@@ -1739,6 +1615,8 @@ function LiveJourneyBody({
 
   // Quick Tools Popover State & Action Catalog
   const [quickToolsOpen, setQuickToolsOpen] = React.useState(false);
+  const channelProvider = (journey.channel?.provider || '').toLowerCase();
+  const isWabaChannel = channelProvider.includes('meta') || channelProvider.includes('waba');
   const quickToolsList = React.useMemo<QuickToolItem[]>(() => {
     return [
       ...(commercialConfig.pixKey?.trim() ? [{
@@ -1753,17 +1631,6 @@ function LiveJourneyBody({
         },
       }] : []),
       {
-        id: 'agenda',
-        category: 'agenda',
-        icon: <Calendar size={15} className="text-purple-600" />,
-        label: 'Vagas & Horários Livres',
-        description: 'Abre a agenda bloqueada até existir disponibilidade persistida do provedor',
-        action: () => {
-          onOpenExternalAgenda?.();
-          setQuickToolsOpen(false);
-        },
-      },
-      {
         id: 'followup',
         category: 'agenda',
         icon: <Clock size={15} className="text-blue-600" />,
@@ -1774,9 +1641,9 @@ function LiveJourneyBody({
           setQuickToolsOpen(false);
         },
       },
-      {
+      ...(isWabaChannel ? [{
         id: 'waba_buttons',
-        category: 'waba',
+        category: 'waba' as const,
         icon: <Zap size={15} className="text-amber-600" />,
         label: 'Botões Interativos WABA',
         description: 'Dispara botões de resposta rápida no WhatsApp',
@@ -1787,7 +1654,7 @@ function LiveJourneyBody({
       },
       {
         id: 'waba_template',
-        category: 'waba',
+        category: 'waba' as const,
         icon: <FileText size={15} className="text-indigo-600" />,
         label: 'Reabrir Janela (Template HSM)',
         description: 'Envia modelo aprovado pela Meta para contatos inativos >24h',
@@ -1795,18 +1662,7 @@ function LiveJourneyBody({
           onOpenWabaTemplateModal?.();
           setQuickToolsOpen(false);
         },
-      },
-      {
-        id: 'vault',
-        category: 'midia',
-        icon: <Mic size={15} className="text-rose-600" />,
-        label: 'Recursos & Áudios Prontos',
-        description: 'Áudios gravados, fotos de antes/depois e tabelas',
-        action: () => {
-          onOpenSalesVaultModal?.();
-          setQuickToolsOpen(false);
-        },
-      },
+      }] : []),
       ...(commercialConfig.businessAddress?.trim() ? [{
         id: 'location',
         category: 'localizacao',
@@ -1830,7 +1686,7 @@ function LiveJourneyBody({
         },
       })),
     ] as QuickToolItem[];
-  }, [commercialConfig, onOpenExternalAgenda, onOpenFollowUpModal, onOpenWabaButtonsModal, onOpenWabaTemplateModal, onOpenSalesVaultModal, objectionBreakers]);
+  }, [commercialConfig, isWabaChannel, onOpenFollowUpModal, onOpenWabaButtonsModal, onOpenWabaTemplateModal, objectionBreakers]);
 
   // Audio Recording & Attachment States
   const [isRecording, setIsRecording] = React.useState(false);
@@ -1840,7 +1696,6 @@ function LiveJourneyBody({
   const recordingTimerRef = React.useRef<any>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [mediaError, setMediaError] = React.useState<string | null>(null);
-  const channelProvider = (journey.channel?.provider || '').toLowerCase();
   const supportsInlineMedia = channelProvider.includes('waha');
 
   const startRecordingAudio = async () => {

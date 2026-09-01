@@ -9,9 +9,21 @@ import { WorkspaceDirectory } from '../../../application/ports/workspace-directo
 import { WabaChannelInfoGateway } from '../../../application/ports/waba-channel-info-gateway.js';
 import { verifyOperatorAuth, assertTenantAccess, unauthorized, forbidden } from '../helpers/auth-guard.js';
 import crypto from 'node:crypto';
+import { z } from 'zod';
 
 const WAHA_BASE_URL = process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || 'http://sos-sales-api:4334';
+
+const trackingSettingsBodySchema = z.object({
+  metaPixelId: z.string().trim().max(80).optional(),
+  metaDatasetId: z.string().trim().max(80).optional(),
+  metaAccessToken: z.string().trim().max(4096).optional(),
+  metaCapiEnabled: z.boolean().optional(),
+  googleAdsCustomerId: z.string().trim().max(80).optional(),
+  googleConversionId: z.string().trim().max(80).optional(),
+  googleGclidTracking: z.boolean().optional(),
+  campaignMappings: z.array(z.record(z.string(), z.unknown())).max(100).optional(),
+}).strict();
 
 export function getWahaApiKey(): string {
   const key = process.env.WAHA_API_KEY;
@@ -160,7 +172,9 @@ export async function whatsappChannelRoutes(
       // Deleting either an entire workspace history or a single conversation is
       // irreversible.  Operators may handle conversations, but only the
       // workspace owner may erase their audit trail.
-      const isOwnerOnly = request.url.includes('/clear-history') || request.url.includes('/clear-journey');
+      const isOwnerOnly = request.url.includes('/clear-history')
+        || request.url.includes('/clear-journey')
+        || request.url.includes('/tracking');
       const requiredRole = isOwnerOnly ? 'owner' : (isMutation ? 'operator' : 'viewer');
 
       const allowed = await assertTenantAccess(
@@ -1836,8 +1850,11 @@ export async function whatsappChannelRoutes(
                    AND COALESCE(cs.secret_payload->>'accessToken', '') <> ''
                ) AS meta_token_configured
         FROM public.channel_connections cc
-        WHERE cc.workspace_id = $1 AND cc.provider IN ('meta_cloud', 'tracking', 'waha')
-        ORDER BY CASE WHEN provider = 'meta_cloud' THEN 1 WHEN provider = 'tracking' THEN 2 ELSE 3 END
+        WHERE cc.workspace_id = $1
+          AND cc.provider IN ('meta_cloud', 'waha')
+          AND cc.status = 'CONNECTED'
+          AND cc.phone_number <> 'Meta CAPI Tracking'
+        ORDER BY CASE WHEN provider = 'meta_cloud' THEN 1 ELSE 2 END
         LIMIT 1
       `, [workspaceId]);
 
@@ -1885,36 +1902,43 @@ export async function whatsappChannelRoutes(
     };
   }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
-    const body = request.body || {};
+    const parsedBody = trackingSettingsBodySchema.safeParse(request.body || {});
+    if (!parsedBody.success) {
+      return reply.status(422).send({
+        success: false,
+        code: 'INVALID_TRACKING_SETTINGS',
+        error: 'Configuração de rastreamento inválida.',
+      });
+    }
+    const body = parsedBody.data;
     const tokenToStore = body.metaAccessToken?.trim() || '';
     const client = await dbPool.connect();
     try {
-      // Find existing connection or create a 'meta_cloud' / 'tracking' entry
+      // Tracking is metadata of a real messaging connection. Never create a
+      // fake CONNECTED meta_cloud row: that makes the UI report a duplicated
+      // WABA channel and breaks provider ownership.
       const existing = await client.query(`
         SELECT id, provider, public_config
         FROM public.channel_connections
         WHERE workspace_id = $1
+          AND provider IN ('meta_cloud', 'waha')
+          AND status = 'CONNECTED'
+          AND phone_number <> 'Meta CAPI Tracking'
         ORDER BY CASE WHEN provider = 'meta_cloud' THEN 1 ELSE 2 END
         LIMIT 1
       `, [workspaceId]);
 
-      let publicConfig: Record<string, any> = {};
-      let connectionId: string;
-
-      if (existing.rowCount && existing.rowCount > 0) {
-        connectionId = existing.rows[0].id;
-        const raw = existing.rows[0].public_config;
-        publicConfig = typeof raw === 'string' ? JSON.parse(raw) : raw || {};
-      } else {
-        const insertRes = await client.query(`
-          INSERT INTO public.channel_connections (
-            id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at
-          ) VALUES (
-            gen_random_uuid(), $1, 'meta_cloud', 'Meta CAPI Tracking', 'Meta Ads Tracking', '{}'::jsonb, 'CONNECTED', NOW(), NOW()
-          ) RETURNING id
-        `, [workspaceId]);
-        connectionId = insertRes.rows[0].id;
+      if (!existing.rowCount) {
+        return reply.status(409).send({
+          success: false,
+          code: 'WHATSAPP_CHANNEL_REQUIRED',
+          error: 'Conecte primeiro um número WhatsApp oficial ou WAHA neste workspace.',
+        });
       }
+
+      const connectionId = existing.rows[0].id as string;
+      const raw = existing.rows[0].public_config;
+      let publicConfig: Record<string, any> = typeof raw === 'string' ? JSON.parse(raw) : raw || {};
 
       // Remove any legacy secret-bearing keys before persisting public config.
       const {
