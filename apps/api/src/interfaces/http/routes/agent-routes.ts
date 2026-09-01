@@ -16,6 +16,11 @@ import { normalizeWorkspaceUuid } from './whatsapp-channel-routes.js';
 import { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
 import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
 import { verifyOperatorAuth, assertTenantAccess, unauthorized } from '../helpers/auth-guard.js';
+import {
+  shouldSosSalesRespond,
+  type ResponderMode,
+  type ResponderOwner,
+} from '../../../application/agents/receptionist-agent.js';
 
 interface BotParams {
   workspaceId: string;
@@ -26,6 +31,13 @@ const autonomyModeSchema = z.enum([
   'copilot_supervised',
   'semi_autonomous',
   'autonomous_24_7',
+]);
+
+const responderModeSchema = z.enum([
+  'sos_sales',
+  'meta_business_agent',
+  'auto_fallback',
+  'manual',
 ]);
 
 const behaviorConfigSchema = z.object({
@@ -53,6 +65,7 @@ const behaviorConfigSchema = z.object({
 const agentConfigUpdateSchema = z.object({
   autonomyMode: autonomyModeSchema.optional(),
   runtimeEnabled: z.boolean().optional(),
+  responderMode: responderModeSchema.optional(),
   behaviorConfig: behaviorConfigSchema.optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, {
   message: 'At least one agent configuration field is required',
@@ -61,6 +74,11 @@ const agentConfigUpdateSchema = z.object({
 interface WorkspaceAgentRuntimeConfig {
   autonomyMode: z.infer<typeof autonomyModeSchema>;
   runtimeEnabled: boolean;
+  responderMode: z.infer<typeof responderModeSchema>;
+  metaAgentId: string | null;
+  metaAgentEnabled: boolean;
+  metaAgentEligibilityStatus: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
+  metaAgentCheckedAt: string | null;
   behaviorConfig: Record<string, unknown>;
   publishedAt: string | null;
   publishedBy: string | null;
@@ -68,7 +86,9 @@ interface WorkspaceAgentRuntimeConfig {
 
 async function readWorkspaceAgentRuntimeConfig(workspaceId: string): Promise<WorkspaceAgentRuntimeConfig> {
   const result = await dbPool.query(
-    `SELECT autonomy_mode, runtime_enabled, behavior_config, published_at, published_by
+    `SELECT autonomy_mode, runtime_enabled, responder_mode, meta_agent_id,
+            meta_agent_enabled, meta_agent_eligibility_status, meta_agent_checked_at,
+            behavior_config, published_at, published_by
      FROM public.workspace_agent_config
      WHERE workspace_id = $1`,
     [workspaceId]
@@ -78,6 +98,11 @@ async function readWorkspaceAgentRuntimeConfig(workspaceId: string): Promise<Wor
     return {
       autonomyMode: 'copilot_supervised',
       runtimeEnabled: false,
+      responderMode: 'sos_sales',
+      metaAgentId: null,
+      metaAgentEnabled: false,
+      metaAgentEligibilityStatus: 'UNKNOWN',
+      metaAgentCheckedAt: null,
       behaviorConfig: {},
       publishedAt: null,
       publishedBy: null,
@@ -90,6 +115,16 @@ async function readWorkspaceAgentRuntimeConfig(workspaceId: string): Promise<Wor
       ? row.autonomy_mode
       : 'copilot_supervised',
     runtimeEnabled: row.runtime_enabled === true,
+    responderMode: responderModeSchema.safeParse(row.responder_mode).success
+      ? row.responder_mode
+      : 'sos_sales',
+    metaAgentId: row.meta_agent_id ? String(row.meta_agent_id) : null,
+    metaAgentEnabled: row.meta_agent_enabled === true,
+    metaAgentEligibilityStatus: row.meta_agent_eligibility_status === 'ELIGIBLE'
+      || row.meta_agent_eligibility_status === 'INELIGIBLE'
+      ? row.meta_agent_eligibility_status
+      : 'UNKNOWN',
+    metaAgentCheckedAt: row.meta_agent_checked_at ? new Date(row.meta_agent_checked_at).toISOString() : null,
     behaviorConfig: row.behavior_config && typeof row.behavior_config === 'object'
       ? row.behavior_config
       : {},
@@ -98,11 +133,45 @@ async function readWorkspaceAgentRuntimeConfig(workspaceId: string): Promise<Wor
   };
 }
 
-function isRuntimeEffective(config: WorkspaceAgentRuntimeConfig): boolean {
+function isRuntimeAvailable(config: WorkspaceAgentRuntimeConfig): boolean {
   return config.runtimeEnabled
     && config.autonomyMode === 'autonomous_24_7'
-    && process.env.RECEPTIONIST_ENABLED === 'true'
+    && Boolean(config.publishedAt)
+    && isProviderConfigured();
+}
+
+function isProviderConfigured(): boolean {
+  return process.env.RECEPTIONIST_ENABLED === 'true'
     && Boolean(process.env.NVIDIA_API_KEY);
+}
+
+function isRuntimeEffective(config: WorkspaceAgentRuntimeConfig): boolean {
+  const metaActivationUnknown = config.metaAgentEnabled
+    && config.metaAgentEligibilityStatus === 'UNKNOWN';
+  const metaOwnsByDefault = config.responderMode === 'meta_business_agent'
+    || (config.responderMode === 'auto_fallback'
+      && (metaActivationUnknown
+        || (config.metaAgentEnabled
+          && Boolean(config.metaAgentId)
+          && config.metaAgentEligibilityStatus === 'ELIGIBLE')));
+  return isRuntimeAvailable(config)
+    && !metaOwnsByDefault
+    && config.responderMode !== 'manual'
+}
+
+function isJourneyRuntimeEffective(
+  config: WorkspaceAgentRuntimeConfig,
+  responderOwner: ResponderOwner,
+  responderChangedAt: string | Date | null,
+): boolean {
+  return isRuntimeAvailable(config) && shouldSosSalesRespond({
+    responderMode: config.responderMode as ResponderMode,
+    responderOwner,
+    responderChangedAt,
+    metaAgentEnabled: config.metaAgentEnabled,
+    metaAgentId: config.metaAgentId,
+    metaAgentEligibilityStatus: config.metaAgentEligibilityStatus,
+  });
 }
 
 export interface AgentRoutesOptions {
@@ -162,7 +231,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         return reply.status(200).send({
           ...config,
           runtimeEffective: isRuntimeEffective(config),
-          providerConfigured: process.env.RECEPTIONIST_ENABLED === 'true',
+          providerConfigured: isProviderConfigured(),
         });
       } catch (err) {
         request.log.error({ err }, 'Error fetching workspace agent config');
@@ -188,30 +257,45 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const actorId = request.operatorActor?.userId;
       if (!actorId) return reply.status(401).send({ error: 'Unauthorized' });
 
-      const { autonomyMode, runtimeEnabled, behaviorConfig } = parsed.data;
+      const { autonomyMode, runtimeEnabled, responderMode, behaviorConfig } = parsed.data;
       try {
+        if (responderMode === 'meta_business_agent') {
+          const current = await readWorkspaceAgentRuntimeConfig(workspaceId);
+          const metaReady = current.metaAgentEnabled
+            && Boolean(current.metaAgentId)
+            && current.metaAgentEligibilityStatus === 'ELIGIBLE';
+          if (!metaReady) {
+            return reply.status(409).send({
+              error: 'O Meta Business Agent ainda não está elegível e ativado para este workspace.',
+              code: 'META_BUSINESS_AGENT_NOT_READY',
+            });
+          }
+        }
         await dbPool.query(
           `INSERT INTO public.workspace_agent_config (
-             workspace_id, autonomy_mode, runtime_enabled, behavior_config,
+             workspace_id, autonomy_mode, runtime_enabled, responder_mode, behavior_config,
              published_at, published_by, updated_at
            ) VALUES (
              $1,
              COALESCE($2, 'copilot_supervised'),
              COALESCE($3, false),
-             COALESCE($4::jsonb, '{}'::jsonb),
-             NOW(), $5, NOW()
+             COALESCE($4, 'sos_sales'),
+             COALESCE($5::jsonb, '{}'::jsonb),
+             NOW(), $6, NOW()
            )
            ON CONFLICT (workspace_id) DO UPDATE SET
              autonomy_mode = COALESCE($2, workspace_agent_config.autonomy_mode),
              runtime_enabled = COALESCE($3, workspace_agent_config.runtime_enabled),
-             behavior_config = COALESCE($4::jsonb, workspace_agent_config.behavior_config),
+             responder_mode = COALESCE($4, workspace_agent_config.responder_mode),
+             behavior_config = COALESCE($5::jsonb, workspace_agent_config.behavior_config),
              published_at = NOW(),
-             published_by = $5,
+             published_by = $6,
              updated_at = NOW()`,
           [
             workspaceId,
             autonomyMode ?? null,
             runtimeEnabled ?? null,
+            responderMode ?? null,
             behaviorConfig ? JSON.stringify(behaviorConfig) : null,
             actorId,
           ]
@@ -236,7 +320,8 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
    * Retorna o estado completo do bot para a jornada:
    * - botEnabled: operador habilitou o bot nesta jornada (freio principal)
    * - botPaused: humano está atendendo temporariamente (freio secundário)
-   * - botActive: true somente quando enabled=true E paused=false
+   * - botActive: true somente quando enabled/paused, runtime publicado e
+   *   owner da conversa permitem que a IA própria responda
    */
   app.get<{ Params: BotParams }>(
     '/api/v1/workspaces/:workspaceId/journeys/:journeyId/bot/status',
@@ -246,7 +331,8 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
 
       try {
         const result = await dbPool.query(
-          `SELECT id, bot_enabled, bot_paused_at, bot_pause_reason, pipeline_stage
+          `SELECT id, bot_enabled, bot_paused_at, bot_pause_reason, pipeline_stage,
+                  responder_owner, responder_changed_at
            FROM public.commercial_journeys
            WHERE id = $1 AND workspace_id = $2`,
           [journeyId, workspaceId]
@@ -259,8 +345,15 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         const journey = result.rows[0];
         const botEnabled: boolean = journey.bot_enabled === true;
         const botPaused: boolean = !!journey.bot_paused_at;
+        const responderOwner: ResponderOwner = journey.responder_owner === 'meta_business_agent'
+          || journey.responder_owner === 'human'
+          ? journey.responder_owner
+          : 'sos_sales';
+        const responderChangedAt = journey.responder_changed_at || null;
         const runtimeConfig = await readWorkspaceAgentRuntimeConfig(workspaceId!);
-        const botActive: boolean = botEnabled && !botPaused && isRuntimeEffective(runtimeConfig);
+        const botActive: boolean = botEnabled
+          && !botPaused
+          && isJourneyRuntimeEffective(runtimeConfig, responderOwner, responderChangedAt);
 
         return reply.status(200).send({
           journeyId,
@@ -270,12 +363,18 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           pausedAt: journey.bot_paused_at || null,
           pauseReason: journey.bot_pause_reason || null,
           pipelineStage: journey.pipeline_stage,
+          responderOwner,
+          responderChangedAt,
           engine: 'nvidia_nim',
           model: process.env.NVIDIA_NIM_MODEL || 'meta/llama-3.1-70b-instruct',
           receptionistEnabled: process.env.RECEPTIONIST_ENABLED === 'true',
           autonomyMode: runtimeConfig.autonomyMode,
           workspaceRuntimeEnabled: runtimeConfig.runtimeEnabled,
           runtimeEffective: isRuntimeEffective(runtimeConfig),
+          responderMode: runtimeConfig.responderMode,
+          metaAgentId: runtimeConfig.metaAgentId,
+          metaAgentEnabled: runtimeConfig.metaAgentEnabled,
+          metaAgentEligibilityStatus: runtimeConfig.metaAgentEligibilityStatus,
         });
       } catch (err) {
         request.log.error({ err }, 'Error fetching bot status');
@@ -300,7 +399,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           `UPDATE public.commercial_journeys
            SET bot_enabled = true, bot_paused_at = NULL, bot_pause_reason = NULL, updated_at = NOW()
            WHERE id = $1 AND workspace_id = $2
-           RETURNING id, bot_enabled`,
+           RETURNING id, bot_enabled, responder_owner, responder_changed_at`,
           [journeyId, workspaceId]
         );
 
@@ -310,17 +409,29 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
 
         const runtimeConfig = await readWorkspaceAgentRuntimeConfig(workspaceId!);
         const runtimeEffective = isRuntimeEffective(runtimeConfig);
+        const responderOwner: ResponderOwner = result.rows[0].responder_owner === 'meta_business_agent'
+          || result.rows[0].responder_owner === 'human'
+          ? result.rows[0].responder_owner
+          : 'sos_sales';
+        const responderChangedAt = result.rows[0].responder_changed_at || null;
+        const botActive = isJourneyRuntimeEffective(runtimeConfig, responderOwner, responderChangedAt);
 
         return reply.status(200).send({
           journeyId,
           botEnabled: true,
           botPaused: false,
-          botActive: runtimeEffective,
+          botActive,
+          responderOwner,
+          responderChangedAt,
           autonomyMode: runtimeConfig.autonomyMode,
           workspaceRuntimeEnabled: runtimeConfig.runtimeEnabled,
           runtimeEffective,
-          message: runtimeEffective
+          message: botActive
             ? 'Bot habilitado. Atendimento automático 24/7 ativo.'
+            : responderOwner === 'meta_business_agent'
+              ? 'Jornada habilitada, mas o Meta Business Agent é o responsável desta conversa.'
+              : responderOwner === 'human'
+                ? 'Jornada habilitada, mas o atendimento automático está em modo manual.'
             : 'Bot habilitado para a jornada, mas o runtime autônomo do workspace está desativado.',
         });
       } catch (err) {
@@ -346,7 +457,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           `UPDATE public.commercial_journeys
            SET bot_enabled = false, bot_paused_at = NULL, bot_pause_reason = NULL, updated_at = NOW()
            WHERE id = $1 AND workspace_id = $2
-           RETURNING id, bot_enabled`,
+           RETURNING id, bot_enabled, responder_owner, responder_changed_at`,
           [journeyId, workspaceId]
         );
 
@@ -425,7 +536,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           `UPDATE public.commercial_journeys
            SET bot_paused_at = NULL, bot_pause_reason = NULL, updated_at = NOW()
            WHERE id = $1 AND workspace_id = $2
-           RETURNING id, bot_enabled`,
+           RETURNING id, bot_enabled, responder_owner, responder_changed_at`,
           [journeyId, workspaceId]
         );
 
@@ -435,7 +546,12 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
 
         const botEnabled: boolean = result.rows[0].bot_enabled === true;
         const runtimeConfig = await readWorkspaceAgentRuntimeConfig(workspaceId!);
-        const botActive = botEnabled && isRuntimeEffective(runtimeConfig);
+        const responderOwner: ResponderOwner = result.rows[0].responder_owner === 'meta_business_agent'
+          || result.rows[0].responder_owner === 'human'
+          ? result.rows[0].responder_owner
+          : 'sos_sales';
+        const responderChangedAt = result.rows[0].responder_changed_at || null;
+        const botActive = botEnabled && isJourneyRuntimeEffective(runtimeConfig, responderOwner, responderChangedAt);
         return reply.status(200).send({
           journeyId,
           botEnabled,
@@ -444,6 +560,8 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           autonomyMode: runtimeConfig.autonomyMode,
           workspaceRuntimeEnabled: runtimeConfig.runtimeEnabled,
           runtimeEffective: isRuntimeEffective(runtimeConfig),
+          responderOwner,
+          responderChangedAt,
           message: botActive
             ? 'Bot retomado. Atendimento automático ativo.'
             : botEnabled

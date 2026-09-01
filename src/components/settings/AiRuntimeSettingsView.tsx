@@ -16,6 +16,11 @@ type Goal = 'agendamento' | 'sinal_pix' | 'orcamento' | 'qualificacao_vendedor';
 const DEFAULT_CONFIG: WorkspaceAgentRuntimeConfig = {
   autonomyMode: 'copilot_supervised',
   runtimeEnabled: false,
+  responderMode: 'sos_sales',
+  metaAgentId: null,
+  metaAgentEnabled: false,
+  metaAgentEligibilityStatus: 'UNKNOWN',
+  metaAgentCheckedAt: null,
   runtimeEffective: false,
   providerConfigured: false,
   behaviorConfig: {},

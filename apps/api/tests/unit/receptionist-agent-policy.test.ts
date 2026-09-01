@@ -321,3 +321,81 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
     });
   });
 });
+
+describe('receptionist responder ownership policy', () => {
+  const base = {
+    responderMode: 'auto_fallback' as const,
+    responderOwner: 'sos_sales' as const,
+    metaAgentEnabled: false,
+    metaAgentId: null,
+    metaAgentEligibilityStatus: 'UNKNOWN' as const,
+  };
+
+  it('uses SOS Sales when fallback mode has no ready Meta agent', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond(base)).toBe(true);
+  });
+
+  it('does not let SOS Sales answer while a ready Meta agent owns the default', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({
+      ...base,
+      responderOwner: 'meta_business_agent',
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'ELIGIBLE',
+    })).toBe(false);
+    expect(shouldSosSalesRespond({
+      ...base,
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'ELIGIBLE',
+    })).toBe(false);
+  });
+
+  it('keeps both responders quiet while an activated Meta agent is UNKNOWN', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({
+      ...base,
+      responderOwner: 'meta_business_agent',
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'UNKNOWN',
+    })).toBe(false);
+    expect(shouldSosSalesRespond({
+      ...base,
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'INELIGIBLE',
+    })).toBe(true);
+  });
+
+  it('falls back to SOS Sales only after an explicit ineligible result', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({
+      ...base,
+      responderOwner: 'meta_business_agent',
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'INELIGIBLE',
+    })).toBe(true);
+  });
+
+  it('allows an explicit SOS takeover while workspace default is Meta', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({
+      responderMode: 'meta_business_agent',
+      responderOwner: 'sos_sales',
+      responderChangedAt: new Date().toISOString(),
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'ELIGIBLE',
+    })).toBe(true);
+  });
+
+  it('never answers automatically for a human-owned or manual conversation', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({ ...base, responderOwner: 'human' })).toBe(false);
+    expect(shouldSosSalesRespond({ ...base, responderMode: 'manual', responderOwner: 'sos_sales' })).toBe(false);
+  });
+});

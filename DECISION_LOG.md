@@ -804,3 +804,33 @@
   - `src/components/cockpit/LiveCockpitView.tsx`
   - `apps/api/tests/unit/route-authorization-guard.test.ts`
 - **Date:** 2026-09-01
+
+---
+
+## Task 33: Ownership explícito entre Meta Business Agent, SOS Sales e humano
+- **Decision:** A escolha do respondente é persistida no workspace (`responder_mode`) e o proprietário atual é persistido por jornada (`responder_owner`). O webhook grava toda mensagem inbound, mas só enfileira o Receptionist SOS Sales quando o contrato de ownership e o runtime publicado autorizam; Meta e SOS nunca são enfileirados juntos.
+- **Rationale:**
+  1. Estado de React/localStorage não pode decidir quem responde quando não há navegador aberto ou há vários operadores.
+  2. `auto_fallback` usa Meta somente com agente persistido, habilitado e elegibilidade `ELIGIBLE`; `INELIGIBLE` permite o fallback SOS, enquanto `UNKNOWN` mantém os dois respondentes em espera quando o agente Meta já foi ativado, sem tratar erro externo como elegibilidade negativa.
+  3. `manual` e ownership humano bloqueiam outbound automático, mantendo o histórico para o operador.
+  4. `thread-control` com `journeyId` valida a jornada antes da chamada Meta e grava `take` como SOS Sales ou `release` como Meta somente após aceite do provedor.
+  5. O Dossiê consulta `bot/status` e executa thread-control real; não calcula mais `botActive` apenas no frontend.
+- **Scope:**
+  - `apps/api/supabase/migrations/20260901120000_agent_responder_ownership.sql`
+  - `apps/api/src/application/agents/receptionist-agent.ts`
+  - `apps/api/src/interfaces/http/routes/agent-routes.ts`
+  - `apps/api/src/interfaces/http/routes/meta-business-agent-routes.ts`
+  - `apps/api/src/interfaces/http/routes/webhooks/waba-webhook.ts`
+  - `apps/api/src/infrastructure/database/postgres-meta-business-agent-gateway.ts`
+  - `apps/api/tests/unit/meta-business-agent-routes.test.ts`
+  - `apps/api/tests/unit/meta-business-agent-client.test.ts`
+  - `apps/api/tests/unit/meta-webhook-ownership.test.ts`
+  - `apps/api/tests/unit/postgres-meta-business-agent-gateway.test.ts`
+  - `apps/api/tests/unit/receptionist-agent-policy.test.ts`
+  - `src/components/cockpit/LiveDossier.tsx`
+  - `src/services/aiAutonomyManager.ts`
+  - `src/components/settings/AiRuntimeSettingsView.tsx`
+  - `src/components/settings/LiveSettingsView.tsx`
+  - `src/components/settings/MetaBusinessAgentSettingsView.tsx`
+- **Operational gate:** Código e testes unitários passam no worktree limpo. A migration ainda precisa ser aplicada no Supabase de produção e a integração Meta precisa de canário controlado; nenhum deploy ou mensagem real foi executado nesta alteração.
+- **Date:** 2026-09-01

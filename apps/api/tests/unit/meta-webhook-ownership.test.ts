@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveWorkspace } from '../../src/interfaces/http/routes/webhooks/messenger-webhook-handler.js';
-import { findChannelByPhoneNumberId } from '../../src/interfaces/http/routes/webhooks/waba-webhook.js';
+import {
+  findChannelByPhoneNumberId,
+  resolveWorkspaceResponderDefaults,
+} from '../../src/interfaces/http/routes/webhooks/waba-webhook.js';
 
 const logger = {
   warn: vi.fn(),
@@ -56,5 +59,53 @@ describe('Meta webhook provider ownership', () => {
 
     await expect(findChannelByPhoneNumberId('123456789', logger, query)).rejects.toThrow('database unavailable');
     expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('maps a ready Meta agent to Meta ownership in auto fallback mode', async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{
+        responder_mode: 'auto_fallback',
+        meta_agent_id: 'agent-1',
+        meta_agent_enabled: true,
+        meta_agent_eligibility_status: 'ELIGIBLE',
+      }],
+    }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
+
+    await expect(resolveWorkspaceResponderDefaults('workspace-a', query)).resolves.toEqual({
+      responderMode: 'auto_fallback',
+      responderOwner: 'meta_business_agent',
+      metaAgentId: 'agent-1',
+      metaAgentEnabled: true,
+      metaAgentEligibilityStatus: 'ELIGIBLE',
+    });
+  });
+
+  it('maps an unavailable Meta agent to SOS fallback and manual mode to human', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
+          responder_mode: 'auto_fallback',
+          meta_agent_id: 'agent-1',
+          meta_agent_enabled: true,
+          meta_agent_eligibility_status: 'UNKNOWN',
+        }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{
+          responder_mode: 'manual',
+          meta_agent_id: null,
+          meta_agent_enabled: false,
+          meta_agent_eligibility_status: 'UNKNOWN',
+        }],
+      }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
+
+    await expect(resolveWorkspaceResponderDefaults('workspace-a', query)).resolves.toMatchObject({
+      responderMode: 'auto_fallback',
+      responderOwner: 'sos_sales',
+    });
+    await expect(resolveWorkspaceResponderDefaults('workspace-a', query)).resolves.toMatchObject({
+      responderMode: 'manual',
+      responderOwner: 'human',
+    });
   });
 });

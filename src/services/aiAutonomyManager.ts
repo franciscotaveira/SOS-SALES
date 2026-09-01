@@ -1,10 +1,16 @@
 import { authenticatedFetch } from './authenticatedFetch';
 
 export type GlobalAiAutonomyMode = 'copilot_supervised' | 'autonomous_24_7' | 'semi_autonomous';
+export type ResponderMode = 'sos_sales' | 'meta_business_agent' | 'auto_fallback' | 'manual';
 
 export interface WorkspaceAgentRuntimeConfig {
   autonomyMode: GlobalAiAutonomyMode;
   runtimeEnabled: boolean;
+  responderMode: ResponderMode;
+  metaAgentId: string | null;
+  metaAgentEnabled: boolean;
+  metaAgentEligibilityStatus: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
+  metaAgentCheckedAt: string | null;
   runtimeEffective: boolean;
   providerConfigured: boolean;
   behaviorConfig: Record<string, unknown>;
@@ -14,6 +20,11 @@ export interface WorkspaceAgentRuntimeConfig {
 const safeDefault: WorkspaceAgentRuntimeConfig = {
   autonomyMode: 'copilot_supervised',
   runtimeEnabled: false,
+  responderMode: 'sos_sales',
+  metaAgentId: null,
+  metaAgentEnabled: false,
+  metaAgentEligibilityStatus: 'UNKNOWN',
+  metaAgentCheckedAt: null,
   runtimeEffective: false,
   providerConfigured: false,
   behaviorConfig: {},
@@ -39,6 +50,19 @@ function normalizeConfig(value: Partial<WorkspaceAgentRuntimeConfig>): Workspace
   return {
     autonomyMode,
     runtimeEnabled: value.runtimeEnabled === true,
+    responderMode: value.responderMode === 'meta_business_agent'
+      || value.responderMode === 'auto_fallback'
+      || value.responderMode === 'manual'
+      || value.responderMode === 'sos_sales'
+      ? value.responderMode
+      : 'sos_sales',
+    metaAgentId: typeof value.metaAgentId === 'string' ? value.metaAgentId : null,
+    metaAgentEnabled: value.metaAgentEnabled === true,
+    metaAgentEligibilityStatus: value.metaAgentEligibilityStatus === 'ELIGIBLE'
+      || value.metaAgentEligibilityStatus === 'INELIGIBLE'
+      ? value.metaAgentEligibilityStatus
+      : 'UNKNOWN',
+    metaAgentCheckedAt: typeof value.metaAgentCheckedAt === 'string' ? value.metaAgentCheckedAt : null,
     runtimeEffective: value.runtimeEffective === true,
     providerConfigured: value.providerConfigured === true,
     behaviorConfig: value.behaviorConfig && typeof value.behaviorConfig === 'object'
@@ -76,6 +100,7 @@ export async function publishWorkspaceAgentConfig(
   update: {
     autonomyMode?: GlobalAiAutonomyMode;
     runtimeEnabled?: boolean;
+    responderMode?: ResponderMode;
     behaviorConfig?: Record<string, unknown>;
   },
 ): Promise<WorkspaceAgentRuntimeConfig> {

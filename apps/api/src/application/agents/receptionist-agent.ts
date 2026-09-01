@@ -67,6 +67,49 @@ export interface ReceptionistAgentDependencies {
   waba?: WabaClient;
 }
 
+export type ResponderMode = 'sos_sales' | 'meta_business_agent' | 'auto_fallback' | 'manual';
+export type ResponderOwner = 'sos_sales' | 'meta_business_agent' | 'human';
+
+/**
+ * Resolves the automatic responder without consulting browser state.  An
+ * explicit per-conversation takeover may override a workspace default; a
+ * default Meta owner falls back to SOS only in auto_fallback mode after an
+ * explicit INELIGIBLE result (an UNKNOWN provider state stays fail-closed).
+ */
+export function shouldSosSalesRespond(input: {
+  responderMode: ResponderMode;
+  responderOwner: ResponderOwner;
+  responderChangedAt?: string | Date | null;
+  metaAgentEnabled: boolean;
+  metaAgentId?: string | null;
+  metaAgentEligibilityStatus: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
+}): boolean {
+  const metaReady = input.metaAgentEnabled
+    && Boolean(input.metaAgentId)
+    && input.metaAgentEligibilityStatus === 'ELIGIBLE';
+  const explicitTakeover = Boolean(input.responderChangedAt);
+  const metaActivationUnknown = input.metaAgentEnabled
+    && input.metaAgentEligibilityStatus === 'UNKNOWN';
+
+  if (input.responderOwner === 'human') return false;
+  if (input.responderOwner === 'meta_business_agent') {
+    // A previous Meta owner is allowed to fall back only after an explicit
+    // INELIGIBLE result. UNKNOWN means the provider could still be live; both
+    // automatic responders stay quiet until the state is reconciled.
+    return input.responderMode === 'auto_fallback'
+      && !metaReady
+      && !metaActivationUnknown
+      && (input.metaAgentEligibilityStatus === 'INELIGIBLE'
+        || (!input.metaAgentEnabled && !input.metaAgentId));
+  }
+  if (input.responderMode === 'manual') return false;
+  if (input.responderMode === 'meta_business_agent' && !explicitTakeover) return false;
+  if (input.responderMode === 'auto_fallback' && !explicitTakeover) {
+    if (metaReady || metaActivationUnknown) return false;
+  }
+  return true;
+}
+
 const RECEPTIONIST_INTENTS = new Set<ReceptionistIntent>([
   'greeting',
   'inquiry',
@@ -247,8 +290,14 @@ export class ReceptionistAgent {
         `SELECT
            j.bot_enabled,
            j.bot_paused_at,
+           j.responder_owner,
+           j.responder_changed_at,
            wac.runtime_enabled,
            wac.autonomy_mode,
+           wac.responder_mode,
+           wac.meta_agent_id,
+           wac.meta_agent_enabled,
+           wac.meta_agent_eligibility_status,
            wac.published_at
          FROM public.commercial_journeys j
          LEFT JOIN public.workspace_agent_config wac
@@ -257,12 +306,32 @@ export class ReceptionistAgent {
         [journeyId, workspaceId]
       );
       if (result.rows.length !== 1) return false;
-      const { bot_enabled, bot_paused_at, runtime_enabled, autonomy_mode, published_at } = result.rows[0];
+      const {
+        bot_enabled,
+        bot_paused_at,
+        responder_owner,
+        responder_changed_at,
+        runtime_enabled,
+        autonomy_mode,
+        responder_mode,
+        meta_agent_id,
+        meta_agent_enabled,
+        meta_agent_eligibility_status,
+        published_at,
+      } = result.rows[0];
       return bot_enabled === true
         && !bot_paused_at
         && runtime_enabled === true
         && autonomy_mode === 'autonomous_24_7'
-        && Boolean(published_at);
+        && Boolean(published_at)
+        && shouldSosSalesRespond({
+          responderMode: responder_mode || 'sos_sales',
+          responderOwner: responder_owner || 'sos_sales',
+          responderChangedAt: responder_changed_at,
+          metaAgentEnabled: meta_agent_enabled === true,
+          metaAgentId: meta_agent_id,
+          metaAgentEligibilityStatus: meta_agent_eligibility_status || 'UNKNOWN',
+        });
     } catch (error) {
       console.error('[ReceptionistAgent] Could not verify bot state; outbound skipped', error);
       return false;

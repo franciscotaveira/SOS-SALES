@@ -31,4 +31,46 @@ describe('PostgresMetaBusinessAgentGateway', () => {
       reason: 'UPSTREAM_UNAVAILABLE',
     });
   });
+
+  it('persists eligibility so responder routing survives a browser reload', async () => {
+    const pool = {
+      query: vi.fn()
+        .mockResolvedValueOnce({
+          rowCount: 1,
+          rows: [{ phone_number_id: 'phone-id', secret_payload: { accessToken: 'secret' } }],
+        })
+        .mockResolvedValueOnce({ rowCount: 1, rows: [] }),
+    };
+    const client = {
+      checkEligibility: vi.fn().mockResolvedValue(true),
+    } as unknown as MetaBusinessAgentClient;
+    const gateway = new PostgresMetaBusinessAgentGateway(pool, client);
+
+    await expect(gateway.checkEligibility('workspace-id')).resolves.toMatchObject({ status: 'ELIGIBLE' });
+    expect(pool.query).toHaveBeenLastCalledWith(
+      expect.stringContaining('INSERT INTO public.workspace_agent_config'),
+      expect.arrayContaining(['workspace-id', 'ELIGIBLE']),
+    );
+  });
+
+  it('persists the Meta agent id after onboarding', async () => {
+    const pool = {
+      query: vi.fn()
+        .mockResolvedValueOnce({
+          rowCount: 1,
+          rows: [{ phone_number_id: 'phone-id', secret_payload: { accessToken: 'secret' } }],
+        })
+        .mockResolvedValueOnce({ rowCount: 1, rows: [] }),
+    };
+    const client = {
+      startOnboarding: vi.fn().mockResolvedValue('agent-123'),
+    } as unknown as MetaBusinessAgentClient;
+    const gateway = new PostgresMetaBusinessAgentGateway(pool, client);
+
+    await expect(gateway.startOnboarding('workspace-id')).resolves.toEqual({ agentId: 'agent-123' });
+    expect(pool.query).toHaveBeenLastCalledWith(
+      expect.stringContaining('meta_agent_id'),
+      ['workspace-id', 'agent-123'],
+    );
+  });
 });

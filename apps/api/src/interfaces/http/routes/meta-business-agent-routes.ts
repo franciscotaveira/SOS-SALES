@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { MetaBusinessAgentUpstreamError } from '../../../infrastructure/channels/meta/meta-business-agent-client.js';
 import { MetaBusinessAgentGateway } from '../../../application/ports/meta-business-agent-gateway.js';
+import { dbPool } from '../../../infrastructure/database/pool.js';
 import { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
 import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
 import { assertTenantAccess, unauthorized, verifyOperatorAuth } from '../helpers/auth-guard.js';
@@ -10,6 +11,7 @@ export interface MetaBusinessAgentRouteDependencies {
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
   metaBusinessAgentGateway?: MetaBusinessAgentGateway;
+  query?: typeof dbPool.query;
 }
 
 export async function metaBusinessAgentRoutes(
@@ -98,7 +100,7 @@ export async function metaBusinessAgentRoutes(
   });
 
   app.post('/api/v1/workspaces/:workspaceId/meta-business-agent/thread-control', async (
-    request: FastifyRequest<{ Params: { workspaceId: string }; Body: { action: 'take' | 'release'; to: string; metadata?: string } }>,
+    request: FastifyRequest<{ Params: { workspaceId: string }; Body: { action: 'take' | 'release'; to: string; metadata?: string; journeyId?: string } }>,
     reply: FastifyReply,
   ) => {
     const actor = request.operatorActor;
@@ -106,10 +108,71 @@ export async function metaBusinessAgentRoutes(
     const allowed = await assertTenantAccess(request, reply, request.params.workspaceId, actor, dependencies.workspaceDirectory, 'operator');
     if (!allowed) return;
     if (!dependencies.metaBusinessAgentGateway?.controlThread) return reply.status(503).send({ error: 'Meta Business Agent indisponível.', code: 'META_BUSINESS_AGENT_GATEWAY_UNAVAILABLE' });
-    const parsed = z.object({ action: z.enum(['take', 'release']), to: z.string().trim().min(1).max(128), metadata: z.string().trim().max(1024).optional() }).strict().safeParse(request.body);
+    const parsed = z.object({
+      action: z.enum(['take', 'release']),
+      to: z.string().trim().min(1).max(128),
+      metadata: z.string().trim().max(1024).optional(),
+      journeyId: z.string().uuid().optional(),
+    }).strict().safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: 'Comando de thread control inválido.' });
+
+    // The provider call and the local owner transition form one auditable
+    // contract.  Validate the journey before touching Meta so a typo cannot
+    // transfer a real consumer thread without a matching CRM conversation.
+    const query = dependencies.query ?? dbPool.query.bind(dbPool);
+    if (parsed.data.journeyId) {
+      try {
+        const journey = await query(
+          `SELECT id FROM public.commercial_journeys
+           WHERE id = $1 AND workspace_id = $2
+           LIMIT 1`,
+          [parsed.data.journeyId, request.params.workspaceId],
+        );
+        if ((journey.rowCount ?? journey.rows.length) !== 1) {
+          return reply.status(404).send({ error: 'Jornada não encontrada para esta transferência.' });
+        }
+      } catch (error) {
+        request.log.error({ error, workspaceId: request.params.workspaceId }, 'Could not validate journey before Meta thread control');
+        return reply.status(503).send({ error: 'Não foi possível validar a conversa antes da transferência.', code: 'META_BUSINESS_AGENT_THREAD_CONTROL_VALIDATION_FAILED' });
+      }
+    }
+
     try {
-      const result = await dependencies.metaBusinessAgentGateway.controlThread(request.params.workspaceId, parsed.data);
+      const { journeyId, ...providerInput } = parsed.data;
+      const result = await dependencies.metaBusinessAgentGateway.controlThread(request.params.workspaceId, providerInput);
+
+      if (journeyId) {
+        const responderOwner = parsed.data.action === 'take' ? 'sos_sales' : 'meta_business_agent';
+        let ownerUpdate;
+        try {
+          ownerUpdate = await query(
+            `UPDATE public.commercial_journeys
+             SET responder_owner = $3,
+                 responder_changed_at = NOW(),
+                 responder_change_reason = $4,
+                 updated_at = NOW()
+             WHERE id = $1 AND workspace_id = $2
+             RETURNING id, responder_owner, responder_changed_at`,
+            [journeyId, request.params.workspaceId, responderOwner, `meta_thread_control_${parsed.data.action}`],
+          );
+        } catch (error) {
+          request.log.error({ error, workspaceId: request.params.workspaceId, journeyId }, 'Meta thread control succeeded but local responder owner update failed');
+          return reply.status(503).send({ error: 'A Meta transfer foi aceita, mas o responsável local não pôde ser salvo. Faça uma reconciliação antes de novo envio.', code: 'META_BUSINESS_AGENT_THREAD_CONTROL_LOCAL_SYNC_FAILED' });
+        }
+        if ((ownerUpdate.rowCount ?? ownerUpdate.rows.length) !== 1) {
+          request.log.error({ workspaceId: request.params.workspaceId, journeyId }, 'Meta thread control succeeded but local responder owner was not persisted');
+          return reply.status(503).send({ error: 'A Meta transfer foi aceita, mas o responsável local não pôde ser salvo. Faça uma reconciliação antes de novo envio.', code: 'META_BUSINESS_AGENT_THREAD_CONTROL_LOCAL_SYNC_FAILED' });
+        }
+        return reply.status(200).send({
+          data: result,
+          journeyId,
+          responderOwner,
+          message: responderOwner === 'sos_sales'
+            ? 'Controle tomado pelo SOS Sales para esta conversa.'
+            : 'Controle liberado para o Meta Business Agent nesta conversa.',
+        });
+      }
+
       return reply.status(200).send({ data: result });
     } catch (error) {
       const upstream = error instanceof MetaBusinessAgentUpstreamError ? error : undefined;

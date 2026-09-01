@@ -2,7 +2,12 @@ import { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } fro
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { dbPool } from '../../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../../application/services/attribution-service.js';
-import { getReceptionistAgent } from '../../../../application/agents/receptionist-agent.js';
+import {
+  getReceptionistAgent,
+  shouldSosSalesRespond,
+  type ResponderMode,
+  type ResponderOwner,
+} from '../../../../application/agents/receptionist-agent.js';
 import { handleMessengerEntry } from './messenger-webhook-handler.js';
 
 /**
@@ -63,6 +68,62 @@ export interface WabaWebhookPluginOptions {
 
 type WabaChannelInfo = { id: string | null; workspace_id: string | null };
 type WabaStatusQuery = typeof dbPool.query;
+
+export interface WabaResponderDefaults {
+  responderMode: ResponderMode;
+  responderOwner: ResponderOwner;
+  metaAgentId: string | null;
+  metaAgentEnabled: boolean;
+  metaAgentEligibilityStatus: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
+}
+
+/**
+ * Resolve the workspace responder policy on the server.  This is deliberately
+ * independent from React state: inbound webhooks can arrive when no browser
+ * is open, and a missing/failed lookup must never enable a second responder.
+ */
+export async function resolveWorkspaceResponderDefaults(
+  workspaceId: string,
+  query: typeof dbPool.query = dbPool.query.bind(dbPool),
+): Promise<WabaResponderDefaults> {
+  const result = await query(
+    `SELECT responder_mode, meta_agent_id, meta_agent_enabled,
+            meta_agent_eligibility_status
+     FROM public.workspace_agent_config
+     WHERE workspace_id = $1
+     LIMIT 1`,
+    [workspaceId],
+  );
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  const responderMode: ResponderMode = row?.responder_mode === 'meta_business_agent'
+    || row?.responder_mode === 'auto_fallback'
+    || row?.responder_mode === 'manual'
+    || row?.responder_mode === 'sos_sales'
+    ? row.responder_mode
+    : 'sos_sales';
+  const metaAgentId = typeof row?.meta_agent_id === 'string' && row.meta_agent_id.trim()
+    ? row.meta_agent_id.trim()
+    : null;
+  const metaAgentEnabled = row?.meta_agent_enabled === true;
+  const metaAgentEligibilityStatus = row?.meta_agent_eligibility_status === 'ELIGIBLE'
+    || row?.meta_agent_eligibility_status === 'INELIGIBLE'
+    ? row.meta_agent_eligibility_status
+    : 'UNKNOWN';
+  const metaReady = metaAgentEnabled && Boolean(metaAgentId) && metaAgentEligibilityStatus === 'ELIGIBLE';
+  const responderOwner: ResponderOwner = responderMode === 'manual'
+    ? 'human'
+    : responderMode === 'meta_business_agent' || (responderMode === 'auto_fallback' && metaReady)
+      ? 'meta_business_agent'
+      : 'sos_sales';
+
+  return {
+    responderMode,
+    responderOwner,
+    metaAgentId,
+    metaAgentEnabled,
+    metaAgentEligibilityStatus,
+  };
+}
 
 function optionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -352,6 +413,19 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
           let journeyId: string | null = null;
           let contactId: string | null = null;
 
+          // Resolve once for this inbound event. If the config read fails we
+          // still persist the customer message, but do not enqueue any
+          // autonomous responder; the worker also re-checks this policy.
+          let responderDefaults: WabaResponderDefaults | null = null;
+          try {
+            responderDefaults = await resolveWorkspaceResponderDefaults(targetWorkspaceId);
+          } catch (responderErr) {
+            request.log.error(
+              { err: responderErr, workspaceId: targetWorkspaceId },
+              'Could not resolve WABA responder ownership; automatic reply suppressed',
+            );
+          }
+
           if (!channelConnectionId) {
             request.log.warn({ phoneNumberId }, 'WABA owner has no channel connection id - event ignored');
             continue;
@@ -372,29 +446,38 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
 
             // Find or create commercial journey
             const existingJourney = await dbPool.query(
-              `SELECT id FROM public.commercial_journeys 
+              `SELECT id, responder_owner, responder_changed_at
+               FROM public.commercial_journeys
                WHERE workspace_id = $1 AND contact_id = $2 
                LIMIT 1`,
               [targetWorkspaceId, contactId]
             );
 
+            let journeyResponderOwner: ResponderOwner;
+            let journeyResponderChangedAt: string | Date | null = null;
             if (existingJourney.rowCount && existingJourney.rowCount > 0) {
               journeyId = existingJourney.rows[0].id;
+              journeyResponderOwner = existingJourney.rows[0].responder_owner === 'meta_business_agent'
+                || existingJourney.rows[0].responder_owner === 'human'
+                ? existingJourney.rows[0].responder_owner
+                : 'sos_sales';
+              journeyResponderChangedAt = existingJourney.rows[0].responder_changed_at || null;
               await dbPool.query(
                 `UPDATE public.commercial_journeys SET updated_at = $1 WHERE id = $2`,
                 [timestamp, journeyId]
               );
             } else {
+              journeyResponderOwner = responderDefaults?.responderOwner || 'sos_sales';
               const newJourney = await dbPool.query(
                 `INSERT INTO public.commercial_journeys (
                    id, workspace_id, contact_id, channel_connection_id, status, pipeline_stage,
-                   total_revenue_minor, currency, started_at, created_at, updated_at
+                   total_revenue_minor, currency, responder_owner, started_at, created_at, updated_at
                  )
                  VALUES (
-                   gen_random_uuid(), $1, $2, $3, 'OPEN', 'NEW', 0, 'BRL', $4, $4, $4
+                   gen_random_uuid(), $1, $2, $3, 'OPEN', 'NEW', 0, 'BRL', $4, $5, $5, $5
                  )
                  RETURNING id`,
-                [targetWorkspaceId, contactId, channelConnectionId, timestamp]
+                [targetWorkspaceId, contactId, channelConnectionId, journeyResponderOwner, timestamp]
               );
               journeyId = newJourney.rows[0].id;
             }
@@ -445,7 +528,16 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
               message.type === 'text' &&
               !!journeyId &&
               !!contactId &&
-              !!channelConnectionId;
+              !!channelConnectionId &&
+              !!responderDefaults &&
+              shouldSosSalesRespond({
+                responderMode: responderDefaults?.responderMode || 'sos_sales',
+                responderOwner: journeyResponderOwner,
+                responderChangedAt: journeyResponderChangedAt,
+                metaAgentEnabled: responderDefaults?.metaAgentEnabled === true,
+                metaAgentId: responderDefaults?.metaAgentId,
+                metaAgentEligibilityStatus: responderDefaults?.metaAgentEligibilityStatus || 'UNKNOWN',
+              });
 
             const ingestClient = await dbPool.connect();
             try {

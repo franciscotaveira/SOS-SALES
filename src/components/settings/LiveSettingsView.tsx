@@ -383,7 +383,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
               </div>
             )}
 
-            <MetaBusinessAgentSettingsView workspaceId={workspace.id} />
+            <MetaBusinessAgentSettingsView workspaceId={workspace.id} canManage={workspace.operatorRole === 'owner'} />
 
             {!showWahaFallback ? (
               <button

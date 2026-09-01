@@ -1,9 +1,11 @@
 import React from 'react';
 import { Bot, CheckCircle2, ExternalLink, Loader2, Play, RefreshCw, ShieldAlert, WandSparkles } from 'lucide-react';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
+import { loadWorkspaceAgentConfig, publishWorkspaceAgentConfig, ResponderMode, WorkspaceAgentRuntimeConfig } from '../../services/aiAutonomyManager';
 
 interface MetaBusinessAgentSettingsViewProps {
   workspaceId: string;
+  canManage?: boolean;
 }
 
 type Eligibility = 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
@@ -15,7 +17,7 @@ interface EligibilityPayload {
   reason?: string;
 }
 
-export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsViewProps> = ({ workspaceId }) => {
+export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsViewProps> = ({ workspaceId, canManage = false }) => {
   const [eligibility, setEligibility] = React.useState<EligibilityPayload>({ status: 'UNKNOWN' });
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState<'onboarding' | 'test' | null>(null);
@@ -23,6 +25,8 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
   const [catalogId, setCatalogId] = React.useState('');
   const [testMessage, setTestMessage] = React.useState('Olá, gostaria de saber como posso agendar um atendimento.');
   const [testResponse, setTestResponse] = React.useState<{ text: string; conversationId?: string } | null>(null);
+  const [agentConfig, setAgentConfig] = React.useState<WorkspaceAgentRuntimeConfig | null>(null);
+  const [savingMode, setSavingMode] = React.useState(false);
 
   const loadEligibility = React.useCallback(async () => {
     setLoading(true);
@@ -31,6 +35,8 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || 'Não foi possível consultar a elegibilidade.');
       setEligibility(payload?.data || { status: 'UNKNOWN' });
+      const refreshedConfig = await loadWorkspaceAgentConfig(workspaceId).catch(() => null);
+      if (refreshedConfig) setAgentConfig(refreshedConfig);
     } catch (error) {
       setEligibility({ status: 'UNKNOWN' });
       setFeedback({ type: 'error', message: error instanceof Error ? error.message : 'Meta Business Agent indisponível.' });
@@ -40,6 +46,27 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
   }, [workspaceId]);
 
   React.useEffect(() => { void loadEligibility(); }, [loadEligibility]);
+
+  React.useEffect(() => {
+    void loadWorkspaceAgentConfig(workspaceId)
+      .then(setAgentConfig)
+      .catch(() => setAgentConfig(null));
+  }, [workspaceId]);
+
+  const saveResponderMode = async (responderMode: ResponderMode) => {
+    if (!canManage || !agentConfig) return;
+    setSavingMode(true);
+    setFeedback(null);
+    try {
+      const next = await publishWorkspaceAgentConfig(workspaceId, { responderMode });
+      setAgentConfig(next);
+      setFeedback({ type: 'success', message: 'Responsável automático publicado no backend.' });
+    } catch (error) {
+      setFeedback({ type: 'error', message: error instanceof Error ? error.message : 'Não foi possível publicar o responsável.' });
+    } finally {
+      setSavingMode(false);
+    }
+  };
 
   const startOnboarding = async () => {
     setBusy('onboarding');
@@ -51,6 +78,11 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || 'Não foi possível iniciar o onboarding.');
+      // Reload the persisted config so the responder selector and status card
+      // reflect the agent id written by the API, not an optimistic browser
+      // flag.
+      const refreshedConfig = await loadWorkspaceAgentConfig(workspaceId).catch(() => null);
+      if (refreshedConfig) setAgentConfig(refreshedConfig);
       setFeedback({ type: 'success', message: `Onboarding iniciado. Agente Meta: ${payload?.data?.agentId || 'criado'}.` });
     } catch (error) {
       setFeedback({ type: 'error', message: error instanceof Error ? error.message : 'Onboarding indisponível.' });
@@ -79,6 +111,11 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
   };
 
   const eligible = eligibility.status === 'ELIGIBLE';
+  const metaReadyForMode = Boolean(
+    agentConfig?.metaAgentEnabled
+      && agentConfig.metaAgentId
+      && eligible,
+  );
 
   return (
     <section className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
@@ -95,8 +132,23 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</span><p className={`mt-1 text-xs font-bold ${eligible ? 'text-emerald-700' : eligibility.status === 'INELIGIBLE' ? 'text-amber-700' : 'text-slate-600'}`}>{loading ? 'Consultando…' : eligible ? 'Elegível' : eligibility.status === 'INELIGIBLE' ? 'Não elegível' : 'Indisponível para consulta'}</p></div>
-        <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Número Meta</span><p className="mt-1 truncate font-mono text-xs text-slate-700">{eligibility.phoneNumberId || 'Não informado'}</p></div>
+        <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Número Meta</span><p className="mt-1 truncate font-mono text-xs text-slate-700">{eligibility.phoneNumberId || 'Não informado'}</p><p className="mt-1 text-[10px] text-slate-400">Agente: {agentConfig?.metaAgentId || 'ainda não ativado'}</p></div>
         <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Fallback</span><p className="mt-1 text-xs font-bold text-slate-700">IA SOS Sales + humano</p></div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-violet-100 bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><div className="text-xs font-bold text-slate-900">Quem responde as conversas?</div><p className="mt-1 text-[11px] text-slate-500">Uma conversa só pode ter um responsável automático. Esta decisão é gravada no backend e evita Meta e SOS Sales responderem juntos.</p></div>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-600">Atual: {agentConfig?.responderMode === 'meta_business_agent' ? 'Meta' : agentConfig?.responderMode === 'auto_fallback' ? 'Meta + fallback SOS' : agentConfig?.responderMode === 'manual' ? 'Equipe' : 'SOS Sales'}</span>
+        </div>
+        <select disabled={!canManage || savingMode || !agentConfig} value={agentConfig?.responderMode || 'sos_sales'} onChange={(event) => void saveResponderMode(event.target.value as ResponderMode)} className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-violet-500 disabled:cursor-not-allowed disabled:bg-slate-50">
+          <option value="auto_fallback">Meta Business Agent + fallback SOS Sales</option>
+          <option value="meta_business_agent" disabled={!metaReadyForMode}>Somente Meta Business Agent{metaReadyForMode ? '' : ' (aguarda ativação)'}</option>
+          <option value="sos_sales">Somente IA própria SOS Sales</option>
+          <option value="manual">Somente equipe (sem resposta automática)</option>
+        </select>
+        {!canManage && <p className="mt-2 text-[10px] text-slate-500">Somente o proprietário do workspace pode alterar o responsável automático.</p>}
+        {canManage && !metaReadyForMode && <p className="mt-2 text-[10px] text-amber-700">A opção somente Meta será liberada depois de elegibilidade confirmada e onboarding concluído. Até lá, use o fallback ou a IA própria.</p>}
       </div>
 
       {eligibility.status === 'UNKNOWN' && (
