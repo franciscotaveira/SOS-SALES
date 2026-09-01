@@ -1598,27 +1598,24 @@ function LiveJourneyBody({
   const externalAgendaConfig = React.useMemo(() => getExternalAgendaConfig(workspaceId), [workspaceId]);
   const agendaProviderLabel = commercialConfig.agendaProviderName || externalAgendaConfig.providerLabel || "Agenda não configurada";
 
-  const externalAgendaSlots = React.useMemo(() => {
-    try {
-      const cfg = getExternalAgendaConfig(workspaceId);
-      if (cfg && cfg.availableSlotsToday && cfg.availableSlotsToday.length > 0) {
-        return cfg.availableSlotsToday.slice(0, 3).join(", ");
-      }
-    } catch {}
-    return "";
-  }, [workspaceId]);
+  // Availability is intentionally unavailable until the API exposes a
+  // persisted provider-backed schedule contract. Local/demo slots must never
+  // leak into an operator draft in production.
+  const externalAgendaSlots = "";
 
   const [macroAppliedFeedback, setMacroAppliedFeedback] = React.useState<string | null>(null);
 
   const fastMacros = React.useMemo(() => {
     const defaultMacros = commercialConfig.customMacros || [];
-    return defaultMacros.map((macro) => ({
+    return defaultMacros
+      .filter((macro) => externalAgendaSlots || !macro.template.includes("{{horarios}}"))
+      .map((macro) => ({
       id: macro.id,
       label: macro.label,
       template: macro.template
         .replace(/\{\{nome\}\}/g, contactFirstName)
         .replace(/\{\{horarios\}\}/g, externalAgendaSlots),
-    }));
+      }));
   }, [commercialConfig, contactFirstName, externalAgendaSlots]);
 
   const handleApplyMacro = (id: string, template: string) => {
@@ -1693,7 +1690,7 @@ function LiveJourneyBody({
     const finalProb = Math.max(5, Math.min(98, probability));
     let sentimentTier = "COLD_INITIAL";
     let sentimentLabel = "Em Qualificação";
-    let tacticalRecommendation = "Ofereça 2 opções de horários para direcionar a decisão.";
+    let tacticalRecommendation = "Pergunte qual período funciona melhor e confirme a disponibilidade no sistema oficial.";
 
     if (finalProb >= 75) {
       sentimentTier = "HOT_CLOSER";
@@ -1704,11 +1701,11 @@ function LiveJourneyBody({
     } else if (finalProb >= 50) {
       sentimentTier = "WARM_INTEREST";
       sentimentLabel = "⚡ Interesse Ativo";
-      tacticalRecommendation = "Apresente um diferencial exclusivo para acelerar o fechamento.";
+      tacticalRecommendation = "Esclareça o próximo passo usando apenas benefícios e condições já cadastrados.";
     } else {
       sentimentTier = "HESITANT_FRICTION";
       sentimentLabel = "❄️ Em Análise";
-      tacticalRecommendation = "Tire dúvidas e envie fotos de resultados/depoimentos.";
+      tacticalRecommendation = "Tire dúvidas e use somente materiais já cadastrados e aprovados.";
     }
 
     return { closingProbability: finalProb, sentimentLabel, sentimentTier, tacticalRecommendation };
@@ -1748,13 +1745,13 @@ function LiveJourneyBody({
         id: "pix",
         icon: "💰",
         label: "Enviar Pix",
-        text: `Perfeito, ${name}! Segue a nossa chave Pix oficial para confirmação do seu horário: ${pixKey}. Assim que enviar, me manda o comprovante aqui para eu lançar na grade! ✨`,
+        text: `Perfeito, ${name}. Segue a chave Pix cadastrada: ${pixKey}. Antes de pagar, confirme o valor e a finalidade desta cobrança com o atendimento.`,
       }] : []),
       ...(address ? [{
         id: "localizacao",
         icon: "📍",
         label: "Endereço",
-        text: `Ficamos localizados em: ${address}. Temos estacionamento no local. Quer que eu te envie o link direto no Google Maps? 🚗`,
+        text: `Nosso endereço cadastrado é: ${address}. Quer que eu envie o link para abrir no mapa?`,
       }] : []),
     ];
   }, [contactFirstName, commercialConfig]);
@@ -1770,7 +1767,7 @@ function LiveJourneyBody({
         label: 'Chave Pix Oficial',
         description: 'Envia dados da conta e chave Pix para pagamento imediato',
         action: () => {
-          setDraftText(`Chave Pix: ${commercialConfig.pixKey}${commercialConfig.pixReceiverName ? ` (${commercialConfig.pixReceiverName})` : ''} - Envie o comprovante aqui para confirmação imediata!`);
+          setDraftText(`Chave Pix cadastrada: ${commercialConfig.pixKey}${commercialConfig.pixReceiverName ? ` (${commercialConfig.pixReceiverName})` : ''}. Confirme o valor e a finalidade da cobrança antes do pagamento.`);
           setQuickToolsOpen(false);
         },
       }] : []),
