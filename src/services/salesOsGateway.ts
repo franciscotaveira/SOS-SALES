@@ -1412,7 +1412,9 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     text: string,
   ): Promise<{ success: boolean; dispatchId: string; status: string; message: string }> {
     return this.request<{ success: boolean; dispatchId: string; status: string; message: string }>(
-      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/send-message`,
+      // baseUrl already ends in /api/v1 in authenticated production mode.
+      // Keeping this path relative prevents the broken /api/v1/api/v1 route.
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/send-message`,
       {
         method: 'POST',
         body: { text },
