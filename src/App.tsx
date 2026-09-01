@@ -455,11 +455,19 @@ function AppContent({
 
       {activeTab === 'configuracoes' && (
         <TabErrorBoundary tabName="Configurações">
-          <SettingsShell
-            workspace={currentWorkspace}
-            activeSubTab={settingsSubTab}
-            onChangeSubTab={setSettingsSubTab}
-          />
+          {isAuthenticatedApiMode ? (
+            <LiveSettingsView
+              workspace={currentWorkspace}
+              activeSubTab={settingsSubTab}
+              onChangeSubTab={setSettingsSubTab}
+            />
+          ) : (
+            <SettingsShell
+              workspace={currentWorkspace}
+              activeSubTab={settingsSubTab}
+              onChangeSubTab={setSettingsSubTab}
+            />
+          )}
         </TabErrorBoundary>
       )}
       </React.Suspense>

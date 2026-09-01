@@ -34,6 +34,13 @@ interface WorkspaceMember {
   isCurrentActor: boolean;
 }
 
+function normalizeTab(tab: string): 'canais' | 'sla' | 'membros' {
+  if (tab === 'channels' || tab === 'canais') return 'canais';
+  if (tab === 'sla') return 'sla';
+  if (tab === 'membros') return 'membros';
+  return 'canais';
+}
+
 const roleLabel: Record<WorkspaceMember['role'], string> = {
   owner: 'Proprietário',
   operator: 'Operador',
@@ -45,7 +52,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   activeSubTab = 'canais',
   onChangeSubTab,
 }) => {
-  const [currentTab, setCurrentTab] = useState(activeSubTab);
+  const [currentTab, setCurrentTab] = useState(() => normalizeTab(activeSubTab));
   const [firstResponseMins, setFirstResponseMins] = useState(15);
   const [savedSlaToast, setSavedSlaToast] = useState(false);
   const [slaError, setSlaError] = useState<string | null>(null);
@@ -68,9 +75,14 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   const [membersState, setMembersState] = useState<'loading' | 'ready' | 'error'>('loading');
 
   const handleTabChange = (tab: string) => {
-    setCurrentTab(tab);
-    onChangeSubTab?.(tab);
+    const normalized = normalizeTab(tab);
+    setCurrentTab(normalized);
+    onChangeSubTab?.(normalized);
   };
+
+  useEffect(() => {
+    setCurrentTab(normalizeTab(activeSubTab));
+  }, [activeSubTab]);
 
   const handleSaveSla = async (e: React.FormEvent) => {
     e.preventDefault();
