@@ -135,7 +135,16 @@ export async function publicSupplierRoutes(app: FastifyInstance): Promise<void> 
       const contactId = contactRes.rows[0].id;
 
       let channelConnectionId: string;
-      const chRes = await client.query('SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1', [workspaceId]);
+      // A WAHA webhook must never attach messages to an arbitrary channel in
+      // the workspace. A Meta Cloud connection can coexist as configuration,
+      // but it is a distinct provider with a distinct webhook lifecycle.
+      const chRes = await client.query(
+        `SELECT id FROM public.channel_connections
+         WHERE workspace_id = $1 AND provider = 'waha'
+         ORDER BY (status = 'CONNECTED') DESC, updated_at DESC
+         LIMIT 1`,
+        [workspaceId]
+      );
       if (chRes.rowCount && chRes.rowCount > 0) {
         channelConnectionId = chRes.rows[0].id;
         await client.query(`UPDATE public.channel_connections SET status = 'CONNECTED', updated_at = NOW() WHERE id = $1`, [channelConnectionId]);

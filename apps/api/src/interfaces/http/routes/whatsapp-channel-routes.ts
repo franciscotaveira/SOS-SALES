@@ -558,8 +558,28 @@ export async function whatsappChannelRoutes(
       // Proceed with user-provided IDs
     }
 
-    const client = await dbPool.connect();
+      const client = await dbPool.connect();
     try {
+      // A phone number has one authoritative responder. Do not let a WABA
+      // configuration silently coexist with an active WAHA session for the
+      // same number, otherwise inbound/outbound traffic becomes ambiguous.
+      const wahaConflict = await client.query(
+        `SELECT 1
+         FROM public.channel_connections
+         WHERE provider = 'waha'
+           AND status = 'CONNECTED'
+           AND NULLIF(regexp_replace(COALESCE(phone_number, ''), '\\D', '', 'g'), '')
+             = NULLIF(regexp_replace($1, '\\D', '', 'g'), '')
+         LIMIT 1`,
+        [displayPhone]
+      );
+      if (wahaConflict.rowCount && wahaConflict.rowCount > 0) {
+        return reply.status(409).send({
+          error: 'Este número já possui uma conexão WAHA ativa. Desconecte ou migre o número antes de ativar a Meta Cloud API.',
+          code: 'CHANNEL_PROVIDER_CONFLICT',
+        });
+      }
+
       // Public configuration (never store secrets here)
       const publicConfig = {
         wabaId,

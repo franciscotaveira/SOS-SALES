@@ -50,7 +50,16 @@ export class WahaSyncService {
       const channelName = currentSession.me?.pushName ? `WhatsApp (${currentSession.me.pushName})` : `WhatsApp (${actualSessionName})`;
 
       let channelConnectionId: string;
-      const existing = await client.query('SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1', [workspaceId]);
+      // Sync belongs exclusively to a WAHA channel. Selecting an arbitrary
+      // workspace channel here could overwrite a Meta Cloud connection and
+      // make subsequent inbound events appear under the wrong provider.
+      const existing = await client.query(
+        `SELECT id FROM public.channel_connections
+         WHERE workspace_id = $1 AND provider = 'waha'
+         ORDER BY (status = 'CONNECTED') DESC, updated_at DESC
+         LIMIT 1`,
+        [workspaceId]
+      );
       if (existing.rowCount && existing.rowCount > 0) {
         channelConnectionId = existing.rows[0].id;
         await client.query(`

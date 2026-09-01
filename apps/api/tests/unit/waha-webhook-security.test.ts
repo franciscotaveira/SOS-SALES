@@ -6,15 +6,17 @@ import { verifyWahaApiKeyTimingSafe, getWahaApiKey, isEventReplayed } from '../.
 
 describe('WAHA Webhook Fail-Closed Security & Replay Deduplication', () => {
   const TEST_KEY = 'mct_sos_waha_test_key_secure_123';
+  let query: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     process.env.WAHA_API_KEY = TEST_KEY;
+    query = vi.fn().mockResolvedValue({
+      rows: [{ id: 'mock-uuid-123' }],
+      rowCount: 1,
+    });
     vi.spyOn(pg.Pool.prototype, 'connect').mockImplementation(async () => {
       return {
-        query: vi.fn().mockResolvedValue({
-          rows: [{ id: 'mock-uuid-123' }],
-          rowCount: 1,
-        }),
+        query,
         release: vi.fn(),
       } as any;
     });
@@ -94,6 +96,8 @@ describe('WAHA Webhook Fail-Closed Security & Replay Deduplication', () => {
     const json = JSON.parse(response.payload);
     expect(json.received).toBe(true);
     expect(json.workspaceId).toBe('22222222-2222-2222-2222-222222222222');
+    expect(query.mock.calls.some(([sql]) => typeof sql === 'string' && sql.includes("provider = 'waha'"))).toBe(true);
+    expect(query.mock.calls.some(([sql]) => typeof sql === 'string' && sql.includes('WHERE workspace_id = $1 LIMIT 1'))).toBe(false);
     await app.close();
   });
 
