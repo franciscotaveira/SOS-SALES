@@ -379,28 +379,27 @@ export const normalizeStage = (stage?: string | null): string => {
 };
 
 // Helper semântico de serviço para os cards do Kanban adaptável ao nicho
-function detectKanbanService(item: ApiJourney, isHairSalon: boolean) {
-  const name = (item.contactName || '').toLowerCase();
+export function detectKanbanService(item: ApiJourney, isHairSalon: boolean) {
   const raw = (item.primaryServiceOrProduct || '').toLowerCase();
-  const text = `${name} ${raw}`.toLowerCase();
+  const text = raw;
 
   if (isHairSalon) {
-    if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || name.includes('rosy') || name.includes('haven') || name.includes('priscila')) {
+    if (text.includes('escova') || text.includes('modelad') || text.includes('liso')) {
       return { tag: '💇‍♀️ Escova Modelada', bg: 'bg-purple-100 text-purple-900 border-purple-200', price: 'Valor não informado', numericValue: 0 };
     }
-    if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('fibra') || name.includes('thaís') || name.includes('thais') || name.includes('suzana')) {
+    if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('fibra')) {
       return { tag: '💅 Unhas em Gel', bg: 'bg-pink-100 text-pink-900 border-pink-200', price: 'Valor não informado', numericValue: 0 };
     }
-    if (text.includes('corte') || text.includes('visagismo') || name.includes('édina') || name.includes('edina') || name.includes('carolina')) {
+    if (text.includes('corte') || text.includes('visagismo')) {
       return { tag: '✂️ Corte & Visagismo', bg: 'bg-indigo-100 text-indigo-900 border-indigo-200', price: 'Valor não informado', numericValue: 0 };
     }
-    if (text.includes('loiro') || text.includes('mechas') || text.includes('color') || name.includes('allane') || name.includes('silvia')) {
+    if (text.includes('loiro') || text.includes('mechas') || text.includes('color')) {
       return { tag: '🎨 Mechas & Loiro', bg: 'bg-amber-100 text-amber-950 border-amber-300', price: 'Valor não informado', numericValue: 0 };
     }
-    if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('ozonio') || text.includes('ozônio') || name.includes('sōra') || name.includes('rubiele')) {
+    if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('ozonio') || text.includes('ozônio')) {
       return { tag: '🧴 Tratamento Ozônio', bg: 'bg-emerald-100 text-emerald-950 border-emerald-300', price: 'Valor não informado', numericValue: 0 };
     }
-    if (text.includes('make') || text.includes('maquiagem') || text.includes('noiva') || name.includes('audrin')) {
+    if (text.includes('make') || text.includes('maquiagem') || text.includes('noiva')) {
       return { tag: '💄 Make & Eventos', bg: 'bg-rose-100 text-rose-950 border-rose-300', price: 'Valor não informado', numericValue: 0 };
     }
   }
