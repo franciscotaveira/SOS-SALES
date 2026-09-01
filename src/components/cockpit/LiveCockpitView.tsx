@@ -869,30 +869,6 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
-  const handleClearHistory = async () => {
-    if (!window.confirm("Deseja realmente limpar todo o histórico de conversas e leads deste workspace? Essa ação é permanente e deixará o painel limpo.")) {
-      return;
-    }
-    setActionInProgress(true);
-    try {
-      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/whatsapp/clear-history`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showNotification("success", "Histórico de conversas e leads limpo com sucesso.");
-        onSelectedJourneyChange(undefined);
-        await refresh();
-      } else {
-        showNotification("error", data.error || "Erro ao limpar histórico.");
-      }
-    } catch (err) {
-      showNotification("error", err instanceof Error ? err.message : "Falha na conexão.");
-    } finally {
-      setActionInProgress(false);
-    }
-  };
-
   const handleClearCurrentJourney = async () => {
     if (!selectedJourneyId) return;
     if (!window.confirm("Deseja realmente reiniciar e limpar esta conversa específica?")) {
@@ -902,7 +878,10 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     try {
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/whatsapp/clear-journey`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-confirm-destruction": "CONFIRM_DATA_DELETION",
+        },
         body: JSON.stringify({ journeyId: selectedJourneyId }),
       });
       const data = await res.json();

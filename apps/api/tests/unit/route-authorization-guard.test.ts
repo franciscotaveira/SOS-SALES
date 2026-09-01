@@ -21,6 +21,9 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
       if (token.startsWith('valid_token_tenant_a_viewer')) {
         return { userId: 'user_a_viewer', email: 'viewer@tenant-a.com' };
       }
+      if (token.startsWith('valid_token_tenant_a_operator')) {
+        return { userId: 'user_a_operator', email: 'operator@tenant-a.com' };
+      }
       if (token.startsWith('valid_token_tenant_b_owner')) {
         return { userId: 'user_b_owner', email: 'owner@tenant-b.com' };
       }
@@ -35,6 +38,9 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
       }
       if (actor.userId === 'user_a_viewer') {
         return [{ id: '11111111-1111-1111-1111-111111111111', name: 'Tenant A', slug: 'tenant-a', role: 'viewer' }];
+      }
+      if (actor.userId === 'user_a_operator') {
+        return [{ id: '11111111-1111-1111-1111-111111111111', name: 'Tenant A', slug: 'tenant-a', role: 'operator' }];
       }
       if (actor.userId === 'user_b_owner') {
         return [{ id: '22222222-2222-2222-2222-222222222222', name: 'Tenant B', slug: 'tenant-b', role: 'owner' }];
@@ -266,6 +272,21 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
     expect(res.statusCode).toBe(400);
     const json = JSON.parse(res.payload);
     expect(json.message).toContain('x-confirm-destruction');
+    await app.close();
+  });
+
+  it('AUTH-08b: operator cannot delete an individual conversation', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/channels/whatsapp/clear-journey',
+      headers: {
+        authorization: 'Bearer valid_token_tenant_a_operator.part2.part3',
+        'x-confirm-destruction': 'CONFIRM_DATA_DELETION',
+      },
+      payload: { journeyId: '33333333-3333-3333-3333-333333333333' },
+    });
+    expect(res.statusCode).toBe(403);
     await app.close();
   });
 

@@ -790,3 +790,17 @@
   - `src/App.tsx`
 - **Operational gate:** Requer migration aditiva aplicada e canário com dois usuários reais de e-mails distintos. Não enviar códigos a terceiros nem alterar a base de usuários durante o deploy.
 - **Date:** 2026-09-01
+
+---
+
+## Task 32: Exclusão de conversas é operação de proprietário com confirmação explícita
+- **Decision:** Limpar uma conversa deixa de ser uma capacidade de operador. As duas rotas irreversíveis (`clear-history` e `clear-journey`) exigem papel `owner` e o cabeçalho de confirmação explícita; o cockpit envia esse cabeçalho somente após a confirmação do usuário.
+- **Rationale:**
+  1. Operadores precisam atender e atualizar jornadas, não apagar o histórico comercial e de auditoria.
+  2. A confirmação no navegador deve coincidir com o contrato do servidor, evitando uma ação que aparenta funcionar mas falha por payload incompleto.
+  3. A regra é testada com um ator de papel `operator`, que recebe `403` antes de qualquer acesso ao banco.
+- **Scope:**
+  - `apps/api/src/interfaces/http/routes/whatsapp-channel-routes.ts`
+  - `src/components/cockpit/LiveCockpitView.tsx`
+  - `apps/api/tests/unit/route-authorization-guard.test.ts`
+- **Date:** 2026-09-01

@@ -157,7 +157,10 @@ export async function whatsappChannelRoutes(
 
     if (targetWs && request.operatorActor) {
       const isMutation = request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS';
-      const isOwnerOnly = request.url.includes('/clear-history');
+      // Deleting either an entire workspace history or a single conversation is
+      // irreversible.  Operators may handle conversations, but only the
+      // workspace owner may erase their audit trail.
+      const isOwnerOnly = request.url.includes('/clear-history') || request.url.includes('/clear-journey');
       const requiredRole = isOwnerOnly ? 'owner' : (isMutation ? 'operator' : 'viewer');
 
       const allowed = await assertTenantAccess(
@@ -473,6 +476,14 @@ export async function whatsappChannelRoutes(
   }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
     const { journeyId } = (request.body || {}) as { journeyId: string };
+    const confirmHeader = request.headers['x-confirm-destruction'];
+    if (confirmHeader !== 'CONFIRM_DATA_DELETION') {
+      return reply.code(400).send({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Irreversible data deletion requires header x-confirm-destruction: CONFIRM_DATA_DELETION',
+      });
+    }
     if (!journeyId) {
       return reply.status(400).send({ error: 'journeyId is required in request body', statusCode: 400 });
     }
