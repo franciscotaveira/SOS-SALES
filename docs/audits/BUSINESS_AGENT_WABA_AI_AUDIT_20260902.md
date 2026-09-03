@@ -2,7 +2,7 @@
 
 ## Escopo e limite desta rodada
 
-Auditoria executada no candidato isolado `/private/tmp/sos-sales-agent-routing-2`, branch `codex/definitive-ui-back-audit`, base `75f66d78a8ff5953cfe06f2ba8813e3d93a2f9fe`.
+Auditoria executada no candidato isolado `/private/tmp/sos-sales-agent-routing-2`, branch `codex/definitive-ui-back-audit`, commits `f44535611b0578bbc8e2e7a9b9212a0be47fdf4a` e `de30cba9dedf9754c18bb13dc03553399fd0d5a8`.
 
 O checkout principal e a produção não foram alterados. Nenhuma migration foi aplicada no Supabase e nenhum arquivo foi copiado para o VPS nesta rodada. O VPS foi consultado somente em leitura para separar o estado executado do candidato.
 
