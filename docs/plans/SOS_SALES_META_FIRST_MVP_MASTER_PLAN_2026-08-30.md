@@ -1,8 +1,13 @@
 # Plano-mestre canônico — SOS Sales Meta-first MVP
 
-Data: 2026-08-30
+Data: 2026-08-31
 Status: plano de execução; não constitui prova de produção
 Princípio: **poder invisível, simplicidade visível**
+
+> **Atualização operacional:** integrações e credenciais oficiais existem somente no
+> VPS. O Docker Lab valida código e contratos com provedores bloqueados/simulados. A
+> prova real WABA/WAHA/IA ocorre em canário controlado no VPS, seguindo
+> `docs/audits/PLANO_FECHAMENTO_PRODUCAO_SOS_SALES_2026-08-30.md`.
 
 ## 0. Decisão executiva
 
@@ -73,7 +78,8 @@ jornada inicial nem declarar funcionamento sem contrato completo de backend.
 - mock, localStorage ou resposta hardcoded como verdade comercial em produção;
 - ativação ampla da IA antes do canário com allowlist;
 - remoção de função sem inventário, decisão e caminho de reversão;
-- deploy direto no VPS sem validação integrada no Docker Lab.
+- deploy sem build, regressão local, stage imutável, aprovação humana e rollback;
+- uso de credenciais ou números oficiais no Docker Lab.
 
 ## 3. Arquitetura funcional alvo
 

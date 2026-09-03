@@ -41,7 +41,7 @@ recreate_active_release() {
     up -d --no-deps --force-recreate sos-sales-api caddy || return 1
 }
 
-require_complete_release() {
+require_base_release() {
   local candidate="$1"
   for artifact in \
     "${candidate}/web/dist/index.html" \
@@ -55,7 +55,26 @@ require_complete_release() {
   done
 }
 
-require_complete_release "${release}"
+require_migration_gate() {
+  local candidate="$1"
+  test -f "${candidate}/scripts/verify-production-schema.mjs"
+  find "${candidate}/api/supabase/migrations" -type f -name '*.sql' -print -quit | grep -q .
+}
+
+verify_release_schema() {
+  DATABASE_SSL_CA_FILE="${release}/certs/supabase-ca.crt" \
+    node "${release}/scripts/verify-production-schema.mjs" \
+      --env-file "${root}/.env.production" \
+      --migrations-dir "${release}/api/supabase/migrations"
+}
+
+require_base_release "${release}"
+require_migration_gate "${release}"
+
+# This must happen before touching current/previous. The verifier is read-only
+# and fails closed when the database has not recorded every migration bundled
+# with this immutable release.
+verify_release_schema
 
 if [[ -L "${current}" ]]; then
   old_release="$(readlink -f "${current}")"
@@ -72,7 +91,7 @@ else
 fi
 
 atomic_link "${old_release}" "${previous}"
-require_complete_release "${old_release}"
+require_base_release "${old_release}"
 atomic_link "${release}" "${current}"
 
 if ! recreate_active_release || ! verify_active_release; then

@@ -2,79 +2,70 @@
 <img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
 </div>
 
-# SOS Sales
+# SOS Sales — Operational Sales Operating System
 
-Cockpit comercial para continuidade de vendas no WhatsApp. O repositório contém
-dois projetos intencionalmente isolados:
+> **MCT OS — Sovereign Kernel | Poder invisível, simplicidade visível**  
+> **Ambiente de Produção:** `https://crm.iaparavendas.tech`  
+> **Docker Lab Local:** `http://localhost:3333` (Frontend) + `http://localhost:4335` (API)  
+> **Especificação Funcional Completa:** [`docs/SPEC_FUNCIONAL_SOS_SALES.md`](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/SPEC_FUNCIONAL_SOS_SALES.md)
 
-- `./` — frontend React/Vite, gerenciado com Bun;
-- `./apps/api` — API Fastify e migrations Supabase, gerenciada com npm.
+CRM operacional de alta performance para vendas no WhatsApp, projetado sob a filosofia de ferramenta **enxuta, funcional e sem ruído visual**. O repositório é composto por dois ambientes intencionalmente isolados:
 
-Não execute `npm install` na raiz: o lockfile da raiz é `bun.lock`. Não execute
-`bun install` dentro de `apps/api`: a API possui `package-lock.json` próprio.
+- `./` — Frontend React 19 + TypeScript + Vite + TailwindCSS v4;
+- `./apps/api` — API Fastify 4 + Node.js 20 ESM + Supabase PostgreSQL + Redis.
 
-## Pré-requisitos
+---
 
-- Node.js 22 LTS e npm 10+;
-- Bun 1.3.13+;
-- Docker Desktop e Supabase CLI somente para testes de integração/local da API.
+## 📚 Documentação & Especificações do Sistema
 
-## Instalação
+O SOS Sales possui documentação funcional e técnica detalhada para cada um de seus 8 módulos operacionais:
 
+| Módulo | Especificação Funcional |
+|---|---|
+| **Master Index** | [`docs/SPEC_FUNCIONAL_SOS_SALES.md`](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/SPEC_FUNCIONAL_SOS_SALES.md) |
+| **01. Cockpit de Atendimento ao Vivo (`/agora`)** | [`docs/specs/01_cockpit_agora.md`](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/specs/01_cockpit_agora.md) |
+| **02. Funil Comercial Kanban & Conversas (`/kanban`, `/conversas`)** | [`docs/specs/02_kanban_conversas.md`](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/specs/02_kanban_conversas.md) |
+| **03. Motor Dual-Engine & Meta Omnichannel (`/configuracoes/canais`)** | [`docs/specs/03_waba_arsenal_canais.md`](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/specs/03_waba_arsenal_canais.md) |
+| **04. Agenda Comercial, Anotações & Hub de Grupos (`/agenda`, `/grupos`)** | [`docs/specs/04_agenda_anotacoes_grupos.md`](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/specs/04_agenda_anotacoes_grupos.md) |
+| **05. Gestão de Clientes, Resultados CAPI & Playbook (`/clientes`, `/resultados`)** | [`docs/specs/05_clientes_resultados_playbook.md`](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/specs/05_clientes_resultados_playbook.md) |
+| **06. Backend Fastify API, Webhooks & RLS (`apps/api`)** | [`docs/specs/06_backend_api_and_webhooks.md`](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/specs/06_backend_api_and_webhooks.md) |
+| **07. Infraestrutura, Docker Lab & Pipeline de Deploy** | [`docs/specs/07_deploy_and_docker_lab.md`](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/specs/07_deploy_and_docker_lab.md) |
+| **08. Design System, Tokens & Refinamento Visual** | [`docs/specs/08_design_system_and_ui_components.md`](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/specs/08_design_system_and_ui_components.md) |
+
+---
+
+## 🛠️ Pré-requisitos & Instalação
+
+### Pré-requisitos:
+- Node.js 20 LTS e npm 10+;
+- Docker Desktop (somente para validação no Docker Lab).
+
+### Instalação:
 ```bash
 # Frontend (raiz)
-bun run web:install
+npm install
 
-# API (lockfile isolado)
-npm run api:install
+# API Fastify
+npm --prefix apps/api install
 ```
 
-## Qualidade e build
+---
 
-Os gates não misturam configurações TypeScript nem gerenciadores de pacotes.
+## 🚀 Desenvolvimento Local & Docker Lab
 
 ```bash
-# Frontend: typecheck + build Vite
-npm run check:web
+# 1. Desenvolvimento com Hot-Reload
+npm run dev                          # Frontend: http://localhost:5173
 
-# API: typecheck/testes Vitest + build tsup
-npm run check:api
-
-# Ambos, na ordem acima
-npm run check
+# 2. Docker Lab (Homologação Integrada antes de Deploy)
+docker compose -f docker-compose.lab.yml up --build -d
+# Frontend Lab: http://localhost:3333
+# API Lab:      http://localhost:4335
 ```
 
-O workflow [CI](.github/workflows/ci.yml) executa os mesmos gates em todo push e
-pull request. Os testes da API não iniciam infraestrutura remota no CI; a
-homologação com Supabase/Redis/WAHA é um gate separado de ambiente.
+---
 
-## Desenvolvimento local
+## 🔒 Segurança & Operação Autenticada
 
-```bash
-# Terminal 1 — frontend
-bun run dev
-
-# Terminal 2 — API
-cd apps/api && npm run dev
-```
-
-Copie somente arquivos de exemplo para variáveis de ambiente. Nunca adicione
-tokens, chaves privadas, `.env.local`, dumps de banco ou volumes Docker ao Git.
-Os arquivos `.env*` são ignorados, com exceção de arquivos `*.example` sem
-segredos.
-
-## Operação autenticada
-
-O cockpit só inicia em modo de API quando as três variáveis abaixo estão presentes:
-
-```bash
-VITE_SOS_API_URL=https://api.seudominio.com/api/v1
-VITE_SUPABASE_URL=https://seu-projeto.supabase.co
-VITE_SUPABASE_ANON_KEY=sua-chave-publica
-```
-
-O cliente Supabase no navegador usa apenas a chave pública e fornece o JWT da
-sessão ao transporte do SOS Sales. Nunca exponha uma `service_role` no frontend.
-Sem as três variáveis, builds de produção falham fechados e não exibem fixtures.
-Para uma demonstração visual isolada, use somente `VITE_DEMO_MODE=true` fora de
-produção; esse modo não se conecta ao Supabase ou à API.
+- **Zero Mock Data em Produção:** Dados 100% reais via PostgreSQL Supabase com RLS ativado (`SET LOCAL ROLE sos_sales_runtime`).
+- **Antiban Protocol:** Janela de atendimento de 24h Meta obedecida rigorosamente.

@@ -1,0 +1,27 @@
+/* Three-path pricing: the Pix annual offer is intentionally the visual decision point. */
+.pricing-content { display: block !important; }
+.pricing-copy { max-width: 720px; margin: 0 auto 46px; text-align: center; }
+.plans-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.plan-card { display: flex; min-height: 420px; flex-direction: column; align-items: flex-start; padding: 30px; border: 1px solid rgba(8, 20, 15, .22); background: #f5f4ee; box-shadow: none; }
+.plan-card h3 { max-width: 250px; margin: 13px 0 22px; color: #08140f; font-family: "Bricolage Grotesque", sans-serif; font-size: clamp(1.35rem, 2vw, 1.75rem); line-height: 1.08; }
+.plan-kicker, .best-tag, .plan-saving, .pricing-note { font-family: "IBM Plex Mono", monospace; font-size: .69rem; font-weight: 700; letter-spacing: .08em; line-height: 1.45; text-transform: uppercase; }
+.plan-kicker { margin: 0; color: #45604d; }
+.plan-price { display: block; margin: 0; color: #08140f; font-family: "Bricolage Grotesque", sans-serif; font-size: clamp(2.2rem, 4vw, 3.25rem); font-weight: 700; letter-spacing: -.07em; line-height: 1; }
+.plan-price small { font-family: "DM Sans", sans-serif; font-size: .85rem; font-weight: 600; letter-spacing: 0; }
+.plan-saving { min-height: 48px; margin: 11px 0 0; color: #45604d; letter-spacing: .02em; text-transform: none; }
+.plan-saving b { display: block; color: #08140f; font-family: "Bricolage Grotesque", sans-serif; font-size: 1.16rem; letter-spacing: -.02em; text-transform: none; }
+.plan-saving span { display: block; margin-top: 4px; font-size: .64rem; letter-spacing: .04em; }
+.plan-saving s { opacity: .72; }
+.plan-saving mark { margin-left: 3px; padding: 1px 4px; background: #b7f66b; color: #08140f; font: inherit; font-weight: 800; }
+.plan-description { margin: 22px 0 30px; color: #45604d; font-size: .98rem; line-height: 1.55; }
+.plan-card .button { width: 100%; margin-top: auto; justify-content: space-between; }
+.plan-card.best { position: relative; z-index: 1; transform: translateY(-18px); border-color: #08140f; background: #08140f; box-shadow: 8px 8px 0 #b7f66b; }
+.best-tag { display: inline-block; margin: -30px -30px 25px; padding: 9px 13px; background: #b7f66b; color: #08140f; }
+.plan-card.best .plan-kicker, .plan-card.best .plan-saving, .plan-card.best .plan-description { color: rgba(245, 244, 238, .72); }
+.plan-card.best .plan-saving b { color: #b7f66b; }
+.plan-card.best .plan-saving mark { background: #b7f66b; color: #08140f; }
+.plan-card.best h3, .plan-card.best .plan-price { color: #f5f4ee; }
+.plan-card.best .button { background: #b7f66b; color: #08140f; }
+.button-ghost { border: 1px solid #08140f !important; background: transparent !important; color: #08140f !important; }
+.pricing-note { max-width: 680px; margin: 38px auto 0; color: #45604d; font-weight: 500; letter-spacing: .02em; text-align: center; text-transform: none; }
+@media (max-width: 820px) { .plans-grid { grid-template-columns: 1fr; gap: 14px; } .plan-card { min-height: 0; padding: 28px; } .plan-card.best { transform: none; margin: 10px 0; } }

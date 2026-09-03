@@ -1,0 +1,40 @@
+.annual-options {
+  margin: 23px 0 0;
+  border-top: 1px solid #2b3a4c;
+}
+
+.annual-options > div {
+  padding: 13px 0;
+  border-bottom: 1px solid #2b3a4c;
+}
+
+.annual-options b,
+.annual-options strong,
+.annual-options small {
+  display: block;
+}
+
+.annual-options b {
+  color: #d9e4ec;
+  font: 700 10px var(--sans);
+}
+
+.annual-options strong {
+  margin-top: 4px;
+  font: 700 19px var(--display);
+}
+
+.annual-options small {
+  margin-top: 2px;
+  color: #95a6b6;
+  font-size: 9px;
+}
+
+.annual-options .launch {
+  padding-left: 10px;
+  border-left: 2px solid #34d399;
+}
+
+.annual-options .launch b {
+  color: #68dcb2;
+}

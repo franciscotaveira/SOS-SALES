@@ -31,6 +31,7 @@ import {
   Instagram,
   Link2,
   Brain,
+  FileText,
 } from 'lucide-react';
 
 

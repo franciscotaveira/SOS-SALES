@@ -32,6 +32,7 @@ services:
     env_file:
       - ${SOS_SALES_ENV_FILE:-/opt/sos-sales/.env.production}
     environment:
+      - APP_ENV=production
       - NODE_ENV=production
       - PORT=4334
       - HOST=0.0.0.0
@@ -69,6 +70,9 @@ services:
       WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY is required}
       WAHA_LOG_FORMAT: JSON
       TZ: America/Sao_Paulo
+      # Webhook ACK timeout: aumentado de 5s (padrão) para 15s
+      # evita reenvios duplicados enquanto a API processa o evento
+      WHATSAPP_HOOK_TIMEOUT: "15000"
     volumes:
       - /opt/sos-sales/waha_sessions:/app/.sessions
       - /opt/sos-sales/waha_media:/app/.media

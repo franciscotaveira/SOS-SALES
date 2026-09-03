@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { dbPool, query } from '../../src/infrastructure/database/pool.js';
 
 describe('P0 supervised WAHA outbound contract', () => {
@@ -42,6 +44,14 @@ describe('P0 supervised WAHA outbound contract', () => {
   }
 
   beforeAll(async () => {
+    // The local Lab may have been initialized before this forward-only
+    // migration existed. Apply the function replacement here so this DB-backed
+    // contract exercises the same claim behavior required by the release.
+    const migrationPath = fileURLToPath(new URL(
+      '../../supabase/migrations/20260831000000_outbound_dispatch_expired_lease_reclaim.sql',
+      import.meta.url,
+    ));
+    await query(await readFile(migrationPath, 'utf8'));
     await query(`INSERT INTO workspaces (id, name, slug, active) VALUES ($1, 'Outbound test', 'outbound-${workspaceId.slice(0, 8)}', true), ($2, 'Other tenant', 'other-${otherWorkspaceId.slice(0, 8)}', true)`, [workspaceId, otherWorkspaceId]);
     await query(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'operator')`, [workspaceId, ownerId, operatorId]);
     await query(`INSERT INTO channel_connections (id, workspace_id, provider, phone_number, name, public_config, status) VALUES ($1, $2, 'waha', '+55499991111', 'Outbound WAHA', '{}'::jsonb, 'CONNECTED')`, [channelId, workspaceId]);
@@ -151,5 +161,51 @@ describe('P0 supervised WAHA outbound contract', () => {
       channelConnectionId: metaChannelId,
       contactId: metaContactId,
     });
+  });
+
+  it('OUT-04: fences an active claim but lets a new worker reclaim an expired lease with a new token', async () => {
+    const draft = await asAuthenticated(operatorId, (client) => client.query(
+      'SELECT public.create_outbound_draft($1, $2, $3, $4) AS result',
+      [workspaceId, journeyId, 'Recuperação de lease supervisionada.', 'outbound-lease-draft-0001'],
+    ));
+    const dispatchId = draft.rows[0].result.dispatchId;
+    await asAuthenticated(operatorId, (client) => client.query(
+      'SELECT public.approve_outbound_dispatch($1, $2, $3)',
+      [workspaceId, dispatchId, 'outbound-lease-approve-0001'],
+    ));
+
+    const firstClaim = await asService((client) => client.query(
+      'SELECT public.claim_outbound_dispatch($1, $2, $3) AS result',
+      [dispatchId, 'lease-worker-one', 60],
+    ));
+    const firstToken = firstClaim.rows[0].result.claimToken;
+
+    await expect(asService((client) => client.query(
+      'SELECT public.claim_outbound_dispatch($1, $2, $3)',
+      [dispatchId, 'lease-worker-two', 60],
+    ))).rejects.toThrow(/active claim is still valid/);
+
+    await query(
+      `UPDATE public.outbound_dispatches
+       SET claim_expires_at = NOW() - INTERVAL '1 second'
+       WHERE id = $1`,
+      [dispatchId],
+    );
+
+    const reclaimed = await asService((client) => client.query(
+      'SELECT public.claim_outbound_dispatch($1, $2, $3) AS result',
+      [dispatchId, 'lease-worker-two', 60],
+    ));
+    expect(reclaimed.rows[0].result).toMatchObject({ dispatchId });
+    expect(reclaimed.rows[0].result.claimToken).not.toBe(firstToken);
+
+    const audit = await query(
+      `SELECT detail->>'reclaimedExpiredLease' AS reclaimed
+       FROM public.outbound_dispatch_events
+       WHERE outbound_dispatch_id = $1 AND worker_id = 'lease-worker-two'
+       ORDER BY created_at DESC LIMIT 1`,
+      [dispatchId],
+    );
+    expect(audit.rows[0]).toEqual({ reclaimed: 'true' });
   });
 });

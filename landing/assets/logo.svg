@@ -11,6 +11,6 @@
   <circle cx="34" cy="46" r="2" fill="#38BDF8"/>
 
   <!-- Wordmark Text (Dark for Light Theme) -->
-  <text x="76" y="37" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-size="23" font-weight="900" fill="#0F172A" letter-spacing="-0.03em">SOS SALES</text>
+  <text x="76" y="37" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-size="23" font-weight="900" fill="#0F172A" letter-spacing="-0.03em">SOS VENDAS</text>
   <text x="76" y="52" font-family="'Inter', system-ui, sans-serif" font-size="10" font-weight="700" fill="#16A34A" letter-spacing="0.14em">SISTEMA OPERACIONAL</text>
 </svg>

@@ -17,7 +17,7 @@ test -L "${previous}"
 current_target="$(readlink -f "${current}")"
 previous_target="$(readlink -f "${previous}")"
 
-require_complete_release() {
+require_base_release() {
   local candidate="$1"
   for artifact in \
     "${candidate}/web/dist/index.html" \
@@ -31,8 +31,8 @@ require_complete_release() {
   done
 }
 
-require_complete_release "${current_target}"
-require_complete_release "${previous_target}"
+require_base_release "${current_target}"
+require_base_release "${previous_target}"
 next_current="${current}.next.$$"
 next_previous="${previous}.next.$$"
 

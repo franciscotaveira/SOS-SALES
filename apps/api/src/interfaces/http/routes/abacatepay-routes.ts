@@ -89,6 +89,11 @@ export const abacatePayRoutes: FastifyPluginAsync<AbacatePayRoutesOptions> = asy
           },
         },
         response: {
+          400: {
+            type: 'object',
+            required: ['error'],
+            properties: { error: { type: 'string' } },
+          },
           201: {
             type: 'object',
             properties: {
@@ -99,6 +104,11 @@ export const abacatePayRoutes: FastifyPluginAsync<AbacatePayRoutesOptions> = asy
               pixCopiaECola: { type: 'string' },
               pixQrCode: { type: 'string' },
             },
+          },
+          503: {
+            type: 'object',
+            required: ['error'],
+            properties: { error: { type: 'string' } },
           },
         },
       },

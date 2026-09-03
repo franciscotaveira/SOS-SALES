@@ -19,6 +19,7 @@ supabase/.branches/
 *.key
 *.cert
 .gstack/
+.agents/skills/gstack/
 .claude-flow/
 *.db
 *.rvf

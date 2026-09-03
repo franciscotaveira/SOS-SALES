@@ -5,9 +5,18 @@
 # 1. Landing Page Oficial (Vendas + Demo Interativa)
 iaparavendas.tech, www.iaparavendas.tech {
     encode zstd gzip
-    root * /var/www/landing
-    try_files {path} /index.html
-    file_server
+    @ekoBare path /eko
+    redir @ekoBare /eko/ 308
+    handle_path /eko/* {
+        root * /var/www/landing/eko
+        try_files {path} /index.html
+        file_server
+    }
+    handle {
+        root * /var/www/landing
+        try_files {path} /index.html
+        file_server
+    }
 }
 
 # 2. Aplicação CRM & API Fastify

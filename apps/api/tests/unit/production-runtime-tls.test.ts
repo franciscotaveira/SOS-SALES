@@ -123,13 +123,18 @@ describe('production database TLS contract', () => {
     expect(stage).toContain('apps/api/node_modules/');
     expect(stage).toContain("grep -Eq '^META_VERIFY_TOKEN=[[:space:]]*[^[:space:]]'");
     expect(stage).toContain("grep -Eq '^META_APP_SECRET=[[:space:]]*[^[:space:]]'");
-    expect(stage).toContain('WAHA_WEBHOOK_SECRET_[A-Za-z0-9_]');
+    // Production accepts the single canonical WAHA webhook secret. Requiring
+    // per-channel variables here would reject the existing VPS configuration
+    // and reintroduce the duplicate-secret contract this release removes.
+    expect(stage).toContain("grep -Eq '^WAHA_API_KEY=[[:space:]]*[^[:space:]]'");
+    expect(stage).not.toContain('WAHA_WEBHOOK_SECRET_[A-Za-z0-9_]');
     expect(promote).toContain('verify_active_release');
-    expect(promote).toContain('require_complete_release');
+    expect(promote).toContain('require_base_release');
+    expect(promote).toContain('verify_release_schema');
     expect(promote).toContain('|| return 1');
     expect(promote).toContain('automatic restoration both failed');
     expect(rollback).toContain('recreate_and_verify');
-    expect(rollback).toContain('require_complete_release');
+    expect(rollback).toContain('require_base_release');
     expect(rollback).toContain('|| return 1');
     expect(rollback).toContain('automatic restoration both failed');
   });

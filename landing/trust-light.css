@@ -1,0 +1,60 @@
+/* SOS Vendas: clear, calm, confidence-first commercial palette. */
+:root {
+  --trust-navy: #102f55;
+  --trust-blue: #1769d2;
+  --trust-sky: #eaf3ff;
+  --trust-line: #d4e2f2;
+  --trust-ink: #18324d;
+  --trust-muted: #58708a;
+  --trust-green: #11835f;
+}
+
+body { background: #fff !important; color: var(--trust-ink) !important; }
+.header { background: rgba(255,255,255,.96) !important; border-color: var(--trust-line) !important; }
+.header nav { color: var(--trust-muted) !important; }
+.header nav a:hover, .link:hover { color: var(--trust-blue) !important; }
+.header .button { border-color: var(--trust-blue) !important; background: var(--trust-blue) !important; color: #fff !important; }
+
+.hero { background: #fff !important; border-bottom: 1px solid var(--trust-line); }
+.hero h1 { color: var(--trust-navy) !important; }
+.hero h1 em { color: var(--trust-blue) !important; }
+.hero .lead, .hero .note { color: var(--trust-muted) !important; }
+.hero .eyebrow { color: var(--trust-blue) !important; }
+.hero .eyebrow i { background: var(--trust-blue) !important; }
+.hero .button, .pricing .button, .final .button { background: var(--trust-blue) !important; color: #fff !important; }
+.hero .button:hover, .pricing .button:hover, .final .button:hover { background: var(--trust-navy) !important; }
+
+.window { border: 1px solid var(--trust-line) !important; box-shadow: 14px 14px 0 #dceafd !important; }
+.window .bar { background: #f5f9ff !important; color: var(--trust-navy) !important; }
+.strip { background: var(--trust-sky) !important; color: var(--trust-navy) !important; }
+.strip i { background: #9bbce3 !important; }
+
+.section h2, .offer h2 { color: var(--trust-navy) !important; }
+.eyebrow { color: var(--trust-blue) !important; }
+.operation, .pricing, .fit, .faq, .control, .final { background: #fff !important; }
+.operation { border-top: 1px solid var(--trust-line); border-bottom: 1px solid var(--trust-line); }
+.pricing { background: #f8fbff !important; }
+.control aside { border: 1px solid var(--trust-line) !important; background: #fff !important; box-shadow: 12px 12px 0 #e7f0fb !important; }
+.fit { border-top: 1px solid var(--trust-line); }
+.fit h2, .final h2 { color: var(--trust-navy) !important; }
+.fit .eyebrow, .final .eyebrow { color: var(--trust-blue) !important; }
+.fit-grid article { border: 1px solid var(--trust-line) !important; background: #fff !important; }
+.fit-grid li, .fit-grid h3 { color: var(--trust-ink) !important; }
+.fit-grid li:before { color: var(--trust-green) !important; }
+.faq { border-top: 1px solid var(--trust-line); }
+.final { border-top: 1px solid var(--trust-line); border-bottom: 1px solid var(--trust-line); }
+
+.plan-card { border-color: var(--trust-line) !important; background: #fff !important; }
+.plan-card h3, .plan-price, .plan-saving b { color: var(--trust-navy) !important; }
+.plan-kicker, .plan-saving, .plan-description, .pricing-note { color: var(--trust-muted) !important; }
+.plan-saving mark { background: #d9f6e9 !important; color: #086247 !important; }
+.plan-card.best { transform: translateY(-18px); border: 2px solid var(--trust-blue) !important; background: var(--trust-sky) !important; box-shadow: 8px 8px 0 #bcd8f8 !important; }
+.plan-card.best .plan-kicker, .plan-card.best .plan-saving, .plan-card.best .plan-description { color: var(--trust-muted) !important; }
+.plan-card.best h3, .plan-card.best .plan-price, .plan-card.best .plan-saving b { color: var(--trust-navy) !important; }
+.plan-card.best .plan-saving mark { background: #ccefdc !important; color: #086247 !important; }
+.best-tag { background: var(--trust-blue) !important; color: #fff !important; }
+.plan-card.best .button { background: var(--trust-blue) !important; color: #fff !important; }
+.button-ghost { border-color: var(--trust-blue) !important; color: var(--trust-blue) !important; }
+.button-ghost:hover { background: var(--trust-sky) !important; }
+
+@media (max-width: 820px) { .plan-card.best { transform: none; } }

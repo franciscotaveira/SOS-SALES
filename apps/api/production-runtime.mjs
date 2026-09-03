@@ -99,16 +99,11 @@ export async function createProductionRuntime() {
   const metaBusinessAgentGateway = new PostgresMetaBusinessAgentGateway(pool);
   const ingestionGateway = new PostgresInboundIngestionGateway(pool);
   const outboxGateway = new PostgresOutboxProcessingGateway(pool);
-  const secretProvider = {
-    getWebhookSecret: async (channelConnectionId) => {
-      const envKey = `WAHA_WEBHOOK_SECRET_${channelConnectionId.replace(/-/g, '_')}`;
-      const specific = process.env[envKey]?.trim();
-      if (!specific) {
-        throw new Error(`Missing channel-specific WAHA webhook secret: ${envKey}`);
-      }
-      return specific;
-    },
-  };
+  // Prefer a per-channel secret when it exists, but preserve the canonical
+  // global secret used by the current VPS. This matches the verified webhook
+  // provider contract and prevents a restart from making every WAHA callback
+  // fail closed solely because a duplicate environment variable was absent.
+  const secretProvider = new EnvironmentWebhookSecretProvider();
   const wahaAdapter = new WahaWebhookAdapter();
 
   const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim();
