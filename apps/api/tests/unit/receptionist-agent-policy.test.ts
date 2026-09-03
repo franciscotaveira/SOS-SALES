@@ -491,6 +491,100 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
       });
       expect(waba.sendText).not.toHaveBeenCalled();
     });
+
+    it('reserves a keyed outbound before WAHA and never replays a sent reply', async () => {
+      vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
+      const input = {
+        ...thisInputForWaha(),
+        conversationMessageId: '50000000-0000-4000-8000-000000000005',
+      };
+      let reservationReads = 0;
+      const query = vi.fn(async (sql: string) => {
+        if (sql.includes('j.bot_enabled')) {
+          return {
+            rows: [{
+              bot_enabled: true,
+              bot_paused_at: null,
+              responder_owner: 'sos_sales',
+              responder_mode: 'sos_sales',
+              runtime_enabled: true,
+              autonomy_mode: 'autonomous_24_7',
+              published_at: new Date(),
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('FROM public.workspace_agent_config')) {
+          return {
+            rows: [{
+              workspace_name: 'Empresa WAHA',
+              agent_name: 'Assistente',
+              business_type: 'Serviços',
+              services_json: [{ name: 'Serviço conhecido' }],
+              working_hours: 'Seg a Sex 09h-18h',
+              phone: '+5549999999999',
+              city: 'Chapecó',
+              booking_url: null,
+              booking_flow_enabled: false,
+              extra_context: null,
+              behavior_config: {},
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('workspace_intelligence_bundles')) return { rows: [], rowCount: 0 };
+        if (sql.includes('workspace_knowledge_documents')) return { rows: [], rowCount: 0 };
+        if (sql.includes('FROM public.conversation_messages')) return { rows: [], rowCount: 0 };
+        if (sql.includes('FROM public.channel_connections cc')) {
+          return {
+            rows: [{ provider: 'waha', status: 'CONNECTED', public_config: { sessionName: 'sos-sales' } }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('reserve_receptionist_outbound')) {
+          reservationReads += 1;
+          return {
+            rows: [{ reservation: reservationReads === 1
+              ? { reservationId: 'reservation-1', status: 'SENDING', shouldSend: true }
+              : { reservationId: 'reservation-1', status: 'SENT', shouldSend: false, providerMessageId: 'waha-reply-1' } }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('complete_receptionist_outbound')) return { rows: [{ ok: true }], rowCount: 1 };
+        throw new Error(`Unexpected test SQL: ${sql}`);
+      }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
+      const nim = {
+        isConfigured: () => true,
+        generateChatCompletion: vi.fn().mockResolvedValue({
+          content: '{"intent":"greeting","escalate":false,"sendBookingFlow":false}\nOlá pelo WhatsApp!',
+          model: 'test-model',
+          latencyMs: 10,
+        }),
+      };
+      const waha = {
+        sendText: vi.fn().mockResolvedValue({
+          success: true,
+          providerMessageId: 'waha-reply-1',
+          rawResponse: { id: 'waha-reply-1' },
+        }),
+      };
+      const agent = new ReceptionistAgent({ nim: nim as any, waha: waha as any, query });
+
+      const first = await agent.handleInbound(input);
+      const second = await agent.handleInbound(input);
+
+      expect(first.reply).toBe('Olá pelo WhatsApp!');
+      expect(second).toMatchObject({ reply: '', skipped: 'outbound_already_sent' });
+      expect(waha.sendText).toHaveBeenCalledTimes(1);
+      expect(query).toHaveBeenCalledWith(
+        expect.stringContaining('reserve_receptionist_outbound'),
+        expect.arrayContaining([input.conversationMessageId]),
+      );
+      expect(query).toHaveBeenCalledWith(
+        expect.stringContaining('complete_receptionist_outbound'),
+        expect.arrayContaining(['reservation-1', 'waha-reply-1']),
+      );
+    });
   });
 });
 

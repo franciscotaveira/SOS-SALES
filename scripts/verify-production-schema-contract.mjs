@@ -100,6 +100,12 @@ const tables = {
     'id', 'workspace_id', 'channel_connection_id', 'fact_date', 'metric_name',
     'metric_value', 'raw_payload', 'created_at',
   ],
+  receptionist_outbound_reservations: [
+    'id', 'workspace_id', 'conversation_message_id', 'journey_id', 'contact_id',
+    'channel_connection_id', 'provider', 'message_kind', 'reply_fingerprint',
+    'reply_text', 'status', 'provider_message_id', 'failure_code', 'attempts',
+    'created_at', 'updated_at', 'sent_at',
+  ],
 };
 
 const requiredColumnTypes = {
@@ -118,6 +124,9 @@ const functions = {
   claim_outbound_dispatch: 'uuid, text, integer',
   record_outbound_provider_acceptance: 'uuid, uuid, text, text',
   record_outbound_provider_failure: 'uuid, uuid, text, text, boolean',
+  reserve_receptionist_outbound: 'uuid, uuid, uuid, uuid, uuid, text, text, text, text',
+  complete_receptionist_outbound: 'uuid, text, jsonb',
+  mark_receptionist_outbound_unknown: 'uuid, text',
 };
 
 const indexes = [
@@ -126,6 +135,7 @@ const indexes = [
   'uq_journeys_open_per_contact_unbound',
   'uq_messages_provider_msg',
   'uq_outbox_workspace_idempotency',
+  'uq_receptionist_outbound_message_kind',
 ];
 
 function normalizeSqlTypes(value) {

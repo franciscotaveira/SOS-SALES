@@ -10,6 +10,7 @@
  * - Escalável: pausa automaticamente quando humano é solicitado ou o envio fica incerto
  */
 
+import { createHash } from 'node:crypto';
 import { NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
 import { WabaClient } from '../../infrastructure/channels/meta/waba-client.js';
 import { WahaOutboundAdapter } from '../../infrastructure/channels/waha/waha-outbound-adapter.js';
@@ -37,6 +38,12 @@ export interface ReceptionistInput {
   channelConnectionId: string;
   /** Meta Cloud phone number id. WAHA inbound events intentionally omit it. */
   phoneNumberId: string | null;
+  /**
+   * Stable inbound message identity used to reserve irreversible replies.
+   * The receptionist worker derives it from the outbox aggregate when older
+   * payloads do not carry the explicit field.
+   */
+  conversationMessageId?: string;
 }
 
 export interface ReceptionistOutput {
@@ -762,6 +769,112 @@ export class ReceptionistAgent {
     }
   }
 
+  private outboundFingerprint(
+    input: ReceptionistInput,
+    provider: 'waha' | 'meta_cloud',
+    messageKind: 'TEXT' | 'FLOW',
+    reply: string,
+  ): string {
+    return createHash('sha256')
+      .update([
+        input.conversationMessageId || 'unkeyed',
+        input.workspaceId,
+        input.journeyId,
+        input.channelConnectionId,
+        provider,
+        messageKind,
+        reply,
+      ].join('\n'))
+      .digest('hex');
+  }
+
+  /**
+   * Reserves an irreversible provider action before calling WAHA/Meta.  Old
+   * direct unit/test callers may omit conversationMessageId and retain the
+   * legacy insert-only path; production outbox events always carry the
+   * aggregate id through ReceptionistInboundWorker.
+   */
+  private async reserveOutbound(
+    input: ReceptionistInput,
+    provider: 'waha' | 'meta_cloud',
+    messageKind: 'TEXT' | 'FLOW',
+    reply: string,
+  ): Promise<{
+    reservationId: string | null;
+    shouldSend: boolean;
+    status: string;
+    providerMessageId?: string;
+  }> {
+    if (!input.conversationMessageId) {
+      return { reservationId: null, shouldSend: true, status: 'UNKEYED' };
+    }
+
+    const result = await this.query(
+      `SELECT public.reserve_receptionist_outbound(
+         $1, $2, $3, $4, $5, $6, $7, $8, $9
+       ) AS reservation`,
+      [
+        input.workspaceId,
+        input.conversationMessageId,
+        input.journeyId,
+        input.contactId,
+        input.channelConnectionId,
+        provider,
+        messageKind,
+        reply,
+        this.outboundFingerprint(input, provider, messageKind, reply),
+      ],
+    );
+    const reservation = asJsonRecord(result.rows[0]?.reservation);
+    const reservationId = nonEmptyString(reservation.reservationId);
+    const status = nonEmptyString(reservation.status) || 'UNKNOWN';
+    if (!reservationId) throw new Error('RECEPTIONIST_OUTBOUND_RESERVATION_UNAVAILABLE');
+    return {
+      reservationId,
+      shouldSend: reservation.shouldSend === true,
+      status,
+      providerMessageId: nonEmptyString(reservation.providerMessageId),
+    };
+  }
+
+  private async completeOutbound(
+    input: ReceptionistInput,
+    reservationId: string | null,
+    reply: string,
+    providerId: string,
+    mediaPayload?: Record<string, unknown>,
+  ): Promise<void> {
+    if (!reservationId) {
+      await this.saveAgentReply(
+        input.workspaceId,
+        input.journeyId,
+        input.contactId,
+        input.channelConnectionId,
+        reply,
+        providerId,
+        mediaPayload,
+      );
+      return;
+    }
+
+    await this.query(
+      `SELECT public.complete_receptionist_outbound($1, $2, $3::jsonb)`,
+      [
+        reservationId,
+        providerId,
+        JSON.stringify(mediaPayload || { engine: 'nvidia_nim', source: 'receptionist_agent', messageType: 'text' }),
+      ],
+    );
+  }
+
+  private async markOutboundUnknown(reservationId: string | null, failureCode: string): Promise<void> {
+    if (!reservationId) return;
+    await this.query(
+      `SELECT public.mark_receptionist_outbound_unknown($1, $2)`,
+      [reservationId, failureCode.slice(0, 160)],
+    );
+  }
+
   /**
    * Registra a resposta do agente no banco de conversas
    */
@@ -915,6 +1028,48 @@ export class ReceptionistAgent {
     // credentials para uma jornada WAHA nem a sessão WAHA de outra conexão.
     let providerId = '';
     if (replyText && replyText.length > 0) {
+      const replyReservation = await this.reserveOutbound(
+        input,
+        transport.provider,
+        'TEXT',
+        replyText,
+      );
+
+      if (!replyReservation.shouldSend) {
+        if (replyReservation.status === 'SENT') {
+          // The provider action and local history were already committed by a
+          // previous delivery attempt. A reclaimed outbox event must not send
+          // the same reply again.
+          return {
+            intent: decision.intent,
+            reply: '',
+            escalated: false,
+            bookingFlowSent: false,
+            latencyMs,
+            model: usedModel,
+            skipped: 'outbound_already_sent',
+          };
+        }
+
+        const paused = await this.pauseBotForJourney(
+          input.workspaceId,
+          input.journeyId,
+          `Ação ${transportLabel} já reservada sem confirmação — reconciliação humana obrigatória`,
+        );
+        return {
+          intent: decision.intent,
+          reply: '',
+          escalated: paused,
+          bookingFlowSent: false,
+          latencyMs,
+          model: usedModel,
+          skipped: paused
+            ? `${transportLabel}_outbound_reconciliation_required`
+            : `${transportLabel}_outbound_reconciliation_pause_failed`,
+        };
+      }
+
+      const replyReservationId = replyReservation.reservationId;
       try {
         const toNumber = input.fromPhone.replace(/\D/g, '');
         if (!/^\d{8,15}$/.test(toNumber)) {
@@ -945,16 +1100,23 @@ export class ReceptionistAgent {
           providerId = sendResult.messageId;
         }
 
-        // Salva no banco
-        await this.saveAgentReply(
-          input.workspaceId,
-          input.journeyId,
-          input.contactId,
-          input.channelConnectionId,
+        // Commit the provider id and local history in the same durable
+        // reservation transition. If this fails after the provider accepted
+        // the message, the reservation becomes UNKNOWN and a retry will stop
+        // for human reconciliation instead of sending a duplicate.
+        await this.completeOutbound(
+          input,
+          replyReservationId,
           replyText,
-          providerId
+          providerId,
         );
       } catch (sendErr) {
+        await this.markOutboundUnknown(
+          replyReservationId,
+          sendErr instanceof Error ? sendErr.message : 'RECEPTIONIST_OUTBOUND_UNKNOWN',
+        ).catch((reservationErr) => {
+          console.error('[ReceptionistAgent] Could not mark outbound reservation unknown:', reservationErr);
+        });
         console.error(`[ReceptionistAgent] Error sending ${transportLabel} message:`, sendErr);
         // A transport error may be ambiguous: Meta can have accepted the
         // message even when the client did not receive the response. Retrying
@@ -985,6 +1147,39 @@ export class ReceptionistAgent {
     // sendo enviado e deve conter a URL publicada; somente Meta Cloud pode
     // disparar o Flow e registrar bookingFlowSent=true.
     if (transport.provider === 'meta_cloud' && policy.allowBookingFlow && wsConfig.bookingFlowEnabled && GEMINI_BOOK_FLOW_ID) {
+      const flowReservation = await this.reserveOutbound(input, 'meta_cloud', 'FLOW', '');
+      if (!flowReservation.shouldSend) {
+        if (flowReservation.status === 'SENT') {
+          return {
+            intent: decision.intent,
+            reply: replyText,
+            escalated: false,
+            bookingFlowSent: true,
+            latencyMs,
+            model: usedModel,
+            skipped: 'booking_flow_already_sent',
+          };
+        }
+
+        const paused = await this.pauseBotForJourney(
+          input.workspaceId,
+          input.journeyId,
+          'WhatsApp Flow já reservado sem confirmação — reconciliação humana obrigatória',
+        );
+        return {
+          intent: decision.intent,
+          reply: replyText,
+          escalated: paused,
+          bookingFlowSent: false,
+          latencyMs,
+          model: usedModel,
+          skipped: paused
+            ? 'waba_flow_reconciliation_required'
+            : 'waba_flow_reconciliation_pause_failed',
+        };
+      }
+
+      const flowReservationId = flowReservation.reservationId;
       try {
         if (!await this.isBotActiveForJourney(input.workspaceId, input.journeyId)) {
           return { intent: decision.intent, reply: replyText, escalated: false, bookingFlowSent: false, latencyMs, model: usedModel, skipped: 'bot_paused_before_booking_flow' };
@@ -1004,11 +1199,9 @@ export class ReceptionistAgent {
           },
         });
         if (!flowResult.messageId) throw new Error('WABA_FLOW_PROVIDER_MESSAGE_ID_MISSING');
-        await this.saveAgentReply(
-          input.workspaceId,
-          input.journeyId,
-          input.contactId,
-          input.channelConnectionId,
+        await this.completeOutbound(
+          input,
+          flowReservationId,
           '',
           flowResult.messageId,
           {
@@ -1020,6 +1213,12 @@ export class ReceptionistAgent {
         );
         bookingFlowSent = true;
       } catch (flowErr) {
+        await this.markOutboundUnknown(
+          flowReservationId,
+          flowErr instanceof Error ? flowErr.message : 'WABA_FLOW_OUTBOUND_UNKNOWN',
+        ).catch((reservationErr) => {
+          console.error('[ReceptionistAgent] Could not mark Flow reservation unknown:', reservationErr);
+        });
         console.error('[ReceptionistAgent] Error sending Flow:', flowErr);
         // The text may already have been accepted. Do not replay it just to
         // retry the Flow; stop automation and expose the journey to a human.

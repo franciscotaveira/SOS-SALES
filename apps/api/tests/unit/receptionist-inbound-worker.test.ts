@@ -214,6 +214,7 @@ describe('ReceptionistInboundWorker — processSingleBatch', () => {
       messageType: 'text',
       channelConnectionId: 'chan-1',
       phoneNumberId: 'pn-1',
+      conversationMessageId: 'msg-1',
     });
   });
 

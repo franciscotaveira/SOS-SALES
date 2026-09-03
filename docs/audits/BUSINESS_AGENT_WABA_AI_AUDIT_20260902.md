@@ -81,6 +81,7 @@ Uma conversa tem apenas um responsável automático no backend:
 - O receptor estrito HMAC `/webhooks/waha/:channelConnectionId` permanece disponível.
 - A tela de Canais deixou de ler um campo inexistente (`sessionStatus`); agora mostra a sessão e o `status` realmente retornados pela API, sem declarar o WAHA desconectado por erro de mapeamento visual.
 - A Central de Conversas não expõe `Anotações` nem `Torre TV` no modo API enquanto essas superfícies continuarem dependentes do modelo legado; o modo autenticado mostra apenas lista e funil persistidos. A origem do lead também não é rotulada como `Click WA` sem um fato de aquisição persistido.
+- A resposta autônoma agora reserva a ação por `(workspace, conversation_message, message_kind)` antes do provedor. A transição para `SENT` grava o `provider_message_id` e o histórico na mesma função SQL; uma reserva `SENDING`/`UNKNOWN` bloqueia replay automático e abre reconciliação humana.
 
 ## Dados sintéticos e superfícies antigas
 
@@ -103,7 +104,7 @@ Não foram apagados sem uma decisão de produto, para evitar perder funções re
 
 ```text
 APP_ENV=test npx vitest run tests/unit --no-file-parallelism --test-timeout=20000
-38 arquivos, 246 testes aprovados
+38 arquivos, 247 testes aprovados
 
 npm --prefix apps/api run build:prod
 build TypeScript/bundle/DTS aprovado; release-manifest gerado
@@ -117,12 +118,17 @@ TypeScript da API aprovado
 `apps/api` não possui script `lint`; a ausência foi registrada como lacuna de tooling, não como sucesso de lint.
 
 `node --check scripts/verify-production-schema-contract.mjs` e `bash -n scripts/*.sh`
-aprovados. O novo gate é somente-leitura e verifica 13 tabelas, colunas críticas,
-índices de unicidade e 9 funções SQL do runtime, sem depender do schema interno
+aprovados. O novo gate é somente-leitura e verifica 14 tabelas, colunas críticas,
+índices de unicidade e 12 funções SQL do runtime, sem depender do schema interno
 `supabase_migrations`.
 
 git diff --check
 aprovado
+
+bash scripts/preflight-production-deploy.sh
+aprovado após compilar o frontend com a configuração pública confirmada no
+bundle atual do VPS (`VITE_SOS_API_URL`, URL Supabase e chave `sb_publishable_…`).
+O preflight não promove nem copia arquivos.
 ```
 
 Os testes de integração que dependem de `127.0.0.1:55432` continuam indisponíveis porque o Docker/Lab local foi limpo. Isso não é prova de falha do código, mas também não permite declarar integração validada.
@@ -147,7 +153,7 @@ Esse resultado é um bloqueio de migration, não uma falha do código candidato.
 
 ### P0 — obrigatórios
 
-1. Aplicar e verificar no Supabase todas as migrations que ainda não estão no ledger remoto (a partir de `20260901120000`, incluindo as dez versões `20260901120000`–`20260903040000`). A última é necessária porque o schema observado no VPS tinha apenas o contrato de runtime e não as colunas do perfil consumidas pelo agente. A promoção agora executa também `verify-production-schema-contract.mjs` contra o banco antes de trocar o link `current`.
+1. Aplicar e verificar no Supabase todas as migrations que ainda não estão no ledger remoto (a partir de `20260901120000`, incluindo as onze versões `20260901120000`–`20260903050000`). A última fecha a reserva durável de outbound do Receptionist. A promoção agora executa também `verify-production-schema-contract.mjs` contra o banco antes de trocar o link `current`.
 2. Confirmar no VPS a versão efetivamente executada, o commit e o digest do bundle; o candidato ainda não foi deployado.
 3. Confirmar `META_VERIFY_TOKEN`, `META_APP_SECRET`, um único canal Meta Cloud `CONNECTED`, `phoneNumberId` e `meta_bearer_token` válidos no mesmo workspace.
 4. Rodar eligibility → onboarding → aguardar preparação → `agent_test` oficial com resposta não vazia, e reler `activation_status=READY` no backend.
