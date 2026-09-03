@@ -68,8 +68,27 @@ export async function commercialOutcomeRoutes(
         idempotencyKey: headers.data['idempotency-key'],
       });
 
-      // Closed-Loop Meta CAPI Attribution Dispatch on WON
+      // Closed-Loop Meta CAPI Attribution Dispatch on WON.  The outcome RPC
+      // is idempotent, so a repeated HTTP request can return an existing
+      // outcome. Claim the CAPI transition first; only the request that moves
+      // PENDING -> QUEUED may call Meta, preventing duplicate Purchase events.
+      let capiClaimed = false;
       if (data && body.data.result === 'WON') {
+        try {
+          const claimRes = await dbPool.query(
+            `UPDATE public.commercial_outcomes
+             SET capi_status = 'QUEUED'
+             WHERE id = $1 AND workspace_id = $2 AND capi_status = 'PENDING'
+             RETURNING id`,
+            [data.outcomeId, params.data.workspaceId],
+          );
+          capiClaimed = (claimRes.rowCount ?? claimRes.rows.length) === 1;
+        } catch (claimError) {
+          request.log.warn({ claimError, workspaceId: params.data.workspaceId, outcomeId: data.outcomeId }, 'Could not claim CAPI dispatch; skipping to avoid duplicate event');
+        }
+      }
+
+      if (data && body.data.result === 'WON' && capiClaimed) {
         void (async () => {
           try {
             const infoRes = await dbPool.query(
@@ -102,7 +121,7 @@ export async function commercialOutcomeRoutes(
 
               if (pixelId && accessToken) {
                 const capi = new CapiClient();
-                await capi.sendPurchaseEvent(
+                const dispatchResult = await capi.sendPurchaseEvent(
                   {
                     outcomeId: data.outcomeId,
                     workspaceId: params.data.workspaceId,
@@ -115,10 +134,45 @@ export async function commercialOutcomeRoutes(
                   },
                   accessToken
                 );
+                if (dispatchResult.success) {
+                  await dbPool.query(
+                    `UPDATE public.commercial_outcomes
+                     SET capi_status = 'DISPATCHED', capi_event_id = $3
+                     WHERE id = $1 AND workspace_id = $2 AND capi_status = 'QUEUED'`,
+                    [data.outcomeId, params.data.workspaceId, dispatchResult.capiEventId],
+                  );
+                } else {
+                  await dbPool.query(
+                    `UPDATE public.commercial_outcomes
+                     SET capi_status = 'FAILED'
+                     WHERE id = $1 AND workspace_id = $2 AND capi_status = 'QUEUED'`,
+                    [data.outcomeId, params.data.workspaceId],
+                  );
+                }
+              } else {
+                await dbPool.query(
+                  `UPDATE public.commercial_outcomes
+                   SET capi_status = 'NOT_APPLICABLE'
+                   WHERE id = $1 AND workspace_id = $2 AND capi_status = 'QUEUED'`,
+                  [data.outcomeId, params.data.workspaceId],
+                );
               }
+            } else {
+              await dbPool.query(
+                `UPDATE public.commercial_outcomes
+                 SET capi_status = 'NOT_APPLICABLE'
+                 WHERE id = $1 AND workspace_id = $2 AND capi_status = 'QUEUED'`,
+                [data.outcomeId, params.data.workspaceId],
+              );
             }
           } catch (capiErr) {
             console.warn('[Meta CAPI Closed-Loop Dispatch Error]:', capiErr);
+            await dbPool.query(
+              `UPDATE public.commercial_outcomes
+               SET capi_status = 'FAILED'
+               WHERE id = $1 AND workspace_id = $2 AND capi_status = 'QUEUED'`,
+              [data.outcomeId, params.data.workspaceId],
+            ).catch(() => undefined);
           }
         })();
 

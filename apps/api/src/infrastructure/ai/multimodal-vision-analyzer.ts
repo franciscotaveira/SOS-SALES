@@ -28,8 +28,78 @@ export interface MultimodalAnalysisResult {
     matchedCatalogProduct?: string;
     estimatedPriceMinor?: number;
   };
-  suggestedAction: 'confirm_payment_and_close' | 'schedule_gift_card' | 'quote_and_schedule_service' | 'request_clearer_photo';
+  suggestedAction: 'confirm_payment_and_close' | 'verify_payment_manually' | 'schedule_gift_card' | 'quote_and_schedule_service' | 'request_clearer_photo';
   operatorDraftReply: string;
+  /** OCR/vision is never proof of settlement; an operator must verify PIX. */
+  requiresManualVerification?: boolean;
+}
+
+const categories = new Set<MultimodalAnalysisResult['category']>([
+  'pix_receipt', 'gift_card', 'style_reference', 'general_document', 'unidentified',
+]);
+const actions = new Set<MultimodalAnalysisResult['suggestedAction']>([
+  'confirm_payment_and_close', 'verify_payment_manually', 'schedule_gift_card',
+  'quote_and_schedule_service', 'request_clearer_photo',
+]);
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function sanitizeAnalysis(value: unknown): MultimodalAnalysisResult {
+  const raw = asRecord(value);
+  const category = categories.has(raw.category as MultimodalAnalysisResult['category'])
+    ? raw.category as MultimodalAnalysisResult['category']
+    : 'unidentified';
+  const rawData = asRecord(raw.extractedData);
+  const confidence = typeof raw.confidence === 'number' && Number.isFinite(raw.confidence)
+    ? Math.min(1, Math.max(0, raw.confidence))
+    : 0.5;
+  const suggestedAction = actions.has(raw.suggestedAction as MultimodalAnalysisResult['suggestedAction'])
+    ? raw.suggestedAction as MultimodalAnalysisResult['suggestedAction']
+    : 'request_clearer_photo';
+  const extractedData: MultimodalAnalysisResult['extractedData'] = {};
+  for (const key of [
+    'amountFormatted', 'senderName', 'recipientName', 'transactionId', 'paymentDate',
+    'giftCardFrom', 'giftCardTo', 'giftCardService', 'styleType', 'styleDescription',
+    'matchedCatalogProduct',
+  ]) {
+    const candidate = rawData[key];
+    if (typeof candidate === 'string' && candidate.trim()) {
+      (extractedData as Record<string, unknown>)[key] = candidate.trim();
+    }
+  }
+  if (typeof rawData.amountMinor === 'number' && Number.isFinite(rawData.amountMinor) && rawData.amountMinor >= 0) {
+    extractedData.amountMinor = Math.floor(rawData.amountMinor);
+  }
+
+  // A vision model can read an amount, but cannot prove that money settled or
+  // that a service price matches the tenant catalog. Never carry those claims
+  // into an operational action.
+  if (category === 'pix_receipt') {
+    return {
+      category,
+      confidence,
+      extractedData,
+      suggestedAction: 'verify_payment_manually',
+      operatorDraftReply: typeof raw.operatorDraftReply === 'string' && raw.operatorDraftReply.trim()
+        ? raw.operatorDraftReply.trim()
+        : 'Recebi o comprovante. Vou conferir a confirmação do pagamento antes de concluir o atendimento.',
+      requiresManualVerification: true,
+    };
+  }
+
+  return {
+    category,
+    confidence,
+    extractedData,
+    suggestedAction,
+    operatorDraftReply: typeof raw.operatorDraftReply === 'string' && raw.operatorDraftReply.trim()
+      ? raw.operatorDraftReply.trim()
+      : 'Recebi sua imagem. Vou conferir os detalhes e já retorno com a orientação correta.',
+  };
 }
 
 export class MultimodalVisionAnalyzer {
@@ -72,29 +142,32 @@ Você deve identificar o tipo da imagem entre:
 4. "general_document" (Contrato, documento, receita ou PDF)
 5. "unidentified" (Foto genérica ou ilegível)
 
-RETORNE ESTRITAMENTE UM JSON no formato:
+RETORNE ESTRITAMENTE UM JSON no formato (use null quando a informação não estiver legível ou confirmada):
 {
   "category": "pix_receipt" | "gift_card" | "style_reference" | "general_document" | "unidentified",
   "confidence": 0.95,
   "extractedData": {
-    "amountMinor": 15000,
-    "amountFormatted": "R$ 150,00",
-    "senderName": "Nome do Cliente",
-    "recipientName": "Nome da Empresa",
-    "transactionId": "E123456789...",
-    "paymentDate": "15/08/2026 14:30",
-    "isPaymentValid": true,
-    "giftCardFrom": "Nome de quem deu",
-    "giftCardTo": "Nome de quem recebeu",
-    "giftCardService": "Sessão Sora Headspa Relaxante",
-    "styleType": "Unhas Amendoadas / Escova Modelada",
-    "styleDescription": "Descrição detalhada do estilo da foto",
-    "matchedCatalogProduct": "Nome do produto no catálogo",
-    "estimatedPriceMinor": 18000
+    "amountMinor": null,
+    "amountFormatted": null,
+    "senderName": null,
+    "recipientName": null,
+    "transactionId": null,
+    "paymentDate": null,
+    "isPaymentValid": null,
+    "giftCardFrom": null,
+    "giftCardTo": null,
+    "giftCardService": null,
+    "styleType": null,
+    "styleDescription": null,
+    "matchedCatalogProduct": null,
+    "estimatedPriceMinor": null
   },
-  "suggestedAction": "confirm_payment_and_close" | "schedule_gift_card" | "quote_and_schedule_service" | "request_clearer_photo",
+  "suggestedAction": "verify_payment_manually" | "schedule_gift_card" | "quote_and_schedule_service" | "request_clearer_photo",
   "operatorDraftReply": "Mensagem educada e persuasiva pronta para o atendente enviar em 1 clique ao cliente pelo WhatsApp."
-}`;
+}
+
+Nunca defina isPaymentValid como true: uma imagem não confirma liquidação. Nunca preencha estimatedPriceMinor: o preço só pode vir do catálogo publicado do workspace.
+`;
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -142,7 +215,7 @@ RETORNE ESTRITAMENTE UM JSON no formato:
 
     try {
       const parsed = JSON.parse(content.replace(/```json/g, '').replace(/```/g, '').trim());
-      return parsed as MultimodalAnalysisResult;
+      return sanitizeAnalysis(parsed);
     } catch {
       return {
         category: 'unidentified',

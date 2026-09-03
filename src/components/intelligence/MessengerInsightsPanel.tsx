@@ -50,49 +50,84 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // New Link Form State
-  const [pageName, setPageName] = useState('sos.sales.oficial');
+  const [pageName, setPageName] = useState('');
   const [refCode, setRefCode] = useState('');
   const [label, setLabel] = useState('');
   const [isCreatingLink, setIsCreatingLink] = useState(false);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [linksError, setLinksError] = useState<string | null>(null);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // NLP State
-  const [nlpEnabled, setNlpEnabled] = useState(true);
+  const [nlpEnabled, setNlpEnabled] = useState<boolean | null>(null);
   const [isTogglingNlp, setIsTogglingNlp] = useState(false);
 
   // Private Reply Keywords State
-  const [privateReplyEnabled, setPrivateReplyEnabled] = useState(true);
-  const [keywordsInput, setKeywordsInput] = useState('preço, quanto custa, valor, agenda, disponível');
-  const [replyTemplate, setReplyTemplate] = useState('Oi {{name}}! Vi seu comentário e te chamei aqui no privado para te passar todos os detalhes 😊');
+  const [privateReplyEnabled, setPrivateReplyEnabled] = useState<boolean | null>(null);
+  const [keywordsInput, setKeywordsInput] = useState('');
+  const [replyTemplate, setReplyTemplate] = useState('');
   const [isSavingPrivateReply, setIsSavingPrivateReply] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     loadLinks();
     loadInsights();
+    loadChannelConfig();
   }, [workspace.id]);
 
+  const loadChannelConfig = async (): Promise<boolean> => {
+    setConfigLoading(true);
+    setConfigError(null);
+    try {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/config`);
+      if (!res.ok) throw new Error(`Configuração Meta indisponível (HTTP ${res.status})`);
+      const data = await res.json();
+      const nlp = data?.nlp;
+      const privateReply = data?.privateReply;
+      setNlpEnabled(typeof nlp?.enabled === 'boolean' ? nlp.enabled : false);
+      setPrivateReplyEnabled(typeof privateReply?.enabled === 'boolean' ? privateReply.enabled : false);
+      setKeywordsInput(Array.isArray(privateReply?.keywords) ? privateReply.keywords.join(', ') : '');
+      setReplyTemplate(typeof privateReply?.replyTemplate === 'string' ? privateReply.replyTemplate : '');
+      return true;
+    } catch (error) {
+      // Fail closed: unknown provider state is never presented as active.
+      setNlpEnabled(null);
+      setPrivateReplyEnabled(null);
+      setKeywordsInput('');
+      setReplyTemplate('');
+      setConfigError(error instanceof Error ? error.message : 'Não foi possível consultar a configuração Meta.');
+      return false;
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
   const loadLinks = async () => {
+    setLinksError(null);
     try {
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/links`);
-      if (res.ok) {
-        const data = await res.json();
-        setLinks(data);
-      }
-    } catch (e) {
-      console.warn('Erro ao carregar links m.me:', e);
+      if (!res.ok) throw new Error(`Links m.me indisponíveis (HTTP ${res.status})`);
+      const data = await res.json();
+      setLinks(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setLinks([]);
+      setLinksError(error instanceof Error ? error.message : 'Não foi possível carregar os links m.me.');
     }
   };
 
   const loadInsights = async () => {
     setIsLoading(true);
+    setInsightsError(null);
     try {
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/insights`);
-      if (res.ok) {
-        const data = await res.json();
-        setMetrics(data.data || []);
-      }
-    } catch (e) {
-      console.warn('Erro ao carregar insights:', e);
+      if (!res.ok) throw new Error(`Insights Meta indisponíveis (HTTP ${res.status})`);
+      const data = await res.json();
+      setMetrics(Array.isArray(data?.data) ? data.data : []);
+    } catch (error) {
+      setMetrics([]);
+      setInsightsError(error instanceof Error ? error.message : 'Não foi possível carregar os insights Meta.');
     } finally {
       setIsLoading(false);
     }
@@ -102,44 +137,49 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
     e.preventDefault();
     if (!refCode) return;
     setIsCreatingLink(true);
+    setActionError(null);
     try {
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/links`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageName, refCode, label }),
       });
-      if (res.ok) {
-        setRefCode('');
-        setLabel('');
-        await loadLinks();
-      }
-    } catch (e) {
-      console.error(e);
+      if (!res.ok) throw new Error(`Não foi possível criar o link (HTTP ${res.status})`);
+      setRefCode('');
+      setLabel('');
+      await loadLinks();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Não foi possível criar o link m.me.');
     } finally {
       setIsCreatingLink(false);
     }
   };
 
   const handleToggleNlp = async () => {
+    if (nlpEnabled === null) return;
     setIsTogglingNlp(true);
+    setActionError(null);
     try {
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/messenger/nlp/enable`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !nlpEnabled }),
       });
-      if (res.ok) {
-        setNlpEnabled(!nlpEnabled);
-      }
-    } catch (e) {
-      console.error(e);
+      if (!res.ok) throw new Error(`Não foi possível alterar o NLP (HTTP ${res.status})`);
+      const data = await res.json().catch(() => null);
+      setNlpEnabled(typeof data?.enabled === 'boolean' ? data.enabled : !nlpEnabled);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Não foi possível alterar o NLP.');
     } finally {
       setIsTogglingNlp(false);
     }
   };
 
   const handleSavePrivateReplyConfig = async () => {
+    if (privateReplyEnabled === null) return;
     setIsSavingPrivateReply(true);
+    setActionError(null);
+    setSaveSuccess(false);
     try {
       const keywords = keywordsInput.split(',').map((k) => k.trim()).filter(Boolean);
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/comments/private-reply-config`, {
@@ -151,25 +191,41 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
           replyTemplate,
         }),
       });
-      if (res.ok) {
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-      }
-    } catch (e) {
-      console.error(e);
+      if (!res.ok) throw new Error(`Não foi possível salvar Private Reply (HTTP ${res.status})`);
+      const refreshed = await loadChannelConfig();
+      if (!refreshed) throw new Error('O servidor aceitou a alteração, mas a confirmação da configuração falhou.');
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Não foi possível salvar Private Reply.');
     } finally {
       setIsSavingPrivateReply(false);
     }
   };
 
-  const copyLink = (url: string, id: string) => {
-    navigator.clipboard.writeText(url);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const copyLink = async (url: string, id: string) => {
+    setActionError(null);
+    try {
+      if (!navigator.clipboard) throw new Error('A área de transferência não está disponível neste navegador.');
+      await navigator.clipboard.writeText(url);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Não foi possível copiar a URL.');
+    }
   };
 
   // Aggregated totals
   const totalClicks = links.reduce((sum, l) => sum + l.clickCount, 0);
+  const metaConfigStatus = configLoading ? 'CONSULTANDO' : configError ? 'NÃO CONFIRMADO' : 'CONFIRMADO';
+  const nlpStatus = configLoading
+    ? 'CONSULTANDO'
+    : nlpEnabled === null
+      ? 'NÃO CONFIRMADO'
+      : nlpEnabled
+        ? 'ATIVO'
+        : 'PAUSADO';
+  const panelError = actionError || configError || linksError || insightsError;
 
   return (
     <div className="space-y-6">
@@ -179,10 +235,10 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/30 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5" /> Meta Business Partner Core
+                <ShieldCheck className="w-3.5 h-3.5" /> Meta Messaging
               </span>
               <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/30 flex items-center gap-1.5">
-                <Brain className="w-3.5 h-3.5" /> Wit.ai Native NLP
+                <Brain className="w-3.5 h-3.5" /> Wit.ai: {nlpStatus}
               </span>
             </div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -202,6 +258,13 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
         </div>
       </div>
 
+      {panelError && (
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{panelError}</span>
+        </div>
+      )}
+
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
@@ -209,8 +272,8 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
             <span className="text-xs font-medium uppercase tracking-wider">Links m.me Ativos</span>
             <Link2 className="w-4 h-4 text-blue-400" />
           </div>
-          <div className="text-2xl font-bold text-white">{links.length}</div>
-          <p className="text-xs text-slate-500 mt-1">{totalClicks} cliques totais registrados</p>
+          <div className="text-2xl font-bold text-white">{linksError ? 'NÃO CONSULTADO' : links.length}</div>
+          <p className="text-xs text-slate-500 mt-1">{linksError ? 'Falha na leitura do backend' : `${totalClicks} cliques totais registrados`}</p>
         </div>
 
         <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
@@ -219,8 +282,10 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
             <Brain className="w-4 h-4 text-purple-400" />
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-2xl font-bold text-emerald-400">{nlpEnabled ? 'ATIVO' : 'PAUSADO'}</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className={`text-2xl font-bold ${nlpEnabled === true ? 'text-emerald-400' : 'text-slate-400'}`}>
+              {nlpStatus}
+            </span>
+            <span className={`w-2 h-2 rounded-full ${nlpEnabled === true ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></span>
           </div>
           <p className="text-xs text-slate-500 mt-1">Extração automática de data, valor e intenção</p>
         </div>
@@ -230,20 +295,22 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
             <span className="text-xs font-medium uppercase tracking-wider">Private Replies</span>
             <MessageSquare className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-2xl font-bold text-white">{privateReplyEnabled ? 'AUTOMÁTICO' : 'DESATIVADO'}</div>
+          <div className="text-2xl font-bold text-white">
+            {configLoading ? 'CONSULTANDO' : privateReplyEnabled === null ? 'NÃO CONFIRMADO' : privateReplyEnabled ? 'AUTOMÁTICO' : 'DESATIVADO'}
+          </div>
           <p className="text-xs text-slate-500 mt-1">Comentários → DM no Messenger/IG</p>
         </div>
 
         <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Status do Canal Meta</span>
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-medium uppercase tracking-wider">Configuração Meta</span>
+            <ShieldCheck className={`w-4 h-4 ${configError ? 'text-rose-400' : 'text-slate-400'}`} />
           </div>
-          <div className={`text-2xl font-bold ${(workspace.channels || []).some((c) => c.health === 'connected') ? 'text-emerald-400' : 'text-slate-400'}`}>
-            {(workspace.channels || []).some((c) => c.health === 'connected') ? 'ESTÁVEL' : 'STANDBY'}
+          <div className={`text-2xl font-bold ${!configLoading && !configError ? 'text-emerald-400' : 'text-slate-400'}`}>
+            {metaConfigStatus}
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            {(workspace.channels || []).some((c) => c.health === 'connected') ? 'Canal ativo com webhook operacional' : 'Aguardando conexão ou tráfego'}
+            {configError ? 'O backend não confirmou esta configuração.' : 'Configuração lida do backend; saúde do webhook é verificada na tela de Canais.'}
           </p>
         </div>
       </div>
@@ -327,7 +394,7 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
                         {link.clickCount} clicks
                       </span>
                       <button
-                        onClick={() => copyLink(link.fullUrl, link.id)}
+                        onClick={() => void copyLink(link.fullUrl, link.id)}
                         className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition"
                         title="Copiar URL"
                       >
@@ -353,8 +420,9 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={privateReplyEnabled}
+                  checked={privateReplyEnabled === true}
                   onChange={(e) => setPrivateReplyEnabled(e.target.checked)}
+                  disabled={configLoading}
                   className="sr-only peer"
                 />
                 <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
@@ -386,7 +454,7 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
               </div>
               <button
                 onClick={handleSavePrivateReplyConfig}
-                disabled={isSavingPrivateReply}
+                disabled={isSavingPrivateReply || configLoading || privateReplyEnabled === null}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition"
               >
                 {saveSuccess ? <CheckCircle2 className="w-4 h-4 text-emerald-300" /> : <Zap className="w-4 h-4" />}
@@ -404,14 +472,14 @@ export const MessengerInsightsPanel: React.FC<MessengerInsightsPanelProps> = ({ 
               </div>
               <button
                 onClick={handleToggleNlp}
-                disabled={isTogglingNlp}
+                disabled={isTogglingNlp || configLoading || nlpEnabled === null}
                 className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                  nlpEnabled
+                  nlpEnabled === true
                     ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20'
                     : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
                 }`}
               >
-                {nlpEnabled ? 'Ativado no Meta' : 'Desativado'}
+                {nlpEnabled === null ? 'Estado não confirmado pela API' : nlpEnabled ? 'Ativado no Meta' : 'Desativado'}
               </button>
             </div>
             <p className="text-xs text-slate-400">

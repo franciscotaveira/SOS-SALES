@@ -1,4 +1,5 @@
 import Fastify, { FastifyInstance, FastifyRequest, RawServerDefault } from 'fastify';
+import type { Pool } from 'pg';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
@@ -126,6 +127,10 @@ export interface AppDependencies {
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
   /** Optional capability adapter for Meta Business Agent Platform. */
   metaBusinessAgentGateway?: MetaBusinessAgentGateway;
+  /** Deployment-owned database pool for webhook persistence and routing. */
+  databasePool?: Pick<Pool, 'query' | 'connect'>;
+  /** Deployment-owned receptionist gate used by inbound webhooks. */
+  receptionistAgent?: { isEnabled(): boolean };
   /** Owner-governed member read/add/remove operations. */
   workspaceMembershipGateway?: WorkspaceMembershipGateway;
   logger?: boolean | Record<string, unknown>;
@@ -168,7 +173,15 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     );
   }
 
-  const { secretProvider, wahaAdapter, ingestionGateway, healthProvider, wabaWebhook } = dependencies;
+  const {
+    secretProvider,
+    wahaAdapter,
+    ingestionGateway,
+    healthProvider,
+    wabaWebhook,
+    databasePool,
+    receptionistAgent,
+  } = dependencies;
   const requiredReadinessDependencies = dependencies.readinessDependencyNames ?? REQUIRED_READINESS_DEPENDENCIES;
 
   // trustProxy MUST be set explicitly — no implicit fallback to trusting all headers.
@@ -291,7 +304,10 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   });
 
   // ─── 1. Public Supplier Webhooks & Crypto Handshakes (Protected by Provider Secrets & HMAC) ───
-  app.register(publicSupplierRoutes);
+  app.register(publicSupplierRoutes, {
+    databasePool,
+    ingestionGateway,
+  });
   app.register(abacatePayRoutes, {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
@@ -300,6 +316,8 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     app.register(wabaWebhookPlugin, {
       verifyToken: wabaWebhook.verifyToken,
       appSecret: wabaWebhook.appSecret,
+      databasePool,
+      receptionistAgent,
     });
   }
 
@@ -318,6 +336,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   app.register(agentRoutes, {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
+    query: databasePool?.query.bind(databasePool),
   });
 
   app.register(metaPartnerRoutes, {
@@ -329,6 +348,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
     metaBusinessAgentGateway: dependencies.metaBusinessAgentGateway,
+    query: databasePool?.query.bind(databasePool),
   });
 
   const releaseManifest = loadReleaseManifest();

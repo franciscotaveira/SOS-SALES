@@ -370,6 +370,41 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
     await app.close();
   });
 
+  it('AUTH-10f: Viewer cannot mutate persisted workspace intelligence', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/intelligence',
+      headers: { authorization: 'Bearer valid_token_tenant_a_viewer.part2.part3' },
+      payload: { bundle: { companyProfile: { tradeName: 'blocked' } } },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('AUTH-10g: Operator cannot delete workspace knowledge documents', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/knowledge-docs/00000000-0000-4000-8000-000000000001',
+      headers: { authorization: 'Bearer valid_token_tenant_a_operator.part2.part3' },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('AUTH-10h: Operator cannot replace WABA credentials', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/channels/waba/configure',
+      headers: { authorization: 'Bearer valid_token_tenant_a_operator.part2.part3' },
+      payload: { wabaId: 'waba', phoneNumberId: 'phone', accessToken: 'secret' },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
   it('AUTH-11: Billing charge returns 401 without a bearer token', async () => {
     const app = await buildTestApp();
     const res = await app.inject({

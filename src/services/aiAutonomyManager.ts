@@ -8,9 +8,15 @@ export interface WorkspaceAgentRuntimeConfig {
   runtimeEnabled: boolean;
   responderMode: ResponderMode;
   metaAgentId: string | null;
+  metaAgentChannelConnectionId: string | null;
   metaAgentEnabled: boolean;
   metaAgentEligibilityStatus: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
   metaAgentCheckedAt: string | null;
+  metaAgentActivationStatus: 'NOT_STARTED' | 'PENDING' | 'READY' | 'FAILED';
+  metaAgentOnboardingStartedAt: string | null;
+  metaAgentReadyAt: string | null;
+  metaAgentLastError: string | null;
+  metaAgentReady: boolean;
   runtimeEffective: boolean;
   providerConfigured: boolean;
   behaviorConfig: Record<string, unknown>;
@@ -22,9 +28,15 @@ const safeDefault: WorkspaceAgentRuntimeConfig = {
   runtimeEnabled: false,
   responderMode: 'sos_sales',
   metaAgentId: null,
+  metaAgentChannelConnectionId: null,
   metaAgentEnabled: false,
   metaAgentEligibilityStatus: 'UNKNOWN',
   metaAgentCheckedAt: null,
+  metaAgentActivationStatus: 'NOT_STARTED',
+  metaAgentOnboardingStartedAt: null,
+  metaAgentReadyAt: null,
+  metaAgentLastError: null,
+  metaAgentReady: false,
   runtimeEffective: false,
   providerConfigured: false,
   behaviorConfig: {},
@@ -57,12 +69,24 @@ function normalizeConfig(value: Partial<WorkspaceAgentRuntimeConfig>): Workspace
       ? value.responderMode
       : 'sos_sales',
     metaAgentId: typeof value.metaAgentId === 'string' ? value.metaAgentId : null,
+    metaAgentChannelConnectionId: typeof value.metaAgentChannelConnectionId === 'string'
+      ? value.metaAgentChannelConnectionId
+      : null,
     metaAgentEnabled: value.metaAgentEnabled === true,
     metaAgentEligibilityStatus: value.metaAgentEligibilityStatus === 'ELIGIBLE'
       || value.metaAgentEligibilityStatus === 'INELIGIBLE'
       ? value.metaAgentEligibilityStatus
       : 'UNKNOWN',
     metaAgentCheckedAt: typeof value.metaAgentCheckedAt === 'string' ? value.metaAgentCheckedAt : null,
+    metaAgentActivationStatus: value.metaAgentActivationStatus === 'PENDING'
+      || value.metaAgentActivationStatus === 'READY'
+      || value.metaAgentActivationStatus === 'FAILED'
+      ? value.metaAgentActivationStatus
+      : 'NOT_STARTED',
+    metaAgentOnboardingStartedAt: typeof value.metaAgentOnboardingStartedAt === 'string' ? value.metaAgentOnboardingStartedAt : null,
+    metaAgentReadyAt: typeof value.metaAgentReadyAt === 'string' ? value.metaAgentReadyAt : null,
+    metaAgentLastError: typeof value.metaAgentLastError === 'string' ? value.metaAgentLastError : null,
+    metaAgentReady: value.metaAgentReady === true,
     runtimeEffective: value.runtimeEffective === true,
     providerConfigured: value.providerConfigured === true,
     behaviorConfig: value.behaviorConfig && typeof value.behaviorConfig === 'object'

@@ -104,7 +104,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
   // Sales AI Handoff & Semantic Tags State
   const [showHandoffBox, setShowHandoffBox] = React.useState(false);
   const [copiedSummary, setCopiedSummary] = React.useState(false);
-  const [activeTags, setActiveTags] = React.useState<string[]>(['🔥 Lead Quente']);
+  const [activeTags, setActiveTags] = React.useState<string[]>([]);
 
   const toggleTag = (tag: string) => {
     setActiveTags((prev) =>
@@ -121,6 +121,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
   const [metaAgentReady, setMetaAgentReady] = React.useState(false);
   const [metaAgentEnabled, setMetaAgentEnabled] = React.useState(false);
   const [metaAgentEligibilityStatus, setMetaAgentEligibilityStatus] = React.useState<'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN'>('UNKNOWN');
+  const [metaAgentActivationStatus, setMetaAgentActivationStatus] = React.useState<'NOT_STARTED' | 'PENDING' | 'READY' | 'FAILED'>('NOT_STARTED');
   const [botToggling, setBotToggling] = React.useState(false);
   const [botError, setBotError] = React.useState<string | null>(null);
 
@@ -135,6 +136,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
       setResponderMode('manual');
       setMetaAgentEnabled(false);
       setMetaAgentEligibilityStatus('UNKNOWN');
+      setMetaAgentActivationStatus('NOT_STARTED');
       setMetaAgentReady(false);
       setBotError('Workspace da jornada não informado');
       return;
@@ -151,6 +153,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
         metaAgentEnabled?: boolean;
         metaAgentId?: string | null;
         metaAgentEligibilityStatus?: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
+        metaAgentActivationStatus?: 'NOT_STARTED' | 'PENDING' | 'READY' | 'FAILED';
       };
       if (typeof data.botEnabled === 'boolean') setBotEnabled(data.botEnabled);
       if (typeof data.botPaused  === 'boolean') setBotPaused(data.botPaused);
@@ -163,7 +166,11 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
         : 'UNKNOWN';
       setMetaAgentEnabled(nextMetaEnabled);
       setMetaAgentEligibilityStatus(nextMetaStatus);
-      setMetaAgentReady(nextMetaEnabled && Boolean(data.metaAgentId) && nextMetaStatus === 'ELIGIBLE');
+      const nextActivationStatus = data.metaAgentActivationStatus === 'PENDING' || data.metaAgentActivationStatus === 'READY' || data.metaAgentActivationStatus === 'FAILED'
+        ? data.metaAgentActivationStatus
+        : 'NOT_STARTED';
+      setMetaAgentActivationStatus(nextActivationStatus);
+      setMetaAgentReady(nextMetaEnabled && Boolean(data.metaAgentId) && nextMetaStatus === 'ELIGIBLE' && nextActivationStatus === 'READY');
     } catch {
       setBotEnabled(false);
       setBotPaused(false);
@@ -172,6 +179,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
       setResponderMode('manual');
       setMetaAgentEnabled(false);
       setMetaAgentEligibilityStatus('UNKNOWN');
+      setMetaAgentActivationStatus('NOT_STARTED');
       setMetaAgentReady(false);
       setBotError('Estado do bot indisponível');
     }
@@ -179,7 +187,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
 
   const metaActivationUnknown = responderMode === 'auto_fallback'
     && metaAgentEnabled
-    && metaAgentEligibilityStatus === 'UNKNOWN'
+    && (metaAgentEligibilityStatus === 'UNKNOWN' || metaAgentActivationStatus === 'PENDING' || metaAgentActivationStatus === 'FAILED')
     && !botActive;
 
   // Carrega estado real do servidor ao abrir o dossiê.
@@ -280,14 +288,6 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
     }
   }, [journey.id, journey.leadPhone, journey.workspaceId, loadBotStatus]);
 
-  const handoffExecutiveSummary = `🎯 Objetivo: ${journey.urgencyReason || 'Agendamento e contratação de serviços'}\n📊 Status: Pré-qualificado(a), atendimento em andamento\n⚡ Próximo Passo: Confirmar horário e enviar Pix de reserva para garantir vaga`;
-
-  const handleCopyHandoff = () => {
-    navigator.clipboard.writeText(handoffExecutiveSummary);
-    setCopiedSummary(true);
-    setTimeout(() => setCopiedSummary(false), 2000);
-  };
-
   const toggleBlock = (blockKey: string) => {
     setExpandedBlocks((prev) => ({ ...prev, [blockKey]: !prev[blockKey] }));
   };
@@ -302,47 +302,26 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
     });
   };
 
-  // Fallback blocks if journey.dossier is not fully populated
-  const objectiveFacts = dossier?.customerObjective || [
-    {
-      id: 'd-obj-default',
-      label: 'Objetivo Principal',
-      value: journey.urgencyReason || 'Agendamento / Compra de serviço',
-      confidence: 'CONFIRMED' as const,
-      evidence: [
-        {
-          id: 'ev-obj-def',
-          source: 'CUSTOMER_MESSAGE' as const,
-          label: 'Última mensagem do lead',
-          excerpt: journey.lastLeadMessage,
-          occurredAt: 'Recente',
-        },
-      ],
-      updatedAt: journey.lastActivityAt,
-    },
-  ];
+  // A sparse dossier is a legitimate production state. Do not manufacture a
+  // confirmed fact or system evidence just to fill a card.
+  const objectiveFacts = dossier?.customerObjective || [];
 
   const confirmedFactsList = dossier?.confirmedFacts || knownFacts.filter((f) => f.confidence === 'CONFIRMED');
   const activeFrictionList = dossier?.activeFriction || knownFacts.filter((f) => f.confidence === 'TO_CONFIRM' || f.confidence === 'PROBABLE');
   const lastCommitmentList = dossier?.lastCommitment || [];
-  const ownershipList = dossier?.ownershipAndDeadline || [
-    {
-      id: 'd-own-default',
-      label: 'Responsável e Prazo',
-      value: `${journey.assignedOperatorName || 'Fila Aberta (Pendente)'} · SLA ${journey.slaMinutesRemaining}m restantes`,
-      confidence: 'CONFIRMED' as const,
-      evidence: [
-        {
-          id: 'ev-own-def',
-          source: 'SYSTEM_INFERENCE' as const,
-          label: 'Monitor de SLA',
-          excerpt: `SLA Deadline: ${journey.slaDeadline}`,
-          occurredAt: 'Tempo Real',
-        },
-      ],
-      updatedAt: journey.lastActivityAt,
-    },
-  ];
+  const ownershipList = dossier?.ownershipAndDeadline || [];
+
+  const handoffExecutiveSummary = [
+    `🎯 Objetivo: ${journey.urgencyReason?.trim() || 'Não registrado'}`,
+    `📊 Status: ${journey.handoffStatus || 'Não registrado'}`,
+    `⚡ Próximo passo: ${lastCommitmentList[0]?.value || 'Não definido'}`,
+  ].join('\n');
+
+  const handleCopyHandoff = () => {
+    navigator.clipboard.writeText(handoffExecutiveSummary);
+    setCopiedSummary(true);
+    setTimeout(() => setCopiedSummary(false), 2000);
+  };
 
   const displayedConfirmed = showAllConfirmed ? confirmedFactsList : confirmedFactsList.slice(0, 5);
 
@@ -721,12 +700,10 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
 
           {expandedBlocks.objective && (
             <div className="p-2 space-y-1.5">
-              {objectiveFacts.map((fact) => (
-                <KnownFactItem
-                  key={fact.id}
-                  fact={fact}
-                  onViewEvidence={handleOpenFactEvidence}
-                />
+              {objectiveFacts.length === 0 ? (
+                <div className="text-center py-1.5 text-xs text-[var(--sos-muted)]">Objetivo ainda não registrado.</div>
+              ) : objectiveFacts.map((fact) => (
+                <KnownFactItem key={fact.id} fact={fact} onViewEvidence={handleOpenFactEvidence} />
               ))}
             </div>
           )}
@@ -906,12 +883,10 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
 
           {expandedBlocks.ownership && (
             <div className="p-2 space-y-1.5">
-              {ownershipList.map((fact) => (
-                <KnownFactItem
-                  key={fact.id}
-                  fact={fact}
-                  onViewEvidence={handleOpenFactEvidence}
-                />
+              {ownershipList.length === 0 ? (
+                <div className="text-center py-1.5 text-xs text-[var(--sos-muted)]">Responsável e prazo ainda não registrados.</div>
+              ) : ownershipList.map((fact) => (
+                <KnownFactItem key={fact.id} fact={fact} onViewEvidence={handleOpenFactEvidence} />
               ))}
             </div>
           )}

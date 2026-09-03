@@ -77,6 +77,26 @@ describe('WAHA Webhook Fail-Closed Security & Replay Deduplication', () => {
     await app.close();
   });
 
+  it('SEC-05b: valid WAHA callers must provide an explicit session; no default tenant is inferred', async () => {
+    const app = Fastify();
+    await app.register(publicSupplierRoutes);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/channels/waha/webhook',
+      headers: { 'x-api-key': TEST_KEY },
+      payload: {
+        event: 'message',
+        payload: { id: `missing_session_${Date.now()}`, from: '5511999999999@s.whatsapp.net', body: 'Olá' },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.payload)).toMatchObject({ code: 'WAHA_SESSION_REQUIRED' });
+    expect(query).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it('SEC-06: POST /api/v1/channels/waha/webhook accepts valid x-api-key and processes known session', async () => {
     const app = Fastify();
     await app.register(publicSupplierRoutes);
@@ -133,6 +153,59 @@ describe('WAHA Webhook Fail-Closed Security & Replay Deduplication', () => {
     expect(res2.statusCode).toBe(200);
     expect(JSON.parse(res2.payload).deduplicated).toBe(true);
 
+    await app.close();
+  });
+
+  it('SEC-08: production route sends inbound WAHA envelopes to durable ingestion', async () => {
+    const app = Fastify();
+    const routeQuery = vi.fn().mockResolvedValue({
+      rows: [{
+        id: 'waha-channel-001',
+        workspace_id: '22222222-2222-2222-2222-222222222222',
+      }],
+      rowCount: 1,
+    });
+    const ingestChannelEvent = vi.fn().mockResolvedValue({
+      inboundEventId: 'inbound-event-001',
+      workspaceId: '22222222-2222-2222-2222-222222222222',
+      isDuplicate: false,
+    });
+
+    await app.register(publicSupplierRoutes, {
+      databasePool: { query: routeQuery } as any,
+      ingestionGateway: { ingestChannelEvent } as any,
+    });
+
+    const payload = {
+      event: 'message',
+      session: 'haven',
+      payload: {
+        id: 'false_5511999999999@c.us_ABC123',
+        from: '5511999999999@c.us',
+        body: 'Mensagem durável',
+      },
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/channels/waha/webhook',
+      headers: { 'x-api-key': TEST_KEY },
+      payload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.payload)).toMatchObject({
+      accepted: true,
+      inboundEventId: 'inbound-event-001',
+      workspaceId: '22222222-2222-2222-2222-222222222222',
+    });
+    expect(ingestChannelEvent).toHaveBeenCalledWith(expect.objectContaining({
+      channelConnectionId: 'waha-channel-001',
+      providerEventId: 'message:false_5511999999999@c.us_ABC123',
+      eventType: 'message',
+      rawPayload: expect.objectContaining({ session: 'haven' }),
+    }));
+    expect(routeQuery).toHaveBeenCalledTimes(1);
     await app.close();
   });
 });

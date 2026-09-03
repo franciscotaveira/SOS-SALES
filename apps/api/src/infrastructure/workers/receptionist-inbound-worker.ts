@@ -155,7 +155,25 @@ export class ReceptionistInboundWorker {
 
     // 2. Drive the AI Receptionist with the self-contained payload
     const input = this.toReceptionistInput(event.payload);
-    await this.receptionistAgent.handleInbound(input);
+    let renewalError: Error | null = null;
+    const renewalIntervalMs = Math.max(1_000, Math.floor((this.leaseSeconds * 1_000) / 3));
+    const renewalTimer = this.outboxGateway.renewLease
+      ? setInterval(() => {
+          void this.outboxGateway!.renewLease!({
+            eventId: event.id,
+            claimToken: event.claimToken,
+            workerId: this.workerId,
+          }).catch((error: unknown) => {
+            renewalError = error instanceof Error ? error : new Error('Outbox lease renewal failed');
+          });
+        }, renewalIntervalMs)
+      : null;
+    try {
+      await this.receptionistAgent.handleInbound(input);
+      if (renewalError) throw renewalError;
+    } finally {
+      if (renewalTimer) clearInterval(renewalTimer);
+    }
 
     // 3. Complete outbox event using the fencing token
     await this.outboxGateway.completeEvent({
@@ -184,7 +202,11 @@ export class ReceptionistInboundWorker {
       textContent: asString('textContent'),
       messageType: asString('messageType'),
       channelConnectionId: asString('channelConnectionId'),
-      phoneNumberId: asString('phoneNumberId'),
+      // WAHA has no Meta phone-number id. The agent resolves the provider
+      // from channel_connection_id and only requires this value for Meta.
+      phoneNumberId: typeof payload.phoneNumberId === 'string' && payload.phoneNumberId.trim()
+        ? payload.phoneNumberId.trim()
+        : null,
     };
   }
 

@@ -172,7 +172,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
       })
       .then((data) => {
         if (!mounted) return;
-        if (data.configured && (data.verifiedPhone || data.wabaId)) {
+        if (data.configured && data.connected === true && (data.verifiedPhone || data.wabaId)) {
           setWabaConnected(true);
           setWabaPhone(data.verifiedPhone || '');
           setWabaName(data.verifiedName || 'Conta WABA Oficial');
@@ -514,8 +514,8 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
                     <Loader2 className="w-3 h-3 animate-spin" /> Verificando WABA...
                   </span>
                 ) : wabaConnected ? (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-emerald-600" /> WABA Conectado ({wabaPhone || wabaName})
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-100 text-sky-900 border border-sky-300 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-sky-600" /> WABA configurado ({wabaPhone || wabaName})
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
@@ -1075,22 +1075,23 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
                 <ActionPresetChips
                   presets={[
                     {
-                      label: 'Serviço Destaque (Escova VIP)',
+                      label: 'Produto ou serviço cadastrado',
                       icon: '📦',
                       onClick: () => {
                         setProductMode('single');
-                        setCatalogId('haven_catalog_default');
-                        setProductRetailerId('escova_modelada_promo');
-                        setProductBodyText('Confira os detalhes, fotos e disponibilidade do nosso procedimento mais procurado:');
+                        setCatalogId('');
+                        setProductRetailerId('');
+                        setProductBodyText('');
                       },
                     },
                     {
-                      label: 'Catálogo de Procedimentos (MPM)',
+                      label: 'Catálogo com vários itens',
                       icon: '🛍️',
                       onClick: () => {
                         setProductMode('multi');
-                        setCatalogId('haven_catalog_default');
-                        setProductBodyText('Navegue pelo nosso catálogo com todas as opções de tratamentos e serviços disponíveis:');
+                        setCatalogId('');
+                        setProductRetailerId('');
+                        setProductBodyText('');
                       },
                     },
                   ]}

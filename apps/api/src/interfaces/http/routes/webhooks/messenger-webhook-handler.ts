@@ -19,10 +19,12 @@
 
 import { dbPool } from '../../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../../application/services/attribution-service.js';
+import { PrivateReplyService } from '../../../../application/services/private-reply-service.js';
 import { IdempotencyGate } from '../../../../infrastructure/cache/idempotency-gate.js';
 import type { FastifyBaseLogger } from 'fastify';
 
 const idempotencyGate = IdempotencyGate.getInstance();
+const privateReplyService = new PrivateReplyService(dbPool);
 
 export interface MessengerWebhookEntry {
   id: string; // Page ID or IG User ID
@@ -137,14 +139,10 @@ export async function handleMessengerEntry(
       // Extract and save message content
       const { textContent, mediaType, mediaPayload } = extractMessageContent(event, platform);
 
-      // Process NLP entities if present
-      if (event.message?.nlp) {
-        await processNlpEntities(workspaceId, journeyId, event.message.mid, event.message.nlp, log);
-      }
-
       // Save conversation message
+      let conversationMessageId: string | undefined;
       if (textContent || mediaType) {
-        await dbPool.query(
+        const savedMessage = await dbPool.query<{ id: string }>(
           `INSERT INTO public.conversation_messages (
              id, workspace_id, channel_connection_id, journey_id, contact_id,
              direction, sender_type, provider_message_id, text_content, media_payload, sent_at
@@ -152,7 +150,8 @@ export async function handleMessengerEntry(
            VALUES (
              gen_random_uuid(), $1, $2, $3, $4, 'inbound', 'customer', $5, $6, $7, $8
            )
-           ON CONFLICT (channel_connection_id, provider_message_id) DO NOTHING`,
+           ON CONFLICT (channel_connection_id, provider_message_id) DO NOTHING
+           RETURNING id`,
           [
             workspaceId,
             channelConnectionId,
@@ -173,6 +172,13 @@ export async function handleMessengerEntry(
             timestamp,
           ]
         );
+        conversationMessageId = savedMessage.rows[0]?.id;
+      }
+
+      // Persist NLP against the local UUID, not Meta's MID. The provider MID
+      // remains in conversation_messages.provider_message_id for tracing.
+      if (event.message?.nlp) {
+        await processNlpEntities(workspaceId, journeyId, conversationMessageId, event.message.nlp, log);
       }
 
       // Process Handover Protocol events
@@ -227,7 +233,8 @@ export async function resolveWorkspace(
        (public_config->>'${configKey}') = $1
        OR (public_config->>'pageId') = $1
      )
-     AND provider IN ($2, 'meta_cloud')
+     AND provider = $2
+     AND status = 'CONNECTED'
      GROUP BY workspace_id
      LIMIT 2`,
     [pageOrIgId, providerType]
@@ -302,16 +309,19 @@ async function findOrCreateJourney(
   timestamp: string
 ): Promise<string> {
   const existing = await dbPool.query(
-    `SELECT id FROM public.commercial_journeys
-     WHERE workspace_id = $1 AND contact_id = $2
-     ORDER BY created_at DESC LIMIT 1`,
-    [workspaceId, contactId]
+    `SELECT id, channel_connection_id FROM public.commercial_journeys
+     WHERE workspace_id = $1 AND contact_id = $2 AND status = 'OPEN'
+       AND (channel_connection_id = $3 OR channel_connection_id IS NULL)
+     ORDER BY (channel_connection_id = $3) DESC, updated_at DESC LIMIT 1`,
+    [workspaceId, contactId, channelConnectionId]
   );
 
   if (existing.rows.length > 0) {
     await dbPool.query(
-      `UPDATE public.commercial_journeys SET updated_at = $1 WHERE id = $2`,
-      [timestamp, existing.rows[0].id]
+      `UPDATE public.commercial_journeys
+       SET channel_connection_id = COALESCE(channel_connection_id, $1), updated_at = $2
+       WHERE id = $3`,
+      [channelConnectionId, timestamp, existing.rows[0].id]
     );
     return existing.rows[0].id;
   }
@@ -640,13 +650,32 @@ async function processCommentForPrivateReply(
       [workspaceId, journeyId, JSON.stringify({ commentId, postId, message: message.substring(0, 500), fromName: from.name })]
     );
 
-    // Queue Private Reply dispatch (actual sending happens via the outbound system)
+    const replyTemplate = typeof privateReplyConfig.replyTemplate === 'string'
+      && privateReplyConfig.replyTemplate.trim()
+      ? privateReplyConfig.replyTemplate.trim()
+      : 'Oi {{name}}! Vi seu comentário e te chamei aqui no privado para te passar todos os detalhes 😊';
+    const dispatch = await privateReplyService.dispatchPrivateReply({
+      workspaceId,
+      channelConnectionId,
+      commentId,
+      commentText: message,
+      authorName: typeof from.name === 'string' ? from.name : undefined,
+      replyText: replyTemplate,
+    });
+
+    // The provider response and durable dispatch status are the source of
+    // truth. Never report a successful private reply merely because a keyword
+    // matched; operators need to see FAILED/UNKNOWN and reconcile those cases.
     log.info({
       workspaceId,
       journeyId,
       commentId,
       matchedKeywords: keywords.filter((kw: string) => lowerMessage.includes(kw.toLowerCase())),
-    }, 'Comment matched Private Reply keywords — queued for dispatch');
+      status: dispatch.status,
+      success: dispatch.success,
+    }, dispatch.success
+      ? 'Comment matched Private Reply keywords — message sent'
+      : 'Comment matched Private Reply keywords — dispatch requires attention');
   } catch (err) {
     log.warn({ err, pageId, commentId }, 'Error processing comment for Private Reply');
   }

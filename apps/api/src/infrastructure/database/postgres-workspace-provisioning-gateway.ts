@@ -142,7 +142,10 @@ export class PostgresWorkspaceProvisioningGateway implements WorkspaceProvisioni
         [
           ws.id,
           provider,
-          input.whatsappNumber?.trim() || 'pending',
+          // A disconnected client has no provider identifier yet. Do not use
+          // a shared literal such as "pending": it collides with the
+          // provider-identifier uniqueness index and looks like a real number.
+          input.whatsappNumber?.trim() || '',
           input.provider === 'waba' ? 'WhatsApp Oficial (Meta Cloud)' : 'WhatsApp Principal (WAHA)',
           JSON.stringify(publicConfig),
         ],

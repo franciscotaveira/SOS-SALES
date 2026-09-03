@@ -33,6 +33,7 @@ required_artifacts=(
   "apps/api/supabase/migrations/20260814000000_supabase_roles.sql"
   "apps/api/supabase/config.toml"
   "scripts/verify-production-schema.mjs"
+  "scripts/verify-production-schema-contract.mjs"
   "scripts/PRODUCTION_MIGRATIONS_OPERATOR.md"
   "apps/api/package-lock.json"
   "docker-compose.prod.yml"

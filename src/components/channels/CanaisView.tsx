@@ -77,6 +77,8 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   // WABA Live Channel Info State
   const [wabaChannelInfo, setWabaChannelInfo] = React.useState<{
     configured?: boolean;
+    connected?: boolean;
+    credentialsAvailable?: boolean;
     accountStatus?: string;
     phoneNumber?: string;
     verifiedName?: string;
@@ -136,8 +138,8 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
 
   // Live Channel Status State — shape mirrors real WAHA /api/sessions/:name response
   const [channelStatus, setChannelStatus] = React.useState<{
+    session?: string;
     status: string;
-    sessionStatus?: string;
     phone?: string | null;
     pushName?: string | null;
     me?: { id?: string; pushName?: string } | null;
@@ -174,7 +176,15 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   const [actionFeedback, setActionFeedback] = React.useState<string | null>(null);
 
   const isOwnerOrAdmin = role === 'owner' || role === 'operator';
-  const isWabaConnected = Boolean(wabaChannelInfo?.configured && wabaChannelInfo?.phoneNumberId);
+  // The channel-info endpoint proves that the WABA credentials are stored and
+  // the number was previously validated; it does not perform a live Graph
+  // health probe on every render. Keep the wording explicit so the UI never
+  // promises an active Meta session from database state alone.
+  const isWabaConfigured = Boolean(
+    wabaChannelInfo?.configured
+      && wabaChannelInfo?.credentialsAvailable === true
+      && wabaChannelInfo?.phoneNumberId,
+  );
   const metaAgentLabel = metaBusinessAgentEligibility?.status === 'ELIGIBLE'
     ? 'Elegível para agente Meta'
     : metaBusinessAgentEligibility?.status === 'INELIGIBLE'
@@ -289,7 +299,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setWabaFeedback({ success: true, message: `WABA Conectado! Número: ${data.verifiedPhone} (${data.verifiedName})` });
+        setWabaFeedback({ success: true, message: `WABA validado e salvo pela Meta! Número: ${data.verifiedPhone} (${data.verifiedName})` });
         setTimeout(() => {
           setWabaModalOpen(false);
           setWabaFeedback(null);
@@ -440,7 +450,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setWabaFeedback({ success: true, message: `Conectado com sucesso! Número: ${data.verifiedPhone} (${data.verifiedName})` });
+        setWabaFeedback({ success: true, message: `WABA validado e salvo pela Meta! Número: ${data.verifiedPhone} (${data.verifiedName})` });
         fetchChannelStatus();
         setTimeout(() => {
           setWabaModalOpen(false);
@@ -477,10 +487,10 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
           <div className="flex items-center gap-2">
             <Radio className="w-5 h-5 text-emerald-600" />
             <h1 className="text-xl font-bold text-slate-900 font-heading">
-              Canais WhatsApp Conectados
+              Canais WhatsApp
             </h1>
             <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Multi-Engine Ativo
+              WABA + WAHA
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -559,19 +569,19 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                   </div>
 
                   <span className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black border self-start ${
-                    isWabaConnected
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    isWabaConfigured
+                      ? 'bg-sky-50 text-sky-800 border-sky-300'
                       : 'bg-amber-50 text-amber-800 border-amber-300'
                   }`}>
-                    <span className={`w-2.5 h-2.5 rounded-full ${isWabaConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                    {isWabaConnected ? 'Meta Cloud conectada' : 'Meta Cloud não conectada'}
+                    <span className={`w-2.5 h-2.5 rounded-full ${isWabaConfigured ? 'bg-sky-500' : 'bg-amber-500'}`} />
+                    {isWabaConfigured ? 'Credenciais Meta registradas' : 'Meta Cloud não confirmada'}
                   </span>
                 </div>
 
                 {/* Metrics Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-emerald-200/60">
                   <div className="p-3 bg-white/90 border border-emerald-100 rounded-xl text-center shadow-2xs">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Número Ativo</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Número configurado</span>
                     <span className="text-xs font-mono font-bold text-emerald-800 block truncate mt-0.5">
                       {wabaChannelInfo?.phoneNumber || 'Não informado'}
                     </span>
@@ -655,14 +665,14 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                     <div>
                       <div className="font-semibold text-slate-900">Engine WAHA (Container Local VPS)</div>
-                      <div className="text-slate-500 font-mono text-[11px]">Sessão: {workspace.id.includes('haven') ? 'haven' : 'default'}</div>
+                      <div className="text-slate-500 font-mono text-[11px]">Sessão: {channelStatus?.session || 'Não resolvida pelo backend'}</div>
                     </div>
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold self-start border ${
-                      channelStatus?.sessionStatus === 'WORKING'
+                      channelStatus?.status === 'WORKING'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : 'bg-amber-50 text-amber-700 border-amber-200'
                     }`}>
-                      {channelStatus?.sessionStatus === 'WORKING' ? 'Conectado (WhatsApp Web)' : 'Desconectado'}
+                      {channelStatus?.status === 'WORKING' ? 'Conectado (WhatsApp Web)' : 'Desconectado'}
                     </span>
                   </div>
 
@@ -675,7 +685,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                       <span>Parear via QR Code</span>
                     </button>
 
-                    {channelStatus?.sessionStatus === 'WORKING' && (
+                    {channelStatus?.status === 'WORKING' && (
                       <button
                         onClick={handleDisconnect}
                         disabled={disconnecting}
@@ -811,7 +821,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-emerald-950 text-xs flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    Canal Oficial Meta Ativo & Conectado
+                        Canal Oficial Meta configurado
                   </span>
                   <span className="text-[9.5px] font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-200">
                     Qualidade: {wabaChannelInfo?.qualityRating || 'não informada'}

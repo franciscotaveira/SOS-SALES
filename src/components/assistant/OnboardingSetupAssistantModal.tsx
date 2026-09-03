@@ -112,8 +112,11 @@ export function OnboardingSetupAssistantModal({
     setIsLoading(true);
 
     try {
-      // Chama a API do SOS Sales com o motor NVIDIA NIM ultra-rápido
-      const response = await authenticatedFetch('/api/v1/ai/test-openrouter', {
+      // O assistente de onboarding usa o mesmo provedor configurado para o
+      // runtime de atendimento. Não existe fallback silencioso para
+      // OpenRouter: se o NIM estiver indisponível, exibimos esse estado ao
+      // operador em vez de misturar provedores.
+      const response = await authenticatedFetch('/api/v1/ai/test-nvidia', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -24,6 +24,9 @@ import {
   PostgresWorkspaceOperationalGateway,
   PostgresWabaChannelInfoGateway,
   PostgresMetaBusinessAgentGateway,
+  ReceptionistAgent,
+  WabaClient,
+  WahaOutboundAdapter,
   buildReadinessStatuses,
   normalizeDatabaseHostname,
   resolveDatabaseSslConfig,
@@ -102,6 +105,19 @@ export async function createProductionRuntime() {
   const metaBusinessAgentGateway = new PostgresMetaBusinessAgentGateway(pool);
   const ingestionGateway = new PostgresInboundIngestionGateway(pool);
   const outboxGateway = new PostgresOutboxProcessingGateway(pool);
+  const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim();
+  const wahaApiKey = process.env.WAHA_API_KEY?.trim();
+  const wahaOutbound = wahaBaseUrl && wahaApiKey
+    ? new WahaOutboundAdapter({ endpoint: wahaBaseUrl, apiKey: wahaApiKey })
+    : undefined;
+  // Bind the autonomous receptionist to this deployment-owned pool. The
+  // default singleton uses the development module pool and must never be the
+  // source of truth for a production worker.
+  const receptionistAgent = new ReceptionistAgent({
+    query: pool.query.bind(pool),
+    waba: new WabaClient(),
+    waha: wahaOutbound,
+  });
   // Production provider: resolve only explicit channel/global secrets. The
   // development-only environment adapter is intentionally not constructed in
   // this process because it is disabled when NODE_ENV=production.
@@ -117,8 +133,6 @@ export async function createProductionRuntime() {
   };
   const wahaAdapter = new WahaWebhookAdapter();
 
-  const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim();
-  const wahaApiKey = process.env.WAHA_API_KEY?.trim();
   const lidIdentityResolver = wahaBaseUrl && wahaApiKey
     ? new WahaLidIdentityResolver({ baseUrl: wahaBaseUrl, apiKey: wahaApiKey })
     : undefined;
@@ -145,6 +159,8 @@ export async function createProductionRuntime() {
     workspaceProvisioningGateway,
     wabaChannelInfoGateway,
     metaBusinessAgentGateway,
+    receptionistAgent,
+    databasePool: pool,
     trustProxy: true,
     logger: true,
     createHealthProvider: (worker, workers = {}) => ({

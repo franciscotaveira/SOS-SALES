@@ -8,11 +8,13 @@
  */
 
 import dotenv from 'dotenv';
+import type { Pool } from 'pg';
 import { buildApp, TrustProxyOption } from './interfaces/http/app.js';
 import { WahaWebhookAdapter } from './infrastructure/channels/waha/waha-webhook-adapter.js';
 import { WahaInboundWorker } from './infrastructure/workers/waha-inbound-worker.js';
 import { WahaOutboundWorker } from './infrastructure/workers/waha-outbound-worker.js';
 import { ReceptionistInboundWorker } from './infrastructure/workers/receptionist-inbound-worker.js';
+import type { ReceptionistHandler } from './infrastructure/workers/receptionist-inbound-worker.js';
 import { getReceptionistAgent } from './application/agents/receptionist-agent.js';
 import { WahaOutboundAdapter } from './infrastructure/channels/waha/waha-outbound-adapter.js';
 import { WebhookSecretProvider } from './application/ports/webhook-secret-provider.js';
@@ -63,6 +65,10 @@ export interface RuntimeDependencies {
   ) => DependencyHealthProvider;
   /** Optional only while operator API remains fail-closed (401) during bootstrap. */
   authenticator?: OperatorAuthenticator;
+  /** Production composition must bind the receptionist to its scoped pool. */
+  receptionistAgent?: ReceptionistHandler & { isEnabled(): boolean };
+  /** Production composition must bind webhook persistence to the same pool. */
+  databasePool?: Pick<Pool, 'query' | 'connect'>;
   workspaceDirectory?: WorkspaceDirectory;
   cockpitReadGateway?: CockpitReadGateway;
   handoffOperationsGateway?: HandoffOperationsGateway;
@@ -340,7 +346,10 @@ async function startComposedServer(
   }
 
   const receptionistWorker = runtime.outboxGateway
-    ? new ReceptionistInboundWorker({ receptionistAgent: getReceptionistAgent(), outboxGateway: runtime.outboxGateway })
+    ? new ReceptionistInboundWorker({
+      receptionistAgent: runtime.receptionistAgent ?? getReceptionistAgent(),
+      outboxGateway: runtime.outboxGateway,
+    })
     : undefined;
 
   const app = buildApp({
@@ -371,6 +380,8 @@ async function startComposedServer(
     workspaceProvisioningGateway: runtime.workspaceProvisioningGateway,
     wabaChannelInfoGateway: runtime.wabaChannelInfoGateway,
     metaBusinessAgentGateway: runtime.metaBusinessAgentGateway,
+    databasePool: runtime.databasePool,
+    receptionistAgent: runtime.receptionistAgent,
     wabaWebhook: wabaWebhookConfig,
     logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? productionLogger : { level: 'info' }),
     disableRequestLogging: process.env.NODE_ENV === 'production',

@@ -1260,6 +1260,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             <LiveJourneyBody
               view={view}
               workspaceId={workspaceId}
+              gateway={gateway}
               commercialConfig={commercialConfig}
               loyaltyMap={loyaltyMap}
               onToggleLoyalty={handleToggleLoyalty}
@@ -1391,7 +1392,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
 
       {/* Start Conversation Modal */}
       <StartConversationModal
-        workspace={{ id: workspaceId, name: 'Workspace Ativo', slug: 'active' } as any}
+        workspace={{ id: workspaceId, name: commercialConfig.businessName || 'Workspace autenticado', slug: workspaceId } as any}
         isOpen={startConversationModalOpen}
         onClose={() => setStartConversationModalOpen(false)}
         onConversationStarted={(newJourney) => {
@@ -1407,6 +1408,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
 function LiveJourneyBody({
   view,
   workspaceId,
+  gateway,
   commercialConfig,
   isDossierCollapsed = false,
   onToggleDossier,
@@ -1428,6 +1430,7 @@ function LiveJourneyBody({
 }: {
   view: ApiCockpitView;
   workspaceId: string;
+  gateway: HttpSalesOsGateway;
   commercialConfig: WorkspaceCommercialConfig;
   loyaltyMap?: Record<string, CustomerLoyaltyType>;
   onToggleLoyalty?: (id: string, phone?: string) => void | Promise<void>;
@@ -1488,6 +1491,11 @@ function LiveJourneyBody({
   const [copilotPanelOpen, setCopilotPanelOpen] = React.useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = React.useState(false);
   const [isGeneratingResurrection, setIsGeneratingResurrection] = React.useState(false);
+  const [ghostingInfo, setGhostingInfo] = React.useState<{
+    recommendedMessage?: string;
+    hoursSilent?: number;
+  } | null>(null);
+  const [ghostingError, setGhostingError] = React.useState<string | null>(null);
 
   // Calculate time since last interaction for Level 4 Ghosting Resurrection Engine
   const lastMsg = messages && messages.length > 0 ? messages[messages.length - 1] : null;
@@ -1514,59 +1522,6 @@ function LiveJourneyBody({
       setIsGeneratingResurrection(false);
     }
   };
-
-  // Level 5: Live Sentiment & Closing Probability Radar
-  const liveSentiment = React.useMemo(() => {
-    if (!messages || messages.length === 0) {
-      return { closingProbability: 20, sentimentLabel: "Início", sentimentTier: "COLD_INITIAL", tacticalRecommendation: "Qualifique o interesse do cliente." };
-    }
-    const customerMessages = messages.filter((m) => m.direction === "inbound");
-    const customerText = customerMessages.map((m) => (m.textContent || "").toLowerCase()).join(" ");
-    const lastCustomerMsg = customerMessages[customerMessages.length - 1];
-    const lastText = (lastCustomerMsg?.textContent || "").toLowerCase();
-
-    let probability = 35;
-    if (/pix|cartao|cartão|pagar|pago|chave|link|como pago|reserva|agenda|pode marcar|marca|quero sim|fechar|vou querer/.test(lastText)) {
-      probability += 45;
-    } else if (/horário|horario|sexta|sábado|sabado|hoje|amanhã|amanha|tarde|manhã|manha|18h|19h|17h|14h|15h/.test(lastText)) {
-      probability += 30;
-    } else if (/qual endereço|onde fica|localização|localizacao|rua|bairro/.test(customerText)) {
-      probability += 20;
-    }
-
-    if (/caro|salgado|desconto|abaixa|parcela|mais barato/.test(customerText)) {
-      probability -= 15;
-    }
-    if (/marido|esposo|mae|mãe|ver com|pensar|depois vejo|depois te chamo|qualquer coisa falo/.test(lastText)) {
-      probability -= 25;
-    }
-
-    if (customerMessages.length >= 3) probability += 10;
-    if (customerMessages.length >= 6) probability += 10;
-
-    const finalProb = Math.max(5, Math.min(98, probability));
-    let sentimentTier = "COLD_INITIAL";
-    let sentimentLabel = "Em Qualificação";
-    let tacticalRecommendation = "Pergunte qual período funciona melhor e confirme a disponibilidade no sistema oficial.";
-
-    if (finalProb >= 75) {
-      sentimentTier = "HOT_CLOSER";
-      sentimentLabel = "🔥 Super Quente";
-      tacticalRecommendation = commercialConfig.pixKey?.trim()
-        ? "Confirme o próximo passo e, se o cliente pedir pagamento, use a chave Pix cadastrada."
-        : "Confirme o próximo passo do atendimento com base nos dados persistidos.";
-    } else if (finalProb >= 50) {
-      sentimentTier = "WARM_INTEREST";
-      sentimentLabel = "⚡ Interesse Ativo";
-      tacticalRecommendation = "Esclareça o próximo passo usando apenas benefícios e condições já cadastrados.";
-    } else {
-      sentimentTier = "HESITANT_FRICTION";
-      sentimentLabel = "❄️ Em Análise";
-      tacticalRecommendation = "Tire dúvidas e use somente materiais já cadastrados e aprovados.";
-    }
-
-    return { closingProbability: finalProb, sentimentLabel, sentimentTier, tacticalRecommendation };
-  }, [messages, commercialConfig]);
 
   const objectionBreakers = React.useMemo(() => {
     const name = contactFirstName;
@@ -1860,26 +1815,41 @@ function LiveJourneyBody({
     (f) => f.key === "ad.referral" || f.key === "meta_ctwa_ad" || f.source === "ad_payload"
   );
 
-  const ghostingInfo = React.useMemo(() => {
-    if (!messages || messages.length === 0) return null;
-    const lastMsg = messages[messages.length - 1];
-    if (!lastMsg || !lastMsg.sentAt) return null;
-
+  const inactivity = React.useMemo(() => {
+    const lastMsg = messages?.[messages.length - 1];
+    if (!lastMsg?.sentAt) return null;
     const diffHours = (Date.now() - new Date(lastMsg.sentAt).getTime()) / (1000 * 60 * 60);
-    const isOutbound = lastMsg.direction === "outbound";
+    if (!Number.isFinite(diffHours) || diffHours < 2) return null;
+    return {
+      hours: diffHours,
+      label: diffHours >= 24 ? `${Math.floor(diffHours / 24)}d` : `${Math.floor(diffHours)}h`,
+    };
+  }, [messages]);
 
-    if (diffHours >= 2) {
-      const formattedHours = diffHours >= 24 ? `${Math.floor(diffHours / 24)}d` : `${Math.floor(diffHours)}h`;
-      const suggestedReactivation = `Oi ${contactFirstName}, tudo bem? Passando para saber se ainda posso ajudar. Quer que eu confira a disponibilidade real para você?`;
+  React.useEffect(() => {
+    setGhostingInfo(null);
+    setGhostingError(null);
+  }, [journey.id]);
 
-      return {
-        hoursAgoText: formattedHours,
-        suggestedText: suggestedReactivation,
-        isOutbound,
-      };
+  const handleGenerateGhosting = async () => {
+    setIsGeneratingResurrection(true);
+    setGhostingError(null);
+    try {
+      const result = await gateway.resurrectJourney(workspaceId, journey.id);
+      if (!result || typeof result.recommendedMessage !== "string" || !result.recommendedMessage.trim()) {
+        throw new Error("A análise de reativação não retornou uma mensagem utilizável.");
+      }
+      setGhostingInfo({
+        recommendedMessage: result.recommendedMessage.trim(),
+        hoursSilent: typeof result.hoursSilent === "number" ? result.hoursSilent : inactivity?.hours,
+      });
+    } catch (error) {
+      setGhostingInfo(null);
+      setGhostingError(error instanceof Error ? error.message : "Não foi possível analisar a reativação.");
+    } finally {
+      setIsGeneratingResurrection(false);
     }
-    return null;
-  }, [messages, contactFirstName, externalAgendaSlots]);
+  };
 
   const handleUpdateContactName = async (newName: string) => {
     if (onUpdateContactName) {
@@ -2125,28 +2095,50 @@ function LiveJourneyBody({
           onScroll={handleScroll}
           className="relative flex-1 min-h-0 rounded-2xl border border-slate-200/90 bg-[#efeae2] p-3 overflow-y-auto whatsapp-chat-wallpaper flex flex-col"
         >
-          {/* Anti-Ghosting Reativação Automática */}
-          {ghostingInfo && (
+          {/* Reativação: o tempo é calculado da conversa persistida; a cópia
+              só aparece depois de uma análise real do backend. */}
+          {inactivity && (
             <div className="mb-2.5 p-2.5 bg-amber-50/95 border border-amber-200 rounded-xl flex items-center justify-between gap-2 text-xs shadow-2xs animate-in fade-in shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-base shrink-0">👻</span>
                 <div className="min-w-0">
                   <p className="font-bold text-amber-950 text-[11px]">
-                    Cliente sem retorno há {ghostingInfo.hoursAgoText}
+                    Cliente sem retorno há {inactivity.label}
                   </p>
-                  <p className="text-[10.5px] text-amber-800 truncate">
-                    Gancho de Reativação: "{ghostingInfo.suggestedText}"
-                  </p>
+                  {ghostingInfo?.recommendedMessage ? (
+                    <p className="text-[10.5px] text-amber-800 truncate">
+                      Sugestão gerada pela IA para revisão: "{ghostingInfo.recommendedMessage}"
+                    </p>
+                  ) : ghostingError ? (
+                    <p className="text-[10.5px] text-rose-700 truncate">{ghostingError}</p>
+                  ) : (
+                    <p className="text-[10.5px] text-amber-800 truncate">
+                      Gere uma sugestão baseada no histórico real antes de inserir qualquer mensagem.
+                    </p>
+                  )}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setDraftText(ghostingInfo.suggestedText)}
-                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10.5px] font-extrabold shadow-2xs transition shrink-0 cursor-pointer"
-                title="Inserir mensagem de reativação no chat"
-              >
-                ⚡ Reaquecer Lead
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {ghostingInfo?.recommendedMessage && (
+                  <button
+                    type="button"
+                    onClick={() => setDraftText(ghostingInfo.recommendedMessage || "")}
+                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10.5px] font-extrabold shadow-2xs transition cursor-pointer"
+                    title="Inserir a sugestão confirmada pela API no rascunho"
+                  >
+                    Inserir rascunho
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleGenerateGhosting()}
+                  disabled={isGeneratingResurrection}
+                  className="px-2.5 py-1 border border-amber-400 bg-white hover:bg-amber-100 text-amber-900 rounded-lg text-[10.5px] font-extrabold shadow-2xs transition cursor-pointer disabled:opacity-60"
+                  title="Analisar a reativação usando o backend"
+                >
+                  {isGeneratingResurrection ? "Analisando…" : ghostingInfo ? "Reanalisar" : "Analisar com IA"}
+                </button>
+              </div>
             </div>
           )}
 
@@ -2173,7 +2165,7 @@ function LiveJourneyBody({
                       isOutbound={isOut}
                       senderName={isOut ? "Você" : (journey.contact.name || "Cliente")}
                       providerMessageId={(message as any).providerMessageId || null}
-                      session="default"
+                      session={(message as any).mediaPayload?.session || undefined}
                     />
                     <div className="mt-0.5 text-right text-[10px] text-slate-500 font-mono flex items-center justify-end gap-1">
                       <span>{formatDate(message.sentAt)}</span>
@@ -2439,9 +2431,10 @@ function LiveDossier({
   const displayFrictionEvidence = decisionState?.frictionEvidence;
 
   // Local state for tactical operator notes
-  const [operatorNotes, setOperatorNotes] = React.useState<Array<{ id: string; tag: string; text: string; time: string }>>([
-    { id: '1', tag: 'Interesse', text: `Interesse identificado: ${displayService}`, time: 'Hoje' }
-  ]);
+  // Notes are operator-entered data. Never seed a conversation with a
+  // fabricated interest statement derived from the currently displayed
+  // service; an empty state is safer than presenting inference as fact.
+  const [operatorNotes, setOperatorNotes] = React.useState<Array<{ id: string; tag: string; text: string; time: string }>>([]);
   const [isAddingNote, setIsAddingNote] = React.useState(false);
   const [newNoteText, setNewNoteText] = React.useState('');
   const [newNoteTag, setNewNoteTag] = React.useState('Preferência');

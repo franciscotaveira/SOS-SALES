@@ -34,9 +34,14 @@ export const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ work
   const [data, setData] = useState<any>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const wsId = workspace?.id || '22222222-2222-2222-2222-222222222222';
+  const wsId = workspace?.id || '';
 
   const fetchMetrics = async () => {
+    if (!wsId) {
+      setData(null);
+      setFetchError(null);
+      return;
+    }
     setLoading(true);
     setFetchError(null);
     try {
@@ -217,7 +222,7 @@ export const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ work
             </div>
             <div>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-black text-slate-900 font-mono">{metrics.goldenWindowPercent}%</span>
+                <span className="text-3xl font-black text-slate-900 font-mono">{metrics.goldenWindowPercent == null ? '—' : `${metrics.goldenWindowPercent}%`}</span>
               </div>
               <p className="text-[11px] text-slate-400 mt-1">Leads atendidos no pico do desejo de compra</p>
             </div>
@@ -263,7 +268,7 @@ export const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ work
               <span className="text-[10px] font-bold text-rose-300 uppercase tracking-wider block">Leads Esfriados (&gt; 15m espera)</span>
               <span className="text-2xl font-black text-rose-400 font-mono">{metrics.trafficAudit?.delayedOver15m || 0}</span>
               <span className="text-[11px] text-rose-300 font-semibold block mt-0.5">
-                R$ {metrics.trafficAudit?.adRevenueAtRiskBrl || '0.00'} em risco por demora
+                R$ {metrics.trafficAudit?.adRevenueAtRiskBrl || '0.00'} de receita já atribuída
               </span>
             </div>
           </div>
@@ -295,7 +300,11 @@ export const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ work
             </div>
 
             <div className="divide-y divide-slate-100 text-xs">
-              {metrics.hourlySpeedHeatmap.map((item: any, idx: number) => (
+              {metrics.hourlySpeedHeatmap.length === 0 ? (
+                <p className="py-6 text-center text-xs text-slate-500">
+                  Ainda não há amostra suficiente para comparar faixas de horário. Os dados aparecerão após respostas reais.
+                </p>
+              ) : metrics.hourlySpeedHeatmap.map((item: any, idx: number) => (
                 <div key={idx} className="py-3 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <span className="font-bold text-slate-800">{item.period}</span>
@@ -361,8 +370,8 @@ export const ManagerDashboardView: React.FC<ManagerDashboardViewProps> = ({ work
                   <span className="font-bold text-slate-900">{metrics.volumeDistribution?.humanHandledCount}</span>
                 </div>
                 <div className="flex justify-between text-emerald-700 font-semibold pt-1 border-t border-slate-200/60">
-                  <span>Horas de Trabalho Humano Poupadas:</span>
-                  <span>~{(metrics.volumeDistribution?.aiHandledCount * 0.25).toFixed(1)}h</span>
+                  <span>Amostra de respostas medidas:</span>
+                  <span>{(metrics.volumeDistribution?.aiHandledCount || 0) + (metrics.volumeDistribution?.humanHandledCount || 0)}</span>
                 </div>
               </div>
             </div>

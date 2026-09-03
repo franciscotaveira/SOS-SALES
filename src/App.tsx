@@ -201,15 +201,15 @@ function AppContent({
 
   // Keep non-core modules preserved for future tiers without leaving direct
   // URLs, history entries or stale localStorage able to reopen them in the
-  // production MVP. The operational workflow is intentionally limited to
-  // inbox, pipeline mode inside Conversations, outcomes and configuration.
+  // production MVP. The live MVP exposes only intelligence that has a real
+  // backend contract; legacy simulators and unsupported specialist screens
+  // remain isolated from production navigation.
   React.useEffect(() => {
     const hiddenProductionTabs: NavigationTab[] = [
       'kanban',
       'agenda',
       'anotacoes',
       'grupos',
-      'playbook',
       'simulador',
       'analytics',
     ];
@@ -357,41 +357,62 @@ function AppContent({
       )}
 
       {activeTab === 'agenda' && (
-        <TabErrorBoundary tabName="Agenda Comercial">
-          <AgendaView
-            workspace={currentWorkspace}
-            gateway={salesOsGateway}
-            onGoToCockpitWithJourney={(journeyId) => {
-              setSelectedJourneyId(journeyId);
-              setActiveTab('agora');
-            }}
+        isProductionMvp ? (
+          <ApiModeUnavailable
+            title="Agenda ainda não está disponível no MVP autenticado"
+            detail="A agenda legada dependia de dados locais. Ela permanece fora do caminho de produção até possuir leitura e gravação reais no backend."
           />
-        </TabErrorBoundary>
+        ) : (
+          <TabErrorBoundary tabName="Agenda Comercial">
+            <AgendaView
+              workspace={currentWorkspace}
+              gateway={salesOsGateway}
+              onGoToCockpitWithJourney={(journeyId) => {
+                setSelectedJourneyId(journeyId);
+                setActiveTab('agora');
+              }}
+            />
+          </TabErrorBoundary>
+        )
       )}
 
       {activeTab === 'anotacoes' && (
-        <TabErrorBoundary tabName="Anotações & Insights">
-          <NotesView
-            workspace={currentWorkspace}
-            gateway={salesOsGateway}
+        isProductionMvp ? (
+          <ApiModeUnavailable
+            title="Anotações ainda não estão disponíveis no MVP autenticado"
+            detail="As anotações legadas usavam armazenamento local. Nenhuma nota será exibida ou gravada até existir um contrato persistido para a equipe."
           />
-        </TabErrorBoundary>
+        ) : (
+          <TabErrorBoundary tabName="Anotações & Insights">
+            <NotesView
+              workspace={currentWorkspace}
+              gateway={salesOsGateway}
+            />
+          </TabErrorBoundary>
+        )
       )}
 
       {activeTab === 'grupos' && isFeatureEnabled('agency_groups') && (
-        <TabErrorBoundary tabName="Hub de Grupos">
-          <GroupsHubView
-            groups={agencyGroups}
-            workspaceId={currentWorkspace.id}
-            onUpdateGroup={(updated) => {
-              setAgencyGroups((prev) =>
-                prev.map((g) => (g.id === updated.id ? updated : g))
-              );
-            }}
-            activeSubTab={groupSubTab}
-            onChangeSubTab={setGroupSubTab}
+        isProductionMvp ? (
+          <ApiModeUnavailable
+            title="Grupos ainda não estão disponíveis no MVP autenticado"
+            detail="O monitor de grupos permanece preservado para uma fase posterior. O modo de produção não exibirá grupos simulados nem estados locais."
           />
-        </TabErrorBoundary>
+        ) : (
+          <TabErrorBoundary tabName="Hub de Grupos">
+            <GroupsHubView
+              groups={agencyGroups}
+              workspaceId={currentWorkspace.id}
+              onUpdateGroup={(updated) => {
+                setAgencyGroups((prev) =>
+                  prev.map((g) => (g.id === updated.id ? updated : g))
+                );
+              }}
+              activeSubTab={groupSubTab}
+              onChangeSubTab={setGroupSubTab}
+            />
+          </TabErrorBoundary>
+        )
       )}
 
       {activeTab === 'clientes' && (
@@ -433,6 +454,7 @@ function AppContent({
             onSelectWorkspace={onSelectWorkspace}
             activeSubTab={intelligenceSubTab}
             onChangeSubTab={setIntelligenceSubTab}
+            canManage={currentWorkspace.operatorRole === 'owner'}
           />
         </TabErrorBoundary>
       )}

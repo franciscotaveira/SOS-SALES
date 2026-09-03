@@ -164,6 +164,17 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
       setViewMode(initialViewMode);
     }
   }, [initialViewMode]);
+
+  // The authenticated API contract currently covers conversations and the
+  // persisted funnel only. Notes and the TV wallboard still depend on the
+  // legacy browser-shaped model, so never expose them as if they were live
+  // backend views. This also protects against a stale route restoring one of
+  // those modes after the runtime switches from demo to API mode.
+  useEffect(() => {
+    if (isLiveApi && (viewMode === 'notes' || viewMode === 'wallboard')) {
+      setViewMode('list');
+    }
+  }, [isLiveApi, viewMode]);
   const [journeys, setJourneys] = useState<ApiJourney[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -418,7 +429,9 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-[var(--sos-muted)] mt-0.5">
-            Supervisão ao vivo, funil comercial, gestão de notas e torre de monitoramento.
+            {isLiveApi
+              ? 'Conversas e funil persistidos no backend, com abertura direta no cockpit.'
+              : 'Supervisão ao vivo, funil comercial, gestão de notas e torre de monitoramento.'}
           </p>
         </div>
 
@@ -451,31 +464,35 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
               <span>Funil Kanban</span>
             </button>
 
-            <button
-              id="switch-view-notes-btn"
-              onClick={() => setViewMode('notes')}
-              className={`px-2.5 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                viewMode === 'notes'
-                  ? 'bg-[var(--sos-surface)] text-[var(--sos-ink)] shadow-2xs'
-                  : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)]'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Anotações</span>
-            </button>
+            {!isLiveApi && (
+              <>
+                <button
+                  id="switch-view-notes-btn"
+                  onClick={() => setViewMode('notes')}
+                  className={`px-2.5 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    viewMode === 'notes'
+                      ? 'bg-[var(--sos-surface)] text-[var(--sos-ink)] shadow-2xs'
+                      : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)]'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Anotações</span>
+                </button>
 
-            <button
-              id="switch-view-wallboard-btn"
-              onClick={() => setViewMode('wallboard')}
-              className={`px-2.5 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                viewMode === 'wallboard'
-                  ? 'bg-[var(--sos-action)] text-white shadow-2xs'
-                  : 'text-[var(--sos-muted)] hover:text-[var(--sos-action)]'
-              }`}
-            >
-              <Tv className="w-3.5 h-3.5" />
-              <span>Torre TV</span>
-            </button>
+                <button
+                  id="switch-view-wallboard-btn"
+                  onClick={() => setViewMode('wallboard')}
+                  className={`px-2.5 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    viewMode === 'wallboard'
+                      ? 'bg-[var(--sos-action)] text-white shadow-2xs'
+                      : 'text-[var(--sos-muted)] hover:text-[var(--sos-action)]'
+                  }`}
+                >
+                  <Tv className="w-3.5 h-3.5" />
+                  <span>Torre TV</span>
+                </button>
+              </>
+            )}
           </div>
 
           <button
@@ -513,7 +530,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
         </div>
       )}
 
-      {viewMode === 'notes' && (
+      {!isLiveApi && viewMode === 'notes' && (
         <div className="flex-1 overflow-hidden mt-2">
           <NotesView
             workspace={workspace || ({ id: workspaceId, name: 'Workspace', channels: [] } as any)}
@@ -522,7 +539,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
         </div>
       )}
 
-      {viewMode === 'wallboard' && (
+      {!isLiveApi && viewMode === 'wallboard' && (
         <div className="flex-1 overflow-hidden mt-2">
           <LiveWallboardView
             journeys={mappedJourneys}
@@ -698,7 +715,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
                               {title}
                             </span>
                             <span className="px-1.5 py-0.2 rounded text-xs font-extrabold bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border border-[var(--sos-success)]/30 shrink-0">
-                              Click WA
+                              {isLiveApi ? 'WhatsApp' : 'Click WA'}
                             </span>
 
                             <span className="text-xs font-mono text-[var(--sos-muted)] sm:ml-auto">
@@ -756,7 +773,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
       )}
 
       <StartConversationModal
-        workspace={workspace || ({ id: workspaceId, name: 'Workspace Ativo', slug: 'active' } as any)}
+        workspace={workspace || ({ id: workspaceId, name: 'Workspace autenticado', slug: workspaceId } as any)}
         isOpen={isStartModalOpen}
         onClose={() => setIsStartModalOpen(false)}
         onConversationStarted={(newJourney) => {

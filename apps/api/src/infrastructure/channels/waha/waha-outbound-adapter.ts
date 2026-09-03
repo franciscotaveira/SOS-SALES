@@ -11,6 +11,7 @@ export interface WahaOutboundConfig {
   endpoint: string;
   apiKey?: string;
   timeoutMs?: number;
+  fetchImpl?: typeof fetch;
 }
 
 export interface WahaSendTextRequest {
@@ -35,11 +36,46 @@ export class WahaOutboundAdapter {
   private readonly endpoint: string;
   private readonly apiKey?: string;
   private readonly timeoutMs: number;
+  private readonly fetchImpl: typeof fetch;
 
   constructor(config: WahaOutboundConfig) {
     this.endpoint = config.endpoint.replace(/\/+$/, '');
     this.apiKey = config.apiKey;
     this.timeoutMs = config.timeoutMs ?? 30000;
+    this.fetchImpl = config.fetchImpl ?? fetch;
+  }
+
+  private requireSession(session: string | undefined): { ok: true; value: string } | { ok: false; result: WahaOutboundResult } {
+    const value = typeof session === 'string' ? session.trim() : '';
+    if (value) return { ok: true, value };
+    return {
+      ok: false,
+      result: {
+        success: false,
+        kind: 'FATAL',
+        failureCode: 'WAHA_SESSION_REQUIRED',
+        message: 'An explicit WAHA session is required; refusing to use a default session',
+      },
+    };
+  }
+
+  private providerMessageId(data: Record<string, unknown>): string | null {
+    const direct = typeof data.id === 'string' ? data.id.trim() : '';
+    if (direct) return direct;
+    const nested = data.message && typeof data.message === 'object'
+      ? (data.message as Record<string, unknown>)
+      : null;
+    const nestedId = nested && typeof nested.id === 'string' ? nested.id.trim() : '';
+    return nestedId || null;
+  }
+
+  private missingProviderId(): WahaOutboundResult {
+    return {
+      success: false,
+      kind: 'AMBIGUOUS',
+      failureCode: 'WAHA_PROVIDER_ID_MISSING',
+      message: 'WAHA accepted the HTTP request without returning a provider message id; reconcile before retrying',
+    };
   }
 
   /**
@@ -48,6 +84,9 @@ export class WahaOutboundAdapter {
   async sendText(request: WahaSendTextRequest): Promise<WahaOutboundResult> {
     const cleanChatId = request.chatId.trim();
     const cleanText = request.text.trim();
+
+    const session = this.requireSession(request.session);
+    if (!session.ok) return session.result;
 
     if (!cleanChatId || !cleanText) {
       return {
@@ -74,14 +113,11 @@ export class WahaOutboundAdapter {
     const payload: Record<string, unknown> = {
       chatId: cleanChatId,
       text: cleanText,
+      session: session.value,
     };
 
-    if (request.session) {
-      payload.session = request.session;
-    }
-
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchImpl(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -92,12 +128,8 @@ export class WahaOutboundAdapter {
 
       if (response.ok) {
         const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        const providerMessageId =
-          typeof data.id === 'string'
-            ? data.id
-            : typeof (data.message as Record<string, unknown>)?.id === 'string'
-            ? ((data.message as Record<string, unknown>).id as string)
-            : `waha-${Date.now()}`;
+        const providerMessageId = this.providerMessageId(data);
+        if (!providerMessageId) return this.missingProviderId();
 
         return {
           success: true,
@@ -155,6 +187,9 @@ export class WahaOutboundAdapter {
     session?: string;
   }): Promise<WahaOutboundResult> {
     const cleanChatId = request.chatId.trim();
+    const session = this.requireSession(request.session);
+    if (!session.ok) return session.result;
+
     if (!cleanChatId || (!request.file.url && !request.file.data)) {
       return {
         success: false,
@@ -185,11 +220,11 @@ export class WahaOutboundAdapter {
         url: request.file.url || request.file.data,
       },
       caption: request.caption || '',
-      session: request.session || 'default',
+      session: session.value,
     };
 
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchImpl(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -200,12 +235,8 @@ export class WahaOutboundAdapter {
 
       if (response.ok) {
         const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        const providerMessageId =
-          typeof data.id === 'string'
-            ? data.id
-            : typeof (data.message as Record<string, unknown>)?.id === 'string'
-            ? ((data.message as Record<string, unknown>).id as string)
-            : `waha-${Date.now()}`;
+        const providerMessageId = this.providerMessageId(data);
+        if (!providerMessageId) return this.missingProviderId();
 
         return {
           success: true,
@@ -244,6 +275,9 @@ export class WahaOutboundAdapter {
     session?: string;
   }): Promise<WahaOutboundResult> {
     const cleanChatId = request.chatId.trim();
+    const session = this.requireSession(request.session);
+    if (!session.ok) return session.result;
+
     if (!cleanChatId || (!request.file.url && !request.file.data)) {
       return {
         success: false,
@@ -274,11 +308,11 @@ export class WahaOutboundAdapter {
         url: request.file.url || request.file.data,
       },
       caption: request.caption || '',
-      session: request.session || 'default',
+      session: session.value,
     };
 
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchImpl(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -289,12 +323,8 @@ export class WahaOutboundAdapter {
 
       if (response.ok) {
         const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        const providerMessageId =
-          typeof data.id === 'string'
-            ? data.id
-            : typeof (data.message as Record<string, unknown>)?.id === 'string'
-            ? ((data.message as Record<string, unknown>).id as string)
-            : `waha-${Date.now()}`;
+        const providerMessageId = this.providerMessageId(data);
+        if (!providerMessageId) return this.missingProviderId();
 
         return {
           success: true,

@@ -43,10 +43,11 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
   isOutbound = false,
   senderName,
   providerMessageId,
-  session = 'default',
+  session,
 }) => {
   // Build a fallback proxy URL from providerMessageId when media_payload has no url
   const buildProxyUrl = (msgId: string, ext?: string): string => {
+    if (!session?.trim()) return '';
     const ext_ = ext || (msgId.includes('.') ? '' : '.bin');
     const path = `/api/files/${session}/${msgId}${ext_}`;
     return `/api/v1/channels/waha/media-proxy?path=${encodeURIComponent(path)}`;
@@ -225,7 +226,9 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
   // 1. ÁUDIO / MENSAGEM DE VOZ (PTT)
   // ==========================================================================
   if (targetMedia.mediaType === 'audio' || targetMedia.mediaType === 'ptt') {
-    const totalDuration = targetMedia.duration || 32;
+    const totalDuration = typeof targetMedia.duration === 'number' && targetMedia.duration >= 0
+      ? targetMedia.duration
+      : null;
     const speaker = targetMedia.authorOrSpeaker || (isOutbound ? 'Você (Atendente)' : 'Cliente');
 
     return (
@@ -239,8 +242,11 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
           <button
             type="button"
             onClick={() => togglePlayAudio(targetMedia.url)}
+            disabled={!targetMedia.url}
             className={`w-9 h-9 rounded-full flex items-center justify-center text-white shrink-0 shadow-sm transition transform active:scale-95 cursor-pointer ${
-              isOutbound ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-[#00A884] hover:bg-[#008f6f]'
+              !targetMedia.url
+                ? 'bg-slate-300 cursor-not-allowed'
+                : isOutbound ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-[#00A884] hover:bg-[#008f6f]'
             }`}
           >
             {isPlaying ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
@@ -253,9 +259,7 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
                 <Mic size={10} className="text-emerald-600" />
                 {speaker}
               </span>
-              <span>
-                {isPlaying ? formatSeconds(currentTime) : formatSeconds(totalDuration)}
-              </span>
+              <span>{isPlaying ? formatSeconds(currentTime) : totalDuration === null ? '--:--' : formatSeconds(totalDuration)}</span>
             </div>
 
             {/* Simulated Animated Waveform Bars */}
@@ -413,15 +417,16 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
             {targetMedia.fileName || 'Documento WhatsApp.pdf'}
           </p>
           <p className="text-[10.5px] text-slate-500 font-mono">
-            {targetMedia.fileSize || targetMedia.fileSizeFormatted || 'PDF'}
+            {targetMedia.fileSize || targetMedia.fileSizeFormatted || 'Tamanho não informado'}
           </p>
         </div>
         <a
-          href={targetMedia.url || '#'}
+          href={targetMedia.url || undefined}
           target="_blank"
           rel="noreferrer"
           download
-          className="p-2 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 transition text-slate-600 shrink-0"
+          aria-disabled={!targetMedia.url}
+          className={`p-2 rounded-lg transition text-slate-600 shrink-0 ${targetMedia.url ? 'bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700' : 'bg-slate-100/60 cursor-not-allowed opacity-50'}`}
           title="Baixar Documento"
         >
           <Download size={15} />

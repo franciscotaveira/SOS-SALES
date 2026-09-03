@@ -1,10 +1,11 @@
 import React from 'react';
-import { AlertCircle, Bot, CheckCircle2, Loader2, Save, ShieldCheck } from 'lucide-react';
+import { AlertCircle, Bot, CheckCircle2, Loader2, Play, Save, ShieldCheck } from 'lucide-react';
 import {
   loadWorkspaceAgentConfig,
   publishWorkspaceAgentConfig,
   WorkspaceAgentRuntimeConfig,
 } from '../../services/aiAutonomyManager';
+import { authenticatedFetch } from '../../services/authenticatedFetch';
 
 interface AiRuntimeSettingsViewProps {
   workspaceId: string;
@@ -21,6 +22,11 @@ const DEFAULT_CONFIG: WorkspaceAgentRuntimeConfig = {
   metaAgentEnabled: false,
   metaAgentEligibilityStatus: 'UNKNOWN',
   metaAgentCheckedAt: null,
+  metaAgentActivationStatus: 'NOT_STARTED',
+  metaAgentOnboardingStartedAt: null,
+  metaAgentReadyAt: null,
+  metaAgentLastError: null,
+  metaAgentReady: false,
   runtimeEffective: false,
   providerConfigured: false,
   behaviorConfig: {},
@@ -31,6 +37,8 @@ export const AiRuntimeSettingsView: React.FC<AiRuntimeSettingsViewProps> = ({ wo
   const [config, setConfig] = React.useState(DEFAULT_CONFIG);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [testing, setTesting] = React.useState(false);
+  const [testResult, setTestResult] = React.useState<{ model: string; latencyMs: number; response: string } | null>(null);
   const [feedback, setFeedback] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const tone = (config.behaviorConfig.tone as Tone | undefined) || 'direto_objetivo';
   const primaryGoal = (config.behaviorConfig.primaryGoal as Goal | undefined) || 'qualificacao_vendedor';
@@ -73,6 +81,34 @@ export const AiRuntimeSettingsView: React.FC<AiRuntimeSettingsViewProps> = ({ wo
     }
   };
 
+  const runProviderTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    setFeedback(null);
+    try {
+      const response = await authenticatedFetch('/api/v1/ai/test-nvidia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: 'Responda em uma frase: qual é o próximo passo para atender um cliente? Não invente preço, prazo ou disponibilidade.',
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { response?: string; model?: string; latencyMs?: number; error?: string } | null;
+      if (!response.ok || typeof payload?.response !== 'string') {
+        throw new Error(payload?.error || `Teste da IA indisponível (HTTP ${response.status}).`);
+      }
+      setTestResult({
+        model: payload.model || 'modelo configurado',
+        latencyMs: Number.isFinite(payload.latencyMs) ? Number(payload.latencyMs) : 0,
+        response: payload.response,
+      });
+    } catch (error) {
+      setFeedback({ type: 'error', message: error instanceof Error ? error.message : 'Não foi possível testar a IA própria.' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500"><Loader2 size={17} className="animate-spin" /> Consultando configuração real…</div>;
 
   return (
@@ -106,6 +142,13 @@ export const AiRuntimeSettingsView: React.FC<AiRuntimeSettingsViewProps> = ({ wo
       </div>
 
       <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">Pedidos de humano, reclamações, desconto alto e situações sensíveis sempre geram transbordo. Estado efetivo: <strong>{config.runtimeEffective ? 'ativo' : 'inativo'}</strong>.</div>
+      <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><div className="text-xs font-bold text-indigo-950">Verificar conexão da IA própria</div><p className="mt-1 text-[11px] text-indigo-900/70">Executa uma chamada real ao NVIDIA NIM configurado no servidor. Não envia mensagem a cliente.</p></div>
+          <button type="button" onClick={() => void runProviderTest()} disabled={testing} className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-[11px] font-bold text-indigo-800 disabled:opacity-50">{testing ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Testar IA própria</button>
+        </div>
+        {testResult && <div className="mt-2 rounded-lg bg-white p-2.5 text-[11px] text-slate-700"><div className="font-mono text-[10px] text-slate-500">{testResult.model} · {testResult.latencyMs} ms</div><p className="mt-1">{testResult.response}</p></div>}
+      </div>
       <div className="flex justify-end"><button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Publicar IA</button></div>
     </form>
   );

@@ -43,6 +43,14 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
   const [internalSubTab, setInternalSubTab] = useState<ResultsSubTab>(isAuthenticatedApiMode ? 'traffic_proof' : 'analytics');
   const activeSubTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalSubTab;
   const setActiveSubTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalSubTab;
+  // Sanitize stale history/local state before rendering. Otherwise a direct
+  // navigation to the legacy analytics tab could flash fixture metrics for a
+  // frame in authenticated production mode before the redirect effect runs.
+  const effectiveSubTab: ResultsSubTab = isAuthenticatedApiMode
+    && activeSubTab !== 'traffic_proof'
+    && !(activeSubTab === 'tracking' && canManageTracking)
+    ? 'traffic_proof'
+    : activeSubTab;
 
   const SUB_TABS = isAuthenticatedApiMode ? [
     {
@@ -117,7 +125,7 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
           <div className="flex items-center gap-1 bg-[var(--sos-border)]/30 p-1 rounded-xl border border-[var(--sos-border)] text-xs overflow-x-auto no-scrollbar">
             {SUB_TABS.map((tab) => {
               const Icon = tab.icon;
-              const isActive = activeSubTab === tab.id;
+              const isActive = effectiveSubTab === tab.id;
               return (
                 <button
                   key={tab.id}
@@ -140,9 +148,9 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
 
       {/* Content Rendering based on selected Subtab */}
       <div className="flex-1 pb-8">
-        {activeSubTab === 'analytics' && <ManagerDashboardView workspace={workspace} />}
+        {effectiveSubTab === 'analytics' && <ManagerDashboardView workspace={workspace} />}
 
-        {activeSubTab === 'traffic_proof' && (
+        {effectiveSubTab === 'traffic_proof' && (
           isAuthenticatedApiMode && gateway instanceof HttpSalesOsGateway ? (
             <LiveTrafficProofView
               workspaceId={workspace.id}
@@ -157,19 +165,19 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
           )
         )}
 
-        {activeSubTab === 'broadcast' && (
+        {effectiveSubTab === 'broadcast' && (
           <MassBroadcastView workspace={workspace} />
         )}
 
-        {activeSubTab === 'campaign_links' && (
+        {effectiveSubTab === 'campaign_links' && (
           <CampaignLinksTab workspace={workspace} />
         )}
 
-        {activeSubTab === 'waba_templates' && (
+        {effectiveSubTab === 'waba_templates' && (
           <WabaTemplatesTab workspace={workspace} />
         )}
 
-        {activeSubTab === 'tracking' && canManageTracking && (
+        {effectiveSubTab === 'tracking' && canManageTracking && (
           isAuthenticatedApiMode
             ? <MetaTrackingSetupView workspaceId={workspace.id} />
             : <TrackingSettings workspace={workspace} />

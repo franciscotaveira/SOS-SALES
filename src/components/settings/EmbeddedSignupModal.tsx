@@ -1,15 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ShieldCheck,
   Zap,
   CheckCircle2,
   AlertTriangle,
   Loader2,
-  ExternalLink,
-  Phone,
   Layers,
   Sparkles,
-  HelpCircle,
   Copy,
   Check,
   Globe,
@@ -24,6 +21,7 @@ interface EmbeddedSignupModalProps {
   onClose: () => void;
   workspace: Workspace;
   onSuccess: (data: { wabaId: string; phoneNumberId: string; verifiedPhone?: string }) => void;
+  canManage?: boolean;
 }
 
 export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
@@ -31,11 +29,15 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
   onClose,
   workspace,
   onSuccess,
+  canManage = true,
 }) => {
   const [appId, setAppId] = useState('');
   const [configId, setConfigId] = useState('');
   const [useHybridApp, setUseHybridApp] = useState(true);
-  const [enableLocalStorageBR, setEnableLocalStorageBR] = useState(true);
+  const [connectionMode, setConnectionMode] = useState<'embedded' | 'manual'>('embedded');
+  const [manualWabaId, setManualWabaId] = useState('');
+  const [manualPhoneNumberId, setManualPhoneNumberId] = useState('');
+  const [manualAccessToken, setManualAccessToken] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'authorizing' | 'exchanging' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -46,8 +48,42 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
     phone?: string;
   } | null>(null);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const exchangeInFlightRef = useRef(false);
+  const signupListenerRef = useRef<((event: MessageEvent) => void) | null>(null);
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const webhookCallbackUrl = `${window.location.origin}/api/v1/workspaces/${workspace.id}/channels/whatsapp/webhook`;
+  // Meta uses one signed webhook endpoint for the app. Tenant ownership is
+  // resolved server-side from the phone_number_id in each event.
+  const webhookCallbackUrl = `${window.location.origin}/api/v1/channels/waba/webhook`;
+
+  const cleanupSignup = () => {
+    if (signupListenerRef.current) {
+      window.removeEventListener('message', signupListenerRef.current);
+      signupListenerRef.current = null;
+    }
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => () => cleanupSignup(), []);
+
+  const applyConnectedResult = (data: any) => {
+    setConnectionStatus('success');
+    setIsConnecting(false);
+    setConnectedDetails({
+      wabaId: data.wabaId,
+      phoneNumberId: data.phoneNumberId,
+      verifiedName: data.verifiedName,
+      phone: data.verifiedPhone,
+    });
+    onSuccess({
+      wabaId: data.wabaId,
+      phoneNumberId: data.phoneNumberId,
+      verifiedPhone: data.verifiedPhone,
+    });
+  };
 
   // Load Facebook SDK
   useEffect(() => {
@@ -76,6 +112,17 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
   }, [isOpen, appId]);
 
   const handleLaunchEmbeddedSignup = () => {
+    if (!canManage) {
+      setErrorMessage('Somente o proprietário do workspace pode alterar a conexão oficial.');
+      return;
+    }
+    if (!appId.trim() || !configId.trim()) {
+      setConnectionStatus('error');
+      setErrorMessage('Informe o Meta App ID e o Login Config ID antes de iniciar o Embedded Signup.');
+      return;
+    }
+    cleanupSignup();
+    exchangeInFlightRef.current = false;
     setIsConnecting(true);
     setConnectionStatus('authorizing');
     setErrorMessage(null);
@@ -98,15 +145,16 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
             const code = response.authResponse.code;
             const accessToken = response.authResponse.accessToken;
 
-            // Escuta os eventos da janela popup do WhatsApp Embedded Signup
+            // Escuta os eventos da janela popup do WhatsApp Embedded Signup.
             const handleMessage = async (event: MessageEvent) => {
               if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return;
               try {
                 const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
                 if (data.type === 'WA_EMBEDDED_SIGNUP') {
                   const { waba_id, phone_number_id } = data.data || {};
-                  
-                  // Chama o backend para registrar permanentemente
+                  if (exchangeInFlightRef.current) return;
+                  exchangeInFlightRef.current = true;
+                  cleanupSignup();
                   await sendExchangeToBackend({
                     code,
                     accessToken,
@@ -114,23 +162,27 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
                     phoneNumberId: phone_number_id,
                     appId,
                   });
-                  window.removeEventListener('message', handleMessage);
                 }
               } catch (e) {}
             };
 
+            signupListenerRef.current = handleMessage;
             window.addEventListener('message', handleMessage);
 
-            // Se a mensagem demorar, tenta com o que tiver
-            setTimeout(async () => {
-              if (connectionStatus === 'exchanging') {
+            // Se o evento de signup não chegar, tenta concluir com o código e
+            // token entregues pelo Login. O ref evita duas gravações quando o
+            // popup envia o evento quase ao mesmo tempo.
+            fallbackTimerRef.current = setTimeout(async () => {
+              if (!exchangeInFlightRef.current) {
+                exchangeInFlightRef.current = true;
+                cleanupSignup();
                 await sendExchangeToBackend({
                   code,
                   accessToken,
                   appId,
                 });
               }
-            }, 3000);
+            }, 5000);
           } else {
             setIsConnecting(false);
             setConnectionStatus('idle');
@@ -158,15 +210,48 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
     }
   };
 
+  const handleManualConnect = async (event: React.SyntheticEvent) => {
+    event.preventDefault();
+    if (!canManage) {
+      setErrorMessage('Somente o proprietário do workspace pode alterar a conexão oficial.');
+      return;
+    }
+    const wabaId = manualWabaId.trim();
+    const phoneNumberId = manualPhoneNumberId.trim();
+    const accessToken = manualAccessToken.trim();
+    if (!wabaId || !phoneNumberId || !accessToken) {
+      setConnectionStatus('error');
+      setErrorMessage('Informe WABA ID, Phone Number ID e Access Token para validar a conexão.');
+      return;
+    }
+
+    setIsConnecting(true);
+    setConnectionStatus('exchanging');
+    setErrorMessage(null);
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/configure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wabaId, phoneNumberId, accessToken }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.error) {
+        throw new Error(data?.error || `Falha ao validar a conexão (HTTP ${response.status}).`);
+      }
+      applyConnectedResult(data);
+    } catch (error) {
+      setIsConnecting(false);
+      setConnectionStatus('error');
+      setErrorMessage(error instanceof Error ? error.message : 'Falha na comunicação com o backend SOS Sales.');
+    }
+  };
+
   const sendExchangeToBackend = async (payload: any) => {
     try {
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/oauth-connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...payload,
-          dataLocalizationRegion: enableLocalStorageBR ? 'BR' : undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -174,20 +259,7 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
         throw new Error(data.error || 'Erro ao validar conexão no servidor');
       }
 
-      setConnectionStatus('success');
-      setIsConnecting(false);
-      setConnectedDetails({
-        wabaId: data.wabaId,
-        phoneNumberId: data.phoneNumberId,
-        verifiedName: data.verifiedName,
-        phone: data.verifiedPhone,
-      });
-
-      onSuccess({
-        wabaId: data.wabaId,
-        phoneNumberId: data.phoneNumberId,
-        verifiedPhone: data.verifiedPhone,
-      });
+      applyConnectedResult(data);
     } catch (err: any) {
       setIsConnecting(false);
       setConnectionStatus('error');
@@ -195,10 +267,15 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedWebhook(true);
-    setTimeout(() => setCopiedWebhook(false), 2500);
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(text);
+      setCopiedWebhook(true);
+      setTimeout(() => setCopiedWebhook(false), 2500);
+    } catch {
+      setErrorMessage('Não foi possível copiar a URL. Selecione o endereço manualmente.');
+    }
   };
 
   if (!isOpen) return null;
@@ -215,14 +292,14 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-slate-950 font-heading">
-                  Meta WhatsApp Embedded Signup v4
+                  Conectar WhatsApp Oficial da Meta
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Cloud API Oficial
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Onboarding em 1-clique oficial da Meta com suporte a Marketing Messages & Modo Híbrido.
+                Escolha o Embedded Signup ou valide manualmente as credenciais do seu número WABA.
               </p>
             </div>
           </div>
@@ -240,20 +317,20 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
           <div className="p-3 bg-emerald-50/60 border border-emerald-100 rounded-xl space-y-1">
             <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
               <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Zero Risco de Bloqueio</span>
+              <span>Canal oficial</span>
             </div>
             <p className="text-[11px] text-emerald-700 leading-tight">
-              Conexão com a infraestrutura oficial da Meta Graph API v23.0.
+              A conexão usa a API oficial da Meta; qualidade e limites continuam sujeitos às políticas da Meta.
             </p>
           </div>
 
           <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl space-y-1">
             <div className="flex items-center gap-1.5 text-blue-800 font-bold text-xs">
               <Radio className="w-3.5 h-3.5 text-blue-600" />
-              <span>Modo Híbrido (App + API)</span>
+              <span>Opção da Meta</span>
             </div>
             <p className="text-[11px] text-blue-700 leading-tight">
-              Continue usando o app no seu celular físico enquanto o SOS-SALES roda.
+              Você pode solicitar Marketing Messages Lite; a disponibilidade depende da elegibilidade da conta.
             </p>
           </div>
 
@@ -263,12 +340,18 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
               <span>Ads Insights & CAPI</span>
             </div>
             <p className="text-[11px] text-purple-700 leading-tight">
-              Atribuição automática de conversão com permissão <code>ads_read</code>.
+              O rastreamento de campanhas é uma configuração separada e exige as permissões aprovadas no Meta.
             </p>
           </div>
         </div>
 
         {/* Status Messages */}
+        {!canManage && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+            Somente o proprietário do workspace pode alterar a conexão oficial. Você pode consultar o estado atual, mas não publicar credenciais.
+          </div>
+        )}
+
         {connectionStatus === 'success' && connectedDetails && (
           <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-900 space-y-2">
             <div className="flex items-center gap-2 font-bold text-sm text-emerald-800">
@@ -308,96 +391,101 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
 
         {/* Configuration Options */}
         <div className="space-y-3.5 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <span className="font-bold text-slate-800 flex items-center gap-1.5">
               <Sliders className="w-3.5 h-3.5 text-slate-500" />
-              Parâmetros do Aplicativo Meta (Solution Partner)
+              Método de conexão
             </span>
-            <span className="text-[10.5px] text-slate-500">Versão v4 (Definitiva 2026)</span>
+            <div className="flex items-center gap-1 rounded-lg bg-white p-1 border border-slate-200">
+              <button
+                type="button"
+                onClick={() => { setConnectionMode('embedded'); setErrorMessage(null); }}
+                className={`rounded-md px-2 py-1 text-[10px] font-bold ${connectionMode === 'embedded' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
+                Embedded Signup
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConnectionMode('manual'); setErrorMessage(null); }}
+                className={`rounded-md px-2 py-1 text-[10px] font-bold ${connectionMode === 'manual' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
+                Configuração manual
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                Meta App ID:
+          {connectionMode === 'embedded' ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Meta App ID:
+                  </label>
+                  <input
+                    type="text"
+                    value={appId}
+                    onChange={(e) => setAppId(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-500"
+                    placeholder="ID público do app Meta"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Login Config ID (Meta App Dashboard):
+                  </label>
+                  <input
+                    type="text"
+                    value={configId}
+                    onChange={(e) => setConfigId(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-500"
+                    placeholder="ID da configuração Embedded Signup"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-3">
+                <div>
+                  <span className="font-bold text-slate-800 block text-xs">
+                    Solicitar Marketing Messages Lite
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Envia a opção à Meta; a disponibilidade depende da configuração e elegibilidade do número.
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setUseHybridApp(!useHybridApp)}
+                  aria-pressed={useHybridApp}
+                  className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer ${
+                    useHybridApp ? 'bg-[#00a884]' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${
+                      useHybridApp ? 'left-6' : 'left-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-[11px] text-slate-600">Use um token com a permissão <code>whatsapp_business_messaging</code>. O backend valida o token e o Phone Number ID na Meta antes de salvar.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block text-[11px] font-semibold text-slate-600">WABA ID
+                  <input type="text" value={manualWabaId} onChange={(e) => setManualWabaId(e.target.value)} placeholder="ID numérico da conta WhatsApp Business" className="mt-1 w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-500" />
+                </label>
+                <label className="block text-[11px] font-semibold text-slate-600">Phone Number ID
+                  <input type="text" value={manualPhoneNumberId} onChange={(e) => setManualPhoneNumberId(e.target.value)} placeholder="ID numérico do telefone WABA" className="mt-1 w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-500" />
+                </label>
+              </div>
+              <label className="block text-[11px] font-semibold text-slate-600">Access Token
+                <input type="password" value={manualAccessToken} onChange={(e) => setManualAccessToken(e.target.value)} placeholder="Token Meta (não será exibido novamente)" autoComplete="off" className="mt-1 w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-500" />
               </label>
-              <input
-                type="text"
-                value={appId}
-                onChange={(e) => setAppId(e.target.value)}
-                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-500"
-                placeholder="Ex: 1144078860714777"
-              />
             </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                Login Config ID (Meta App Dashboard):
-              </label>
-              <input
-                type="text"
-                value={configId}
-                onChange={(e) => setConfigId(e.target.value)}
-                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-500"
-                placeholder="Ex: 1144078860714777_config"
-              />
-            </div>
-          </div>
-
-          {/* Toggle Hybrid Mode */}
-          <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between">
-            <div>
-              <span className="font-bold text-slate-800 block text-xs">
-                Modo Híbrido (Marketing Messages Lite)
-              </span>
-              <span className="text-[11px] text-slate-500">
-                Permite ao cliente manter o aplicativo WhatsApp Business no smartphone físico.
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setUseHybridApp(!useHybridApp)}
-              className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer ${
-                useHybridApp ? 'bg-[#00a884]' : 'bg-slate-300'
-              }`}
-            >
-              <span
-                className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${
-                  useHybridApp ? 'left-6' : 'left-0.5'
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* Toggle Local Storage LGPD Brasil */}
-          <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between">
-            <div>
-              <span className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
-                <span>Armazenamento Local LGPD (Brasil - Região BR)</span>
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  Data at Rest: BR
-                </span>
-              </span>
-              <span className="text-[11px] text-slate-500">
-                Armazena mensagens e mídias em repouso exclusivamente em data centers no Brasil para conformidade regulatória.
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setEnableLocalStorageBR(!enableLocalStorageBR)}
-              className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer ${
-                enableLocalStorageBR ? 'bg-[#00a884]' : 'bg-slate-300'
-              }`}
-            >
-              <span
-                className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${
-                  enableLocalStorageBR ? 'left-6' : 'left-0.5'
-                }`}
-              />
-            </button>
-          </div>
+          )}
         </div>
 
 
@@ -406,7 +494,7 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
           <div className="flex items-center justify-between text-slate-600">
             <span className="font-semibold text-[11px] flex items-center gap-1">
               <Globe className="w-3.5 h-3.5 text-slate-400" />
-              URL de Webhook do Workspace:
+              URL de Webhook da aplicação Meta:
             </span>
             <button
               onClick={() => copyToClipboard(webhookCallbackUrl)}
@@ -431,8 +519,8 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
           </button>
 
           <button
-            onClick={handleLaunchEmbeddedSignup}
-            disabled={isConnecting}
+            onClick={connectionMode === 'embedded' ? handleLaunchEmbeddedSignup : (event) => void handleManualConnect(event)}
+            disabled={isConnecting || !canManage}
             className="px-6 py-2.5 bg-gradient-to-r from-[#00a884] to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
           >
             {isConnecting ? (
@@ -447,7 +535,7 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
             ) : (
               <>
                 <Zap className="w-4 h-4 text-white" />
-                <span>Conectar com Facebook (Embedded Signup v4)</span>
+                <span>{connectionMode === 'embedded' ? 'Conectar com Facebook' : 'Validar e salvar WABA'}</span>
               </>
             )}
           </button>

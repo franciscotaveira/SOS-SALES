@@ -9,6 +9,23 @@ import {
 } from '../../../application/ports/channel-webhook-adapter.js';
 import { InvalidWebhookPayloadError } from '../../../application/errors/invalid-webhook-payload-error.js';
 
+/**
+ * WAHA/WhatsApp serializes message identifiers in more than one shape. In
+ * particular, WhatsApp Web commonly sends `{ _serialized, id, remote }` while
+ * older payloads send the identifier as a plain string. Keep the extraction
+ * deterministic and bounded: only the documented identifier fields are read;
+ * arbitrary object stringification would create unstable deduplication keys.
+ */
+function providerIdentifier(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record._serialized === 'string' && record._serialized.trim()) return record._serialized.trim();
+  if (typeof record.id === 'string' && record.id.trim()) return record.id.trim();
+  if (record.id && typeof record.id === 'object') return providerIdentifier(record.id);
+  return null;
+}
+
 export class WahaWebhookAdapter implements ChannelWebhookAdapter {
   public readonly providerName = 'waha';
 
@@ -138,23 +155,23 @@ export class WahaWebhookAdapter implements ChannelWebhookAdapter {
 
     if (eventType === 'message' || eventType === 'message.any') {
       const msgId =
-        (nestedPayload.id as string) ||
-        ((nestedPayload.key as Record<string, unknown>)?.id as string) ||
-        (payload.id as string) ||
-        (nestedPayload.messageId as string);
+        providerIdentifier(nestedPayload.id) ||
+        providerIdentifier((nestedPayload.key as Record<string, unknown>)?.id) ||
+        providerIdentifier(payload.id) ||
+        providerIdentifier(nestedPayload.messageId);
 
-      if (!msgId || typeof msgId !== 'string' || msgId.trim() === '') {
+      if (!msgId) {
         throw new InvalidWebhookPayloadError('WAHA message payload missing provider message ID');
       }
-      providerEventId = `message:${msgId.trim()}`;
+      providerEventId = `message:${msgId}`;
     } else {
       // For non-message events (e.g. message.ack, message.reaction, session.status), strictly use top-level envelope ID (ULID)
-      const topLevelEventId = payload.id as string | undefined;
+      const topLevelEventId = providerIdentifier(payload.id);
 
-      if (!topLevelEventId || typeof topLevelEventId !== 'string' || topLevelEventId.trim() === '') {
+      if (!topLevelEventId) {
         throw new InvalidWebhookPayloadError(`WAHA payload missing top-level event ID for event ${eventType}`);
       }
-      providerEventId = `${eventType}:${topLevelEventId.trim()}`;
+      providerEventId = `${eventType}:${topLevelEventId}`;
     }
 
     // Extract event timestamp
@@ -216,9 +233,14 @@ export class WahaWebhookAdapter implements ChannelWebhookAdapter {
       return { kind: 'INVALID', error: 'Missing sender from JID in inbound message' };
     }
 
-    // 4. Filter out group chats (ending in @g.us) and status broadcasts
+    // 4. Filter out group chats, newsletter feeds and status broadcasts.
+    // These are not 1:1 commercial journeys and must never become contacts.
     if (fromJid.endsWith('@g.us') || data.isGroup) {
       return { kind: 'IGNORED', reason: 'group_message' };
+    }
+
+    if (fromJid.endsWith('@newsletter') || data.isNewsletter === true) {
+      return { kind: 'IGNORED', reason: 'newsletter_message' };
     }
 
     if (fromJid === 'status@broadcast' || fromJid.endsWith('@broadcast')) {
@@ -240,13 +262,13 @@ export class WahaWebhookAdapter implements ChannelWebhookAdapter {
 
     // 7. Extract stable provider message ID
     const rawMsgId =
-      (data.id as string) ||
-      ((data.key as Record<string, unknown>)?.id as string);
+      providerIdentifier(data.id) ||
+      providerIdentifier((data.key as Record<string, unknown>)?.id);
 
-    if (!rawMsgId || typeof rawMsgId !== 'string' || rawMsgId.trim() === '') {
+    if (!rawMsgId) {
       return { kind: 'INVALID', error: 'Missing provider message ID in inbound message' };
     }
-    const providerMessageId = rawMsgId.trim();
+    const providerMessageId = rawMsgId;
 
     // 8. Extract WhatsApp ID (preserve original JID)
     const whatsappId = fromJid;
@@ -276,10 +298,17 @@ export class WahaWebhookAdapter implements ChannelWebhookAdapter {
 
     // 11. Extract Media Metadata (Without downloading binaries)
     let mediaPayload: Record<string, unknown> | undefined = undefined;
-    const hasMedia = Boolean(data.hasMedia || data.media || data.mimetype);
+    const mediaType = typeof data.type === 'string' ? data.type : '';
+    const hasMedia = Boolean(
+      data.hasMedia
+      || data.media
+      || data.mimetype
+      || (mediaType && mediaType !== 'chat'),
+    );
     if (hasMedia) {
       const mediaData = (data.media as Record<string, unknown>) || data;
       mediaPayload = {
+        ...(mediaType && mediaType !== 'chat' ? { mediaType } : {}),
         mimetype: mediaData.mimetype || mediaData.mimeType || 'application/octet-stream',
         filename: mediaData.filename || undefined,
         filesize: mediaData.filesize || mediaData.fileLength || undefined,

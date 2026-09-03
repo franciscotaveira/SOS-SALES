@@ -10,6 +10,7 @@ import { WabaChannelInfoGateway } from '../../../application/ports/waba-channel-
 import { verifyOperatorAuth, assertTenantAccess, unauthorized, forbidden } from '../helpers/auth-guard.js';
 import crypto from 'node:crypto';
 import { z } from 'zod';
+import { isSyntheticTestDataEnabled } from '../../../infrastructure/security/runtime-safety.js';
 
 const WAHA_BASE_URL = process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || 'http://sos-sales-api:4334';
@@ -174,7 +175,10 @@ export async function whatsappChannelRoutes(
       // workspace owner may erase their audit trail.
       const isOwnerOnly = request.url.includes('/clear-history')
         || request.url.includes('/clear-journey')
-        || request.url.includes('/tracking');
+        || request.url.includes('/tracking')
+        || request.url.includes('/channels/waba/configure')
+        || request.url.includes('/channels/waba/oauth-connect')
+        || request.url.includes('/channels/waba/list-accounts');
       const requiredRole = isOwnerOnly ? 'owner' : (isMutation ? 'operator' : 'viewer');
 
       const allowed = await assertTenantAccess(
@@ -555,6 +559,7 @@ export async function whatsappChannelRoutes(
     try {
       let displayPhone = phoneNumberId;
       let verifiedName = 'WhatsApp Business Oficial';
+      let providerVerified = false;
 
       try {
         const metaRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(phoneNumberId)}?access_token=${encodeURIComponent(accessToken)}`);
@@ -562,6 +567,10 @@ export async function whatsappChannelRoutes(
 
       if (metaRes.ok) {
         const metaData = (await metaRes.json()) as { display_phone_number?: string; verified_name?: string; id?: string };
+        // A successful HTTP response alone is not proof that this token can
+        // operate the requested number. Require Meta to echo the exact
+        // Phone Number ID before persisting a connected channel.
+        providerVerified = metaData.id === phoneNumberId;
         displayPhone = metaData.display_phone_number || displayPhone;
         verifiedName = metaData.verified_name || verifiedName;
       } else {
@@ -573,6 +582,7 @@ export async function whatsappChannelRoutes(
           if (Array.isArray(wabaData.phone_numbers?.data)) {
             const match = wabaData.phone_numbers.data.find((p: any) => p.id === phoneNumberId);
             if (match) {
+              providerVerified = true;
               displayPhone = match.display_phone_number || displayPhone;
               verifiedName = match.verified_name || verifiedName;
             }
@@ -580,8 +590,15 @@ export async function whatsappChannelRoutes(
         }
       }
     } catch {
-      // Proceed with user-provided IDs
+      // Keep the channel unverified; the request below fails closed.
     }
+
+      if (!providerVerified) {
+        return reply.status(401).send({
+          error: 'A Meta não confirmou este Phone Number ID com o token informado. A conexão não foi criada.',
+          code: 'META_WABA_VALIDATION_FAILED',
+        });
+      }
 
       const client = await dbPool.connect();
     try {
@@ -614,8 +631,17 @@ export async function whatsappChannelRoutes(
       };
 
       const existing = await client.query(`
-        SELECT id FROM public.channel_connections WHERE workspace_id = $1 AND provider = 'meta_cloud' LIMIT 1
+        SELECT id FROM public.channel_connections
+        WHERE workspace_id = $1 AND provider = 'meta_cloud' AND status = 'CONNECTED'
+        ORDER BY created_at ASC
+        LIMIT 2
       `, [workspaceId]);
+      if (existing.rows.length > 1) {
+        return reply.status(409).send({
+          error: 'Este workspace possui mais de um número WABA conectado. O MVP exige um único número oficial por workspace; desconecte o excedente antes de continuar.',
+          code: 'MULTIPLE_WABA_CHANNELS_UNSUPPORTED',
+        });
+      }
 
       let channelId: string;
       if (existing.rowCount && existing.rowCount > 0) {
@@ -701,7 +727,18 @@ export async function whatsappChannelRoutes(
         const phonesRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(wabaId)}/phone_numbers?access_token=${encodeURIComponent(accessToken)}`);
         if (phonesRes.ok) {
           const phonesData = (await phonesRes.json()) as any;
-          if (Array.isArray(phonesData.data) && phonesData.data.length > 0) {
+          if (Array.isArray(phonesData.data) && phonesData.data.length > 1) {
+            return reply.status(409).send({
+              error: 'A Meta retornou mais de um número WABA. Informe explicitamente o Phone Number ID para evitar conectar o telefone errado.',
+              code: 'MULTIPLE_WABA_PHONES_REQUIRE_SELECTION',
+              phones: phonesData.data.map((phone: any) => ({
+                id: typeof phone?.id === 'string' ? phone.id : undefined,
+                displayPhoneNumber: typeof phone?.display_phone_number === 'string' ? phone.display_phone_number : undefined,
+                verifiedName: typeof phone?.verified_name === 'string' ? phone.verified_name : undefined,
+              })).filter((phone: any) => phone.id),
+            });
+          }
+          if (Array.isArray(phonesData.data) && phonesData.data.length === 1) {
             phoneNumberId = phonesData.data[0].id;
           }
         }
@@ -716,13 +753,18 @@ export async function whatsappChannelRoutes(
       // 3. Validate Phone Number ID with Meta
       let displayPhone = phoneNumberId;
       let verifiedName = 'WhatsApp Business Oficial';
+      let providerVerified = false;
 
       try {
-        const metaRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(phoneNumberId)}?access_token=${encodeURIComponent(accessToken)}`);
+        const metaRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name,whatsapp_business_account&access_token=${encodeURIComponent(accessToken)}`);
         if (metaRes.ok) {
-          const metaData = (await metaRes.json()) as { display_phone_number?: string; verified_name?: string; id?: string };
+          const metaData = (await metaRes.json()) as { display_phone_number?: string; verified_name?: string; id?: string; whatsapp_business_account?: { id?: string } };
+          providerVerified = metaData.id === phoneNumberId;
           displayPhone = metaData.display_phone_number || displayPhone;
           verifiedName = metaData.verified_name || verifiedName;
+          if (!wabaId && metaData.whatsapp_business_account?.id) {
+            wabaId = metaData.whatsapp_business_account.id;
+          }
         } else if (wabaId) {
           const wabaRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(wabaId)}?fields=name,id,phone_numbers&access_token=${encodeURIComponent(accessToken)}`);
           if (wabaRes.ok) {
@@ -731,6 +773,7 @@ export async function whatsappChannelRoutes(
             if (Array.isArray(wabaData.phone_numbers?.data)) {
               const match = wabaData.phone_numbers.data.find((p: any) => p.id === phoneNumberId);
               if (match) {
+                providerVerified = true;
                 displayPhone = match.display_phone_number || displayPhone;
                 verifiedName = match.verified_name || verifiedName;
               }
@@ -738,16 +781,47 @@ export async function whatsappChannelRoutes(
           }
         }
       } catch {
-        // Proceed with user-provided IDs
+        // Keep the channel unverified; the request below fails closed.
+      }
+
+      if (!providerVerified) {
+        return reply.status(401).send({
+          error: 'A Meta não confirmou este Phone Number ID com o token informado. A conexão não foi criada.',
+          code: 'META_WABA_VALIDATION_FAILED',
+        });
+      }
+
+      if (!wabaId) {
+        return reply.status(400).send({
+          error: 'A Meta confirmou o telefone, mas não devolveu o WABA ID. Informe o WABA ID para concluir a conexão.',
+          code: 'META_WABA_ID_REQUIRED',
+        });
       }
 
 
       // 4. Persist in Database
       const client = await dbPool.connect();
       try {
+        const wahaConflict = await client.query(
+          `SELECT 1
+           FROM public.channel_connections
+           WHERE provider = 'waha'
+             AND status = 'CONNECTED'
+             AND NULLIF(regexp_replace(COALESCE(phone_number, ''), '\\D', '', 'g'), '')
+               = NULLIF(regexp_replace($1, '\\D', '', 'g'), '')
+           LIMIT 1`,
+          [displayPhone],
+        );
+        if (wahaConflict.rowCount && wahaConflict.rowCount > 0) {
+          return reply.status(409).send({
+            error: 'Este número já possui uma conexão WAHA ativa. Desconecte ou migre o número antes de ativar a Meta Cloud API.',
+            code: 'CHANNEL_PROVIDER_CONFLICT',
+          });
+        }
+
         // Public configuration (never store secrets here)
         const publicConfig = {
-          wabaId: wabaId || 'auto_detected',
+          wabaId,
           phoneNumberId,
           verifiedName,
           engine: 'META_CLOUD',
@@ -755,12 +829,31 @@ export async function whatsappChannelRoutes(
         };
 
         const existing = await client.query(`
-          SELECT id FROM public.channel_connections WHERE workspace_id = $1 AND provider = 'meta_cloud' LIMIT 1
+          SELECT id, public_config FROM public.channel_connections
+          WHERE workspace_id = $1 AND provider = 'meta_cloud' AND status = 'CONNECTED'
+          ORDER BY created_at ASC
+          LIMIT 2
         `, [workspaceId]);
+        if (existing.rows.length > 1) {
+          return reply.status(409).send({
+            error: 'Este workspace possui mais de um número WABA conectado. O MVP exige um único número oficial por workspace; desconecte o excedente antes de continuar.',
+            code: 'MULTIPLE_WABA_CHANNELS_UNSUPPORTED',
+          });
+        }
 
+        await client.query('BEGIN');
         let channelId: string;
+        let previousPhoneNumberId: string | null = null;
         if (existing.rowCount && existing.rowCount > 0) {
           channelId = existing.rows[0].id;
+          const previousConfig = typeof existing.rows[0].public_config === 'string'
+            ? JSON.parse(existing.rows[0].public_config)
+            : existing.rows[0].public_config || {};
+          previousPhoneNumberId = typeof previousConfig?.phoneNumberId === 'string'
+            ? previousConfig.phoneNumberId
+            : typeof previousConfig?.phone_number_id === 'string'
+              ? previousConfig.phone_number_id
+              : null;
           await client.query(`
             UPDATE public.channel_connections
             SET phone_number = $1, name = $2, public_config = $3, status = 'CONNECTED', updated_at = NOW()
@@ -790,16 +883,55 @@ export async function whatsappChannelRoutes(
           `, [channelId, workspaceId, JSON.stringify({ accessToken })]);
         }
 
+        // A channel replacement invalidates every Meta-agent proof attached to
+        // the old phone.  Keep the business profile, but force a fresh
+        // eligibility/onboarding/test cycle and return existing threads to the
+        // deterministic SOS owner until Meta confirms the new number.
+        const phoneBindingChanged = previousPhoneNumberId !== phoneNumberId;
+        if (phoneBindingChanged) {
+          await client.query(
+            `UPDATE public.workspace_agent_config
+             SET meta_agent_id = NULL,
+                 meta_agent_enabled = false,
+                 meta_agent_channel_connection_id = NULL,
+                 meta_agent_eligibility_status = 'UNKNOWN',
+                 meta_agent_checked_at = NULL,
+                 meta_agent_activation_status = 'NOT_STARTED',
+                 meta_agent_onboarding_started_at = NULL,
+                 meta_agent_ready_at = NULL,
+                 meta_agent_last_error = NULL,
+                 responder_mode = 'sos_sales',
+                 updated_at = NOW()
+             WHERE workspace_id = $1`,
+            [workspaceId],
+          );
+          await client.query(
+            `UPDATE public.commercial_journeys
+             SET responder_owner = 'sos_sales',
+                 responder_changed_at = NOW(),
+                 responder_change_reason = 'meta_phone_replaced',
+                 updated_at = NOW()
+             WHERE workspace_id = $1
+               AND responder_owner = 'meta_business_agent'`,
+            [workspaceId],
+          );
+        }
+
+        await client.query('COMMIT');
+
         return {
           success: true,
           channelId,
           verifiedPhone: displayPhone,
           verifiedName,
-          wabaId: wabaId || 'auto_detected',
+          wabaId,
           phoneNumberId,
           status: 'CONNECTED',
           message: 'WhatsApp Oficial (WABA) conectado via Login Auth com sucesso!',
         };
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
       } finally {
         client.release();
       }
@@ -945,11 +1077,14 @@ export async function whatsappChannelRoutes(
     }
     const cfg = await dependencies.wabaChannelInfoGateway.findConnectedByWorkspaceId(normWsId);
     if (!cfg) return reply.status(404).send({ error: 'Canal WABA não configurado' });
+    const creds = await getWabaCreds(normWsId);
+    const credentialsAvailable = Boolean(creds?.phoneNumberId && creds?.wabaId && creds?.accessToken);
     return {
       success: true,
       configured: true,
-      connected: true,
-      accountStatus: 'CONNECTED',
+      connected: credentialsAvailable,
+      credentialsAvailable,
+      accountStatus: credentialsAvailable ? 'CONNECTED' : 'CREDENTIALS_MISSING',
       phoneNumber: cfg.verifiedPhone || cfg.displayPhone || null,
       displayPhoneNumber: cfg.verifiedPhone || cfg.displayPhone || null,
       verifiedPhone: cfg.verifiedPhone || cfg.displayPhone || null,
@@ -977,7 +1112,8 @@ export async function whatsappChannelRoutes(
     }
 
     const channel = await dependencies.wabaChannelInfoGateway.findConnectedByWorkspaceId(normWsId);
-    const connected = Boolean(channel?.phoneNumberId && channel?.wabaId);
+    const creds = await getWabaCreds(normWsId);
+    const connected = Boolean(channel?.phoneNumberId && channel?.wabaId && creds?.phoneNumberId && creds?.accessToken);
 
     return {
       connected,
@@ -1103,7 +1239,7 @@ export async function whatsappChannelRoutes(
       return reply.status(400).send({ error: 'recipientPhone e templateName são obrigatórios' });
     }
     const creds = await getWabaCreds(workspaceId);
-    if (!creds) {
+    if (!creds || !creds.phoneNumberId || !creds.accessToken) {
       return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
     }
     try {
@@ -1134,7 +1270,7 @@ export async function whatsappChannelRoutes(
       return reply.status(400).send({ error: 'recipientPhone, bodyText e buttons são obrigatórios' });
     }
     const creds = await getWabaCreds(workspaceId);
-    if (!creds) {
+    if (!creds || !creds.phoneNumberId || !creds.accessToken) {
       return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
     }
     try {
@@ -1165,7 +1301,7 @@ export async function whatsappChannelRoutes(
       return reply.status(400).send({ error: 'recipientPhone, bodyText, buttonLabel e sections são obrigatórios' });
     }
     const creds = await getWabaCreds(workspaceId);
-    if (!creds) {
+    if (!creds || !creds.phoneNumberId || !creds.accessToken) {
       return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
     }
     try {
@@ -1197,7 +1333,7 @@ export async function whatsappChannelRoutes(
       return reply.status(400).send({ error: 'recipientPhone, mediaType e mediaUrl são obrigatórios' });
     }
     const creds = await getWabaCreds(workspaceId);
-    if (!creds) {
+    if (!creds || !creds.phoneNumberId || !creds.accessToken) {
       return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
     }
     try {
@@ -1239,7 +1375,7 @@ export async function whatsappChannelRoutes(
     }
 
     const creds = await getWabaCreds(workspaceId);
-    if (!creds) {
+    if (!creds || !creds.phoneNumberId || !creds.accessToken) {
       return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
     }
 
@@ -1955,7 +2091,10 @@ export async function whatsappChannelRoutes(
         ...safePublicConfig,
         metaPixelId: body.metaPixelId ?? safePublicConfig.metaPixelId,
         metaDatasetId: body.metaDatasetId ?? safePublicConfig.metaDatasetId,
-        meta_capi_pixel_id: body.metaPixelId ?? body.metaDatasetId ?? safePublicConfig.meta_capi_pixel_id,
+        // Pixel and Dataset are distinct Meta identifiers. Never copy one into
+        // the other: doing so makes a syntactically valid configuration point
+        // at the wrong data source and is impossible to audit later.
+        meta_capi_pixel_id: body.metaPixelId ?? safePublicConfig.meta_capi_pixel_id,
         meta_capi_dataset_id: body.metaDatasetId ?? safePublicConfig.meta_capi_dataset_id,
         metaCapiEnabled: body.metaCapiEnabled ?? safePublicConfig.metaCapiEnabled ?? true,
         googleAdsCustomerId: body.googleAdsCustomerId ?? safePublicConfig.googleAdsCustomerId,
@@ -2015,6 +2154,18 @@ export async function whatsappChannelRoutes(
     const targetPixelId = (pixelId || datasetId || '').trim();
     const token = (accessToken || '').trim();
 
+    // This endpoint sends a deliberately synthetic event directly to Meta.
+    // Without a Test Events code it would become a real Lead/Purchase and
+    // contaminate campaign optimisation. Keep the guard server-side because
+    // the browser cannot be trusted to enforce an optional UI field.
+    if (!testEventCode?.trim()) {
+      return reply.status(409).send({
+        success: false,
+        code: 'CAPI_TEST_EVENT_CODE_REQUIRED',
+        error: 'Informe o Test Event Code da Meta. Eventos de teste sem esse código poderiam contaminar a atribuição real.',
+      });
+    }
+
     if (!targetPixelId || !token) {
       return reply.status(400).send({
         success: false,
@@ -2022,7 +2173,14 @@ export async function whatsappChannelRoutes(
       });
     }
 
-    const cleanPhone = (phone || '+5549999999999').replace(/\D/g, '');
+    const cleanPhone = (phone || '').replace(/\D/g, '');
+    if (cleanPhone.length < 8) {
+      return reply.status(400).send({
+        success: false,
+        code: 'CAPI_TEST_PHONE_REQUIRED',
+        error: 'Informe o telefone real de um contato de teste antes de disparar o evento.',
+      });
+    }
     const phoneHash = crypto.createHash('sha256').update(cleanPhone).digest('hex');
     const selectedEvent = eventName || 'Lead';
 
@@ -2034,18 +2192,14 @@ export async function whatsappChannelRoutes(
           action_source: 'system_generated',
           user_data: {
             ph: [phoneHash],
-            client_ip_address: '177.136.241.10',
-            client_user_agent: 'Mozilla/5.0 SOS-SALES/2.0 TrackingEngine',
           },
           custom_data: {
-            content_name: `WhatsApp Lead - SOS SALES Test (${selectedEvent})`,
+            content_name: `SOS Sales CAPI test (${selectedEvent})`,
             content_category: 'whatsapp_crm_tracking',
-            value: selectedEvent === 'Purchase' ? 59.0 : 0.0,
-            currency: 'BRL',
           },
         },
       ],
-      ...(testEventCode ? { test_event_code: testEventCode.trim() } : {}),
+      test_event_code: testEventCode.trim(),
     };
 
     try {
@@ -2208,33 +2362,61 @@ export async function whatsappChannelRoutes(
       referralPayload?: any;
     };
   }>, reply: FastifyReply) => {
+    // This route exists only for an explicitly enabled lab/test harness. It
+    // must not be discoverable as a production data-writing primitive.
+    if (!isSyntheticTestDataEnabled()) {
+      return reply.status(404).send({
+        success: false,
+        code: 'SYNTHETIC_TEST_DATA_DISABLED',
+        error: 'A simulação de lead está desabilitada fora de um ambiente de teste explícito.',
+      });
+    }
+
     const { workspaceId } = request.params;
     const {
-      messageText = 'Olá! Vi o anúncio da escova por R$ 59 no Instagram e quero agendar.',
-      phone = '5549998877665',
-      contactName = 'Lead Teste Meta Ads',
+      messageText,
+      phone,
+      contactName,
       referralPayload,
     } = request.body || {};
+
+    if (!messageText?.trim() || !phone?.trim() || !contactName?.trim()) {
+      return reply.status(400).send({
+        success: false,
+        code: 'SYNTHETIC_INPUT_REQUIRED',
+        error: 'messageText, phone e contactName são obrigatórios para uma simulação explícita.',
+      });
+    }
 
     const client = await dbPool.connect();
     try {
       // 1. Fetch channel connection and campaigns
       let channelConnectionId: string;
-      const chRes = await client.query('SELECT id, public_config FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1', [workspaceId]);
-      let pubCfg: any = {};
-      if (chRes.rowCount && chRes.rowCount > 0) {
-        channelConnectionId = chRes.rows[0].id;
-        pubCfg = chRes.rows[0].public_config || {};
-      } else {
-        const newCh = await client.query(`
-          INSERT INTO public.channel_connections (id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at)
-          VALUES (gen_random_uuid(), $1, 'waha', '', 'WhatsApp Web', '{"engine":"WAHA"}', 'CONNECTED', NOW(), NOW())
-          RETURNING id
-        `, [workspaceId]);
-        channelConnectionId = newCh.rows[0].id;
+      const chRes = await client.query(`
+        SELECT id, public_config
+        FROM public.channel_connections
+        WHERE workspace_id = $1
+          AND status = 'CONNECTED'
+          AND provider IN ('meta_cloud', 'waha')
+          AND phone_number <> 'Meta CAPI Tracking'
+        ORDER BY CASE WHEN provider = 'meta_cloud' THEN 1 ELSE 2 END, created_at ASC
+        LIMIT 1
+      `, [workspaceId]);
+      if (!chRes.rowCount) {
+        return reply.status(409).send({
+          success: false,
+          code: 'WHATSAPP_CHANNEL_REQUIRED',
+          error: 'A simulação exige um canal WhatsApp conectado no workspace; nenhum canal sintético será criado.',
+        });
       }
+      channelConnectionId = chRes.rows[0].id;
+      const pubCfg: any = chRes.rows[0].public_config || {};
 
-      const campaigns = pubCfg?.trackingConfig?.campaigns || [];
+          const campaigns = Array.isArray(pubCfg?.campaignMappings)
+            ? pubCfg.campaignMappings
+            : Array.isArray(pubCfg?.trackingConfig?.campaigns)
+              ? pubCfg.trackingConfig.campaigns
+              : [];
 
       // 2. Upsert Contact
       const contactRes = await client.query(`
@@ -2263,7 +2445,7 @@ export async function whatsappChannelRoutes(
       }
 
       // 4. Insert Conversation Message
-      const msgId = `sim_${Date.now()}`;
+      const msgId = `synthetic_${Date.now()}`;
       await client.query(`
         INSERT INTO public.conversation_messages (
           id, workspace_id, channel_connection_id, journey_id, contact_id,
@@ -2274,16 +2456,7 @@ export async function whatsappChannelRoutes(
       `, [workspaceId, channelConnectionId, journeyId, contactId, msgId, messageText]);
 
       // 5. Extract & Persist Attribution
-      const defaultReferral = referralPayload || {
-        source_id: '23849182391023',
-        source_type: 'ad',
-        headline: 'Escovaria e Esmalteria Chapecó - Escova Express',
-        body: 'Cabelos lisos e tratados sem espera.',
-        source_url: 'https://instagram.com/p/C_sampleAd',
-        ctwa_clid: 'ctwa_test_click_849204812',
-      };
-
-      const attr = AttributionService.extractAttribution(messageText, defaultReferral, campaigns);
+      const attr = AttributionService.extractAttribution(messageText, referralPayload, campaigns);
       let contextId = null;
       if (attr) {
         contextId = await AttributionService.persistAttribution(client, workspaceId, journeyId, attr, new Date());
@@ -2291,7 +2464,7 @@ export async function whatsappChannelRoutes(
 
       return {
         success: true,
-        message: 'Lead de teste simulado com sucesso!',
+        message: 'Lead sintético criado no ambiente de teste explícito.',
         journeyId,
         contactId,
         attribution: attr,
@@ -2319,11 +2492,22 @@ export async function whatsappChannelRoutes(
     try {
       // 1. Fetch campaigns config
       const chRes = await client.query(
-        'SELECT public_config FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1',
+        `SELECT public_config
+         FROM public.channel_connections
+         WHERE workspace_id = $1
+           AND provider IN ('meta_cloud', 'waha')
+           AND status = 'CONNECTED'
+           AND phone_number <> 'Meta CAPI Tracking'
+         ORDER BY CASE WHEN provider = 'meta_cloud' THEN 1 ELSE 2 END, created_at ASC
+         LIMIT 1`,
         [workspaceId]
       );
       const pubCfg = chRes.rows[0]?.public_config || {};
-      const campaigns = pubCfg?.trackingConfig?.campaigns || [];
+      const campaigns = Array.isArray(pubCfg?.campaignMappings)
+        ? pubCfg.campaignMappings
+        : Array.isArray(pubCfg?.trackingConfig?.campaigns)
+          ? pubCfg.trackingConfig.campaigns
+          : [];
 
       // 2. Fetch journeys that either don't have acquisition_contexts or need rescan
       const journeysQuery = forceRescan
@@ -2431,53 +2615,112 @@ export async function whatsappChannelRoutes(
       const stats = statsRes.rows[0] || {};
 
       const timingsQuery = `
-        WITH FirstInbound AS (
-          SELECT journey_id, MIN(sent_at) as first_inbound_at
+        WITH first_inbound AS (
+          SELECT DISTINCT ON (journey_id) journey_id, sent_at AS first_inbound_at
           FROM public.conversation_messages
           WHERE workspace_id = $1 AND direction = 'inbound' AND sent_at >= $2
-          GROUP BY journey_id
+          ORDER BY journey_id, sent_at ASC
         ),
-        FirstOutbound AS (
-          SELECT 
-            m.journey_id, 
+        first_outbound AS (
+          SELECT DISTINCT ON (m.journey_id, m.sender_type)
+            m.journey_id,
             m.sender_type,
-            MIN(m.sent_at) as first_outbound_at
+            m.sent_at AS first_outbound_at,
+            fi.first_inbound_at
           FROM public.conversation_messages m
-          INNER JOIN FirstInbound fi ON fi.journey_id = m.journey_id
-          WHERE m.workspace_id = $1 AND m.direction = 'outbound' AND m.sent_at >= fi.first_inbound_at
-          GROUP BY m.journey_id, m.sender_type
+          INNER JOIN first_inbound fi ON fi.journey_id = m.journey_id
+          WHERE m.workspace_id = $1
+            AND m.direction = 'outbound'
+            AND m.sent_at >= fi.first_inbound_at
+          ORDER BY m.journey_id, m.sender_type, m.sent_at ASC
         )
-        SELECT 
-          fo.sender_type,
-          AVG(EXTRACT(EPOCH FROM (fo.first_outbound_at - fi.first_inbound_at))) as avg_response_seconds,
-          COUNT(fo.journey_id) as sample_count
-        FROM FirstOutbound fo
-        JOIN FirstInbound fi ON fi.journey_id = fo.journey_id
-        GROUP BY fo.sender_type
+        SELECT
+          sender_type,
+          AVG(EXTRACT(EPOCH FROM (first_outbound_at - first_inbound_at))) AS avg_response_seconds,
+          COUNT(*) AS sample_count,
+          COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (first_outbound_at - first_inbound_at)) <= 300) AS responded_under_5m,
+          COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (first_outbound_at - first_inbound_at)) > 900) AS delayed_over_15m
+        FROM first_outbound
+        GROUP BY sender_type
       `;
       const timingsRes = await client.query(timingsQuery, [workspaceId, sinceDate]);
-      
-      let aiAvgSec = 3.8;
-      let humanAvgSec = 2040; // ~34 min
+
+      const trafficTimingQuery = `
+        WITH attributed AS (
+          SELECT DISTINCT j.id, j.total_revenue_minor
+          FROM public.commercial_journeys j
+          INNER JOIN public.acquisition_contexts ac ON ac.journey_id = j.id
+          WHERE j.workspace_id = $1 AND j.created_at >= $2
+        ),
+        first_inbound AS (
+          SELECT DISTINCT ON (m.journey_id) m.journey_id, m.sent_at AS first_inbound_at
+          FROM public.conversation_messages m
+          INNER JOIN attributed a ON a.id = m.journey_id
+          WHERE m.direction = 'inbound'
+          ORDER BY m.journey_id, m.sent_at ASC
+        ),
+        first_outbound AS (
+          SELECT DISTINCT ON (m.journey_id) m.journey_id, m.sent_at AS first_outbound_at
+          FROM public.conversation_messages m
+          INNER JOIN first_inbound fi ON fi.journey_id = m.journey_id
+          WHERE m.direction = 'outbound' AND m.sent_at >= fi.first_inbound_at
+          ORDER BY m.journey_id, m.sent_at ASC
+        )
+        SELECT
+          COUNT(*) AS total_ad_leads,
+          COUNT(*) FILTER (WHERE fo.first_outbound_at IS NOT NULL
+            AND EXTRACT(EPOCH FROM (fo.first_outbound_at - fi.first_inbound_at)) <= 300) AS responded_under_5m,
+          COUNT(*) FILTER (WHERE fo.first_outbound_at IS NOT NULL
+            AND EXTRACT(EPOCH FROM (fo.first_outbound_at - fi.first_inbound_at)) > 900) AS delayed_over_15m,
+          COALESCE(SUM(a.total_revenue_minor) FILTER (WHERE fo.first_outbound_at IS NOT NULL
+            AND EXTRACT(EPOCH FROM (fo.first_outbound_at - fi.first_inbound_at)) > 900), 0) AS delayed_revenue_minor
+        FROM attributed a
+        LEFT JOIN first_inbound fi ON fi.journey_id = a.id
+        LEFT JOIN first_outbound fo ON fo.journey_id = a.id
+      `;
+      const trafficTimingRes = await client.query(trafficTimingQuery, [workspaceId, sinceDate]);
+      const trafficTiming = trafficTimingRes.rows[0] || {};
+
+      let aiAvgSec: number | null = null;
+      let humanAvgSec: number | null = null;
       let aiSampleCount = 0;
       let humanSampleCount = 0;
+      let aiHandledCount = 0;
+      let humanHandledCount = 0;
+      let responseSamples = 0;
+      let responsesUnder5m = 0;
 
       for (const row of timingsRes.rows) {
         const sec = Number(row.avg_response_seconds || 0);
+        const samples = Number(row.sample_count || 0);
+        const under5m = Number(row.responded_under_5m || 0);
+        responseSamples += samples;
+        responsesUnder5m += under5m;
         if (row.sender_type === 'bot' || row.sender_type === 'agent' || row.sender_type === 'copilot') {
-          aiAvgSec = Math.max(1.5, Math.round(sec));
-          aiSampleCount = Number(row.sample_count || 0);
+          aiAvgSec = Math.round(sec);
+          aiSampleCount = samples;
+          aiHandledCount += samples;
         } else {
-          humanAvgSec = Math.max(60, Math.round(sec));
-          humanSampleCount = Number(row.sample_count || 0);
+          humanAvgSec = Math.round(sec);
+          humanSampleCount = samples;
+          humanHandledCount += samples;
         }
       }
 
-      const totalAdLeads = Number(stats.total_ad_leads || 0);
-      const totalJourneys = Math.max(1, Number(stats.total_journeys || 0));
-      const goldenWindowRate = 88.5;
-      const adLeadsDelayed = Math.round(totalAdLeads * 0.22);
-      const estimatedLoss = adLeadsDelayed * 89;
+      const totalAdLeads = Number(trafficTiming.total_ad_leads || stats.total_ad_leads || 0);
+      const respondedUnder5m = Number(trafficTiming.responded_under_5m || 0);
+      const adLeadsDelayed = Number(trafficTiming.delayed_over_15m || 0);
+      const delayedRevenueMinor = Number(trafficTiming.delayed_revenue_minor || 0);
+      const totalJourneys = Number(stats.total_journeys || 0);
+      const handledTotal = aiHandledCount + humanHandledCount;
+      const aiPercent = handledTotal > 0 ? Math.round((aiHandledCount / handledTotal) * 1000) / 10 : 0;
+      const humanPercent = handledTotal > 0 ? Math.round((humanHandledCount / handledTotal) * 1000) / 10 : 0;
+      const goldenWindowRate = responseSamples > 0
+        ? Math.round((responsesUnder5m / responseSamples) * 1000) / 10
+        : null;
+      const speedAdvantage = aiAvgSec !== null && humanAvgSec !== null && aiAvgSec > 0
+        ? `${Math.round(humanAvgSec / aiAvgSec)}x mais rápida`
+        : 'Sem dados';
 
       return {
         success: true,
@@ -2485,34 +2728,39 @@ export async function whatsappChannelRoutes(
         period,
         metrics: {
           aiResponseTimeSeconds: aiAvgSec,
-          aiResponseTimeFormatted: `${aiAvgSec}s`,
+          aiResponseTimeFormatted: aiAvgSec === null ? 'Sem dados' : `${aiAvgSec}s`,
           humanResponseTimeSeconds: humanAvgSec,
-          humanResponseTimeFormatted: humanAvgSec > 3600 
+          humanResponseTimeFormatted: humanAvgSec === null ? 'Sem registros' : humanAvgSec > 3600
             ? `${(humanAvgSec / 3600).toFixed(1)}h` 
             : `${Math.round(humanAvgSec / 60)} min`,
-          speedAdvantage: `${Math.round(humanAvgSec / Math.max(1, aiAvgSec))}x mais rápida`,
+          speedAdvantage,
           goldenWindowPercent: goldenWindowRate,
           volumeDistribution: {
-            aiPercent: 68,
-            humanPercent: 32,
-            aiHandledCount: Math.round(totalJourneys * 0.68),
-            humanHandledCount: Math.round(totalJourneys * 0.32),
+            aiPercent,
+            humanPercent,
+            aiHandledCount,
+            humanHandledCount,
           },
           trafficAudit: {
             totalAdLeads,
-            respondedUnder5m: Math.max(0, totalAdLeads - adLeadsDelayed),
+            respondedUnder5m,
             delayedOver15m: adLeadsDelayed,
-            adRevenueAtRiskBrl: (estimatedLoss).toFixed(2),
+            adRevenueAtRiskBrl: (delayedRevenueMinor / 100).toFixed(2),
             trafficVsAttendanceVerdict: adLeadsDelayed > 0
-              ? `Atenção: ${adLeadsDelayed} leads de anúncios esperaram mais de 15 minutos pelo atendente humano, gerando risco de R$ ${estimatedLoss.toFixed(2)} em perda de conversão. O tráfego entregou o lead, o gargalo foi a demora de resposta humana.`
-              : 'Excelente! Todos os leads de tráfego foram atendidos imediatamente dentro da Janela de Ouro (< 5 min).',
+              ? `Atenção: ${adLeadsDelayed} leads atribuídos a anúncios tiveram primeira resposta após 15 minutos. Receita já atribuída nesse grupo: R$ ${(delayedRevenueMinor / 100).toFixed(2)}; isso é um sinal operacional, não uma estimativa de perda.`
+              : totalAdLeads > 0
+                ? 'Nenhum lead atribuído a anúncio ultrapassou 15 minutos até a primeira resposta no período consultado.'
+                : 'Sem dados de tráfego atribuídos no período consultado.',
+            revenueBasis: 'attributed_revenue_only',
           },
-          hourlySpeedHeatmap: [
-            { period: 'Manhã (08h-12h)', aiSpeed: '3.2s', humanSpeed: '14 min', status: 'OK' },
-            { period: 'Almoço (12h-14h)', aiSpeed: '3.5s', humanSpeed: '42 min', status: 'GARGALO' },
-            { period: 'Tarde (14h-18h)', aiSpeed: '4.1s', humanSpeed: '22 min', status: 'OK' },
-            { period: 'Noite/Madrugada (18h-08h)', aiSpeed: '3.9s', humanSpeed: '180 min', status: 'CRÍTICO' },
-          ],
+          hourlySpeedHeatmap: [],
+          sampleStatus: totalJourneys > 0 || responseSamples > 0 ? 'AVAILABLE' : 'INSUFFICIENT_DATA',
+          sampleCounts: {
+            journeys: totalJourneys,
+            responseSamples,
+            ai: aiSampleCount,
+            human: humanSampleCount,
+          },
         },
       };
     } catch (err: any) {
@@ -2525,10 +2773,11 @@ export async function whatsappChannelRoutes(
   // 13. WAHA Media Proxy (Streams media files from internal WAHA container)
   // This route is intentionally public (no JWT) so img/audio/video src tags can load media directly.
   app.get('/api/v1/channels/waha/media-proxy', async (request: FastifyRequest<{ Querystring: { path?: string; messageId?: string; session?: string } }>, reply: FastifyReply) => {
-    const { path, messageId, session = 'default' } = request.query || {};
+    const { path, messageId, session: requestedSession } = request.query || {};
+    const explicitSession = typeof requestedSession === 'string' ? requestedSession.trim() : '';
     let targetUrl = '';
     let parsedMessageId: string | null = null;
-    let parsedSession = session;
+    let parsedSession = explicitSession;
 
     if (path) {
       targetUrl = `${WAHA_BASE_URL}${path.startsWith('/') ? path : '/' + path}`;
@@ -2536,16 +2785,22 @@ export async function whatsappChannelRoutes(
       // Extract messageId from path for fallback: /api/files/{session}/{msgId}.ext
       const fileMatch = path.match(/\/api\/files\/([^/]+)\/([^/]+?)(\.[a-z0-9]+)?$/i);
       if (fileMatch) {
-        parsedSession = fileMatch[1] || session;
+        parsedSession = fileMatch[1] || explicitSession;
         parsedMessageId = fileMatch[2];
       }
     } else if (messageId) {
+      if (!explicitSession) {
+        return reply.status(400).send({ error: 'A sessão WAHA é obrigatória quando media é buscada por messageId', code: 'WAHA_SESSION_REQUIRED' });
+      }
       parsedMessageId = messageId;
-      targetUrl = `${WAHA_BASE_URL}/api/${encodeURIComponent(session)}/chats/messages/${encodeURIComponent(messageId)}/media`;
+      targetUrl = `${WAHA_BASE_URL}/api/${encodeURIComponent(explicitSession)}/chats/messages/${encodeURIComponent(messageId)}/media`;
     }
 
     if (!targetUrl) {
       return reply.status(400).send({ error: 'Path ou messageId é obrigatório' });
+    }
+    if (!parsedSession) {
+      return reply.status(400).send({ error: 'A sessão WAHA é obrigatória para buscar mídia', code: 'WAHA_SESSION_REQUIRED' });
     }
 
     const wahaKey = getWahaApiKey();

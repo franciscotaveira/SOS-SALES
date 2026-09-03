@@ -98,7 +98,9 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
     (acc, ws) => acc + ws.channels.filter((c) => c.health === 'connected' || c.health === 'healthy').length,
     0
   );
-  const totalOperatorsCount = workspaces.reduce((acc, ws) => acc + (ws.activeOperatorCount || 1), 0);
+  // A missing operator count means "not reported", not one active operator.
+  // Never inflate an operational KPI with a UI fallback.
+  const totalOperatorsCount = workspaces.reduce((acc, ws) => acc + (ws.activeOperatorCount ?? 0), 0);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -421,7 +423,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
                       <Users className="w-3.5 h-3.5 text-slate-500" /> Time & Licenças:
                     </span>
                     <span className="text-slate-300 font-medium">
-                      {ws.activeOperatorCount || 1} atendentes
+                      {ws.activeOperatorCount ?? 0} atendentes
                     </span>
                   </div>
 

@@ -46,6 +46,13 @@ export interface OutboxProcessingGateway {
     workerId: string;
   }): Promise<void>;
 
+  /** Extends a leased event while a slow provider call is in flight. */
+  renewLease?(params: {
+    eventId: string;
+    claimToken: string;
+    workerId: string;
+  }): Promise<void>;
+
   /**
    * Records a processing failure and increments the retry counter.
    * The event is re-queued or moved to the DLQ based on the retry policy.

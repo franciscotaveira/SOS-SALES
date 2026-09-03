@@ -11,7 +11,16 @@ function buildRouteApp(overrides: {
 } = {}) {
   const app = Fastify({ logger: false });
   const query = overrides.query || vi.fn()
-    .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: journeyId }] })
+    .mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{
+        id: journeyId,
+        channel_connection_id: '40000000-0000-4000-8000-000000000004',
+        provider: 'meta_cloud',
+        channel_status: 'CONNECTED',
+        contact_phone: '+5549999999999',
+      }],
+    })
     .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: journeyId, responder_owner: 'sos_sales' }] });
   const controlThread = overrides.controlThread || vi.fn().mockResolvedValue({ messagingProduct: 'whatsapp' });
 
@@ -39,6 +48,7 @@ describe('Meta Business Agent thread control route', () => {
     expect(controlThread).toHaveBeenCalledWith(workspaceId, {
       action: 'take',
       to: '+5549999999999',
+      channelConnectionId: '40000000-0000-4000-8000-000000000004',
     });
     expect(query).toHaveBeenLastCalledWith(
       expect.stringContaining('UPDATE public.commercial_journeys'),

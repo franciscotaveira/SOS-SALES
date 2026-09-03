@@ -112,7 +112,7 @@ export const MetaTrackingSetupView: React.FC<MetaTrackingSetupViewProps> = ({ wo
               </label>
               <label className="text-xs font-bold text-slate-700">
                 Pixel ID
-                <input value={tracking.metaPixelId} onChange={(event) => setTracking((current) => ({ ...current, metaPixelId: event.target.value }))} placeholder="Opcional quando igual ao Dataset" className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-xs font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" />
+                <input value={tracking.metaPixelId} onChange={(event) => setTracking((current) => ({ ...current, metaPixelId: event.target.value }))} placeholder="Opcional; informe apenas se for diferente do Dataset" className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-xs font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" />
               </label>
             </div>
 

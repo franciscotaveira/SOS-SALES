@@ -91,7 +91,39 @@ export interface WabaSendFlowOptions {
 
 
 export class WabaClient {
-  private readonly baseUrl = 'https://graph.facebook.com/v20.0';
+  private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
+
+  constructor(options: {
+    baseUrl?: string;
+    fetchImpl?: typeof fetch;
+    timeoutMs?: number;
+  } = {}) {
+    this.baseUrl = (options.baseUrl || 'https://graph.facebook.com/v20.0').replace(/\/$/, '');
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    const configuredTimeout = options.timeoutMs ?? Number(process.env.WABA_REQUEST_TIMEOUT_MS || 15_000);
+    this.timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+      ? Math.min(configuredTimeout, 120_000)
+      : 15_000;
+  }
+
+  /** Every provider call must have a finite deadline; otherwise a stuck Meta
+   * request can hold a worker lease until the conversation appears lost. */
+  private async fetchWithTimeout(input: string, init: RequestInit = {}): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      return await this.fetchImpl(input, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(`Meta WABA request timed out after ${this.timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
 
   /**
    * Normalizes a phone number for the Meta API.
@@ -134,7 +166,7 @@ export class WabaClient {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
 
-    const response = await fetch(`${this.baseUrl}/${phoneNumberId}/messages`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -169,7 +201,7 @@ export class WabaClient {
       mediaPayload.filename = filename;
     }
 
-    const response = await fetch(`${this.baseUrl}/${phoneNumberId}/messages`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -214,7 +246,7 @@ export class WabaClient {
       interactivePayload.footer = { text: footerText };
     }
 
-    const response = await fetch(`${this.baseUrl}/${phoneNumberId}/messages`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -264,7 +296,7 @@ export class WabaClient {
       interactivePayload.footer = { text: footerText };
     }
 
-    const response = await fetch(`${this.baseUrl}/${phoneNumberId}/messages`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -315,7 +347,7 @@ export class WabaClient {
       });
     }
 
-    const response = await fetch(`${this.baseUrl}/${phoneNumberId}/messages`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -343,7 +375,7 @@ export class WabaClient {
 
   /** Mark incoming message as read (Blue checks) */
   async markAsRead(phoneNumberId: string, accessToken: string, messageId: string): Promise<boolean> {
-    const response = await fetch(`${this.baseUrl}/${phoneNumberId}/messages`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -360,7 +392,7 @@ export class WabaClient {
 
   /** List approved templates from Meta WhatsApp Business Account */
   async listTemplates(wabaId: string, accessToken: string): Promise<any[]> {
-    const response = await fetch(`${this.baseUrl}/${wabaId}/message_templates?limit=100`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/${wabaId}/message_templates?limit=100`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const data = (await response.json()) as any;
@@ -409,7 +441,7 @@ export class WabaClient {
       components,
     };
 
-    const response = await fetch(`${this.baseUrl}/${wabaId}/message_templates`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/${wabaId}/message_templates`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -432,7 +464,7 @@ export class WabaClient {
 
   /** Delete Message Template by Name from Meta */
   async deleteTemplate(wabaId: string, accessToken: string, templateName: string): Promise<boolean> {
-    const response = await fetch(`${this.baseUrl}/${wabaId}/message_templates?name=${encodeURIComponent(templateName)}`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/${wabaId}/message_templates?name=${encodeURIComponent(templateName)}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -483,7 +515,7 @@ export class WabaClient {
       interactivePayload.footer = { text: footerText };
     }
 
-    const response = await fetch(`${this.baseUrl}/${phoneNumberId}/messages`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,

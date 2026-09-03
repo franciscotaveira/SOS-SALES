@@ -107,6 +107,31 @@ export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway 
     }
   }
 
+  async renewLease(params: {
+    eventId: string;
+    claimToken: string;
+    workerId: string;
+  }): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL ROLE service_role');
+      await client.query(`SELECT set_config('request.jwt.claim.role', 'service_role', true)`);
+      await client.query(
+        `SELECT public.renew_outbox_lease($1, $2, $3)`,
+        [params.eventId, params.claimToken, params.workerId],
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      await client.query('RESET ROLE').catch(() => {});
+      await client.query(`SELECT set_config('request.jwt.claim.role', '', false)`).catch(() => {});
+      client.release();
+    }
+  }
+
   async failEvent(params: {
     eventId: string;
     claimToken: string;

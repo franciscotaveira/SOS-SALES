@@ -62,7 +62,8 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   onChangeSubTab,
 }) => {
   const [currentTab, setCurrentTab] = useState(() => normalizeTab(activeSubTab));
-  const [firstResponseMins, setFirstResponseMins] = useState(15);
+  const [firstResponseMins, setFirstResponseMins] = useState<number | null>(null);
+  const [slaState, setSlaState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [savedSlaToast, setSavedSlaToast] = useState(false);
   const [slaError, setSlaError] = useState<string | null>(null);
   const [isSavingSla, setIsSavingSla] = useState(false);
@@ -102,6 +103,10 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
 
   const handleSaveSla = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (firstResponseMins === null || !Number.isFinite(firstResponseMins) || firstResponseMins < 1) {
+      setSlaError('Informe um tempo de SLA válido antes de salvar.');
+      return;
+    }
     setIsSavingSla(true);
     setSlaError(null);
     try {
@@ -112,7 +117,10 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
       });
       if (!response.ok) throw new Error('Não foi possível salvar a política de SLA.');
       const payload = await response.json();
-      setFirstResponseMins(payload?.data?.slaPolicy?.firstResponseMinutes ?? firstResponseMins);
+      const persistedValue = payload?.data?.slaPolicy?.firstResponseMinutes;
+      if (typeof persistedValue !== 'number') throw new Error('O servidor não devolveu a política de SLA persistida.');
+      setFirstResponseMins(persistedValue);
+      setSlaState('ready');
       setSavedSlaToast(true);
       setTimeout(() => setSavedSlaToast(false), 3000);
     } catch (error) {
@@ -123,13 +131,25 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   };
 
   useEffect(() => {
+    setSlaState('loading');
+    setSlaError(null);
     authenticatedFetch(`/api/v1/workspaces/${workspace.id}/operational-settings`)
-      .then(async (response) => response.ok ? response.json() : null)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error || 'Não foi possível consultar a política de SLA.');
+        return payload;
+      })
       .then((payload) => {
         const value = payload?.data?.slaPolicy?.firstResponseMinutes;
-        if (typeof value === 'number') setFirstResponseMins(value);
+        if (typeof value !== 'number') throw new Error('A política de SLA ainda não foi configurada neste workspace.');
+        setFirstResponseMins(value);
+        setSlaState('ready');
       })
-      .catch(() => undefined);
+      .catch((error) => {
+        setFirstResponseMins(null);
+        setSlaState('error');
+        setSlaError(error instanceof Error ? error.message : 'Não foi possível consultar a política de SLA.');
+      });
   }, [workspace.id]);
 
   const loadMembers = useCallback(async () => {
@@ -201,7 +221,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
       })
       .then((data) => {
         if (!active) return;
-        setWabaChannel(data?.configured && data?.connected
+        setWabaChannel(data?.configured && data?.credentialsAvailable === true
           ? { state: 'connected', phoneNumber: data.phoneNumber, verifiedName: data.verifiedName }
           : { state: 'unconfigured' });
       })
@@ -345,12 +365,12 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                         : 'bg-amber-50 text-amber-800 border-amber-200'
                     }`}>
                       {wabaChannel.state === 'connected' ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <WifiOff className="w-3 h-3" />}
-                      {wabaChannel.state === 'connected' ? 'Conectado' : wabaChannel.state === 'loading' ? 'Consultando...' : wabaChannel.state === 'error' ? 'Status indisponível' : 'Configuração pendente'}
+                      {wabaChannel.state === 'connected' ? 'Configuração registrada' : wabaChannel.state === 'loading' ? 'Consultando...' : wabaChannel.state === 'error' ? 'Status indisponível' : 'Configuração pendente'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
                     {wabaChannel.state === 'connected'
-                      ? `Número confirmado: ${wabaChannel.phoneNumber || 'não informado'}${wabaChannel.verifiedName ? ` · ${wabaChannel.verifiedName}` : ''}`
+                      ? `Credenciais registradas no backend: ${wabaChannel.phoneNumber || 'número não informado'}${wabaChannel.verifiedName ? ` · ${wabaChannel.verifiedName}` : ''}. A conectividade atual deve ser validada por uma consulta Meta.`
                       : <>Onboarding via <strong>Embedded Signup</strong>. Conecte o número oficial para começar a receber e responder conversas.</>}
                   </p>
                 </div>
@@ -445,6 +465,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
             {slaError && <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{slaError}</p>}
 
             <form onSubmit={handleSaveSla} className="space-y-4">
+              {slaState === 'loading' && <p className="text-xs text-slate-500">Consultando a política persistida...</p>}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 font-heading">
                   Tempo Máximo para Primeiro Atendimento (Minutos)
@@ -453,8 +474,9 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                   type="number"
                   min={1}
                   max={1440}
-                  value={firstResponseMins}
-                  onChange={(e) => setFirstResponseMins(Number(e.target.value))}
+                  value={firstResponseMins ?? ''}
+                  onChange={(e) => setFirstResponseMins(e.target.value ? Number(e.target.value) : null)}
+                  disabled={slaState === 'loading'}
                   className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-2xs"
                 />
                 <span className="text-[11px] text-slate-400 mt-1 block">
@@ -465,7 +487,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={isSavingSla}
+                  disabled={isSavingSla || slaState === 'loading' || firstResponseMins === null}
                   className="px-5 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                 >
                   {isSavingSla ? 'Salvando...' : 'Salvar SLA de primeira resposta'}
@@ -557,7 +579,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
               <QrCode className="w-6 h-6" />
             </div>
             
-            <h3 className="text-base font-bold text-slate-950 font-heading">Conectar WhatsApp Oficial</h3>
+            <h3 className="text-base font-bold text-slate-950 font-heading">Conectar WhatsApp Web (WAHA)</h3>
             <p className="text-xs text-slate-500 mt-1 mb-4">
               Abra o WhatsApp no celular &gt; Aparelhos Conectados &gt; Conectar Aparelho.
             </p>
@@ -625,7 +647,12 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
         isOpen={isEmbeddedModalOpen}
         onClose={() => setIsEmbeddedModalOpen(false)}
         workspace={workspace}
-        onSuccess={() => {
+        canManage={workspace.operatorRole === 'owner'}
+        onSuccess={(data) => {
+          setWabaChannel({
+            state: 'connected',
+            phoneNumber: data.verifiedPhone,
+          });
           setIsEmbeddedModalOpen(false);
         }}
       />

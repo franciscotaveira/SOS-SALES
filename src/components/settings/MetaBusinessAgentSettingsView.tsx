@@ -10,9 +10,12 @@ interface MetaBusinessAgentSettingsViewProps {
 
 type Eligibility = 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
 
+const ELIGIBILITY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
 interface EligibilityPayload {
   status: Eligibility;
   phoneNumberId?: string;
+  channelConnectionId?: string;
   checkedAt?: string;
   reason?: string;
 }
@@ -74,7 +77,10 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
     try {
       const response = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/meta-business-agent/onboarding`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(catalogId.trim() ? { catalogId: catalogId.trim() } : {}),
+        body: JSON.stringify({
+          ...(catalogId.trim() ? { catalogId: catalogId.trim() } : {}),
+          ...(eligibility.channelConnectionId ? { channelConnectionId: eligibility.channelConnectionId } : {}),
+        }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || 'Não foi possível iniciar o onboarding.');
@@ -83,7 +89,7 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
       // flag.
       const refreshedConfig = await loadWorkspaceAgentConfig(workspaceId).catch(() => null);
       if (refreshedConfig) setAgentConfig(refreshedConfig);
-      setFeedback({ type: 'success', message: `Onboarding iniciado. Agente Meta: ${payload?.data?.agentId || 'criado'}.` });
+      setFeedback({ type: 'success', message: `Onboarding aceito pela Meta e em preparação assíncrona. Agente: ${payload?.data?.agentId || 'criado'}. Execute o teste oficial quando a preparação terminar.` });
     } catch (error) {
       setFeedback({ type: 'error', message: error instanceof Error ? error.message : 'Onboarding indisponível.' });
     } finally {
@@ -98,11 +104,16 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
     try {
       const response = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/meta-business-agent/test`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userMsg: testMessage }),
+        body: JSON.stringify({
+          userMsg: testMessage,
+          ...(eligibility.channelConnectionId ? { channelConnectionId: eligibility.channelConnectionId } : {}),
+        }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || 'Não foi possível executar o teste.');
       setTestResponse({ text: payload.data.agentResponse, conversationId: payload.data.conversationId });
+      const refreshedConfig = await loadWorkspaceAgentConfig(workspaceId).catch(() => null);
+      if (refreshedConfig) setAgentConfig(refreshedConfig);
     } catch (error) {
       setFeedback({ type: 'error', message: error instanceof Error ? error.message : 'Teste indisponível.' });
     } finally {
@@ -110,12 +121,31 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
     }
   };
 
+  const eligibilityFresh = Boolean(
+    eligibility.status === 'ELIGIBLE'
+      && eligibility.checkedAt
+      && Number.isFinite(Date.parse(eligibility.checkedAt))
+      // Keep the browser gate aligned with the backend's bounded proof. A
+      // future timestamp is not fresh evidence (clock skew is tolerated only
+      // by the server-side policy); it must not enable onboarding/test UI.
+      && Date.now() - Date.parse(eligibility.checkedAt) >= 0
+      && Date.now() - Date.parse(eligibility.checkedAt) <= ELIGIBILITY_MAX_AGE_MS,
+  );
   const eligible = eligibility.status === 'ELIGIBLE';
   const metaReadyForMode = Boolean(
-    agentConfig?.metaAgentEnabled
-      && agentConfig.metaAgentId
-      && eligible,
+    agentConfig?.metaAgentReady === true
+      && eligibilityFresh
+      && agentConfig.metaAgentActivationStatus === 'READY',
   );
+  const metaTestAvailable = Boolean(
+    agentConfig?.metaAgentId
+      && eligibilityFresh
+      && (agentConfig.metaAgentActivationStatus === 'PENDING'
+        || agentConfig.metaAgentActivationStatus === 'READY'
+        || agentConfig.metaAgentActivationStatus === 'FAILED'),
+  );
+  const onboardingInProgress = agentConfig?.metaAgentActivationStatus === 'PENDING'
+    || agentConfig?.metaAgentActivationStatus === 'READY';
 
   return (
     <section className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
@@ -124,15 +154,15 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
           <div className="rounded-xl bg-violet-600 p-2.5 text-white"><Bot size={18} /></div>
           <div>
             <h3 className="text-sm font-bold text-slate-900">Meta Business Agent</h3>
-            <p className="mt-0.5 max-w-2xl text-xs text-slate-600">Use o agente nativo da Meta como primeira camada. O SOS Sales assume quando a Meta não for elegível, falhar ou houver transbordo humano.</p>
+            <p className="mt-0.5 max-w-2xl text-xs text-slate-600">Use o agente nativo da Meta como primeira camada. O SOS Sales assume automaticamente quando a Meta for comprovadamente inelegível; indisponibilidade ou erro ficam pausados para revisão, sem respostas duplicadas.</p>
           </div>
         </div>
         <button type="button" onClick={() => void loadEligibility()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-violet-800 disabled:opacity-60"><RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Atualizar elegibilidade</button>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</span><p className={`mt-1 text-xs font-bold ${eligible ? 'text-emerald-700' : eligibility.status === 'INELIGIBLE' ? 'text-amber-700' : 'text-slate-600'}`}>{loading ? 'Consultando…' : eligible ? 'Elegível' : eligibility.status === 'INELIGIBLE' ? 'Não elegível' : 'Indisponível para consulta'}</p></div>
-        <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Número Meta</span><p className="mt-1 truncate font-mono text-xs text-slate-700">{eligibility.phoneNumberId || 'Não informado'}</p><p className="mt-1 text-[10px] text-slate-400">Agente: {agentConfig?.metaAgentId || 'ainda não ativado'}</p></div>
+        <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</span><p className={`mt-1 text-xs font-bold ${eligibilityFresh ? 'text-emerald-700' : eligibility.status === 'INELIGIBLE' || (eligible && !eligibilityFresh) ? 'text-amber-700' : 'text-slate-600'}`}>{loading ? 'Consultando…' : eligibilityFresh ? 'Elegível (verificado)' : eligibility.status === 'INELIGIBLE' ? 'Não elegível' : eligible ? 'Verificação expirada' : 'Indisponível para consulta'}</p>{eligibility.checkedAt && <p className="mt-1 text-[10px] text-slate-400">Última verificação: {new Date(eligibility.checkedAt).toLocaleString('pt-BR')}</p>}</div>
+        <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Número Meta</span><p className="mt-1 truncate font-mono text-xs text-slate-700">{eligibility.phoneNumberId || 'Não informado'}</p><p className="mt-1 text-[10px] text-slate-400">Canal: {eligibility.channelConnectionId || agentConfig?.metaAgentChannelConnectionId || 'não vinculado'}</p><p className="mt-1 text-[10px] text-slate-400">Agente: {agentConfig?.metaAgentId || 'ainda não ativado'}</p><p className={`mt-1 text-[10px] font-bold ${agentConfig?.metaAgentActivationStatus === 'READY' ? 'text-emerald-700' : agentConfig?.metaAgentActivationStatus === 'FAILED' ? 'text-rose-700' : 'text-amber-700'}`}>Ativação: {agentConfig?.metaAgentActivationStatus === 'READY' ? 'confirmada' : agentConfig?.metaAgentActivationStatus === 'PENDING' ? 'em preparação' : agentConfig?.metaAgentActivationStatus === 'FAILED' ? 'falhou — repetir teste' : 'não iniciada'}</p></div>
         <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Fallback</span><p className="mt-1 text-xs font-bold text-slate-700">IA SOS Sales + humano</p></div>
       </div>
 
@@ -148,12 +178,14 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
           <option value="manual">Somente equipe (sem resposta automática)</option>
         </select>
         {!canManage && <p className="mt-2 text-[10px] text-slate-500">Somente o proprietário do workspace pode alterar o responsável automático.</p>}
-        {canManage && !metaReadyForMode && <p className="mt-2 text-[10px] text-amber-700">A opção somente Meta será liberada depois de elegibilidade confirmada e onboarding concluído. Até lá, use o fallback ou a IA própria.</p>}
+        {canManage && !metaReadyForMode && <p className="mt-2 text-[10px] text-amber-700">A opção somente Meta será liberada depois de elegibilidade confirmada nas últimas 24 horas e onboarding concluído. Até lá, use o fallback ou a IA própria.</p>}
       </div>
 
       {eligibility.status === 'UNKNOWN' && (
         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          Conecte primeiro um número <strong>WhatsApp Oficial (Meta Cloud API)</strong> em Configurações da Meta Cloud. A IA própria do SOS Sales continua sendo o fallback enquanto esta conexão não estiver disponível.
+          {eligibility.phoneNumberId
+            ? <>A Meta não confirmou a elegibilidade agora. Verifique o token e o estado do número <strong>WhatsApp Oficial (Meta Cloud API)</strong> antes de tentar novamente.</>
+            : <>Conecte primeiro um número <strong>WhatsApp Oficial (Meta Cloud API)</strong> em Configurações da Meta Cloud. A IA própria do SOS Sales continua sendo o fallback enquanto esta conexão não estiver disponível.</>}
         </div>
       )}
 
@@ -164,14 +196,15 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
           <div className="flex items-center gap-2 text-xs font-bold text-slate-900"><WandSparkles size={15} className="text-violet-600" /> Ativar agente Meta</div>
           <p className="mt-1 text-[11px] text-slate-500">Inicia o onboarding oficial no número WABA conectado. A Meta processa a preparação de forma assíncrona.</p>
           <input value={catalogId} onChange={(event) => setCatalogId(event.target.value)} placeholder="Catalog ID (opcional, Instagram)" className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-violet-500" />
-          <button type="button" onClick={() => void startOnboarding()} disabled={!eligible || busy !== null} className="mt-2 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy === 'onboarding' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} {eligible ? 'Iniciar onboarding Meta' : 'Aguardando elegibilidade'}</button>
+          <button type="button" onClick={() => void startOnboarding()} disabled={!canManage || !eligibilityFresh || busy !== null || onboardingInProgress} className="mt-2 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy === 'onboarding' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} {!canManage ? 'Somente proprietário' : onboardingInProgress ? 'Onboarding já iniciado' : eligibilityFresh ? 'Iniciar onboarding Meta' : 'Aguardando elegibilidade verificada'}</button>
         </div>
 
         <form onSubmit={runTest} className="rounded-xl border border-violet-100 bg-white p-4">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-900"><Play size={15} className="text-violet-600" /> Testar antes de publicar</div>
           <p className="mt-1 text-[11px] text-slate-500">O teste usa a API da Meta e não envia mensagem para um cliente.</p>
           <textarea value={testMessage} onChange={(event) => setTestMessage(event.target.value)} rows={3} maxLength={2000} className="mt-3 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-violet-500" />
-          <button type="submit" disabled={!eligible || busy !== null || !testMessage.trim()} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-bold text-violet-800 disabled:cursor-not-allowed disabled:opacity-50">{busy === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Executar teste Meta</button>
+          <button type="submit" disabled={!metaTestAvailable || busy !== null || !testMessage.trim()} className="mt-2 inline-flex items-center gap-2 rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-bold text-violet-800 disabled:cursor-not-allowed disabled:opacity-50">{busy === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Executar teste Meta</button>
+          {!metaTestAvailable && <p className="mt-2 text-[10px] text-amber-700">Faça o onboarding primeiro; o teste só fica disponível após a Meta devolver um agent_id.</p>}
           {testResponse && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-700"><strong>Resposta:</strong> {testResponse.text}<div className="mt-1 font-mono text-[10px] text-slate-400">conversation_id: {testResponse.conversationId}</div></div>}
         </form>
       </div>

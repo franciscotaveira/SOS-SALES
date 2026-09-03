@@ -25,13 +25,13 @@ export const OutcomeModal: React.FC<OutcomeModalProps> = ({
 }) => {
   const [status, setStatus] = React.useState<OutcomeStatus>(journey.outcome?.status || 'won');
   const [dealValue, setDealValue] = React.useState<string>(
-    journey.outcome?.dealValueBrl ? journey.outcome.dealValueBrl.toString() : '59.00'
+    journey.outcome?.dealValueBrl ? journey.outcome.dealValueBrl.toString() : ''
   );
   const [service, setService] = React.useState<string>(
-    journey.outcome?.serviceOrProduct || journey.acquisition.referralOffer || 'Atendimento Comercial'
+    journey.outcome?.serviceOrProduct || journey.acquisition.referralOffer || ''
   );
   const [reason, setReason] = React.useState<string>(
-    journey.outcome?.reason || 'Lead confirmou interesse e fechou horário'
+    journey.outcome?.reason || ''
   );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 

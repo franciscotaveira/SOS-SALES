@@ -119,6 +119,11 @@ provedor. A interface nunca deve inferir propriedade apenas por um toggle local.
 4. Se a consulta de elegibilidade falhar: estado `UNKNOWN`, nunca converter erro em
    `INELIGIBLE`.
 5. Uma conversa tem apenas um owner de resposta automática por vez.
+6. A propriedade da Meta exige verificação de elegibilidade recente (janela máxima de
+   24 horas); estado `READY` sem prova fresca devolve a conversa ao fallback do SOS
+   Sales somente quando a conversa ainda pertence ao SOS Sales. Uma conversa já
+   entregue à Meta exige `take` confirmado por thread control antes de qualquer
+   resposta do SOS Sales, evitando dupla resposta durante uma falha transitória.
 
 ### 3.5 Conhecimento único, publicação por adaptador
 
@@ -310,11 +315,17 @@ no modal não possuem adaptador Meta tipado e contrato de persistência equivale
 Eles permanecem classificados como `CAPABILITY_PENDENTE`: não podem apresentar sucesso
 de envio nem ser promovidos como recurso do MVP até receberem o mesmo contrato acima.
 
-### P0.4 — Meta Business Agent: fundação de elegibilidade concluída; ativação ainda ausente
+### P0.4 — Meta Business Agent: adaptador implementado; ativação externa ainda não comprovada
 
-**[KNOWN]** A elegibilidade já possui contrato autenticado no SOS Sales. Onboarding,
-configuração, allowlist, teste/eval, persistência de `agent_id` e thread control do Meta
-Business Agent para WhatsApp continuam ausentes e não devem ser presumidos pela UI.
+**[KNOWN no candidato]** A elegibilidade, o onboarding idempotente, o teste/eval, a
+persistência de `agent_id`/estado de ativação e o thread control `take`/`release` já têm
+rotas autenticadas, validação de canal/tenant e contratos Meta versionados. O backend só
+considera o agente oficial pronto quando `activation_status=READY` após um teste oficial
+com resposta utilizável.
+
+**[UNVERIFIED]** Nenhuma dessas capacidades foi aplicada ao Supabase ou comprovada no VPS
+nesta rodada. A UI não pode presumir elegibilidade, onboarding concluído, allowlist ou
+controle de thread até a sequência de canário do P0.5 ser executada com credenciais reais.
 
 #### Primeira fundação implementada em 2026-08-30
 

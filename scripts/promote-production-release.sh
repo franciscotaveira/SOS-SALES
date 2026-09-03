@@ -106,8 +106,18 @@ require_migration_gate() {
   find "${candidate}/api/supabase/migrations" -type f -name '*.sql' -print -quit | grep -q .
 }
 
+require_schema_contract() {
+  local candidate="$1"
+  test -f "${candidate}/scripts/verify-production-schema-contract.mjs"
+  DATABASE_SSL_CA_FILE="${candidate}/certs/supabase-ca.crt" node \
+    "${candidate}/scripts/verify-production-schema-contract.mjs" \
+    --env-file "${root}/.env.production" \
+    --ca-file "${candidate}/certs/supabase-ca.crt"
+}
+
 require_base_release "${release}"
 require_migration_gate "${release}"
+require_schema_contract "${release}"
 
 if [[ -L "${current}" ]]; then
   old_release="$(readlink -f "${current}")"

@@ -4,6 +4,7 @@ import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.j
 import { MultimodalVisionAnalyzer } from '../../../infrastructure/ai/multimodal-vision-analyzer.js';
 import { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
 import { verifyOperatorAuth, unauthorized } from '../helpers/auth-guard.js';
+import { isProductionRuntime } from '../../../infrastructure/security/runtime-safety.js';
 
 export interface AiCopilotRoutesOptions {
   nvidiaEngine?: NvidiaNimEngine;
@@ -100,7 +101,23 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
         prompt?: string;
       };
 
-      const customEngine = body.apiKey ? new OpenRouterEngine(body.apiKey) : openrouterEngine;
+      // Provider credentials and model selection belong to the deployment, not
+      // to a browser request.  Keeping this diagnostics route available in
+      // production is useful for an operator, but accepting a client-supplied
+      // key/model would turn it into an untracked spend and data-exfiltration
+      // path.  Development/test may still exercise explicit credentials.
+      if (isProductionRuntime() && (body.apiKey?.trim() || body.model?.trim())) {
+        return reply.code(403).send({
+          success: false,
+          error: 'Provider key/model overrides are disabled in production',
+          code: 'AI_PROVIDER_OVERRIDE_DISABLED',
+        });
+      }
+
+      const customEngine = !isProductionRuntime() && body.apiKey
+        ? new OpenRouterEngine(body.apiKey)
+        : openrouterEngine;
+      const requestedModel = isProductionRuntime() ? undefined : body.model;
 
       try {
         const result = await customEngine.generateChatCompletion(
@@ -115,9 +132,7 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
               content: body.prompt || 'O cliente perguntou: Por que o SOS Sales é melhor do que atender no WhatsApp normal?',
             },
           ],
-          {
-            model: body.model || 'nvidia/nemotron-3-nano-30b-a3b:free',
-          }
+          requestedModel ? { model: requestedModel } : undefined,
         );
 
         return reply.code(200).send({
@@ -151,7 +166,7 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
           type: 'object',
           properties: {
             apiKey: { type: 'string' },
-            model: { type: 'string', default: 'meta/llama-3.3-70b-instruct' },
+            model: { type: 'string', default: 'meta/llama-3.1-70b-instruct' },
             prompt: { type: 'string', default: 'Olá! Responda como especialista comercial do SOS Sales em 2 linhas.' },
           },
         },
@@ -164,7 +179,18 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
         prompt?: string;
       };
 
-      const customEngine = body.apiKey ? new NvidiaNimEngine(body.apiKey) : nvidiaEngine;
+      if (isProductionRuntime() && (body.apiKey?.trim() || body.model?.trim())) {
+        return reply.code(403).send({
+          success: false,
+          error: 'Provider key/model overrides are disabled in production',
+          code: 'AI_PROVIDER_OVERRIDE_DISABLED',
+        });
+      }
+
+      const customEngine = !isProductionRuntime() && body.apiKey
+        ? new NvidiaNimEngine(body.apiKey)
+        : nvidiaEngine;
+      const requestedModel = isProductionRuntime() ? undefined : body.model;
 
       try {
         const result = await customEngine.generateChatCompletion(
@@ -179,9 +205,7 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
               content: body.prompt || 'O cliente perguntou: Como o SOS Sales funciona para clínica odontológica?',
             },
           ],
-          {
-            model: body.model || 'meta/llama-3.3-70b-instruct',
-          }
+          requestedModel ? { model: requestedModel } : undefined,
         );
 
         return reply.code(200).send({
@@ -279,7 +303,12 @@ Retorne JSON estritamente estruturado:
 }`;
 
       try {
-        const result = await openrouterEngine.generateChatCompletion(
+        // The operator copilot is part of the SOS Sales runtime, so it must
+        // use the same explicitly configured NVIDIA provider as the
+        // receptionist. OpenRouter remains available only through its
+        // explicit diagnostics route and is never a hidden production
+        // dependency for the cockpit.
+        const result = await nvidiaEngine.generateChatCompletion(
           [
             { role: 'system', content: systemPrompt },
             {
@@ -290,7 +319,9 @@ Retorne JSON estritamente estruturado:
             },
           ],
           {
-            tier: 'auto',
+            tier: 'fast',
+            temperature: 0.2,
+            maxTokens: 512,
           }
         );
 
@@ -321,7 +352,7 @@ Retorne JSON estritamente estruturado:
           model: result.model,
         });
       } catch (err: any) {
-        app.log.error(err, '[copilot-suggestion] Falha ao gerar sugestão via OpenRouter');
+        app.log.error(err, '[copilot-suggestion] Falha ao gerar sugestão via NVIDIA NIM');
         // Provider failures must be explicit. A commercial hardcoded fallback
         // would look like a real recommendation to the operator and could be
         // copied into the composer without provenance.

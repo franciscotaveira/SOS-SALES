@@ -225,44 +225,53 @@ export async function atlasToolsRoutes(
   });
 
   // GET /api/v1/atlas/tools/read/historical-diagnosis/:workspaceId
-  // Retorna dossiê cognitivo histórico de conversas mineradas (1 ano de dados)
+  // Retorna somente métricas calculáveis a partir das mensagens persistidas.
+  // O endpoint antigo devolvia um dossiê sintético específico da Haven; isso
+  // contaminava qualquer workspace que o consultasse.
   app.get('/api/v1/atlas/tools/read/historical-diagnosis/:workspaceId', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
     const actor = actorOrUnauthorized(request, reply);
     if (!actor) return reply;
     const params = workspaceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(422).send({ statusCode: 422, error: 'Unprocessable Entity', message: 'Invalid workspaceId' });
 
-    const isHaven = params.data.workspaceId === '22222222-2222-2222-2222-222222222222';
-
-    return {
-      workspaceId: params.data.workspaceId,
-      period: '2024-2026 (1 ano de conversas)',
-      totalChatsAnalyzed: isHaven ? 1842 : 960,
-      historicalBottlenecks: {
-        avgResponseTimePast: '18m 40s',
-        afterHoursDemandPercent: 38.4,
-        noShowRateWithoutDeposit: 24.5,
-        noShowRateWithPixDeposit: 2.1,
-      },
-      topCustomerIntentions: [
-        { service: 'Escova Express & Tratamento Ozônio', volumePercent: 42, avgPriceBrl: 59 },
-        { service: 'Esmalteria em Gel, Russa & Alongamento', volumePercent: 28, avgPriceBrl: 150 },
-        { service: 'Cortes c/ Visagismo (Seg-Qua vs Qui-Sáb)', volumePercent: 16, avgPriceBrl: 125 },
-        { service: 'Tratamentos Capilares (Truss, Detox, K-Beauty)', volumePercent: 9, avgPriceBrl: 125 },
-        { service: 'Make & Penteados para Eventos', volumePercent: 5, avgPriceBrl: 160 },
-      ],
-      regionalLinguisticPatterns: {
-        location: 'Chapecó - SC (Oeste Catarinense)',
-        preferredTone: 'Elegante, acolhedor, objetivo, com emojis delicados (🌸, ✨)',
-        topTerms: ['fazer as unhas', 'lavar e escovar', 'escova rápida', 'alongamento em gel', 'ozonioterapia'],
-      },
-      agentGuardrailsDerived: [
-        'Responder em < 30 segundos 24/7',
-        'Sempre informar duração estimada do serviço',
-        'Pedir sinal Pix de R$ 30,00 para garantir a vaga e blindar no-show',
-        'Enviar link do Trinks como opção de autosserviço',
-        'Nunca prometer química sem teste de mecha prévio',
-      ],
-    };
+    try {
+      const result = await dbPool.query(
+        `SELECT
+           COUNT(*)::int AS total_messages,
+           COUNT(DISTINCT journey_id)::int AS total_journeys,
+           COUNT(*) FILTER (WHERE direction = 'inbound')::int AS inbound_messages,
+           COUNT(*) FILTER (WHERE direction = 'outbound')::int AS outbound_messages,
+           COUNT(*) FILTER (
+             WHERE EXTRACT(HOUR FROM sent_at AT TIME ZONE 'America/Sao_Paulo') >= 20
+                OR EXTRACT(HOUR FROM sent_at AT TIME ZONE 'America/Sao_Paulo') < 9
+           )::int AS out_of_hours_messages,
+           COUNT(*) FILTER (WHERE media_payload IS NOT NULL AND media_payload <> '{}'::jsonb)::int AS media_messages,
+           MIN(sent_at) AS first_message_at,
+           MAX(sent_at) AS last_message_at
+         FROM public.conversation_messages
+         WHERE workspace_id = $1`,
+        [params.data.workspaceId],
+      );
+      const row = result.rows[0] || {};
+      return {
+        workspaceId: params.data.workspaceId,
+        source: 'conversation_messages persistidas',
+        hasData: Number(row.total_messages || 0) > 0,
+        totalChatsAnalyzed: Number(row.total_journeys || 0),
+        totalMessages: Number(row.total_messages || 0),
+        inboundMessages: Number(row.inbound_messages || 0),
+        outboundMessages: Number(row.outbound_messages || 0),
+        outOfHoursMessages: Number(row.out_of_hours_messages || 0),
+        mediaMessages: Number(row.media_messages || 0),
+        firstMessageAt: row.first_message_at || null,
+        lastMessageAt: row.last_message_at || null,
+        topCustomerIntentions: [],
+        historicalBottlenecks: null,
+        regionalLinguisticPatterns: null,
+        agentGuardrailsDerived: [],
+      };
+    } catch {
+      return unavailable(reply, 'Historical diagnosis service');
+    }
   });
 }

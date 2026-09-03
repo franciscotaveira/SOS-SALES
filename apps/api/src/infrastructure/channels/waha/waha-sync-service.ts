@@ -1,24 +1,32 @@
 import { dbPool } from '../../database/pool.js';
-import crypto from 'node:crypto';
+import { isProductionRuntime } from '../../security/runtime-safety.js';
+import { WahaLidIdentityResolver } from './waha-lid-identity-resolver.js';
 
 const WAHA_BASE_URL = process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000';
-const WAHA_API_KEY = process.env.WAHA_API_KEY || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
+const WAHA_API_KEY = process.env.WAHA_API_KEY || (isProductionRuntime() ? '' : 'mct_sos_waha_dev_secret_2026');
+const lidIdentityResolver = WAHA_API_KEY
+  ? new WahaLidIdentityResolver({ baseUrl: WAHA_BASE_URL, apiKey: WAHA_API_KEY })
+  : undefined;
 
 function extractChatId(c: any): string {
   if (!c) return '';
   if (typeof c.id === 'string') return c.id;
   if (c.id?._serialized) return c.id._serialized;
+  if (c.id?.id && typeof c.id.id === 'string') return c.id.id;
   if (c.id?.user && c.id?.server) return `${c.id.user}@${c.id.server}`;
   if (c._serialized) return c._serialized;
   return '';
 }
 
 function extractMessageId(msg: any): string {
-  if (!msg) return crypto.randomUUID();
+  if (!msg) return '';
   if (typeof msg.id === 'string') return msg.id;
   if (msg.id?._serialized) return msg.id._serialized;
   if (msg.id?.id) return msg.id.id;
-  return crypto.randomUUID();
+  if (typeof msg.key?.id === 'string') return msg.key.id;
+  if (msg.key?.id?._serialized) return msg.key.id._serialized;
+  if (msg.key?.id?.id) return msg.key.id.id;
+  return '';
 }
 
 export class WahaSyncService {
@@ -54,27 +62,60 @@ export class WahaSyncService {
       // workspace channel here could overwrite a Meta Cloud connection and
       // make subsequent inbound events appear under the wrong provider.
       const existing = await client.query(
-        `SELECT id FROM public.channel_connections
-         WHERE workspace_id = $1 AND provider = 'waha'
-         ORDER BY (status = 'CONNECTED') DESC, updated_at DESC
-         LIMIT 1`,
-        [workspaceId]
+        `SELECT id, public_config FROM public.channel_connections
+         WHERE workspace_id = $1
+           AND provider = 'waha'
+           AND status = 'CONNECTED'
+           AND (
+             public_config->>'sessionName' = $2
+             OR public_config->>'session' = $2
+           )
+         ORDER BY updated_at DESC
+         LIMIT 2`,
+        [workspaceId, actualSessionName]
       );
-      if (existing.rowCount && existing.rowCount > 0) {
-        channelConnectionId = existing.rows[0].id;
+      if (existing.rows.length > 1) {
+        throw new Error(`More than one WAHA channel is mapped to session ${actualSessionName}`);
+      }
+      let channelRow = existing.rows[0];
+      if (!channelRow) {
+        // Older installations may have one connected, unbound WAHA channel.
+        // Reuse it only when it is unambiguous; never select a disconnected
+        // record or a channel already mapped to another session.
+        const unbound = await client.query(
+          `SELECT id, public_config FROM public.channel_connections
+           WHERE workspace_id = $1
+             AND provider = 'waha'
+             AND status = 'CONNECTED'
+             AND COALESCE(NULLIF(public_config->>'sessionName', ''), NULLIF(public_config->>'session', '')) IS NULL
+           ORDER BY updated_at DESC
+           LIMIT 2`,
+          [workspaceId]
+        );
+        if (unbound.rows.length > 1) {
+          throw new Error(`More than one unbound CONNECTED WAHA channel exists for workspace ${workspaceId}`);
+        }
+        channelRow = unbound.rows[0];
+      }
+      if (channelRow) {
+        channelConnectionId = channelRow.id;
+        const currentConfig = typeof channelRow.public_config === 'string'
+          ? JSON.parse(channelRow.public_config)
+          : (channelRow.public_config || {});
         await client.query(`
           UPDATE public.channel_connections 
-          SET status = 'CONNECTED', phone_number = $1, name = $2, updated_at = NOW()
+          SET status = 'CONNECTED', phone_number = $1, name = $2,
+              public_config = $4::jsonb, updated_at = NOW()
           WHERE id = $3
-        `, [phoneNumber, channelName, channelConnectionId]);
+        `, [phoneNumber, channelName, channelConnectionId, JSON.stringify({ ...currentConfig, engine: currentConfig.engine || 'WAHA', sessionName: actualSessionName })]);
       } else {
         const insertCh = await client.query(`
           INSERT INTO public.channel_connections (
             id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at
           ) VALUES (
-            gen_random_uuid(), $1, 'waha', $2, $3, '{"engine":"WAHA"}', 'CONNECTED', NOW(), NOW()
+            gen_random_uuid(), $1, 'waha', $2, $3, $4::jsonb, 'CONNECTED', NOW(), NOW()
           ) RETURNING id
-        `, [workspaceId, phoneNumber, channelName]);
+        `, [workspaceId, phoneNumber, channelName, JSON.stringify({ engine: 'WAHA', sessionName: actualSessionName })]);
         channelConnectionId = insertCh.rows[0].id;
       }
 
@@ -96,7 +137,13 @@ export class WahaSyncService {
       const validChats = chats
         .filter((c) => {
           const id = extractChatId(c);
-          return id && !c.isGroup && !id.endsWith('@g.us') && !id.includes('status') && !id.includes('broadcast');
+          return id
+            && !c.isGroup
+            && !c.isNewsletter
+            && !id.endsWith('@g.us')
+            && !id.endsWith('@newsletter')
+            && !id.includes('status')
+            && !id.includes('broadcast');
         })
         .slice(0, maxChats);
 
@@ -104,11 +151,17 @@ export class WahaSyncService {
         const chatId = extractChatId(chat);
         const rawId = chatId.split('@')[0];
         const chatName = (chat.name || chat.pushname || '').trim();
-        const phoneFromChatName = chatName.replace(/\D/g, '');
 
         let rawPhone = rawId;
-        if (chatId.includes('@lid') && phoneFromChatName.length >= 10 && phoneFromChatName.length <= 15) {
-          rawPhone = phoneFromChatName;
+        if (chatId.endsWith('@lid')) {
+          const phoneJid = lidIdentityResolver
+            ? await lidIdentityResolver.resolvePhone({ session: actualSessionName, lid: chatId }).catch(() => null)
+            : null;
+          if (!phoneJid) {
+            console.warn(`[WahaSyncService] Skipping unresolved WAHA LID ${chatId}; no phone inferred from chat name`);
+            continue;
+          }
+          rawPhone = phoneJid.split('@')[0];
         }
 
         let contactName = chatName;
@@ -133,14 +186,28 @@ export class WahaSyncService {
         // Upsert commercial journey
         let journeyId: string;
         const existingJourney = await client.query(`
-          SELECT id FROM public.commercial_journeys WHERE workspace_id = $1 AND contact_id = $2 LIMIT 1
-        `, [workspaceId, contactId]);
+          SELECT id, channel_connection_id
+          FROM public.commercial_journeys
+          WHERE workspace_id = $1
+            AND contact_id = $2
+            AND status = 'OPEN'
+            AND (channel_connection_id = $3 OR channel_connection_id IS NULL)
+          ORDER BY (channel_connection_id = $3) DESC, updated_at DESC
+          LIMIT 1
+        `, [workspaceId, contactId, channelConnectionId]);
 
         if (existingJourney.rowCount && existingJourney.rowCount > 0) {
           journeyId = existingJourney.rows[0].id;
-          await client.query(`UPDATE public.commercial_journeys SET updated_at = NOW() WHERE id = $1`, [journeyId]);
+          await client.query(
+            `UPDATE public.commercial_journeys
+             SET channel_connection_id = COALESCE(channel_connection_id, $2), updated_at = NOW()
+             WHERE id = $1 AND workspace_id = $3`,
+            [journeyId, channelConnectionId, workspaceId],
+          );
         } else {
-          // ON CONFLICT handles race conditions from concurrent sync calls
+          // The channel-scoped partial index is the final race fence. If this
+          // process races another sync, resolve the winner by exact channel;
+          // never reuse a journey belonging to another provider.
           const insertJourney = await client.query(`
             INSERT INTO public.commercial_journeys (
               id, workspace_id, contact_id, channel_connection_id, status, pipeline_stage,
@@ -148,16 +215,29 @@ export class WahaSyncService {
             ) VALUES (
               gen_random_uuid(), $1, $2, $3, 'OPEN', 'NEW', 0, 'BRL', NOW(), NOW(), NOW()
             )
-            ON CONFLICT (workspace_id, contact_id) WHERE status = 'OPEN' DO UPDATE SET updated_at = NOW()
+            ON CONFLICT DO NOTHING
             RETURNING id
           `, [workspaceId, contactId, channelConnectionId]);
-          journeyId = insertJourney.rows[0].id;
+          if (insertJourney.rows[0]?.id) {
+            journeyId = insertJourney.rows[0].id;
+          } else {
+            const racedJourney = await client.query(
+              `SELECT id FROM public.commercial_journeys
+               WHERE workspace_id = $1 AND contact_id = $2 AND channel_connection_id = $3 AND status = 'OPEN'
+               LIMIT 1`,
+              [workspaceId, contactId, channelConnectionId],
+            );
+            if (!racedJourney.rows[0]?.id) {
+              throw new Error(`Could not create or resolve a WAHA journey for contact ${contactId}`);
+            }
+            journeyId = racedJourney.rows[0].id;
+          }
         }
 
 
         // Fetch recent messages for this chat
         try {
-          const msgsRes = await fetch(`${WAHA_BASE_URL}/api/${sessionName}/chats/${encodeURIComponent(chatId)}/messages?limit=25`, {
+          const msgsRes = await fetch(`${WAHA_BASE_URL}/api/${actualSessionName}/chats/${encodeURIComponent(chatId)}/messages?limit=25`, {
             headers: { 'x-api-key': WAHA_API_KEY },
           });
 
@@ -176,11 +256,18 @@ export class WahaSyncService {
                   else bodyText = `📎 [${mediaType.toUpperCase()}]`;
                 }
                 const msgId = extractMessageId(msg);
-                const sentAt = msg.timestamp ? new Date(msg.timestamp * 1000) : new Date();
+                // A provider message without an id cannot be deduplicated.
+                // Do not invent a UUID: repeating the sync would otherwise
+                // create a new conversation row for the same remote message.
+                if (!msgId) continue;
+                const timestamp = Number(msg.timestamp);
+                if (!Number.isFinite(timestamp) || timestamp <= 0) continue;
+                const sentAt = new Date(timestamp > 1e11 ? timestamp : timestamp * 1000);
+                if (Number.isNaN(sentAt.getTime())) continue;
                 const direction = msg.fromMe ? 'outbound' : 'inbound';
                 const senderType = msg.fromMe ? 'operator' : 'customer';
 
-                await client.query(`
+                const insertedMessage = await client.query(`
                   INSERT INTO public.conversation_messages (
                     id, workspace_id, channel_connection_id, journey_id, contact_id,
                     direction, sender_type, provider_message_id, text_content, sent_at
@@ -189,7 +276,7 @@ export class WahaSyncService {
                   )
                   ON CONFLICT (channel_connection_id, provider_message_id) DO NOTHING
                 `, [workspaceId, channelConnectionId, journeyId, contactId, direction, senderType, msgId, bodyText, sentAt]);
-                syncedMessages++;
+                if ((insertedMessage.rowCount ?? 0) > 0) syncedMessages++;
               }
             }
           }
@@ -220,6 +307,10 @@ export class WahaSyncService {
               {
                 url: webhookUrl,
                 events: ['message', 'message.any', 'session.status'],
+                customHeaders: [{
+                  name: 'x-api-key',
+                  value: WAHA_API_KEY,
+                }],
               },
             ],
           },

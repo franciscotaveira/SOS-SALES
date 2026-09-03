@@ -1,8 +1,14 @@
 # Produção: aplicação segura de migrations
 
-Uma promoção só prossegue quando o `verify-production-schema.mjs` comprova que
-o ledger remoto `supabase_migrations.schema_migrations` contém todas as
-migrations carregadas pela release imutável.
+Uma promoção só prossegue quando dois gates somente-leitura passam:
+
+- `verify-production-schema.mjs` comprova, a partir da estação administrativa,
+  que o ledger remoto `supabase_migrations.schema_migrations` contém todas as
+  migrations carregadas pela release imutável;
+- `verify-production-schema-contract.mjs` confirma no banco as tabelas,
+  colunas, índices e funções que o bundle executado usa. Esse segundo gate usa
+  `information_schema`/`pg_proc` porque a role da aplicação não deve ler o
+  schema interno de migrations.
 
 Quando esse gate informar versões pendentes, um operador autorizado deve:
 
@@ -18,7 +24,7 @@ Quando esse gate informar versões pendentes, um operador autorizado deve:
    Se o Supabase CLI não estiver instalado no VPS, execute o mesmo comando a
    partir de uma estação administrativa autorizada que tenha acesso ao banco.
 3. Rerodar `scripts/promote-production-release.sh <sha>`. A promoção executa
-   novamente o gate somente-leitura antes de mudar o link `current`.
+   novamente os dois gates somente-leitura antes de mudar o link `current`.
 
 Não use `db reset`, `drop`, `truncate` nem execute migrations manualmente fora
 do fluxo versionado. A aplicação de migrations é uma mudança de banco e requer

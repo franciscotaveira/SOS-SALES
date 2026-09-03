@@ -23,11 +23,13 @@ import {
 interface ProductCatalogSectionProps {
   catalog: ProductCatalogItem[];
   onUpdateCatalog?: (items: ProductCatalogItem[]) => void;
+  canManage?: boolean;
 }
 
 export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
   catalog: initialCatalog,
   onUpdateCatalog,
+  canManage = true,
 }) => {
   const [items, setItems] = React.useState<ProductCatalogItem[]>(initialCatalog);
   const [search, setSearch] = React.useState('');
@@ -59,6 +61,7 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
   }, [items, search, selectedCategory]);
 
   const handleSaveItem = (itemToSave: ProductCatalogItem) => {
+    if (!canManage) return;
     let updated: ProductCatalogItem[];
     if (items.some((i) => i.id === itemToSave.id)) {
       updated = items.map((i) => (i.id === itemToSave.id ? itemToSave : i));
@@ -72,6 +75,7 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
   };
 
   const handleDeleteItem = (id: string) => {
+    if (!canManage) return;
     const updated = items.filter((i) => i.id !== id);
     setItems(updated);
     if (onUpdateCatalog) onUpdateCatalog(updated);
@@ -103,6 +107,7 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
         </div>
 
         <button
+          disabled={!canManage}
           onClick={() => {
             const now = Date.now();
             setEditingItem({
@@ -292,14 +297,16 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
                     setEditingItem(item);
                     setIsAddModalOpen(true);
                   }}
-                  className="p-1 text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-border)]/30 rounded transition-colors"
+                  disabled={!canManage}
+                  className="p-1 text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-border)]/30 rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   title="Editar Item"
                 >
                   <Edit2 className="w-3 h-3" />
                 </button>
                 <button
                   onClick={() => handleDeleteItem(item.id)}
-                  className="p-1 text-[var(--sos-muted)] hover:text-[var(--sos-danger)] hover:bg-[var(--sos-danger-subtle)] rounded transition-colors"
+                  disabled={!canManage}
+                  className="p-1 text-[var(--sos-muted)] hover:text-[var(--sos-danger)] hover:bg-[var(--sos-danger-subtle)] rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   title="Excluir do Catálogo"
                 >
                   <Trash2 className="w-3 h-3" />
@@ -442,6 +449,7 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
               <button
                 type="button"
                 onClick={() => handleSaveItem(editingItem)}
+                disabled={!canManage}
                 className="px-3 py-1 text-[9px] font-bold text-white bg-[var(--sos-success)] hover:bg-[var(--sos-success)]/90 rounded-lg transition shadow-2xs"
               >
                 Salvar Produto

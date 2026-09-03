@@ -15,8 +15,9 @@ export const ChannelStatus: React.FC<ChannelStatusProps> = ({
 }) => {
   if (!channel) return null;
 
-  const isConnected = channel.health === 'connected';
+  const isConnected = channel.health === 'connected' || channel.health === 'healthy';
   const isPaused = channel.health === 'paused';
+  const isUnavailable = channel.health === 'degraded' || channel.health === 'disconnected';
 
   return (
     <div
@@ -47,11 +48,17 @@ export const ChannelStatus: React.FC<ChannelStatusProps> = ({
               Pausado
             </span>
           )}
+          {isUnavailable && (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+              <AlertTriangle className="w-3 h-3 text-amber-600" />
+              {channel.health === 'degraded' ? 'Instável' : 'Indisponível'}
+            </span>
+          )}
         </div>
       </div>
 
       <div className="text-[11px] text-slate-600 font-mono mb-2">
-        {channel.phoneNumber} · WABA ID: {channel.wabaAccountId || 'waba_prod_01'}
+        {channel.phoneNumber || 'Telefone não informado'} · WABA ID: {channel.wabaAccountId || 'não informado'}
       </div>
 
       {isPaused && (
@@ -85,7 +92,7 @@ export const ChannelStatus: React.FC<ChannelStatusProps> = ({
           ) : (
             <>
               <PauseCircle className="w-3.5 h-3.5 text-rose-600" />
-              <span>Simular Pausa de Canal</span>
+              <span>Pausar Canal WhatsApp</span>
             </>
           )}
         </button>

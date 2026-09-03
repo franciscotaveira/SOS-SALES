@@ -27,10 +27,14 @@ export class PostgresWabaChannelInfoGateway implements WabaChannelInfoGateway {
         public_config::jsonb ->> 'qualityRating' AS quality_rating
       FROM public.channel_connections
       WHERE workspace_id = $1 AND provider = 'meta_cloud' AND status = 'CONNECTED'
-      LIMIT 1
+      ORDER BY created_at ASC
+      LIMIT 2
     `, [workspaceId]);
 
-    if (!result.rowCount || result.rowCount === 0) return null;
+    // A workspace with multiple connected Meta numbers has no deterministic
+    // default for the MVP. Returning null keeps the UI from claiming a
+    // capability that could be routed to the wrong phone number.
+    if (result.rowCount !== 1) return null;
     const row = result.rows[0];
     return {
       verifiedPhone: row.verified_phone ?? row.connection_phone ?? undefined,

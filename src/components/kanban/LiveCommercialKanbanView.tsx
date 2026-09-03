@@ -624,6 +624,10 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
 
   const filtered = useMemo(() => {
     return journeys.filter((j) => {
+      // The live funnel is an active-work queue. Closed outcomes are owned by
+      // the result/outcome projection and must not silently disappear into a
+      // non-rendered column or inflate the active count.
+      if (isLiveApi && j.status !== 'OPEN') return false;
       if (!search.trim()) return true;
       const q = search.toLowerCase();
       return (
@@ -632,7 +636,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
         (j.primaryServiceOrProduct && j.primaryServiceOrProduct.toLowerCase().includes(q))
       );
     });
-  }, [journeys, search]);
+  }, [isLiveApi, journeys, search]);
 
   const columnsData = useMemo(() => {
     return activePipeline.columns.map((col) => {
@@ -878,7 +882,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
       </div>
 
       <StartConversationModal
-        workspace={{ id: workspaceId, name: 'Workspace Ativo', slug: 'active' } as any}
+        workspace={{ id: workspaceId, name: 'Workspace autenticado', slug: workspaceId } as any}
         isOpen={isStartModalOpen}
         onClose={() => setIsStartModalOpen(false)}
         onConversationStarted={(newJourney) => {

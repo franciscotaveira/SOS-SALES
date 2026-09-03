@@ -16,6 +16,7 @@ import {
   HelpCircle,
   Sparkles,
   RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 
 interface TrackingSettingsProps {
@@ -117,11 +118,12 @@ export function resolveWorkspaceTrackingDefaults(wsId: string, wsName?: string):
 }
 
 export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace }) => {
+  const isApiMode = salesOsRuntimeConfig.mode === 'api';
   const defaults = React.useMemo(
-    () => salesOsRuntimeConfig.mode === 'api'
+    () => isApiMode
       ? { pixelId: '', datasetId: '', googleCustomerId: '', googleConversionId: '', metaAccessToken: '', campaigns: [] }
       : resolveWorkspaceTrackingDefaults(workspace.id, workspace.name),
-    [workspace.id, workspace.name]
+    [isApiMode, workspace.id, workspace.name]
   );
 
   const storageKey = `sos_sales_tracking_v3_${workspace.id}`;
@@ -155,6 +157,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   // Live CAPI Event Testing State
   const [testingCapi, setTestingCapi] = useState(false);
   const [testEventCode, setTestEventCode] = useState('');
+  const [testPhone, setTestPhone] = useState('');
   const [testEventName, setTestEventName] = useState<'Lead' | 'Purchase'>('Lead');
   const [capiTestFeedback, setCapiTestFeedback] = useState<{ success?: boolean; message?: string; details?: any } | null>(null);
 
@@ -315,11 +318,11 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   };
 
   // Select a discovered Dataset and Auto-Save
-  const selectAndBindDataset = async (ds: { id: string; name: string }, tokenToUse?: string) => {
+  const selectAndBindDataset = async (ds: { id: string; name: string; type?: 'dataset' | 'pixel' }, tokenToUse?: string) => {
     const token = tokenToUse || metaAccessToken;
     setSelectedDatasetId(ds.id);
-    setMetaDatasetId(ds.id);
-    setMetaPixelId(ds.id);
+    if (ds.type === 'pixel') setMetaPixelId(ds.id);
+    else setMetaDatasetId(ds.id);
 
     setSavingMeta(true);
     try {
@@ -327,8 +330,8 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          metaPixelId: ds.id,
-          metaDatasetId: ds.id,
+          metaPixelId: ds.type === 'pixel' ? ds.id : metaPixelId,
+          metaDatasetId: ds.type === 'dataset' ? ds.id : metaDatasetId,
           metaAccessToken: token,
           metaCapiEnabled: true,
           campaignMappings,
@@ -340,9 +343,20 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
           success: true,
           message: `✅ Conjunto de Dados "${ds.name}" (${ds.id}) vinculado e salvo com sucesso no SOS-SALES!`,
         });
+      } else {
+        setFeedback({
+          success: false,
+          message: data?.error || `Não foi possível vincular o conjunto de dados (HTTP ${res.status}).`,
+        });
       }
-    } catch {}
-    setSavingMeta(false);
+    } catch (error) {
+      setFeedback({
+        success: false,
+        message: error instanceof Error ? error.message : 'Não foi possível vincular o conjunto de dados.',
+      });
+    } finally {
+      setSavingMeta(false);
+    }
   };
 
 
@@ -473,8 +487,14 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
 
   // Live Test CAPI Event directly against Meta Graph API
   const handleTestCapiEvent = async () => {
-    const targetId = metaDatasetId || metaPixelId;
-    if (!targetId || !metaAccessToken) {
+    if (!testEventCode.trim()) {
+      setCapiTestFeedback({
+        success: false,
+        message: 'Informe o Test Event Code da Meta antes de disparar um evento de teste.',
+      });
+      return;
+    }
+    if ((!metaDatasetId && !metaPixelId) || !metaAccessToken) {
       setCapiTestFeedback({
         success: false,
         message: 'Preencha o Dataset/Pixel ID e o CAPI Access Token antes de disparar o teste.',
@@ -489,11 +509,12 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pixelId: targetId,
-          datasetId: targetId,
+          pixelId: metaPixelId.trim() || undefined,
+          datasetId: metaDatasetId.trim() || undefined,
           accessToken: metaAccessToken,
-          testEventCode: testEventCode.trim() || undefined,
+          testEventCode: testEventCode.trim(),
           eventName: testEventName,
+          phone: testPhone.trim(),
         }),
       });
       const data = await res.json();
@@ -584,8 +605,13 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4" /> Paridade TX CRM Ativa
+          <span className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
+            isApiMode
+              ? 'bg-slate-100 text-slate-700 border border-slate-200'
+              : 'bg-amber-50 text-amber-700 border border-amber-200'
+          }`}>
+            {isApiMode ? <RefreshCw className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+            {isApiMode ? 'Estado proveniente da API' : 'Modo demonstração local'}
           </span>
         </div>
       </div>
@@ -767,13 +793,13 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
               <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-slate-600 space-y-1">
                 <span className="font-bold text-blue-900 block text-xs">💡 Dica Meta Events Manager:</span>
                 <p>
-                  Na nova interface da Meta, a <b>Identificação do conjunto de dados (Dataset ID)</b> é o ID usado tanto para o Pixel quanto para a Conversions API.
+                  Use o <b>Dataset ID</b> exibido no Events Manager para a Conversions API. Pixel ID e Dataset ID são campos diferentes; não os misture sem confirmação da Meta.
                 </p>
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Identificação do Conjunto de Dados / Pixel ID
+                  Identificação do Conjunto de Dados (Dataset ID)
                 </label>
                 <input
                   type="text"
@@ -781,7 +807,6 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
                   value={metaDatasetId}
                   onChange={(e) => {
                     setMetaDatasetId(e.target.value);
-                    setMetaPixelId(e.target.value);
                   }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-[#00A884]"
                 />
@@ -825,7 +850,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
             <span className="font-bold text-slate-800 block text-xs flex items-center gap-1.5">
               <span>🧪</span> Testar Disparo CAPI ao Vivo na Meta
             </span>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
                 <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Tipo de Evento</label>
                 <select
@@ -838,7 +863,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Código de Teste da Meta (Opcional)</label>
+                <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Código de Teste da Meta (obrigatório)</label>
                 <input
                   type="text"
                   placeholder="Ex: TEST12345 (da aba Eventos de Teste)"
@@ -847,12 +872,22 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
                   className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
                 />
               </div>
+              <div>
+                <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Telefone do contato de teste</label>
+                <input
+                  type="tel"
+                  placeholder="Ex: +55 49 99999-9999"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
+                />
+              </div>
             </div>
 
             <button
               type="button"
               onClick={handleTestCapiEvent}
-              disabled={testingCapi || !metaAccessToken || !metaDatasetId}
+              disabled={testingCapi || !metaAccessToken || !metaDatasetId || !testEventCode.trim() || testPhone.replace(/\D/g, '').length < 8}
               className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
             >
               {testingCapi ? (

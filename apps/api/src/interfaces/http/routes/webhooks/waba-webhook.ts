@@ -1,9 +1,11 @@
 import { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { Pool } from 'pg';
 import { dbPool } from '../../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../../application/services/attribution-service.js';
 import {
   getReceptionistAgent,
+  isMetaAgentReady,
   shouldSosSalesRespond,
   type ResponderMode,
   type ResponderOwner,
@@ -26,18 +28,17 @@ export async function findChannelByPhoneNumberId(
 
   try {
     const chanRes = await query(
-      `SELECT
-         workspace_id,
-         (array_agg(id ORDER BY (status = 'CONNECTED') DESC, created_at DESC))[1] AS id
+      `SELECT id, workspace_id
        FROM public.channel_connections
        WHERE provider = 'meta_cloud'
+         AND status = 'CONNECTED'
          AND (
             (public_config->>'phoneNumberId') = $1 
          OR (public_config->>'phone_number_id') = $1
          OR (public_config->>'wabaPhoneNumberId') = $1
          OR phone_number = $1
          )
-       GROUP BY workspace_id
+       ORDER BY created_at ASC
        LIMIT 2`,
       [phoneNumberId]
     );
@@ -64,6 +65,10 @@ export async function findChannelByPhoneNumberId(
 export interface WabaWebhookPluginOptions {
   verifyToken: string;
   appSecret: string;
+  /** Deployment-owned pool; the global development pool is only a fallback. */
+  databasePool?: Pick<Pool, 'query' | 'connect'>;
+  /** Deployment-owned receptionist; avoids a browser/development singleton. */
+  receptionistAgent?: { isEnabled(): boolean };
 }
 
 type WabaChannelInfo = { id: string | null; workspace_id: string | null };
@@ -75,6 +80,8 @@ export interface WabaResponderDefaults {
   metaAgentId: string | null;
   metaAgentEnabled: boolean;
   metaAgentEligibilityStatus: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
+  metaAgentCheckedAt: string | null;
+  metaAgentActivationStatus: 'NOT_STARTED' | 'PENDING' | 'READY' | 'FAILED';
 }
 
 /**
@@ -84,11 +91,22 @@ export interface WabaResponderDefaults {
  */
 export async function resolveWorkspaceResponderDefaults(
   workspaceId: string,
+  channelConnectionIdOrQuery?: string | null | typeof dbPool.query,
   query: typeof dbPool.query = dbPool.query.bind(dbPool),
 ): Promise<WabaResponderDefaults> {
-  const result = await query(
+  // Preserve the original `(workspaceId, query)` helper contract used by
+  // isolated tests and older callers while allowing the webhook to bind the
+  // decision to the exact WABA connection that delivered the event.
+  const channelConnectionId = typeof channelConnectionIdOrQuery === 'function'
+    ? null
+    : channelConnectionIdOrQuery ?? null;
+  const queryFn = typeof channelConnectionIdOrQuery === 'function'
+    ? channelConnectionIdOrQuery
+    : query;
+  const result = await queryFn(
     `SELECT responder_mode, meta_agent_id, meta_agent_enabled,
-            meta_agent_eligibility_status
+            meta_agent_eligibility_status, meta_agent_checked_at,
+            meta_agent_activation_status, meta_agent_channel_connection_id
      FROM public.workspace_agent_config
      WHERE workspace_id = $1
      LIMIT 1`,
@@ -109,10 +127,28 @@ export async function resolveWorkspaceResponderDefaults(
     || row?.meta_agent_eligibility_status === 'INELIGIBLE'
     ? row.meta_agent_eligibility_status
     : 'UNKNOWN';
-  const metaReady = metaAgentEnabled && Boolean(metaAgentId) && metaAgentEligibilityStatus === 'ELIGIBLE';
+  const metaAgentCheckedAt = row?.meta_agent_checked_at instanceof Date
+    ? row.meta_agent_checked_at.toISOString()
+    : typeof row?.meta_agent_checked_at === 'string' && row.meta_agent_checked_at.trim()
+      ? row.meta_agent_checked_at
+      : null;
+  const metaAgentActivationStatus = row?.meta_agent_activation_status === 'PENDING'
+    || row?.meta_agent_activation_status === 'READY'
+    || row?.meta_agent_activation_status === 'FAILED'
+    ? row.meta_agent_activation_status
+    : 'NOT_STARTED';
+  const metaChannelMatches = !channelConnectionId
+    || row?.meta_agent_channel_connection_id === channelConnectionId;
+  const metaReady = isMetaAgentReady({
+    metaAgentEnabled: metaAgentEnabled && metaChannelMatches,
+    metaAgentId,
+    metaAgentEligibilityStatus,
+    metaAgentCheckedAt,
+    metaAgentActivationStatus,
+  });
   const responderOwner: ResponderOwner = responderMode === 'manual'
     ? 'human'
-    : responderMode === 'meta_business_agent' || (responderMode === 'auto_fallback' && metaReady)
+    : (responderMode === 'meta_business_agent' || (responderMode === 'auto_fallback' && metaReady)) && metaReady
       ? 'meta_business_agent'
       : 'sos_sales';
 
@@ -120,13 +156,156 @@ export async function resolveWorkspaceResponderDefaults(
     responderMode,
     responderOwner,
     metaAgentId,
-    metaAgentEnabled,
+    metaAgentEnabled: metaAgentEnabled && metaChannelMatches,
     metaAgentEligibilityStatus,
+    metaAgentCheckedAt,
+    metaAgentActivationStatus,
   };
 }
 
 function optionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+const WABA_HANDOVER_FIELDS = new Set([
+  'messaging_handovers',
+  'messaging_handover',
+  'standby',
+  'thread_control',
+]);
+
+export function isWabaHandoverField(field: unknown): boolean {
+  return typeof field === 'string' && WABA_HANDOVER_FIELDS.has(field.trim().toLowerCase());
+}
+
+type HandoverOwner = ResponderOwner | null;
+
+/**
+ * Meta's handover payload has had more than one envelope shape.  We accept
+ * only explicit owner/action values; unknown variants are still retained as a
+ * receipt but never mutate a CRM journey.  This is safer than guessing which
+ * app owns a thread from a free-form metadata string.
+ */
+export function inferWabaHandoverOwner(event: Record<string, unknown>): HandoverOwner {
+  const explicitOwner = [event.owner, event.responder_owner, event.responderOwner]
+    .map(optionalString)
+    .find(Boolean)?.toLowerCase();
+  if (explicitOwner === 'sos_sales' || explicitOwner === 'sos-sales') return 'sos_sales';
+  if (explicitOwner === 'meta_business_agent' || explicitOwner === 'meta-business-agent' || explicitOwner === 'meta') return 'meta_business_agent';
+  if (explicitOwner === 'human' || explicitOwner === 'operator') return 'human';
+
+  const action = [event.action, event.handover_action, event.owner_action]
+    .map(optionalString)
+    .find(Boolean)?.toLowerCase();
+  if (action === 'take') return 'sos_sales';
+  if (action === 'release') return 'meta_business_agent';
+  return null;
+}
+
+function handoverConsumerId(event: Record<string, unknown>): string | null {
+  const candidate = [event.to, event.recipient, event.consumer, event.wa_id, event.phone_number]
+    .map((value) => {
+      if (typeof value === 'string') return value;
+      if (value && typeof value === 'object' && typeof (value as Record<string, unknown>).id === 'string') {
+        return (value as Record<string, unknown>).id as string;
+      }
+      return null;
+    })
+    .find(Boolean);
+  if (!candidate) return null;
+  const digits = candidate.replace(/\D/g, '');
+  return digits.length >= 8 ? digits : null;
+}
+
+function handoverEvents(value: unknown): Array<Record<string, unknown>> {
+  if (!value || typeof value !== 'object') return [];
+  const record = value as Record<string, unknown>;
+  const nested = record.messaging_handovers ?? record.handover ?? record.handovers ?? record.standby;
+  const candidates = Array.isArray(nested) ? nested : nested && typeof nested === 'object' ? [nested] : [record];
+  return candidates.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'));
+}
+
+/**
+ * Retain provider handover receipts and reconcile a journey only when Meta
+ * tells us both (a) an explicit owner/action and (b) a concrete consumer.
+ * Unrecognised payloads remain auditable in inbound_channel_events and do not
+ * silently turn an unknown provider state into an active responder.
+ */
+export async function persistWabaHandover(
+  params: {
+    channelInfo: WabaChannelInfo;
+    phoneNumberId: string;
+    entryId: string | null;
+    field: string;
+    value: unknown;
+  },
+  log: FastifyRequest['log'],
+  query: typeof dbPool.query = dbPool.query.bind(dbPool),
+): Promise<{ receipts: number; journeysUpdated: number }> {
+  if (!params.channelInfo.id || !params.channelInfo.workspace_id) {
+    return { receipts: 0, journeysUpdated: 0 };
+  }
+  const events = handoverEvents(params.value);
+  let receipts = 0;
+  let journeysUpdated = 0;
+  for (const [index, event] of events.entries()) {
+    const eventKey = optionalString(event.id)
+      || optionalString(event.event_id)
+      || `${params.entryId || 'entry'}:${params.field}:${index}:${optionalString(event.timestamp) || 'na'}`;
+    const providerEventId = `waba_handover_${eventKey}`;
+    const rawPayload = JSON.stringify({
+      entryId: params.entryId,
+      phoneNumberId: params.phoneNumberId,
+      field: params.field,
+      event,
+    });
+    const inserted = await query(
+      `INSERT INTO public.inbound_channel_events (
+         id, workspace_id, channel_connection_id, provider, provider_event_id,
+         event_type, raw_payload, received_at
+       ) VALUES (
+         gen_random_uuid(), $1, $2, 'meta_cloud', $3, $4, $5::jsonb, NOW()
+       )
+       ON CONFLICT (workspace_id, provider, provider_event_id) DO NOTHING
+       RETURNING id`,
+      [params.channelInfo.workspace_id, params.channelInfo.id, providerEventId, `waba.${params.field}`, rawPayload],
+    );
+    if ((inserted.rowCount ?? inserted.rows.length) === 0) continue;
+    receipts += 1;
+
+    const owner = inferWabaHandoverOwner(event);
+    const consumerDigits = handoverConsumerId(event);
+    if (!owner || !consumerDigits) continue;
+
+    const updated = await query(
+      `UPDATE public.commercial_journeys j
+       SET responder_owner = $4,
+           responder_changed_at = NOW(),
+           responder_change_reason = $5,
+           updated_at = NOW()
+       FROM public.contacts c
+       WHERE j.workspace_id = $1
+         AND j.channel_connection_id = $2
+         AND j.contact_id = c.id
+         AND c.workspace_id = j.workspace_id
+         AND j.status = 'OPEN'
+         AND (
+           regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') = $3
+           OR c.whatsapp_id IN ($3, $3 || '@c.us')
+         )`,
+      [params.channelInfo.workspace_id, params.channelInfo.id, consumerDigits, owner, `meta_webhook_${params.field}`],
+    );
+    journeysUpdated += updated.rowCount ?? 0;
+  }
+  if (receipts > 0) {
+    log.info?.({
+      channelConnectionId: params.channelInfo.id,
+      field: params.field,
+      receipts,
+      journeysUpdated,
+    }, 'WABA handover receipt persisted and ownership reconciled');
+  }
+  return { receipts, journeysUpdated };
 }
 
 /** Meta returns errors only for failed message statuses. Preserve them in the
@@ -251,6 +430,9 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
   options: WabaWebhookPluginOptions
 ) => {
   const { verifyToken, appSecret } = options;
+  const databasePool = options.databasePool ?? dbPool;
+  const query = databasePool.query.bind(databasePool);
+  const receptionistAgent = options.receptionistAgent ?? getReceptionistAgent();
   const handleVerification = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = request.query as Record<string, string>;
     const mode = query['hub.mode'];
@@ -311,6 +493,26 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
     for (const entry of entries) {
       const changes = entry.changes || [];
       for (const change of changes) {
+        if (isWabaHandoverField(change.field)) {
+          const handoverValue = change.value;
+          const phoneNumberId = handoverValue?.metadata?.phone_number_id
+            || handoverValue?.metadata?.phoneNumberId
+            || handoverValue?.phone_number_id
+            || handoverValue?.phoneNumberId;
+          const channelInfo = await findChannelByPhoneNumberId(phoneNumberId, request.log, query);
+          if (!channelInfo) {
+            request.log.warn({ field: change.field, phoneNumberId }, 'Unrecognized or ambiguous WABA handover ownership; receipt not persisted');
+            continue;
+          }
+          await persistWabaHandover({
+            channelInfo,
+            phoneNumberId: String(phoneNumberId),
+            entryId: typeof entry.id === 'string' ? entry.id : null,
+            field: String(change.field),
+            value: handoverValue,
+          }, request.log, query);
+          continue;
+        }
         if (change.field !== 'messages') continue;
         const value = change.value;
         const metadata = value?.metadata;
@@ -318,7 +520,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
         const statuses = value?.statuses || [];
         const messages = value?.messages || [];
         const contacts = value?.contacts || [];
-        const channelInfo = await findChannelByPhoneNumberId(phoneNumberId, request.log);
+        const channelInfo = await findChannelByPhoneNumberId(phoneNumberId, request.log, query);
 
         if ((statuses.length > 0 || messages.length > 0) && !channelInfo) {
           request.log.warn(
@@ -344,13 +546,13 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
             ? new Date(Number(statusObj.timestamp) * 1000)
             : new Date();
           try {
-            await persistWabaStatus({
-              channelInfo: resolvedChannelInfo,
-              wabaMessageId,
-              status,
-              providerTimestamp,
-              statusObj,
-            }, request.log);
+              await persistWabaStatus({
+                channelInfo: resolvedChannelInfo,
+                wabaMessageId,
+                status,
+                providerTimestamp,
+                statusObj,
+              }, request.log, query);
           } catch (err) {
             request.log.error({ err, status }, 'Failed to persist WABA message status');
             throw err;
@@ -418,7 +620,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
           // autonomous responder; the worker also re-checks this policy.
           let responderDefaults: WabaResponderDefaults | null = null;
           try {
-            responderDefaults = await resolveWorkspaceResponderDefaults(targetWorkspaceId);
+            responderDefaults = await resolveWorkspaceResponderDefaults(targetWorkspaceId, channelConnectionId, query);
           } catch (responderErr) {
             request.log.error(
               { err: responderErr, workspaceId: targetWorkspaceId },
@@ -434,7 +636,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
           // Ingest contact and journey
           try {
             // Upsert contact
-            const contactRes = await dbPool.query(
+            const contactRes = await query(
               `INSERT INTO public.contacts (id, workspace_id, phone, whatsapp_id, name, created_at, updated_at)
                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $5)
                ON CONFLICT (workspace_id, phone)
@@ -445,16 +647,21 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
             contactId = contactRes.rows[0].id as string;
 
             // Find or create commercial journey
-            const existingJourney = await dbPool.query(
-              `SELECT id, responder_owner, responder_changed_at
+            const existingJourney = await query(
+              `SELECT id, responder_owner, responder_changed_at, responder_change_reason, channel_connection_id
                FROM public.commercial_journeys
-               WHERE workspace_id = $1 AND contact_id = $2 
+               WHERE workspace_id = $1
+                 AND contact_id = $2
+                 AND status = 'OPEN'
+                 AND (channel_connection_id = $3 OR channel_connection_id IS NULL)
+               ORDER BY (channel_connection_id = $3) DESC, updated_at DESC
                LIMIT 1`,
-              [targetWorkspaceId, contactId]
+              [targetWorkspaceId, contactId, channelConnectionId]
             );
 
             let journeyResponderOwner: ResponderOwner;
             let journeyResponderChangedAt: string | Date | null = null;
+            let journeyResponderChangeReason: string | null = null;
             if (existingJourney.rowCount && existingJourney.rowCount > 0) {
               journeyId = existingJourney.rows[0].id;
               journeyResponderOwner = existingJourney.rows[0].responder_owner === 'meta_business_agent'
@@ -462,13 +669,16 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
                 ? existingJourney.rows[0].responder_owner
                 : 'sos_sales';
               journeyResponderChangedAt = existingJourney.rows[0].responder_changed_at || null;
-              await dbPool.query(
-                `UPDATE public.commercial_journeys SET updated_at = $1 WHERE id = $2`,
-                [timestamp, journeyId]
+              journeyResponderChangeReason = optionalString(existingJourney.rows[0].responder_change_reason);
+              await query(
+                `UPDATE public.commercial_journeys
+                 SET channel_connection_id = COALESCE(channel_connection_id, $1), updated_at = $2
+                 WHERE id = $3`,
+                [channelConnectionId, timestamp, journeyId]
               );
             } else {
               journeyResponderOwner = responderDefaults?.responderOwner || 'sos_sales';
-              const newJourney = await dbPool.query(
+              const newJourney = await query(
                 `INSERT INTO public.commercial_journeys (
                    id, workspace_id, contact_id, channel_connection_id, status, pipeline_stage,
                    total_revenue_minor, currency, responder_owner, started_at, created_at, updated_at
@@ -476,19 +686,47 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
                  VALUES (
                    gen_random_uuid(), $1, $2, $3, 'OPEN', 'NEW', 0, 'BRL', $4, $5, $5, $5
                  )
+                 ON CONFLICT DO NOTHING
                  RETURNING id`,
                 [targetWorkspaceId, contactId, channelConnectionId, journeyResponderOwner, timestamp]
               );
-              journeyId = newJourney.rows[0].id;
+              if (newJourney.rows[0]?.id) {
+                journeyId = newJourney.rows[0].id;
+              } else {
+                const racedJourney = await query(
+                  `SELECT id, responder_owner, responder_changed_at, responder_change_reason
+                   FROM public.commercial_journeys
+                   WHERE workspace_id = $1
+                     AND contact_id = $2
+                     AND channel_connection_id = $3
+                     AND status = 'OPEN'
+                   LIMIT 1`,
+                  [targetWorkspaceId, contactId, channelConnectionId],
+                );
+                if (!racedJourney.rows[0]?.id) {
+                  throw new Error('Could not create or resolve the Meta journey for the selected channel');
+                }
+                journeyId = racedJourney.rows[0].id;
+                journeyResponderOwner = racedJourney.rows[0].responder_owner === 'meta_business_agent'
+                  || racedJourney.rows[0].responder_owner === 'human'
+                  ? racedJourney.rows[0].responder_owner
+                  : 'sos_sales';
+                journeyResponderChangedAt = racedJourney.rows[0].responder_changed_at || null;
+                journeyResponderChangeReason = optionalString(racedJourney.rows[0].responder_change_reason);
+              }
             }
 
             // Extract and persist Meta Ads CTWA & UTM attribution
             try {
-              const client = await dbPool.connect();
+              const client = await databasePool.connect();
               try {
                 const chCfgRes = await client.query('SELECT public_config FROM public.channel_connections WHERE id = $1', [channelConnectionId]);
                 const pubCfg = chCfgRes.rows[0]?.public_config || {};
-                const campaigns = pubCfg?.trackingConfig?.campaigns || [];
+                const campaigns = Array.isArray(pubCfg?.campaignMappings)
+                  ? pubCfg.campaignMappings
+                  : Array.isArray(pubCfg?.trackingConfig?.campaigns)
+                    ? pubCfg.trackingConfig.campaigns
+                    : [];
 
                 const existingAcq = await client.query('SELECT id FROM public.acquisition_contexts WHERE workspace_id = $1 AND journey_id = $2 LIMIT 1', [targetWorkspaceId, journeyId]);
                 if (existingAcq.rowCount === 0) {
@@ -506,7 +744,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
 
             // Save referral facts if present
             if (adId || headline) {
-              await dbPool.query(
+              await query(
                 `INSERT INTO public.known_facts (id, workspace_id, journey_id, key, value, confidence, confirmed_by_customer, source, observed_at)
                  VALUES (gen_random_uuid(), $1, $2, 'ad.referral', $3, 1.0, true, 'ad_payload', NOW())
                  ON CONFLICT DO NOTHING`,
@@ -521,7 +759,6 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
             // inserted and the receptionist is eligible, a durable
             // 'receptionist.inbound_received' outbox row is enqueued in the SAME tx
             // so a leased/fenced worker can drive the agent recoverably.
-            const receptionistAgent = getReceptionistAgent();
             const receptionistEligible =
               receptionistAgent.isEnabled() &&
               !!textContent &&
@@ -534,12 +771,15 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
                 responderMode: responderDefaults?.responderMode || 'sos_sales',
                 responderOwner: journeyResponderOwner,
                 responderChangedAt: journeyResponderChangedAt,
+                responderChangeReason: journeyResponderChangeReason,
                 metaAgentEnabled: responderDefaults?.metaAgentEnabled === true,
                 metaAgentId: responderDefaults?.metaAgentId,
                 metaAgentEligibilityStatus: responderDefaults?.metaAgentEligibilityStatus || 'UNKNOWN',
+                metaAgentCheckedAt: responderDefaults?.metaAgentCheckedAt,
+                metaAgentActivationStatus: responderDefaults?.metaAgentActivationStatus || undefined,
               });
 
-            const ingestClient = await dbPool.connect();
+            const ingestClient = await databasePool.connect();
             try {
               await ingestClient.query('BEGIN');
               await ingestClient.query('SET LOCAL ROLE service_role');

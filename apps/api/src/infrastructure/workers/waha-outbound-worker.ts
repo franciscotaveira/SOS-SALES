@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ClaimedOutboundDispatch, OutboundDispatchGateway } from '../../application/ports/outbound-dispatch-gateway.js';
-import { WahaOutboundAdapter } from '../channels/waha/waha-outbound-adapter.js';
+import { WahaOutboundAdapter, WahaOutboundResult } from '../channels/waha/waha-outbound-adapter.js';
 import { WabaClient } from '../channels/meta/waba-client.js';
 
 export interface WahaOutboundWorkerOptions {
@@ -108,25 +108,25 @@ export class WahaOutboundWorker {
         const rawPhone = claimed.contactPhone || '';
         const cleanPhone = rawPhone.replace(/\D/g, '');
         const chatId = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@c.us`;
-        let sendResult: { success: boolean; providerMessageId?: string; failureCode?: string };
+        let sendResult: WahaOutboundResult;
         const text = claimed.textContent || '';
         const containsInlineMedia = text.includes(':::data:') || text.startsWith('data:image/') || text.startsWith('data:application/') || text.startsWith('data:audio/');
 
         if (claimed.provider === 'meta_cloud') {
           if (containsInlineMedia) {
-            sendResult = { success: false, failureCode: 'WABA_INLINE_MEDIA_UNSUPPORTED' };
+            sendResult = { success: false, kind: 'FATAL', failureCode: 'WABA_INLINE_MEDIA_UNSUPPORTED', message: 'Meta Cloud does not accept inline media payloads' };
           } else if (!claimed.wabaPhoneNumberId || !claimed.wabaAccessToken || !claimed.contactPhone) {
-            sendResult = { success: false, failureCode: 'WABA_CHANNEL_NOT_CONFIGURED' };
+            sendResult = { success: false, kind: 'FATAL', failureCode: 'WABA_CHANNEL_NOT_CONFIGURED', message: 'Meta Cloud channel credentials are incomplete' };
           } else {
             try {
               const wabaResult = await this.sendMetaDispatch(claimed);
               sendResult = wabaResult.messageId
-                ? { success: true, providerMessageId: wabaResult.messageId }
-                : { success: false, failureCode: 'WABA_PROVIDER_ID_MISSING' };
+                ? { success: true, providerMessageId: wabaResult.messageId, rawResponse: wabaResult }
+                : { success: false, kind: 'AMBIGUOUS', failureCode: 'WABA_PROVIDER_ID_MISSING', message: 'Meta accepted the request without a provider message id' };
             } catch {
               // The provider may have accepted a timed-out request. Mark it for
               // human reconciliation and never replay the irreversible call.
-              sendResult = { success: false, failureCode: 'WABA_DELIVERY_UNCONFIRMED' };
+              sendResult = { success: false, kind: 'AMBIGUOUS', failureCode: 'WABA_DELIVERY_UNCONFIRMED', message: 'Meta delivery result is ambiguous; manual reconciliation is required' };
             }
           }
         // Check if text is a media attachment (base64 data URL)
@@ -178,12 +178,20 @@ export class WahaOutboundWorker {
             providerMessageId: sendResult.providerMessageId || '',
           });
         } else {
-          await this.dispatchGateway.recordProviderFailure({
+          const failure = {
             dispatchId: claimed.dispatchId,
             claimToken: claimed.claimToken,
             workerId: this.workerId,
             failureCode: sendResult.failureCode || 'PROVIDER_FAILURE',
-          });
+          };
+          if (sendResult.kind === 'RETRYABLE') {
+            await this.dispatchGateway.recordProviderFailure({ ...failure, retryable: true });
+          } else {
+            // Fatal and ambiguous outcomes remain terminal. An ambiguous HTTP
+            // call may already have reached the provider and must never be
+            // replayed automatically.
+            await this.dispatchGateway.recordProviderFailure(failure);
+          }
         }
 
         processedCount++;
