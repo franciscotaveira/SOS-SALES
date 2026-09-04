@@ -9,8 +9,10 @@ export interface MetaBusinessAgentEligibility {
   status: MetaBusinessAgentEligibilityStatus;
   phoneNumberId?: string;
   channelConnectionId?: string;
-  checkedAt: string;
-  reason?: 'CHANNEL_NOT_CONNECTED' | 'CREDENTIALS_UNAVAILABLE' | 'UPSTREAM_UNAVAILABLE' | 'UPSTREAM_REJECTED' | 'INVALID_RESPONSE';
+  checkedAt?: string;
+  reason?: 'CHANNEL_NOT_CONNECTED' | 'CREDENTIALS_UNAVAILABLE' | 'UPSTREAM_UNAVAILABLE' | 'UPSTREAM_REJECTED' | 'INVALID_RESPONSE' | 'TERMS_NOT_ACCEPTED';
+  detail?: string;
+  actionUrl?: string;
 }
 
 export interface MetaBusinessAgentOnboarding {

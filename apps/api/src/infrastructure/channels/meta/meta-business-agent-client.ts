@@ -58,7 +58,13 @@ export class MetaBusinessAgentClient {
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new MetaBusinessAgentUpstreamError('Meta Business Agent rejected the request', response.status);
+        const errorDetail = (payload && typeof payload === 'object')
+          ? ((payload as any).detail || (payload as any).error?.message || (payload as any).message || (payload as any).title)
+          : null;
+        throw new MetaBusinessAgentUpstreamError(
+          errorDetail ? String(errorDetail) : 'Meta Business Agent rejected the request',
+          response.status,
+        );
       }
       return payload;
     } catch (error) {

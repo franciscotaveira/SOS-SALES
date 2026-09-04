@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PostgresMetaBusinessAgentGateway } from '../../src/infrastructure/database/postgres-meta-business-agent-gateway.js';
-import { MetaBusinessAgentClient } from '../../src/infrastructure/channels/meta/meta-business-agent-client.js';
+import { MetaBusinessAgentClient, MetaBusinessAgentUpstreamError } from '../../src/infrastructure/channels/meta/meta-business-agent-client.js';
 
 describe('PostgresMetaBusinessAgentGateway', () => {
   it('accepts the persisted Meta phone/token aliases used by older connections', async () => {
@@ -76,6 +76,28 @@ describe('PostgresMetaBusinessAgentGateway', () => {
       status: 'UNKNOWN',
       phoneNumberId: 'phone-id',
       reason: 'UPSTREAM_UNAVAILABLE',
+    });
+  });
+
+  it('identifies when Meta Business AI terms of service are not accepted and provides actionUrl', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValue({
+        rowCount: 1,
+        rows: [{ channel_connection_id: '40000000-0000-4000-8000-000000000004', phone_number_id: 'phone-id', secret_payload: { accessToken: 'secret' } }],
+      }),
+    };
+    const error = new MetaBusinessAgentUpstreamError(
+      'The Meta Business AI Terms of Service must be accepted for this WhatsApp Business Account before using this API.',
+      403,
+    );
+    const client = { checkEligibility: vi.fn().mockRejectedValue(error) } as unknown as MetaBusinessAgentClient;
+    const gateway = new PostgresMetaBusinessAgentGateway(pool, client);
+
+    await expect(gateway.checkEligibility('workspace-id')).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      phoneNumberId: 'phone-id',
+      reason: 'TERMS_NOT_ACCEPTED',
+      actionUrl: 'https://www.facebook.com/legal/meta-business-ai-terms',
     });
   });
 

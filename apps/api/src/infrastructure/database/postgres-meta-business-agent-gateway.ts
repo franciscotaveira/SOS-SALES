@@ -163,14 +163,22 @@ export class PostgresMetaBusinessAgentGateway implements MetaBusinessAgentGatewa
       } catch (persistError) {
         console.error('[MetaBusinessAgentGateway] Could not persist UNKNOWN eligibility state', persistError);
       }
+      const isTermsError = Boolean(
+        upstream?.message?.toLowerCase().includes('terms')
+        || (upstream?.statusCode === 403 && upstream?.message?.includes('Meta Business AI'))
+      );
       return {
         status: 'UNKNOWN',
         phoneNumberId: credentials.phoneNumberId,
         channelConnectionId: credentials.channelConnectionId,
         checkedAt,
-        reason: upstream?.statusCode && upstream.statusCode >= 400 && upstream.statusCode < 500
+        reason: isTermsError
+          ? 'TERMS_NOT_ACCEPTED'
+          : upstream?.statusCode && upstream.statusCode >= 400 && upstream.statusCode < 500
           ? 'UPSTREAM_REJECTED'
           : 'UPSTREAM_UNAVAILABLE',
+        detail: upstream?.message,
+        actionUrl: isTermsError ? 'https://www.facebook.com/legal/meta-business-ai-terms' : undefined,
       };
     }
   }

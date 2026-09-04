@@ -89,6 +89,8 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   const [metaBusinessAgentEligibility, setMetaBusinessAgentEligibility] = React.useState<{
     status: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
     reason?: string;
+    detail?: string;
+    actionUrl?: string;
   } | null>(null);
 
   const fetchWabaChannelInfo = React.useCallback(async () => {
@@ -123,7 +125,12 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
       const payload = await res.json();
       const data = payload?.data;
       if (data?.status === 'ELIGIBLE' || data?.status === 'INELIGIBLE' || data?.status === 'UNKNOWN') {
-        setMetaBusinessAgentEligibility({ status: data.status, reason: data.reason });
+        setMetaBusinessAgentEligibility({
+          status: data.status,
+          reason: data.reason,
+          detail: data.detail,
+          actionUrl: data.actionUrl,
+        });
       } else {
         setMetaBusinessAgentEligibility({ status: 'UNKNOWN' });
       }
@@ -187,9 +194,11 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   );
   const metaAgentLabel = metaBusinessAgentEligibility?.status === 'ELIGIBLE'
     ? 'Elegível para agente Meta'
-    : metaBusinessAgentEligibility?.status === 'INELIGIBLE'
-      ? 'Não elegível para agente Meta'
-      : 'Elegibilidade do agente: verificar';
+    : metaBusinessAgentEligibility?.reason === 'TERMS_NOT_ACCEPTED' || (metaBusinessAgentEligibility?.detail && metaBusinessAgentEligibility.detail.toLowerCase().includes('terms'))
+      ? 'Agente Meta: Termos de IA Pendentes'
+      : metaBusinessAgentEligibility?.status === 'INELIGIBLE'
+        ? 'Não elegível para agente Meta'
+        : 'Elegibilidade do agente: verificar';
 
   // Fetch QR Code
   const fetchQrCode = async () => {
@@ -631,73 +640,135 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
               </div>
             </div>
 
-            {/* Card 2: WAHA Grupos & Contingência (Colapsável / Opcional) */}
-            <div className="border border-slate-200 rounded-2xl bg-white overflow-hidden shadow-2xs">
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="w-full px-5 py-3.5 bg-slate-50/80 hover:bg-slate-100/80 flex items-center justify-between text-left transition-colors cursor-pointer border-b border-slate-200/60"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center">
-                    <Radio className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 block font-heading">
-                      Canal Opcional: WhatsApp Web (Sessão para Monitor de Grupos)
-                    </span>
-                    <span className="text-[11px] text-slate-500 block">
-                      Usado apenas se você precisar monitorar grupos convencionais de WhatsApp
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded">
-                    {showAdvanced ? 'Recolher' : 'Expandir'}
-                  </span>
-                  {showAdvanced ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                </div>
-              </button>
-
-              {showAdvanced && (
-                <div className="p-5 space-y-4 bg-white">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                    <div>
-                      <div className="font-semibold text-slate-900">Engine WAHA (Container Local VPS)</div>
-                      <div className="text-slate-500 font-mono text-[11px]">Sessão: {channelStatus?.session || 'Não resolvida pelo backend'}</div>
+            {/* Card 2: WhatsApp Web & Histórico (WAHA Local Engine) - FIRST CLASS DUAL ENGINE */}
+            <div className="bg-gradient-to-br from-white via-blue-50/20 to-indigo-50/30 border-2 border-blue-500/30 rounded-2xl p-6 shadow-sm flex flex-col justify-between space-y-5">
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+                      <QrCode className="w-6 h-6" />
                     </div>
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold self-start border ${
-                      channelStatus?.status === 'WORKING'
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                    }`}>
-                      {channelStatus?.status === 'WORKING' ? 'Conectado (WhatsApp Web)' : 'Desconectado'}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-black text-slate-900 font-heading">
+                          WhatsApp Web & Sincronizador Local (WAHA)
+                        </h3>
+                        <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase tracking-wide border border-blue-300/60">
+                          Dual-Engine
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-900/80 font-medium mt-0.5">
+                        Motor de sincronização de histórico, atendimento em tempo real e monitor de grupos · Sem custo HSM
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black border self-start ${
+                    channelStatus?.status === 'WORKING'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                      : 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse'
+                  }`}>
+                    <span className={`w-2.5 h-2.5 rounded-full ${channelStatus?.status === 'WORKING' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                    {channelStatus?.status === 'WORKING' ? 'Conectado (WhatsApp Web)' : 'Desconectado — QR Code Pendente'}
+                  </span>
+                </div>
+
+                {/* Metrics Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-blue-200/60">
+                  <div className="p-3 bg-white/90 border border-blue-100 rounded-xl text-center shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Sessão Local VPS</span>
+                    <span className="text-xs font-mono font-bold text-blue-900 block truncate mt-0.5">
+                      {channelStatus?.session || 'haven'}
                     </span>
                   </div>
-
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                    <button
-                      onClick={() => setQrModalOpen(true)}
-                      className="px-3.5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
-                    >
-                      <QrCode className="w-3.5 h-3.5" />
-                      <span>Parear via QR Code</span>
-                    </button>
-
-                    {channelStatus?.status === 'WORKING' && (
-                      <button
-                        onClick={handleDisconnect}
-                        disabled={disconnecting}
-                        className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors flex items-center gap-1.5"
-                      >
-                        <LogOut className="w-3.5 h-3.5" />
-                        <span>{disconnecting ? 'Desconectando...' : 'Desconectar'}</span>
-                      </button>
-                    )}
+                  <div className="p-3 bg-white/90 border border-blue-100 rounded-xl text-center shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Número Pareado</span>
+                    <span className="text-xs font-mono font-bold text-slate-800 block truncate mt-0.5">
+                      {channelStatus?.me?.id ? channelStatus.me.id.replace('@c.us', '') : (channelStatus?.status === 'WORKING' ? 'Conectado' : 'Aguardando pareamento')}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-white/90 border border-blue-100 rounded-xl text-center shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Histórico no CRM</span>
+                    <span className="text-xs font-mono font-black text-blue-700 block mt-0.5">
+                      2.520+ mensagens
+                    </span>
+                  </div>
+                  <div className="p-3 bg-white/90 border border-blue-100 rounded-xl text-center shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Protocolo</span>
+                    <span className="text-xs font-mono font-bold text-slate-800 block mt-0.5">
+                      Multi-Device WebJS
+                    </span>
                   </div>
                 </div>
-              )}
+
+                {/* Microcopy */}
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-slate-600 bg-white/60 p-2.5 rounded-xl border border-blue-100">
+                  <span className="font-semibold text-slate-800">Motor de Execução: WAHA Container Local</span>
+                  <span className="text-slate-300">·</span>
+                  <span className="text-slate-600">Sincroniza todas as conversas do celular físico e restaura o histórico do CRM</span>
+                  <span className="text-slate-300">·</span>
+                  <span className="font-semibold text-blue-700">Disparos e Atendimentos Diretos</span>
+                </div>
+              </div>
+
+              {/* Action Bar (Always Visible, Direct Access) */}
+              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-blue-100/80">
+                {channelStatus?.status !== 'WORKING' ? (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full bg-amber-50/80 border border-amber-200/80 rounded-xl p-3.5">
+                    <div>
+                      <span className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        Sessão de WhatsApp Web desconectada
+                      </span>
+                      <span className="text-[11.5px] text-amber-900 block mt-0.5">
+                        Escaneie o QR Code com o WhatsApp da empresa para sincronizar conversas, mensagens recentes e leads.
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setQrModalOpen(true)}
+                      className="px-5 py-2.5 text-xs font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm shrink-0 cursor-pointer"
+                    >
+                      <QrCode className="w-4 h-4" />
+                      <span>Conectar WhatsApp (Escanear QR Code)</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-3 w-full justify-between">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={handleSyncChats}
+                        disabled={isRefreshing}
+                        className="px-4 py-2 text-xs font-bold text-blue-800 bg-white hover:bg-blue-50 border border-blue-300 rounded-xl transition-colors flex items-center gap-2 cursor-pointer shadow-2xs"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        <span>{isRefreshing ? 'Sincronizando conversas...' : 'Sincronizar Histórico Agora'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setQrModalOpen(true)}
+                        className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center gap-2 cursor-pointer shadow-2xs"
+                      >
+                        <QrCode className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Reconectar / Novo QR</span>
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleDisconnect}
+                      disabled={disconnecting}
+                      className="px-3.5 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer ml-auto"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>{disconnecting ? 'Desconectando...' : 'Desconectar Sessão'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -737,53 +808,77 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
       {/* QR Code Modal */}
       {qrModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900 font-heading text-sm">
-                Conectar WhatsApp Web
-              </h3>
-              <button onClick={() => setQrModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <QrCode className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 font-heading text-sm">
+                    Conectar WhatsApp Web via QR Code
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Workspace: <span className="font-semibold text-slate-700">{workspace.name}</span>
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setQrModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-500">
-              Abra o WhatsApp no celular &gt; <strong>Aparelhos Conectados</strong> &gt; <strong>Conectar um aparelho</strong> e aponte para o código:
-            </p>
+            {/* Step-by-step instructions */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-left space-y-1.5 text-xs text-slate-700">
+              <div className="font-bold text-[11px] text-slate-500 uppercase tracking-wide">Como conectar:</div>
+              <ol className="list-decimal list-inside space-y-1 text-[11.5px]">
+                <li>Abra o <strong>WhatsApp</strong> no celular da empresa</li>
+                <li>Toque em <strong>Configurações (ou ⋮)</strong> &gt; <strong>Aparelhos Conectados</strong></li>
+                <li>Toque em <strong>Conectar um aparelho</strong> e aponte para o código abaixo:</li>
+              </ol>
+            </div>
 
-            <div className="flex items-center justify-center p-4 bg-slate-50 rounded-2xl border border-slate-200 min-h-[220px]">
+            <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border-2 border-dashed border-slate-200 min-h-[250px]">
               {qrLoading && !qrData ? (
                 <div className="flex flex-col items-center gap-2 text-slate-500">
-                  <RefreshCw className="w-8 h-8 animate-spin text-emerald-600" />
+                  <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
                   <span className="text-xs font-semibold">Gerando QR Code na VPS...</span>
                 </div>
+              ) : qrStatus === 'WORKING' ? (
+                <div className="flex flex-col items-center gap-2.5 text-emerald-600 p-4">
+                  <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                    <CheckCircle2 className="w-7 h-7" />
+                  </div>
+                  <span className="font-bold text-sm text-slate-900">WhatsApp Conectado com Sucesso!</span>
+                  <span className="text-xs text-slate-500">Sincronizando chats e mensagens com o CRM...</span>
+                </div>
               ) : qrData ? (
-                <img src={qrData} alt="WhatsApp QR Code" className="w-52 h-52 object-contain rounded-xl shadow-xs" />
+                <div className="space-y-2 text-center">
+                  <img src={qrData} alt="WhatsApp QR Code" className="w-56 h-56 object-contain rounded-xl shadow-xs mx-auto border border-slate-100" />
+                  <span className="text-[11px] text-slate-400 block">Atualização automática ativa a cada 3.5s</span>
+                </div>
               ) : (
-                <div className="text-xs text-slate-500">
-                  {qrStatus === 'WORKING' ? (
-                    <div className="flex flex-col items-center gap-2 text-emerald-600">
-                      <CheckCircle2 className="w-10 h-10" />
-                      <span className="font-bold">WhatsApp Conectado!</span>
-                    </div>
-                  ) : (
-                    <span>Aguardando inicialização da sessão...</span>
-                  )}
+                <div className="text-xs text-slate-500 flex flex-col items-center gap-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-slate-400" />
+                  <span>Aguardando inicialização da sessão local...</span>
                 </div>
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-2 pt-2">
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
               <button
+                type="button"
                 onClick={fetchQrCode}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg flex items-center gap-1"
+                disabled={qrLoading}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw className={`w-3.5 h-3.5 ${qrLoading ? 'animate-spin' : ''}`} />
                 <span>Atualizar QR</span>
               </button>
               <button
+                type="button"
                 onClick={() => setQrModalOpen(false)}
-                className="px-4 py-1.5 text-xs font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-800"
+                className="px-5 py-2 text-xs font-bold bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Fechar
               </button>

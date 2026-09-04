@@ -18,6 +18,8 @@ interface EligibilityPayload {
   channelConnectionId?: string;
   checkedAt?: string;
   reason?: string;
+  detail?: string;
+  actionUrl?: string;
 }
 
 export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsViewProps> = ({ workspaceId, canManage = false }) => {
@@ -161,7 +163,31 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</span><p className={`mt-1 text-xs font-bold ${eligibilityFresh ? 'text-emerald-700' : eligibility.status === 'INELIGIBLE' || (eligible && !eligibilityFresh) ? 'text-amber-700' : 'text-slate-600'}`}>{loading ? 'Consultando…' : eligibilityFresh ? 'Elegível (verificado)' : eligibility.status === 'INELIGIBLE' ? 'Não elegível' : eligible ? 'Verificação expirada' : 'Indisponível para consulta'}</p>{eligibility.checkedAt && <p className="mt-1 text-[10px] text-slate-400">Última verificação: {new Date(eligibility.checkedAt).toLocaleString('pt-BR')}</p>}</div>
+        <div className="rounded-xl border border-violet-100 bg-white p-3">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</span>
+          <p className={`mt-1 text-xs font-bold ${
+            eligibilityFresh
+              ? 'text-emerald-700'
+              : eligibility.reason === 'TERMS_NOT_ACCEPTED' || (eligibility.detail && eligibility.detail.toLowerCase().includes('terms'))
+              ? 'text-amber-700'
+              : eligibility.status === 'INELIGIBLE' || (eligible && !eligibilityFresh)
+              ? 'text-amber-700'
+              : 'text-slate-600'
+          }`}>
+            {loading
+              ? 'Consultando…'
+              : eligibilityFresh
+              ? 'Elegível (verificado)'
+              : eligibility.reason === 'TERMS_NOT_ACCEPTED' || (eligibility.detail && eligibility.detail.toLowerCase().includes('terms'))
+              ? 'Termos de IA pendentes de aceite'
+              : eligibility.status === 'INELIGIBLE'
+              ? 'Não elegível'
+              : eligible
+              ? 'Verificação expirada'
+              : 'Indisponível para consulta'}
+          </p>
+          {eligibility.checkedAt && <p className="mt-1 text-[10px] text-slate-400">Última verificação: {new Date(eligibility.checkedAt).toLocaleString('pt-BR')}</p>}
+        </div>
         <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Número Meta</span><p className="mt-1 truncate font-mono text-xs text-slate-700">{eligibility.phoneNumberId || 'Não informado'}</p><p className="mt-1 text-[10px] text-slate-400">Canal: {eligibility.channelConnectionId || agentConfig?.metaAgentChannelConnectionId || 'não vinculado'}</p><p className="mt-1 text-[10px] text-slate-400">Agente: {agentConfig?.metaAgentId || 'ainda não ativado'}</p><p className={`mt-1 text-[10px] font-bold ${agentConfig?.metaAgentActivationStatus === 'READY' ? 'text-emerald-700' : agentConfig?.metaAgentActivationStatus === 'FAILED' ? 'text-rose-700' : 'text-amber-700'}`}>Ativação: {agentConfig?.metaAgentActivationStatus === 'READY' ? 'confirmada' : agentConfig?.metaAgentActivationStatus === 'PENDING' ? 'em preparação' : agentConfig?.metaAgentActivationStatus === 'FAILED' ? 'falhou — repetir teste' : 'não iniciada'}</p></div>
         <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Fallback</span><p className="mt-1 text-xs font-bold text-slate-700">IA SOS Sales + humano</p></div>
       </div>
@@ -182,10 +208,33 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
       </div>
 
       {eligibility.status === 'UNKNOWN' && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          {eligibility.phoneNumberId
-            ? <>A Meta não confirmou a elegibilidade agora. Verifique o token e o estado do número <strong>WhatsApp Oficial (Meta Cloud API)</strong> antes de tentar novamente.</>
-            : <>Conecte primeiro um número <strong>WhatsApp Oficial (Meta Cloud API)</strong> em Configurações da Meta Cloud. A IA própria do SOS Sales continua sendo o fallback enquanto esta conexão não estiver disponível.</>}
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+          {eligibility.reason === 'TERMS_NOT_ACCEPTED' || (eligibility.detail && eligibility.detail.toLowerCase().includes('terms')) ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p className="font-bold text-amber-950 flex items-center gap-1.5 text-xs">
+                  <ShieldAlert size={15} className="text-amber-700 shrink-0" />
+                  Ação necessária no Meta Business: Aceitar os Termos de IA (Meta Business AI Terms)
+                </p>
+                <p className="mt-1 text-[11.5px] text-amber-900 leading-relaxed">
+                  {eligibility.detail || 'Os Termos de Serviço de IA da Meta precisam ser aceitos para este WhatsApp Business Account (WABA) antes de consultar a elegibilidade ou ativar o agente.'}
+                </p>
+              </div>
+              <a
+                href={eligibility.actionUrl || "https://www.facebook.com/legal/meta-business-ai-terms"}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-bold text-xs shrink-0 transition-colors shadow-2xs"
+              >
+                <ExternalLink size={13} />
+                <span>Aceitar Termos na Meta</span>
+              </a>
+            </div>
+          ) : eligibility.phoneNumberId ? (
+            <>A Meta não confirmou a elegibilidade agora. Verifique o token e o estado do número <strong>WhatsApp Oficial (Meta Cloud API)</strong> antes de tentar novamente.</>
+          ) : (
+            <>Conecte primeiro um número <strong>WhatsApp Oficial (Meta Cloud API)</strong> em Configurações da Meta Cloud. A IA própria do SOS Sales continua sendo o fallback enquanto esta conexão não estiver disponível.</>
+          )}
         </div>
       )}
 
