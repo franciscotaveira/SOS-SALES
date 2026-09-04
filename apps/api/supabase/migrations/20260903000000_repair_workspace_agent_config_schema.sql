@@ -45,15 +45,27 @@ ALTER TABLE public.workspace_agent_config
   ALTER COLUMN autonomy_mode SET DEFAULT 'copilot_supervised',
   ALTER COLUMN published_at DROP DEFAULT;
 
--- Existing rows that contain only the partial runtime contract are not a
--- business profile and must remain inert until an owner completes/publishes
--- them through the authenticated API.  Rows with substantive profile data are
--- preserved and are not silently rewritten by this repair.
+-- Rows created by the older runtime-only contract do not have enough profile
+-- data for us to reconstruct a business persona. Keep an already published
+-- row's visible/runtime state intact so this additive repair cannot turn a
+-- running tenant off as a side effect. Regardless of that legacy state, the
+-- new autonomous runtime is forced back to supervised mode until an owner
+-- completes and republishes the profile; rows without a publication are also
+-- made inert.
 UPDATE public.workspace_agent_config
-SET runtime_enabled = false,
+SET runtime_enabled = CASE
+      WHEN published_at IS NULL THEN false
+      ELSE runtime_enabled
+    END,
     autonomy_mode = 'copilot_supervised',
-    published_at = NULL,
-    published_by = NULL
+    published_at = CASE
+      WHEN published_at IS NULL THEN NULL
+      ELSE published_at
+    END,
+    published_by = CASE
+      WHEN published_at IS NULL THEN NULL
+      ELSE published_by
+    END
 WHERE COALESCE(NULLIF(pg_catalog.btrim(business_type), ''), '') = ''
   AND services_json = '[]'::jsonb
   AND COALESCE(NULLIF(pg_catalog.btrim(working_hours), ''), '') = ''
