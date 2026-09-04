@@ -267,18 +267,25 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
     let interval: any = null;
     if (isQrModalOpen) {
       fetchQrCode();
-      interval = setInterval(() => {
-        if (qrStatus !== 'WORKING') {
-          fetchQrCode();
+      interval = setInterval(async () => {
+        try {
+          const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`);
+          const data = await res.json();
+          if (data.status === 'WORKING') {
+            setQrStatus('WORKING');
+            setIsQrModalOpen(false);
+          }
+        } catch {
+          // ignore status poll error
         }
-      }, 5000);
+      }, 3000);
     } else {
       setQrCodeDataUrl(null);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isQrModalOpen]);
+  }, [isQrModalOpen, workspace.id]);
 
   return (
     <div className="flex flex-col h-full bg-slate-50/50 text-slate-900 p-4 sm:p-6 overflow-y-auto max-w-7xl mx-auto w-full">

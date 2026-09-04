@@ -14,6 +14,7 @@ import { isSyntheticTestDataEnabled } from '../../../infrastructure/security/run
 
 const WAHA_BASE_URL = process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || 'http://sos-sales-api:4334';
+const wahaQrCache = new Map<string, { dataUrl: string; timestamp: number }>();
 
 const trackingSettingsBodySchema = z.object({
   metaPixelId: z.string().trim().max(80).optional(),
@@ -248,6 +249,7 @@ export async function whatsappChannelRoutes(
       }
 
       if (session.status === 'WORKING') {
+        wahaQrCache.delete(sessionName);
         WahaSyncService.syncWorkspaceChats(workspaceId, sessionName, 35).catch((err) => {
           request.log.error({ err }, 'Background sync error');
         });
@@ -269,11 +271,31 @@ export async function whatsappChannelRoutes(
         };
       }
 
+      const now = Date.now();
+      const cached = wahaQrCache.get(sessionName);
+      const isForce = (request.query as any)?.force === 'true';
+
+      if (!isForce && cached && (now - cached.timestamp < 50000)) {
+        return {
+          status: 'SCAN_QR_CODE',
+          session: sessionName,
+          qr: cached.dataUrl,
+          expiresInSeconds: Math.round((50000 - (now - cached.timestamp)) / 1000),
+        };
+      }
+
       const qrRes = await fetch(`${WAHA_BASE_URL}/api/${sessionName}/auth/qr`, {
         headers: { 'x-api-key': getWahaApiKey(), Accept: 'image/png' },
       });
 
       if (!qrRes.ok) {
+        if (cached) {
+          return {
+            status: 'SCAN_QR_CODE',
+            session: sessionName,
+            qr: cached.dataUrl,
+          };
+        }
         return {
           status: session.status || 'STARTING',
           session: sessionName,
@@ -286,10 +308,13 @@ export async function whatsappChannelRoutes(
       const base64 = Buffer.from(arrayBuffer).toString('base64');
       const dataUrl = `data:image/png;base64,${base64}`;
 
+      wahaQrCache.set(sessionName, { dataUrl, timestamp: now });
+
       return {
         status: 'SCAN_QR_CODE',
         session: sessionName,
         qr: dataUrl,
+        expiresInSeconds: 50,
       };
     } catch (err: any) {
       request.log.error({ err: err.message }, 'Failed to fetch WAHA QR code');
