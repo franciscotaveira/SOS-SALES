@@ -101,7 +101,7 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
             appId: appId || undefined,
             cookie: true,
             xfbml: true,
-            version: 'v23.0',
+            version: 'v21.0',
           });
         } catch (e) {
           console.warn('FB.init error:', e);
@@ -127,13 +127,18 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
     setConnectionStatus('authorizing');
     setErrorMessage(null);
 
-    // Fallback: If FB SDK is blocked by ad-blocker or iframe policy, provide interactive manual fallback
+    // Direct Hosted Onboarding URL (Meta Native)
+    const hostedOnboardingUrl = `https://business.facebook.com/messaging/whatsapp/onboard/?app_id=${encodeURIComponent(
+      appId.trim()
+    )}&config_id=${encodeURIComponent(
+      configId.trim()
+    )}&extras=${encodeURIComponent(JSON.stringify({ sessionInfoVersion: '3', version: 'v4' }))}`;
+
+    // Fallback: If FB SDK is blocked by ad-blocker or popup policy, open direct hosted onboarding
     if (!(window as any).FB) {
-      setTimeout(() => {
-        setIsConnecting(false);
-        setConnectionStatus('idle');
-        setErrorMessage('O Facebook SDK não pôde ser carregado no navegador (possível bloqueador de anúncios/pop-up). Você também pode inserir o Access Token e Phone ID diretamente.');
-      }, 1500);
+      window.open(hostedOnboardingUrl, 'whatsapp_onboarding', 'width=650,height=750');
+      setIsConnecting(false);
+      setConnectionStatus('idle');
       return;
     }
 
@@ -147,7 +152,7 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
 
             // Escuta os eventos da janela popup do WhatsApp Embedded Signup.
             const handleMessage = async (event: MessageEvent) => {
-              if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return;
+              if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com' && event.origin !== 'https://business.facebook.com') return;
               try {
                 const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
                 if (data.type === 'WA_EMBEDDED_SIGNUP') {
@@ -192,14 +197,13 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
           }
         },
         {
-          config_id: configId,
+          config_id: configId.trim(),
           response_type: 'code',
           override_default_response_type: true,
           extras: {
-            featureType: 'whatsapp_business_app_onboarding',
             sessionInfoVersion: '3',
-            features: useHybridApp ? [{ name: 'marketing_messages_lite' }] : [],
-            version: 'v4', // Meta Embedded Signup v4 (Definitivo)
+            version: 'v4',
+            ...(useHybridApp ? { features: [{ name: 'marketing_messages_lite' }] } : {}),
           },
         }
       );
@@ -510,35 +514,53 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-3 pt-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
-          >
-            Fechar
-          </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+          {connectionMode === 'embedded' && (
+            <a
+              href={`https://business.facebook.com/messaging/whatsapp/onboard/?app_id=${encodeURIComponent(
+                appId.trim()
+              )}&config_id=${encodeURIComponent(
+                configId.trim()
+              )}&extras=${encodeURIComponent(JSON.stringify({ sessionInfoVersion: '3', version: 'v4' }))}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center justify-center gap-1 py-1 text-center"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              Ou abrir Cadastro Hospedado pela Meta (Nova Aba)
+            </a>
+          )}
 
-          <button
-            onClick={connectionMode === 'embedded' ? handleLaunchEmbeddedSignup : (event) => void handleManualConnect(event)}
-            disabled={isConnecting || !canManage}
-            className="px-6 py-2.5 bg-gradient-to-r from-[#00a884] to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
-          >
-            {isConnecting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-white" />
-                <span>
-                  {connectionStatus === 'authorizing'
-                    ? 'Aguardando Meta Login...'
-                    : 'Registrando WABA...'}
-                </span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4 text-white" />
-                <span>{connectionMode === 'embedded' ? 'Conectar com Facebook' : 'Validar e salvar WABA'}</span>
-              </>
-            )}
-          </button>
+          <div className="flex items-center justify-end gap-3 ml-auto">
+            <button
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+            >
+              Fechar
+            </button>
+
+            <button
+              onClick={connectionMode === 'embedded' ? handleLaunchEmbeddedSignup : (event) => void handleManualConnect(event)}
+              disabled={isConnecting || !canManage}
+              className="px-6 py-2.5 bg-gradient-to-r from-[#00a884] to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            >
+              {isConnecting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>
+                    {connectionStatus === 'authorizing'
+                      ? 'Aguardando Meta Login...'
+                      : 'Registrando WABA...'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 text-white" />
+                  <span>{connectionMode === 'embedded' ? 'Conectar com Facebook' : 'Validar e salvar WABA'}</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>
