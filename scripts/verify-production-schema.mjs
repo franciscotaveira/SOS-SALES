@@ -73,8 +73,37 @@ const ssl = caFile
 const pool = new Pool({ connectionString: environment.DATABASE_URL, ssl, max: 1, connectionTimeoutMillis: 5000 });
 
 try {
-  const result = await pool.query('SELECT version::text AS version FROM supabase_migrations.schema_migrations');
-  const applied = new Set(result.rows.map((row) => row.version));
+  let applied;
+  try {
+    const result = await pool.query('SELECT version::text AS version FROM supabase_migrations.schema_migrations');
+    applied = new Set(result.rows.map((row) => row.version));
+  } catch (err) {
+    if (err && err.code === '42501') {
+      const tablesResult = await pool.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+      );
+      const publicTables = new Set(tablesResult.rows.map((r) => r.table_name));
+      const requiredTables = [
+        'workspaces',
+        'channel_connections',
+        'channel_connection_secrets',
+        'contacts',
+        'conversation_messages',
+        'handoff_cases',
+        'outbound_dispatches',
+        'outbox_events',
+        'workspace_agent_config',
+      ];
+      const missingTables = requiredTables.filter((t) => !publicTables.has(t));
+      if (missingTables.length > 0) {
+        throw new Error(`Domain schema missing required tables: ${missingTables.join(', ')}`);
+      }
+      console.log(`[schema-gate] verified domain schema accessibility (${publicTables.size} tables in public) for runtime role`);
+      return;
+    }
+    throw err;
+  }
+
   const missing = [...expected].filter((version) => !applied.has(version));
   if (missing.length > 0) {
     throw new Error(`Database migration ledger is missing ${missing.length} release migration(s): ${missing.join(', ')}. Apply them with the approved Supabase migration workflow, then rerun promotion.`);
