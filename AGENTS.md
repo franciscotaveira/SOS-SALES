@@ -68,15 +68,14 @@
 | Contexto técnico geral | `CODEBASE.md` |
 | Decisões arquiteturais | `DECISION_LOG.md` |
 | Visão de produto / roadmap | `BLUEPRINT_SOS_SALES.md` |
-| Refinamento visual | `PROMPT_REFINAMENTO_VISUAL.md` |
+| Manuais & Runbooks de Operação | `docs/runbooks/` |
+| Relatórios de Auditoria Passados | `docs/audits/` |
 | Skills do Claude/Hermes | `CLAUDE.md` |
-| Tarefas pendentes organizadas | `.gemini_tasks/README.md` |
 | Design system (tokens CSS) | `src/index.css` |
 | Rotas da API | `openapi.json` / `openapi.yaml` |
 | Componentes UI | `src/components/` (17 módulos) |
 | Backend API | `apps/api/src/` |
 | Scripts de teste | `scripts/` |
-| Docs históricos | `docs/` |
 | Screenshots das telas | `docs/screenshots/` |
 
 ---
@@ -183,7 +182,7 @@ _Atualizado automaticamente pela AGY (Antigravity) em 18 Ago 2026_
 <claude-mem-context>
 # Memory Context
 
-# [SOS-SALES] recent context, 2026-09-04 12:01pm GMT-3
+# [SOS-SALES] recent context, 2026-09-04 12:58pm GMT-3
 
 No previous sessions found.
 </claude-mem-context>
