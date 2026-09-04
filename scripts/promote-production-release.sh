@@ -109,10 +109,21 @@ require_migration_gate() {
 require_schema_contract() {
   local candidate="$1"
   test -f "${candidate}/scripts/verify-production-schema-contract.mjs"
-  DATABASE_SSL_CA_FILE="${candidate}/certs/supabase-ca.crt" node \
-    "${candidate}/scripts/verify-production-schema-contract.mjs" \
+  # The VPS host is intentionally not a Node.js runtime. Reuse the exact API
+  # image used to install the release dependencies, mounting the candidate
+  # read-only and the production env only as container environment. This keeps
+  # the schema gate independent from host packages and prevents a partial
+  # promotion when the host has no `node` binary.
+  local node_image
+  node_image="$(docker inspect sos-sales-api --format '{{.Config.Image}}')"
+  test -n "${node_image}"
+  docker run --rm \
+    --network container:sos-sales-api \
     --env-file "${root}/.env.production" \
-    --ca-file "${candidate}/certs/supabase-ca.crt"
+    -v "${candidate}:/release:ro" \
+    "${node_image}" \
+    node /release/scripts/verify-production-schema-contract.mjs \
+      --ca-file /release/certs/supabase-ca.crt
 }
 
 require_base_release "${release}"
