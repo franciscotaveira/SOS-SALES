@@ -8,11 +8,13 @@
  */
 
 import dotenv from 'dotenv';
+import type { Pool } from 'pg';
 import { buildApp, TrustProxyOption } from './interfaces/http/app.js';
 import { WahaWebhookAdapter } from './infrastructure/channels/waha/waha-webhook-adapter.js';
 import { WahaInboundWorker } from './infrastructure/workers/waha-inbound-worker.js';
 import { WahaOutboundWorker } from './infrastructure/workers/waha-outbound-worker.js';
 import { ReceptionistInboundWorker } from './infrastructure/workers/receptionist-inbound-worker.js';
+import type { ReceptionistHandler } from './infrastructure/workers/receptionist-inbound-worker.js';
 import { getReceptionistAgent } from './application/agents/receptionist-agent.js';
 import { WahaOutboundAdapter } from './infrastructure/channels/waha/waha-outbound-adapter.js';
 import { WebhookSecretProvider } from './application/ports/webhook-secret-provider.js';
@@ -33,9 +35,13 @@ import { KnownFactOperationsGateway } from './application/ports/known-fact-opera
 import { AppointmentGateway } from './application/ports/appointment-gateway.js';
 import { NotesGateway } from './application/ports/notes-gateway.js';
 import { WorkspaceProvisioningGateway } from './application/ports/workspace-provisioning-gateway.js';
+import { WorkspaceOperationalGateway } from './application/ports/workspace-operational-gateway.js';
+import { WorkspaceMembershipGateway } from './application/ports/workspace-membership-gateway.js';
 import { WabaChannelInfoGateway } from './application/ports/waba-channel-info-gateway.js';
 import { MetaBusinessAgentGateway } from './application/ports/meta-business-agent-gateway.js';
 import { PostgresWorkspaceProvisioningGateway } from './infrastructure/database/postgres-workspace-provisioning-gateway.js';
+import { PostgresWorkspaceOperationalGateway } from './infrastructure/database/postgres-workspace-operational-gateway.js';
+import { PostgresWorkspaceMembershipGateway } from './infrastructure/database/postgres-workspace-membership-gateway.js';
 import { CompositeDependencyHealthProvider } from './infrastructure/health/composite-dependency-health-provider.js';
 import { createProductionRuntimeFromEnvironment } from './infrastructure/runtime/production-runtime.js';
 import { Redis } from 'ioredis';
@@ -59,6 +65,10 @@ export interface RuntimeDependencies {
   ) => DependencyHealthProvider;
   /** Optional only while operator API remains fail-closed (401) during bootstrap. */
   authenticator?: OperatorAuthenticator;
+  /** Production composition must bind the receptionist to its scoped pool. */
+  receptionistAgent?: ReceptionistHandler & { isEnabled(): boolean };
+  /** Production composition must bind webhook persistence to the same pool. */
+  databasePool?: Pick<Pool, 'query' | 'connect'>;
   workspaceDirectory?: WorkspaceDirectory;
   cockpitReadGateway?: CockpitReadGateway;
   handoffOperationsGateway?: HandoffOperationsGateway;
@@ -70,6 +80,8 @@ export interface RuntimeDependencies {
   appointmentGateway?: AppointmentGateway;
   notesGateway?: NotesGateway;
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
+  workspaceOperationalGateway?: WorkspaceOperationalGateway;
+  workspaceMembershipGateway?: WorkspaceMembershipGateway;
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
   metaBusinessAgentGateway?: MetaBusinessAgentGateway;
   trustProxy?: TrustProxyOption;
@@ -90,6 +102,35 @@ export interface ServerInstance {
   worker: WahaInboundWorker;
   stop: () => Promise<void>;
 }
+
+function redactWebhookVerificationToken(url: string | undefined): string | undefined {
+  if (!url?.includes('hub.verify_token=')) return url;
+
+  try {
+    const [path, query = ''] = url.split('?', 2);
+    const params = new URLSearchParams(query);
+    if (!params.has('hub.verify_token')) return url;
+    params.set('hub.verify_token', '[REDACTED]');
+    return `${path}?${params.toString()}`;
+  } catch {
+    return '[REDACTED_WEBHOOK_VERIFICATION_URL]';
+  }
+}
+
+const productionLogger = {
+  level: 'info',
+  serializers: {
+    req(request: { method?: string; url?: string; host?: string; remoteAddress?: string; remotePort?: number }) {
+      return {
+        method: request.method,
+        url: redactWebhookVerificationToken(request.url),
+        host: request.host,
+        remoteAddress: request.remoteAddress,
+        remotePort: request.remotePort,
+      };
+    },
+  },
+};
 
 export function assertProductionRuntime(runtime: RuntimeDependencies | undefined): asserts runtime is RuntimeDependencies {
   if (!runtime) {
@@ -133,6 +174,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     { PostgresKnownFactOperationsGateway },
     { PostgresAppointmentGateway },
     { PostgresNotesGateway },
+    { PostgresWorkspaceOperationalGateway },
     { PostgresWabaChannelInfoGateway },
     { dbPool },
   ] = await Promise.all([
@@ -153,6 +195,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     import('./infrastructure/database/postgres-known-fact-operations-gateway.js'),
     import('./infrastructure/database/postgres-appointment-gateway.js'),
     import('./infrastructure/database/postgres-notes-gateway.js'),
+    import('./infrastructure/database/postgres-workspace-operational-gateway.js'),
     import('./infrastructure/database/postgres-waba-channel-info-gateway.js'),
     import('./infrastructure/database/pool.js'),
   ]);
@@ -210,6 +253,8 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     knownFactOperationsGateway,
     appointmentGateway,
     notesGateway,
+    workspaceOperationalGateway: new PostgresWorkspaceOperationalGateway(dbPool),
+    workspaceMembershipGateway: new PostgresWorkspaceMembershipGateway(dbPool),
     workspaceProvisioningGateway: new PostgresWorkspaceProvisioningGateway(dbPool),
     wabaChannelInfoGateway: new PostgresWabaChannelInfoGateway(dbPool),
     metaBusinessAgentGateway: new (await import('./infrastructure/database/postgres-meta-business-agent-gateway.js')).PostgresMetaBusinessAgentGateway(dbPool),
@@ -219,6 +264,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
         target: 'pino-pretty',
         options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
       },
+      serializers: productionLogger.serializers,
     },
     createHealthProvider: (worker, workers) => new CompositeDependencyHealthProvider([
       { name: 'database', check: async () => (await databaseHealth.checkAll()).every((status) => status.healthy) },
@@ -300,7 +346,10 @@ async function startComposedServer(
   }
 
   const receptionistWorker = runtime.outboxGateway
-    ? new ReceptionistInboundWorker({ receptionistAgent: getReceptionistAgent(), outboxGateway: runtime.outboxGateway })
+    ? new ReceptionistInboundWorker({
+      receptionistAgent: runtime.receptionistAgent ?? getReceptionistAgent(),
+      outboxGateway: runtime.outboxGateway,
+    })
     : undefined;
 
   const app = buildApp({
@@ -326,11 +375,16 @@ async function startComposedServer(
     knownFactOperationsGateway: runtime.knownFactOperationsGateway,
     appointmentGateway: runtime.appointmentGateway,
     notesGateway: runtime.notesGateway,
+    workspaceOperationalGateway: runtime.workspaceOperationalGateway,
+    workspaceMembershipGateway: runtime.workspaceMembershipGateway,
     workspaceProvisioningGateway: runtime.workspaceProvisioningGateway,
     wabaChannelInfoGateway: runtime.wabaChannelInfoGateway,
     metaBusinessAgentGateway: runtime.metaBusinessAgentGateway,
+    databasePool: runtime.databasePool,
+    receptionistAgent: runtime.receptionistAgent,
     wabaWebhook: wabaWebhookConfig,
-    logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? true : { level: 'info' }),
+    logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? productionLogger : { level: 'info' }),
+    disableRequestLogging: process.env.NODE_ENV === 'production',
     trustProxy: runtime.trustProxy ?? false,
   });
 

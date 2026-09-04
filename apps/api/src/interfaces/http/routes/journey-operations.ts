@@ -5,12 +5,13 @@ import {
   JourneyOperationsGateway,
   PIPELINE_STAGES,
 } from '../../../application/ports/journey-operations-gateway.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface JourneyOperationRouteDependencies {
   journeyOperationsGateway?: JourneyOperationsGateway;
 }
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const paramsSchema = z.object({ workspaceId: uuid, journeyId: uuid });
 const idempotencySchema = z.object({ 'idempotency-key': uuid });
 const stageSchema = z.object({

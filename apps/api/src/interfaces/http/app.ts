@@ -1,4 +1,5 @@
-import Fastify, { FastifyInstance, FastifyRequest } from 'fastify';
+import Fastify, { FastifyInstance, FastifyRequest, RawServerDefault } from 'fastify';
+import type { Pool } from 'pg';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
@@ -20,9 +21,11 @@ import { TrafficProofGateway } from '../../application/ports/traffic-proof-gatew
 import { KnownFactOperationsGateway } from '../../application/ports/known-fact-operations-gateway.js';
 import { AppointmentGateway } from '../../application/ports/appointment-gateway.js';
 import { NotesGateway } from '../../application/ports/notes-gateway.js';
+import { WorkspaceOperationalGateway } from '../../application/ports/workspace-operational-gateway.js';
 import { WorkspaceProvisioningGateway } from '../../application/ports/workspace-provisioning-gateway.js';
 import { WabaChannelInfoGateway } from '../../application/ports/waba-channel-info-gateway.js';
 import { MetaBusinessAgentGateway } from '../../application/ports/meta-business-agent-gateway.js';
+import { WorkspaceMembershipGateway } from '../../application/ports/workspace-membership-gateway.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { publicSupplierRoutes } from './routes/public-supplier-routes.js';
@@ -75,13 +78,12 @@ export interface RateLimitOptions {
  * Valid values:
  *   false        — no proxy; use socket remote address (default for dev/test)
  *   true         — trust all X-Forwarded-For hops (ONLY valid behind a controlled LB)
- *   number       — trust the last N hops (recommended for single-hop reverse proxies)
  *   string/array — trust only requests from the listed CIDR ranges
  *
  * Never use `true` unless the application is behind a load balancer that
  * strips client-supplied X-Forwarded-For headers before forwarding.
  */
-export type TrustProxyOption = boolean | string | string[] | number;
+export type TrustProxyOption = boolean | string | string[];
 const REQUIRED_READINESS_DEPENDENCIES = ['database', 'redis', 'worker'] as const;
 
 export interface AppDependencies {
@@ -117,13 +119,23 @@ export interface AppDependencies {
   appointmentGateway?: AppointmentGateway;
   /** Authenticated, RLS-scoped operational notes CRUD gateway. */
   notesGateway?: NotesGateway;
+  /** Authenticated, RLS-scoped workspace settings and contact mutations. */
+  workspaceOperationalGateway?: WorkspaceOperationalGateway;
   /** Authenticated first-login workspace auto-provisioning gateway. */
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
   /** Production-owned read gateway for connected Meta WABA channel metadata. */
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
   /** Optional capability adapter for Meta Business Agent Platform. */
   metaBusinessAgentGateway?: MetaBusinessAgentGateway;
+  /** Deployment-owned database pool for webhook persistence and routing. */
+  databasePool?: Pick<Pool, 'query' | 'connect'>;
+  /** Deployment-owned receptionist gate used by inbound webhooks. */
+  receptionistAgent?: { isEnabled(): boolean };
+  /** Owner-governed member read/add/remove operations. */
+  workspaceMembershipGateway?: WorkspaceMembershipGateway;
   logger?: boolean | Record<string, unknown>;
+  /** Disable Fastify's automatic request/response logs when URLs may carry webhook secrets. */
+  disableRequestLogging?: boolean;
   rateLimit?: RateLimitOptions | false;
   /**
    * Trust-proxy setting for the Fastify server.
@@ -161,14 +173,23 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     );
   }
 
-  const { secretProvider, wahaAdapter, ingestionGateway, healthProvider, wabaWebhook } = dependencies;
+  const {
+    secretProvider,
+    wahaAdapter,
+    ingestionGateway,
+    healthProvider,
+    wabaWebhook,
+    databasePool,
+    receptionistAgent,
+  } = dependencies;
   const requiredReadinessDependencies = dependencies.readinessDependencyNames ?? REQUIRED_READINESS_DEPENDENCIES;
 
   // trustProxy MUST be set explicitly — no implicit fallback to trusting all headers.
   const trustProxy: TrustProxyOption = dependencies.trustProxy ?? false;
 
-  const app = Fastify({
+  const app = Fastify<RawServerDefault>({
     logger: dependencies.logger !== undefined ? dependencies.logger : { level: 'info' },
+    disableRequestLogging: dependencies.disableRequestLogging ?? false,
     trustProxy,
   });
 
@@ -277,11 +298,16 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     knownFactOperationsGateway: dependencies.knownFactOperationsGateway,
     appointmentGateway: dependencies.appointmentGateway,
     notesGateway: dependencies.notesGateway,
+    workspaceOperationalGateway: dependencies.workspaceOperationalGateway,
     workspaceProvisioningGateway: dependencies.workspaceProvisioningGateway,
+    workspaceMembershipGateway: dependencies.workspaceMembershipGateway,
   });
 
   // ─── 1. Public Supplier Webhooks & Crypto Handshakes (Protected by Provider Secrets & HMAC) ───
-  app.register(publicSupplierRoutes);
+  app.register(publicSupplierRoutes, {
+    databasePool,
+    ingestionGateway,
+  });
   app.register(abacatePayRoutes, {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
@@ -290,6 +316,8 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     app.register(wabaWebhookPlugin, {
       verifyToken: wabaWebhook.verifyToken,
       appSecret: wabaWebhook.appSecret,
+      databasePool,
+      receptionistAgent,
     });
   }
 
@@ -308,6 +336,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   app.register(agentRoutes, {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
+    query: databasePool?.query.bind(databasePool),
   });
 
   app.register(metaPartnerRoutes, {
@@ -319,6 +348,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
     metaBusinessAgentGateway: dependencies.metaBusinessAgentGateway,
+    query: databasePool?.query.bind(databasePool),
   });
 
   const releaseManifest = loadReleaseManifest();

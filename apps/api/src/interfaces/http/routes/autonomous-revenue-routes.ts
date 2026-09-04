@@ -9,8 +9,9 @@ import { GhostingResurrectionEngine } from '../../../application/services/ghosti
 import { LtvRetentionEngine } from '../../../application/services/ltv-retention-engine.js';
 import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
 import { assertTenantAccess, unauthorized } from '../helpers/auth-guard.js';
+import { canonicalUuid } from '../validation.js';
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const workspaceParamsSchema = z.object({ workspaceId: uuid });
 const journeyParamsSchema = z.object({ workspaceId: uuid, journeyId: uuid });
 

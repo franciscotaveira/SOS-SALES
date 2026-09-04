@@ -30,6 +30,7 @@ import { LiveWallboardView } from '../monitoring/LiveWallboardView';
 import { ContactAvatar } from '../cockpit/ContactAvatar';
 import { StartConversationModal } from './StartConversationModal';
 import { getWorkspaceCommercialConfig } from '../../services/workspaceCommercialConfig';
+import { salesOsRuntimeConfig } from '../../config/runtime';
 
 interface LiveConversationsViewProps {
   workspaceId: string;
@@ -40,8 +41,29 @@ interface LiveConversationsViewProps {
   initialViewMode?: 'list' | 'kanban' | 'notes' | 'wallboard';
 }
 
-// Helper semântico para detecção de interesse nos cards da lista adaptável ao nicho
-function detectServiceAndIntent(item: ApiJourney, isHairSalon: boolean) {
+function serviceCategoryId(value: string): string {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '_');
+}
+
+// Demo mode may illustrate niche labels. Production only displays the service
+// explicitly persisted by the backend.
+function detectServiceAndIntent(item: ApiJourney, isHairSalon: boolean, isLiveApi = false) {
+  if (isLiveApi) {
+    const persisted = item.primaryServiceOrProduct?.trim();
+    return persisted && persisted !== 'Interessada em Serviços / Atendimento'
+      ? {
+          service: persisted,
+          badgeClass: 'bg-[var(--sos-operational-subtle)] text-[var(--sos-operational)] border-[var(--sos-operational)]/30 font-bold',
+          preview: persisted,
+          category: serviceCategoryId(persisted),
+        }
+      : {
+          service: 'Serviço não informado',
+          badgeClass: 'bg-[var(--sos-border)]/30 text-[var(--sos-muted)] border-[var(--sos-border)] font-bold',
+          preview: 'Sem classificação persistida',
+          category: 'geral',
+        };
+  }
   const name = (item.contactName || '').toLowerCase();
   const rawService = (item.primaryServiceOrProduct || '').toLowerCase();
   const text = `${name} ${rawService}`.toLowerCase();
@@ -131,8 +153,9 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
   onSwitchToCockpit,
   initialViewMode = 'list',
 }) => {
+  const isLiveApi = salesOsRuntimeConfig.mode === 'api';
   const commercialConfig = useMemo(() => getWorkspaceCommercialConfig(workspaceId), [workspaceId]);
-  const isHairSalon = (commercialConfig.businessType === 'hair_salon') || workspaceId.toLowerCase().includes('haven') || workspaceId.toLowerCase().includes('escovaria');
+  const isHairSalon = commercialConfig.businessType === 'hair_salon';
 
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'notes' | 'wallboard'>(initialViewMode);
 
@@ -141,6 +164,17 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
       setViewMode(initialViewMode);
     }
   }, [initialViewMode]);
+
+  // The authenticated API contract currently covers conversations and the
+  // persisted funnel only. Notes and the TV wallboard still depend on the
+  // legacy browser-shaped model, so never expose them as if they were live
+  // backend views. This also protects against a stale route restoring one of
+  // those modes after the runtime switches from demo to API mode.
+  useEffect(() => {
+    if (isLiveApi && (viewMode === 'notes' || viewMode === 'wallboard')) {
+      setViewMode('list');
+    }
+  }, [isLiveApi, viewMode]);
   const [journeys, setJourneys] = useState<ApiJourney[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -148,6 +182,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [serviceFilter, setServiceFilter] = useState<string>('all');
   const [customServices, setCustomServices] = useState<Array<{ id: string; label: string }>>(() => {
+    if (isLiveApi) return [];
     try {
       const saved = localStorage.getItem(`sos_sales_custom_services_${workspaceId}`);
       if (saved) return JSON.parse(saved);
@@ -158,6 +193,17 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
 
   const availableServiceCategories = useMemo(() => {
     if (customServices.length > 0) return customServices;
+    if (isLiveApi) {
+      const persistedServices = new Set<string>();
+      journeys.forEach((journey) => {
+        const value = journey.primaryServiceOrProduct?.trim();
+        if (value && value !== 'Interessada em Serviços / Atendimento') persistedServices.add(value);
+      });
+      return Array.from(persistedServices).slice(0, 8).map((service) => ({
+        id: serviceCategoryId(service),
+        label: service,
+      }));
+    }
     if (isHairSalon) {
       return [
         { id: 'escova', label: '💇‍♀️ Escovas' },
@@ -190,9 +236,13 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
       { id: 'duvidas', label: '❓ Dúvidas Gerais' },
       { id: 'suporte', label: '🛠️ Suporte & Pós-Venda' },
     ];
-  }, [customServices, isHairSalon, journeys]);
+  }, [customServices, isHairSalon, isLiveApi, journeys]);
 
   const handleCustomizeServices = () => {
+    if (isLiveApi) {
+      setError('Filtros personalizados ainda não têm contrato persistido no backend. Nenhuma alteração local foi aplicada.');
+      return;
+    }
     const currentListStr = availableServiceCategories.map((c) => c.label.replace(/^[^\w\s]+\s*/, '')).join(', ');
     const promptVal = window.prompt(
       'Defina as categorias/serviços da sua empresa separados por vírgula (ex: Vendas B2B, Consultoria, Orçamento, Suporte):',
@@ -208,9 +258,11 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
           label: `✨ ${s}`,
         }));
       setCustomServices(items);
-      try {
-        localStorage.setItem(`sos_sales_custom_services_${workspaceId}`, JSON.stringify(items));
-      } catch {}
+      if (!isLiveApi) {
+        try {
+          localStorage.setItem(`sos_sales_custom_services_${workspaceId}`, JSON.stringify(items));
+        } catch {}
+      }
     }
   };
 
@@ -279,7 +331,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
 
   const filtered = useMemo(() => {
     return journeys.filter((j) => {
-      const intent = detectServiceAndIntent(j, isHairSalon);
+      const intent = detectServiceAndIntent(j, isHairSalon, isLiveApi);
 
       // Search
       if (search.trim()) {
@@ -309,7 +361,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
 
       return true;
     });
-  }, [journeys, search, stageFilter, serviceFilter, isHairSalon]);
+  }, [journeys, search, stageFilter, serviceFilter, isHairSalon, isLiveApi]);
 
   // Map ApiJourney[] to Journey[] for LiveWallboardView if active
   const mappedJourneys: Journey[] = useMemo(() => {
@@ -377,7 +429,9 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-[var(--sos-muted)] mt-0.5">
-            Supervisão ao vivo, funil comercial, gestão de notas e torre de monitoramento.
+            {isLiveApi
+              ? 'Conversas e funil persistidos no backend, com abertura direta no cockpit.'
+              : 'Supervisão ao vivo, funil comercial, gestão de notas e torre de monitoramento.'}
           </p>
         </div>
 
@@ -410,31 +464,35 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
               <span>Funil Kanban</span>
             </button>
 
-            <button
-              id="switch-view-notes-btn"
-              onClick={() => setViewMode('notes')}
-              className={`px-2.5 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                viewMode === 'notes'
-                  ? 'bg-[var(--sos-surface)] text-[var(--sos-ink)] shadow-2xs'
-                  : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)]'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Anotações</span>
-            </button>
+            {!isLiveApi && (
+              <>
+                <button
+                  id="switch-view-notes-btn"
+                  onClick={() => setViewMode('notes')}
+                  className={`px-2.5 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    viewMode === 'notes'
+                      ? 'bg-[var(--sos-surface)] text-[var(--sos-ink)] shadow-2xs'
+                      : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)]'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Anotações</span>
+                </button>
 
-            <button
-              id="switch-view-wallboard-btn"
-              onClick={() => setViewMode('wallboard')}
-              className={`px-2.5 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                viewMode === 'wallboard'
-                  ? 'bg-[var(--sos-action)] text-white shadow-2xs'
-                  : 'text-[var(--sos-muted)] hover:text-[var(--sos-action)]'
-              }`}
-            >
-              <Tv className="w-3.5 h-3.5" />
-              <span>Torre TV</span>
-            </button>
+                <button
+                  id="switch-view-wallboard-btn"
+                  onClick={() => setViewMode('wallboard')}
+                  className={`px-2.5 py-1.5 rounded-md font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    viewMode === 'wallboard'
+                      ? 'bg-[var(--sos-action)] text-white shadow-2xs'
+                      : 'text-[var(--sos-muted)] hover:text-[var(--sos-action)]'
+                  }`}
+                >
+                  <Tv className="w-3.5 h-3.5" />
+                  <span>Torre TV</span>
+                </button>
+              </>
+            )}
           </div>
 
           <button
@@ -472,7 +530,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
         </div>
       )}
 
-      {viewMode === 'notes' && (
+      {!isLiveApi && viewMode === 'notes' && (
         <div className="flex-1 overflow-hidden mt-2">
           <NotesView
             workspace={workspace || ({ id: workspaceId, name: 'Workspace', channels: [] } as any)}
@@ -481,7 +539,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
         </div>
       )}
 
-      {viewMode === 'wallboard' && (
+      {!isLiveApi && viewMode === 'wallboard' && (
         <div className="flex-1 overflow-hidden mt-2">
           <LiveWallboardView
             journeys={mappedJourneys}
@@ -510,7 +568,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
                   { id: 'QUALIFICADO', label: '2. Qualificados' },
                   { id: 'PROPOSTA', label: '3. Proposta' },
                   { id: 'NEGOCIACAO', label: '4. Negociação' },
-                  { id: 'GANHO', label: '5. Agendados / Ganho' },
+                  { id: 'GANHO', label: 'Concluídas' },
                 ].map((chip) => (
                   <button
                     key={chip.id}
@@ -540,7 +598,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
             </div>
 
             {/* Linha 2: Filtro por Serviço / Procedimento / Segmento Dinâmico */}
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {availableServiceCategories.length > 0 && <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <span className="text-xs font-extrabold uppercase tracking-wider text-[var(--sos-muted)] flex items-center gap-1 mr-1">
                 <Tag size={11} /> Segmento / Serviços:
               </span>
@@ -571,15 +629,15 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
                 </button>
               ))}
 
-              <button
+              {!isLiveApi && <button
                 type="button"
                 onClick={handleCustomizeServices}
                 className="px-2 py-0.5 rounded-md text-[11px] font-bold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition cursor-pointer flex items-center gap-1 ml-auto"
                 title="Personalizar serviços e categorias para o nicho da sua empresa"
               >
                 <Tag size={10} /> Personalizar Filtros
-              </button>
-            </div>
+              </button>}
+            </div>}
           </div>
 
           {error && (
@@ -613,7 +671,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
               ) : (
                 filtered.map((j) => {
                   const stage = formatStage(j.pipelineStage);
-                  const intent = detectServiceAndIntent(j, isHairSalon);
+                  const intent = detectServiceAndIntent(j, isHairSalon, isLiveApi);
                   const title = j.contactName || (j.contactPhone ? `Cliente ${j.contactPhone.slice(-4)}` : 'Lead Sem Nome');
 
                   // Format time
@@ -657,7 +715,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
                               {title}
                             </span>
                             <span className="px-1.5 py-0.2 rounded text-xs font-extrabold bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border border-[var(--sos-success)]/30 shrink-0">
-                              Click WA
+                              {isLiveApi ? 'WhatsApp' : 'Click WA'}
                             </span>
 
                             <span className="text-xs font-mono text-[var(--sos-muted)] sm:ml-auto">
@@ -715,7 +773,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
       )}
 
       <StartConversationModal
-        workspace={workspace || ({ id: workspaceId, name: 'Workspace Ativo', slug: 'active' } as any)}
+        workspace={workspace || ({ id: workspaceId, name: 'Workspace autenticado', slug: workspaceId } as any)}
         isOpen={isStartModalOpen}
         onClose={() => setIsStartModalOpen(false)}
         onConversationStarted={(newJourney) => {

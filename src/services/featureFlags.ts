@@ -6,6 +6,7 @@ import {
   ROLE_HIERARCHY,
 } from '../types/featureFlags';
 import { Workspace, OperatorRole } from '../types/cockpit';
+import { salesOsRuntimeConfig } from '../config/runtime';
 
 const STORAGE_KEY = 'sales_os_feature_flag_overrides_v1';
 
@@ -17,6 +18,10 @@ export class FeatureFlagService {
   }
 
   private loadOverrides() {
+    // Production capabilities are owned by the authenticated workspace. A
+    // stale browser value must never expose a module that the backend did not
+    // enable for that tenant.
+    if (salesOsRuntimeConfig.mode === 'api') return;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -35,6 +40,7 @@ export class FeatureFlagService {
   }
 
   private persistOverrides() {
+    if (salesOsRuntimeConfig.mode === 'api') return;
     try {
       const obj: Record<string, boolean> = {};
       this.overrides.forEach((v, k) => {
@@ -57,6 +63,7 @@ export class FeatureFlagService {
   }
 
   public setOverride(key: FeatureFlagKey, value: boolean | null): void {
+    if (salesOsRuntimeConfig.mode === 'api') return;
     if (value === null) {
       this.overrides.delete(key);
     } else {

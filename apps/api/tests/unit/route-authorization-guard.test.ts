@@ -21,6 +21,9 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
       if (token.startsWith('valid_token_tenant_a_viewer')) {
         return { userId: 'user_a_viewer', email: 'viewer@tenant-a.com' };
       }
+      if (token.startsWith('valid_token_tenant_a_operator')) {
+        return { userId: 'user_a_operator', email: 'operator@tenant-a.com' };
+      }
       if (token.startsWith('valid_token_tenant_b_owner')) {
         return { userId: 'user_b_owner', email: 'owner@tenant-b.com' };
       }
@@ -35,6 +38,9 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
       }
       if (actor.userId === 'user_a_viewer') {
         return [{ id: '11111111-1111-1111-1111-111111111111', name: 'Tenant A', slug: 'tenant-a', role: 'viewer' }];
+      }
+      if (actor.userId === 'user_a_operator') {
+        return [{ id: '11111111-1111-1111-1111-111111111111', name: 'Tenant A', slug: 'tenant-a', role: 'operator' }];
       }
       if (actor.userId === 'user_b_owner') {
         return [{ id: '22222222-2222-2222-2222-222222222222', name: 'Tenant B', slug: 'tenant-b', role: 'owner' }];
@@ -176,6 +182,18 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
     await app.close();
   });
 
+  it('AUTH-07B: Tracking credentials are owner-only', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/tracking',
+      headers: { authorization: 'Bearer valid_token_tenant_a_operator.part2.part3' },
+      payload: { metaDatasetId: '123456789', metaAccessToken: 'secret-not-logged' },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
   it('AUTH-18: Legacy cockpit send only queues a supervised dispatch and never calls a provider directly', async () => {
     const calls: string[] = [];
     const app = await buildTestApp({
@@ -269,6 +287,21 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
     await app.close();
   });
 
+  it('AUTH-08b: operator cannot delete an individual conversation', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/channels/whatsapp/clear-journey',
+      headers: {
+        authorization: 'Bearer valid_token_tenant_a_operator.part2.part3',
+        'x-confirm-destruction': 'CONFIRM_DATA_DELETION',
+      },
+      payload: { journeyId: '33333333-3333-3333-3333-333333333333' },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
   it('AUTH-09: Viewer cannot mutate Meta Partner configuration', async () => {
     const app = await buildTestApp();
     const res = await app.inject({
@@ -332,6 +365,41 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
       url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/agent/config',
       headers: { authorization: 'Bearer valid_token_tenant_a_viewer.part2.part3' },
       payload: { autonomyMode: 'autonomous_24_7', runtimeEnabled: true },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('AUTH-10f: Viewer cannot mutate persisted workspace intelligence', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/intelligence',
+      headers: { authorization: 'Bearer valid_token_tenant_a_viewer.part2.part3' },
+      payload: { bundle: { companyProfile: { tradeName: 'blocked' } } },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('AUTH-10g: Operator cannot delete workspace knowledge documents', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/knowledge-docs/00000000-0000-4000-8000-000000000001',
+      headers: { authorization: 'Bearer valid_token_tenant_a_operator.part2.part3' },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('AUTH-10h: Operator cannot replace WABA credentials', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/channels/waba/configure',
+      headers: { authorization: 'Bearer valid_token_tenant_a_operator.part2.part3' },
+      payload: { wabaId: 'waba', phoneNumberId: 'phone', accessToken: 'secret' },
     });
     expect(res.statusCode).toBe(403);
     await app.close();

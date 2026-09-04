@@ -1,9 +1,10 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import crypto from 'node:crypto';
+import type { Pool } from 'pg';
 import { FlowCrypto } from '../../../infrastructure/channels/meta/flow-crypto.js';
-import { getWorkspaceIdFromSession, isEventReplayed, verifyWahaApiKeyTimingSafe, normalizeWorkspaceUuid } from './whatsapp-channel-routes.js';
+import { getSessionName, getWorkspaceIdFromSession, isEventReplayed, verifyWahaApiKeyTimingSafe } from './whatsapp-channel-routes.js';
 import { dbPool } from '../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../application/services/attribution-service.js';
+import { InboundIngestionGateway } from '../../../application/ports/inbound-ingestion-gateway.js';
 
 export interface FlowRequestBody {
   encrypted_flow_data?: string;
@@ -11,7 +12,42 @@ export interface FlowRequestBody {
   initial_vector?: string;
 }
 
-export async function publicSupplierRoutes(app: FastifyInstance): Promise<void> {
+export interface PublicSupplierRouteOptions {
+  /** Deployment-owned pool. The local module pool is only a test/development fallback. */
+  databasePool?: Pick<Pool, 'query' | 'connect'>;
+  /** Durable raw-envelope ingestion used by the production WAHA path. */
+  ingestionGateway?: InboundIngestionGateway;
+}
+
+function extractWahaMessageId(payload: Record<string, unknown>): string {
+  const rawId = payload.id;
+  if (typeof rawId === 'string' && rawId.trim()) return rawId.trim();
+  if (rawId && typeof rawId === 'object') {
+    const idRecord = rawId as Record<string, unknown>;
+    const serialized = typeof idRecord._serialized === 'string'
+      ? idRecord._serialized
+      : typeof idRecord.id === 'string' ? idRecord.id : '';
+    if (serialized.trim()) return serialized.trim();
+  }
+  const key = payload.key && typeof payload.key === 'object' ? payload.key as Record<string, unknown> : undefined;
+  if (typeof key?.id === 'string' && key.id.trim()) return key.id.trim();
+  if (key?.id && typeof key.id === 'object') {
+    const keyId = key.id as Record<string, unknown>;
+    const serialized = typeof keyId._serialized === 'string'
+      ? keyId._serialized
+      : typeof keyId.id === 'string' ? keyId.id : '';
+    if (serialized.trim()) return serialized.trim();
+  }
+  if (typeof payload._serialized === 'string' && payload._serialized.trim()) return payload._serialized.trim();
+  return '';
+}
+
+export async function publicSupplierRoutes(
+  app: FastifyInstance,
+  options: PublicSupplierRouteOptions = {},
+): Promise<void> {
+  const routePool = options.databasePool ?? dbPool;
+
   // ─── 1. Live WAHA Webhook Receiver (Fail-Closed Auth, Replay Protected, Real Persistence) ─────
   app.post('/api/v1/channels/waha/webhook', async (request: FastifyRequest<{ Body: any }>, reply: FastifyReply) => {
     // 0. Fail-Closed Authentication Verification (Strict Header only: x-api-key or Authorization)
@@ -22,39 +58,56 @@ export async function publicSupplierRoutes(app: FastifyInstance): Promise<void> 
     }
 
     const body = request.body as any;
-    const session = body?.session || 'default';
+    const session = typeof body?.session === 'string' ? body.session.trim() : '';
+    if (!session) {
+      return reply.code(400).send({ error: 'WAHA webhook requires an explicit session name', code: 'WAHA_SESSION_REQUIRED' });
+    }
     const event = body?.event;
     const payload = body?.payload;
 
-    if (!payload || (event !== 'message' && event !== 'message.any')) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || (event !== 'message' && event !== 'message.any')) {
       return reply.code(200).send({ received: true });
     }
 
-    // Anti-replay & Idempotency check
-    const eventId = String(payload.id || payload._serialized || `${session}_${payload.timestamp}_${payload.from}`);
-    if (isEventReplayed(eventId)) {
-      request.log.info({ eventId, session }, '[WAHA Webhook] Duplicate/replayed event dropped');
-      return reply.code(200).send({ received: true, deduplicated: true });
+    const payloadRecord = payload as Record<string, unknown>;
+    const nestedMeta = payloadRecord._data && typeof payloadRecord._data === 'object'
+      ? payloadRecord._data as Record<string, unknown>
+      : undefined;
+    const nestedKey = payloadRecord.key && typeof payloadRecord.key === 'object'
+      ? payloadRecord.key as Record<string, unknown>
+      : undefined;
+    const providerMessageId = extractWahaMessageId(payloadRecord);
+    if (!providerMessageId) {
+      return reply.code(400).send({
+        error: 'WAHA message payload requires a provider message ID',
+        code: 'WAHA_MESSAGE_ID_REQUIRED',
+      });
     }
 
-    const workspaceId = getWorkspaceIdFromSession(session);
-    if (!workspaceId) {
-      request.log.warn({ session }, '[WAHA Webhook] Ignored message for unrecognized/unregistered session');
-      return reply.code(200).send({ ignored: true, reason: 'unrecognized_or_unregistered_session' });
-    }
-
-    const rawFrom = String(payload.from || '');
-    const rawTo = String(payload.to || '');
-    const fromMe = Boolean(payload.fromMe);
+    const rawFrom = typeof payloadRecord.from === 'string'
+      ? payloadRecord.from
+      : typeof nestedMeta?.from === 'string'
+        ? nestedMeta.from
+        : typeof nestedKey?.remoteJid === 'string'
+          ? nestedKey.remoteJid
+          : '';
+    const rawTo = typeof payloadRecord.to === 'string'
+      ? payloadRecord.to
+      : typeof nestedMeta?.to === 'string'
+        ? nestedMeta.to
+        : '';
+    const fromMe = Boolean(payloadRecord.fromMe || nestedMeta?.fromMe || nestedKey?.fromMe);
 
     // 1. Ignore Status Stories and System Broadcasts
     if (
       rawFrom.includes('@broadcast') ||
       rawTo.includes('@broadcast') ||
+      rawFrom.endsWith('@newsletter') ||
+      rawTo.endsWith('@newsletter') ||
       rawFrom === 'status' ||
       rawTo === 'status' ||
-      payload.type === 'e2e_notification' ||
-      payload.type === 'notification_template'
+      payloadRecord.type === 'e2e_notification' ||
+      payloadRecord.type === 'notification_template'
     ) {
       return reply.code(200).send({ ignored: true, reason: 'status_or_system_broadcast' });
     }
@@ -65,17 +118,89 @@ export async function publicSupplierRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(200).send({ received: true, type: 'group_message_ignored_from_1to1' });
     }
 
+    // Production inbound traffic must enter the same durable ingestion path as
+    // the strict /webhooks/waha/:channelConnectionId contract. The old route
+    // used to write contacts/messages directly and bypass the worker, which
+    // made retries, audit envelopes and downstream processing inconsistent.
+    // Outbound fromMe events remain on the direct mirror path below so the
+    // operator's own WAHA messages stay visible in the conversation history.
+    if (options.ingestionGateway && !fromMe) {
+      const mappedWorkspaceId = getWorkspaceIdFromSession(session);
+      const channelResult = await routePool.query<{ id: string; workspace_id: string }>(
+        `SELECT id, workspace_id
+         FROM public.channel_connections
+         WHERE provider = 'waha'
+           AND status = 'CONNECTED'
+           AND (
+             public_config->>'sessionName' = $1
+             OR public_config->>'session' = $1
+             OR (
+               $2::uuid IS NOT NULL
+               AND workspace_id = $2::uuid
+               AND COALESCE(public_config->>'sessionName', '') = ''
+               AND COALESCE(public_config->>'session', '') = ''
+             )
+           )
+         ORDER BY updated_at DESC
+         LIMIT 2`,
+        [session, mappedWorkspaceId],
+      );
+
+      if (channelResult.rows.length !== 1) {
+        return reply.code(409).send({
+          error: channelResult.rows.length === 0
+            ? 'A sessão WAHA ainda não está registrada como canal conectado.'
+            : 'Mais de um canal WAHA corresponde a esta sessão; reconcilie a configuração antes de receber mensagens.',
+          code: channelResult.rows.length === 0 ? 'WAHA_CHANNEL_NOT_REGISTERED' : 'WAHA_CHANNEL_AMBIGUOUS',
+        });
+      }
+
+      const ingestion = await options.ingestionGateway.ingestChannelEvent({
+        channelConnectionId: channelResult.rows[0].id,
+        providerEventId: `message:${providerMessageId}`,
+        eventType: event as string,
+        rawPayload: { ...body, session },
+      });
+
+      return reply.code(200).send({
+        received: true,
+        accepted: true,
+        inboundEventId: ingestion.inboundEventId,
+        workspaceId: ingestion.workspaceId,
+        deduplicated: ingestion.isDuplicate || undefined,
+      });
+    }
+
+    // Anti-replay is retained only for the legacy/test direct mirror. The
+    // production durable path relies on the database uniqueness fence above;
+    // marking an event before a DB write would otherwise lose a valid retry.
+    if (!options.ingestionGateway) {
+      const eventId = `message:${providerMessageId}`;
+      if (isEventReplayed(eventId)) {
+        request.log.info({ eventId, session }, '[WAHA Webhook] Duplicate/replayed event dropped');
+        return reply.code(200).send({ received: true, deduplicated: true });
+      }
+    }
+
+    const workspaceId = getWorkspaceIdFromSession(session);
+    if (!workspaceId) {
+      request.log.warn({ session }, '[WAHA Webhook] Ignored message for unrecognized/unregistered session');
+      return reply.code(200).send({ ignored: true, reason: 'unrecognized_or_unregistered_session' });
+    }
+
     const rawTarget = fromMe ? rawTo : rawFrom;
+    // A WAHA LID is an opaque linked-device identifier, not a phone number.
+    // The durable production worker resolves it through WAHA's explicit LID
+    // endpoint; the legacy direct mirror must fail closed instead of guessing
+    // from a display name.
+    if (rawTarget.endsWith('@lid')) {
+      return reply.code(200).send({ ignored: true, reason: 'unresolved_lid_identity' });
+    }
     const rawId = rawTarget.split('@')[0];
     const whatsappId = rawTarget;
     const notifyName = (payload._data?.notifyName || payload.notifyName || '').trim();
     const chatName = (payload._data?.chat?.name || '').trim();
-    const phoneFromChatName = chatName.replace(/\D/g, '');
-
     let contactPhone = rawId;
-    if (rawTarget.includes('@lid') && phoneFromChatName.length >= 10 && phoneFromChatName.length <= 15) {
-      contactPhone = phoneFromChatName;
-    }
 
     let contactName = notifyName || chatName;
     if (!contactName || contactName === rawId || contactName.replace(/\D/g, '') === contactPhone) {
@@ -123,7 +248,7 @@ export async function publicSupplierRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(200).send({ ignored: true });
     }
 
-    const client = await dbPool.connect();
+    const client = await routePool.connect();
     try {
       const contactRes = await client.query(`
         INSERT INTO public.contacts (id, workspace_id, phone, whatsapp_id, name, created_at, updated_at)
@@ -135,40 +260,88 @@ export async function publicSupplierRoutes(app: FastifyInstance): Promise<void> 
       const contactId = contactRes.rows[0].id;
 
       let channelConnectionId: string;
-      const chRes = await client.query('SELECT id FROM public.channel_connections WHERE workspace_id = $1 LIMIT 1', [workspaceId]);
-      if (chRes.rowCount && chRes.rowCount > 0) {
-        channelConnectionId = chRes.rows[0].id;
-        await client.query(`UPDATE public.channel_connections SET status = 'CONNECTED', updated_at = NOW() WHERE id = $1`, [channelConnectionId]);
-      } else {
-        const newCh = await client.query(`
-          INSERT INTO public.channel_connections (id, workspace_id, provider, phone_number, name, public_config, status, created_at, updated_at)
-          VALUES (gen_random_uuid(), $1, 'waha', '', 'WhatsApp Web', '{"engine":"WAHA"}', 'CONNECTED', NOW(), NOW())
-          RETURNING id
-        `, [workspaceId]);
-        channelConnectionId = newCh.rows[0].id;
+      // A WAHA webhook must never attach messages to an arbitrary channel in
+      // the workspace. A Meta Cloud connection can coexist as configuration,
+      // but it is a distinct provider with a distinct webhook lifecycle.
+      const expectedSession = getSessionName(workspaceId);
+      const chRes = await client.query(
+        `SELECT id, public_config FROM public.channel_connections
+         WHERE workspace_id = $1 AND provider = 'waha'
+           AND status = 'CONNECTED'
+           AND (
+             public_config->>'sessionName' = $2
+             OR public_config->>'session' = $2
+             OR ($3 IS NOT NULL AND $2 = $3 AND COALESCE(public_config->>'sessionName', '') = '')
+           )
+         ORDER BY updated_at DESC
+         LIMIT 2`,
+        [workspaceId, session, expectedSession]
+      );
+      if (chRes.rows.length !== 1) {
+        return reply.code(409).send({
+          error: chRes.rows.length === 0
+            ? 'A sessão WAHA ainda não está registrada como canal conectado neste workspace.'
+            : 'Mais de um canal WAHA corresponde a esta sessão; reconcilie a configuração antes de receber mensagens.',
+          code: chRes.rows.length === 0 ? 'WAHA_CHANNEL_NOT_REGISTERED' : 'WAHA_CHANNEL_AMBIGUOUS',
+        });
       }
+      channelConnectionId = chRes.rows[0].id;
+      const currentConfig = typeof chRes.rows[0].public_config === 'string'
+        ? JSON.parse(chRes.rows[0].public_config)
+        : (chRes.rows[0].public_config || {});
+      await client.query(
+        `UPDATE public.channel_connections
+         SET public_config = $1::jsonb, updated_at = NOW()
+         WHERE id = $2 AND workspace_id = $3 AND provider = 'waha' AND status = 'CONNECTED'`,
+        [JSON.stringify({ ...currentConfig, engine: currentConfig.engine || 'WAHA', sessionName: session }), channelConnectionId, workspaceId],
+      );
 
       let journeyId: string;
       const existingJourney = await client.query(`
-        SELECT id FROM public.commercial_journeys WHERE workspace_id = $1 AND contact_id = $2 LIMIT 1
-      `, [workspaceId, contactId]);
+        SELECT id, channel_connection_id
+        FROM public.commercial_journeys
+        WHERE workspace_id = $1
+          AND contact_id = $2
+          AND status = 'OPEN'
+          AND (channel_connection_id = $3 OR channel_connection_id IS NULL)
+        ORDER BY (channel_connection_id = $3) DESC, updated_at DESC
+        LIMIT 1
+      `, [workspaceId, contactId, channelConnectionId]);
 
       if (existingJourney.rowCount && existingJourney.rowCount > 0) {
         journeyId = existingJourney.rows[0].id;
-        await client.query(`UPDATE public.commercial_journeys SET updated_at = NOW() WHERE id = $1`, [journeyId]);
+        await client.query(
+          `UPDATE public.commercial_journeys
+           SET channel_connection_id = COALESCE(channel_connection_id, $2), updated_at = NOW()
+           WHERE id = $1 AND workspace_id = $3`,
+          [journeyId, channelConnectionId, workspaceId],
+        );
       } else {
         const insertJourney = await client.query(`
           INSERT INTO public.commercial_journeys (id, workspace_id, contact_id, channel_connection_id, status, pipeline_stage, total_revenue_minor, currency, started_at, created_at, updated_at)
           VALUES (gen_random_uuid(), $1, $2, $3, 'OPEN', 'NEW', 0, 'BRL', NOW(), NOW(), NOW())
-          ON CONFLICT (workspace_id, contact_id) WHERE status = 'OPEN' DO UPDATE SET updated_at = NOW()
+          ON CONFLICT DO NOTHING
           RETURNING id
         `, [workspaceId, contactId, channelConnectionId]);
-        journeyId = insertJourney.rows[0].id;
+        if (insertJourney.rows[0]?.id) {
+          journeyId = insertJourney.rows[0].id;
+        } else {
+          const racedJourney = await client.query(
+            `SELECT id FROM public.commercial_journeys
+             WHERE workspace_id = $1 AND contact_id = $2 AND channel_connection_id = $3 AND status = 'OPEN'
+             LIMIT 1`,
+            [workspaceId, contactId, channelConnectionId],
+          );
+          if (!racedJourney.rows[0]?.id) {
+            return reply.code(409).send({ error: 'A jornada comercial está em conflito com outro canal; tente novamente após reconciliar os canais.' });
+          }
+          journeyId = racedJourney.rows[0].id;
+        }
       }
 
       const direction = fromMe ? 'outbound' : 'inbound';
       const senderType = fromMe ? 'operator' : 'customer';
-      const providerMsgId = payload.id || crypto.randomUUID();
+      const providerMsgId = providerMessageId;
 
       await client.query(`
         INSERT INTO public.conversation_messages (
@@ -214,7 +387,11 @@ export async function publicSupplierRoutes(app: FastifyInstance): Promise<void> 
         try {
           const chCfgRes = await client.query('SELECT public_config FROM public.channel_connections WHERE id = $1', [channelConnectionId]);
           const pubCfg = chCfgRes.rows[0]?.public_config || {};
-          const campaigns = pubCfg?.trackingConfig?.campaigns || [];
+          const campaigns = Array.isArray(pubCfg?.campaignMappings)
+            ? pubCfg.campaignMappings
+            : Array.isArray(pubCfg?.trackingConfig?.campaigns)
+              ? pubCfg.trackingConfig.campaigns
+              : [];
 
           const existingAcq = await client.query('SELECT id FROM public.acquisition_contexts WHERE workspace_id = $1 AND journey_id = $2 LIMIT 1', [workspaceId, journeyId]);
           if (existingAcq.rowCount === 0) {

@@ -96,11 +96,11 @@ export const AppShell: React.FC<AppShellProps> = ({
   onChangeRole,
   activeIntelligenceSubTab = 'knowledge',
   onChangeIntelligenceSubTab,
-  activeSettingsSubTab = 'engines',
+  activeSettingsSubTab = 'canais',
   onChangeSettingsSubTab,
   activeGroupSubTab = 'conversations',
   onChangeGroupSubTab,
-  activeResultsSubTab = 'analytics',
+  activeResultsSubTab = 'traffic_proof',
   onChangeResultsSubTab,
   activeConversationsMode = 'list',
   onChangeConversationsMode,
@@ -127,6 +127,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
   const [helpModalOpen, setHelpModalOpen] = React.useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = React.useState(false);
+  const [administrationOpen, setAdministrationOpen] = React.useState(false);
 
   // Toggle collapse state and persist preference
   const toggleCollapse = () => {
@@ -162,37 +163,66 @@ export const AppShell: React.FC<AppShellProps> = ({
   }, []);
 
   const showKanban = isFeatureEnabled('commercial_kanban');
-  const showGroups = isFeatureEnabled('agency_groups');
+  // Production navigation is intentionally small. Every visible item still
+  // needs a real backend contract; legacy demo screens stay out of the live
+  // shell without deleting their code for future tiers.
+  const isProductionMvp = salesOsRuntimeConfig.mode === 'api';
+  const showGroups = !isProductionMvp && isFeatureEnabled('agency_groups');
   const showTrafficProof = isFeatureEnabled('traffic_proof');
-  const showQaSimulator = isFeatureEnabled('qa_simulator');
+  const showQaSimulator = !isProductionMvp && isFeatureEnabled('qa_simulator');
 
   // RBAC permissions based on role
   const isOwner = role === 'owner';
   const isAdmin = role === 'admin' || role === 'owner';
 
-  // Live Primary channel health via real-time endpoint poll + workspace fallback
+  // Live channel status via real-time endpoints. Static workspace health is
+  // never used as proof of a production connection.
   const [liveChannelStatus, setLiveChannelStatus] = React.useState<{
+    session?: string;
     status: string;
     phone?: string | null;
     pushName?: string | null;
+  } | null>(null);
+  const [liveWabaStatus, setLiveWabaStatus] = React.useState<{
+    configured?: boolean;
+    credentialsAvailable?: boolean;
+    phoneNumber?: string | null;
   } | null>(null);
   const [liveChannelStatusError, setLiveChannelStatusError] = React.useState<string | null>(null);
 
   const fetchLiveChannelStatus = React.useCallback(async () => {
     if (!currentWorkspace?.id) return;
-    try {
-      const res = await authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/channels/whatsapp/status`);
-      if (res.ok) {
-        const data = await res.json();
-        setLiveChannelStatus(data);
+    const [wahaResult, wabaResult] = await Promise.allSettled([
+      authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/channels/whatsapp/status`),
+      authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/channels/waba/channel-info`),
+    ]);
+
+    if (wahaResult.status === 'fulfilled') {
+      const response = wahaResult.value;
+      if (response.ok) {
+        setLiveChannelStatus(await response.json());
         setLiveChannelStatusError(null);
       } else {
         setLiveChannelStatus(null);
-        setLiveChannelStatusError(`Status indisponível (${res.status})`);
+        setLiveChannelStatusError(`Status indisponível (${response.status})`);
       }
-    } catch {
+    } else {
       setLiveChannelStatus(null);
       setLiveChannelStatusError('Status indisponível');
+    }
+
+    if (wabaResult.status === 'fulfilled') {
+      const response = wabaResult.value;
+      if (response.ok) {
+        const data = await response.json();
+        setLiveWabaStatus(data);
+      } else if (response.status === 404) {
+        setLiveWabaStatus({ configured: false });
+      } else {
+        setLiveWabaStatus(null);
+      }
+    } else {
+      setLiveWabaStatus(null);
     }
   }, [currentWorkspace?.id]);
 
@@ -253,16 +283,46 @@ export const AppShell: React.FC<AppShellProps> = ({
     }
   };
 
-  // Primary channel health computation
+  // Primary channel status. A stored WABA token is configuration evidence,
+  // not a live Meta health check, so never render it as "online". WAHA has a
+  // live session status endpoint and may be shown as online only when that
+  // endpoint reports WORKING.
   const primaryChannel = currentWorkspace.channels[0];
-  const isChannelOnline =
-    !liveChannelStatusError &&
-    (liveChannelStatus?.status === 'WORKING' ||
-      primaryChannel?.health === 'healthy' ||
-      primaryChannel?.health === 'connected');
-  const isChannelPaused = primaryChannel?.health === 'paused';
-  const isChannelScanning = liveChannelStatus?.status === 'SCAN_QR_CODE';
-  const channelEngine = (primaryChannel as any)?.engine ? (primaryChannel as any).engine.toUpperCase() : 'WAHA';
+  const hasOfficialChannel = liveWabaStatus?.configured === true;
+  const isOfficialChannelConfigured = hasOfficialChannel
+    && liveWabaStatus?.credentialsAvailable === true;
+  const isOfficialChannelIncomplete = hasOfficialChannel && !isOfficialChannelConfigured;
+  const isChannelOnline = !hasOfficialChannel
+    && !liveChannelStatusError
+    && liveChannelStatus?.status === 'WORKING';
+  const isChannelPaused = !hasOfficialChannel && primaryChannel?.health === 'paused';
+  const isChannelScanning = !hasOfficialChannel && liveChannelStatus?.status === 'SCAN_QR_CODE';
+  const channelEngine = hasOfficialChannel
+    ? 'META'
+    : liveChannelStatus?.session
+      ? 'WAHA'
+      : (primaryChannel as any)?.engine
+        ? (primaryChannel as any).engine.toUpperCase()
+        : 'CANAL';
+  const channelBadgeState = isChannelPaused
+    ? 'paused'
+    : isOfficialChannelConfigured
+      ? 'configured'
+      : isOfficialChannelIncomplete
+        ? 'attention'
+        : isChannelOnline
+          ? 'online'
+          : isChannelScanning
+            ? 'scanning'
+            : 'offline';
+  const channelBadgeCopy = {
+    paused: 'WhatsApp Pausado',
+    configured: 'Meta configurado',
+    attention: 'Meta incompleto',
+    online: 'WhatsApp Online',
+    scanning: 'Aguardando QR',
+    offline: 'WhatsApp Offline',
+  }[channelBadgeState];
 
   // Role hierarchy helper for fine-grained authorization
   const roleHierarchy: Record<OperatorRole, number> = {
@@ -288,6 +348,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     roleRequired?: OperatorRole;
     visible?: boolean;
     tag?: string;
+    conversationsMode?: 'list' | 'kanban' | 'wallboard';
   }
 
   interface NavSection {
@@ -295,11 +356,9 @@ export const AppShell: React.FC<AppShellProps> = ({
     items: NavItem[];
   }
 
-  const isApiMode = salesOsRuntimeConfig.mode === 'api';
-
   const navSections: NavSection[] = [
     {
-      title: 'OPERAÇÃO',
+      title: 'ATENDIMENTO',
       items: [
         {
           id: 'agora',
@@ -312,10 +371,19 @@ export const AppShell: React.FC<AppShellProps> = ({
         },
         {
           id: 'conversas',
-          label: 'Conversas & Funil',
+          label: 'Conversas',
           icon: MessageSquare,
           roleRequired: 'operator',
           visible: true,
+          conversationsMode: 'list',
+        },
+        {
+          id: 'conversas',
+          label: 'Funil',
+          icon: Columns3,
+          roleRequired: 'operator',
+          visible: showKanban,
+          conversationsMode: 'kanban',
         },
         {
           id: 'grupos',
@@ -324,72 +392,78 @@ export const AppShell: React.FC<AppShellProps> = ({
           badge: pendingGroupsCount > 0 ? pendingGroupsCount : undefined,
           badgeColor: 'bg-[#D97706] text-white',
           roleRequired: 'operator',
-          visible: !isApiMode && showGroups,
+          visible: showGroups,
         },
         {
           id: 'agenda',
           label: 'Agenda',
           icon: CalendarDays,
           roleRequired: 'operator',
-          visible: !isApiMode,
+          visible: !isProductionMvp,
         },
       ],
     },
-    ...(!isApiMode ? [
-      {
-        title: 'GESTÃO',
-        items: [
-          {
-            id: 'clientes' as NavigationTab,
-            label: 'Gestão de Clientes',
-            icon: Building2,
-            roleRequired: 'admin' as OperatorRole,
-            visible: true,
-          },
-          {
-            id: 'resultados' as NavigationTab,
-            label: 'Gestão de Campanhas',
-            icon: Megaphone,
-            roleRequired: 'admin' as OperatorRole,
-            visible: showTrafficProof,
-          },
-        ],
-      },
-      {
-        title: 'INTELIGÊNCIA',
-        items: [
-          {
-            id: 'playbook' as NavigationTab,
-            label: 'Inteligência',
-            icon: Bot,
-            roleRequired: 'admin' as OperatorRole,
-            visible: true,
-          },
-          {
-            id: 'simulador' as NavigationTab,
-            label: 'Simulador',
-            icon: Zap,
-            roleRequired: 'admin' as OperatorRole,
-            visible: false,
-          },
-        ],
-      },
-    ] : []),
+    {
+      title: 'NEGÓCIO',
+      items: [
+        {
+          id: 'resultados' as NavigationTab,
+          label: 'Resultados',
+          icon: Megaphone,
+          roleRequired: 'admin' as OperatorRole,
+          visible: showTrafficProof,
+        },
+      ],
+    },
+    {
+      title: 'INTELIGÊNCIA',
+      items: [
+        {
+          id: 'playbook' as NavigationTab,
+          label: isProductionMvp ? 'IA & Conhecimento' : 'Inteligência',
+          icon: Bot,
+          roleRequired: 'admin' as OperatorRole,
+          visible: true,
+        },
+        {
+          id: 'simulador' as NavigationTab,
+          label: 'Simulador',
+          icon: Zap,
+          roleRequired: 'admin' as OperatorRole,
+          visible: !isProductionMvp && (showQaSimulator || isAdmin),
+        },
+      ],
+    },
     {
       title: 'SISTEMA',
       items: [
         {
-          id: 'configuracoes',
+          id: 'configuracoes' as NavigationTab,
           label: 'Configurações',
           icon: Settings,
-          roleRequired: 'owner',
+          roleRequired: 'owner' as OperatorRole,
+          visible: true,
+        },
+      ],
+    },
+    {
+      title: 'ADMINISTRAÇÃO',
+      items: [
+        {
+          id: 'clientes' as NavigationTab,
+          label: 'Empresas e subcontas',
+          icon: Building2,
+          roleRequired: 'owner' as OperatorRole,
           visible: true,
         },
       ],
     },
   ];
 
-  const handleNavClick = (tabId: NavigationTab) => {
+  const handleNavClick = (tabId: NavigationTab, conversationsMode?: 'list' | 'kanban' | 'wallboard') => {
+    if (tabId === 'conversas' && conversationsMode) {
+      onChangeConversationsMode?.(conversationsMode);
+    }
     onChangeTab(tabId);
     setMobileDrawerOpen(false);
   };
@@ -407,16 +481,19 @@ export const AppShell: React.FC<AppShellProps> = ({
     { id: 'agora', label: 'Cockpit Agora (Prioridades)', icon: Flame, section: 'Operação', roleRequired: 'operator' },
     { id: 'conversas', label: 'Todas as Conversas (Lista 1:1)', icon: MessageSquare, section: 'Operação', roleRequired: 'operator', conversationsMode: 'list' },
     { id: 'conversas', label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação', roleRequired: 'operator', conversationsMode: 'kanban' },
-    ...(!isApiMode ? [
+    ...(!isProductionMvp ? [
       { id: 'agenda' as NavigationTab, label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação', roleRequired: 'operator' as OperatorRole },
       { id: 'anotacoes' as NavigationTab, label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação', roleRequired: 'operator' as OperatorRole },
-      ...(showGroups ? [{ id: 'grupos' as NavigationTab, label: 'Grupos WhatsApp', icon: Users, section: 'Operação', roleRequired: 'operator' as OperatorRole }] : []),
-      { id: 'clientes' as NavigationTab, label: 'Gestão de Clientes & Sub-contas (Matriz)', icon: Building2, section: 'Gestão', roleRequired: 'admin' as OperatorRole },
-      ...(showTrafficProof ? [
-        { id: 'resultados' as NavigationTab, label: 'Analytics & ROI da IA', icon: PieChart, section: 'Gestão', subTab: 'analytics', roleRequired: 'admin' as OperatorRole },
-        { id: 'resultados' as NavigationTab, label: 'Resultados & Proof of Traffic', icon: BarChart3, section: 'Gestão', subTab: 'proof', roleRequired: 'admin' as OperatorRole },
-      ] : []),
-      { id: 'playbook' as NavigationTab, label: 'Sales AI Playbook & Inteligência', icon: Bot, section: 'Inteligência', roleRequired: 'admin' as OperatorRole },
+    ] : []),
+    ...(showGroups ? [{ id: 'grupos' as NavigationTab, label: 'Grupos WhatsApp', icon: Users, section: 'Operação', roleRequired: 'operator' as OperatorRole }] : []),
+    { id: 'clientes' as NavigationTab, label: 'Clientes e Sub-contas', icon: Building2, section: 'Sistema', roleRequired: 'owner' as OperatorRole },
+    ...(showTrafficProof ? [
+      { id: 'resultados' as NavigationTab, label: 'Resultados dos anúncios', icon: PieChart, section: 'Negócio', subTab: 'traffic_proof', roleRequired: 'admin' as OperatorRole },
+      { id: 'resultados' as NavigationTab, label: 'Conectar rastreamento Meta', icon: BarChart3, section: 'Gestão', subTab: 'tracking', roleRequired: 'owner' as OperatorRole },
+    ] : []),
+    { id: 'playbook' as NavigationTab, label: isProductionMvp ? 'IA & Conhecimento da empresa' : 'Sales AI Playbook & Inteligência', icon: Bot, section: 'Inteligência', roleRequired: 'admin' as OperatorRole },
+    ...(!isProductionMvp && (showQaSimulator || isAdmin) ? [
+      { id: 'simulador' as NavigationTab, label: 'Simulador de QA & Estresse', icon: Zap, section: 'Inteligência', roleRequired: 'admin' as OperatorRole },
     ] : []),
     { id: 'configuracoes', label: 'Configurações do Workspace', icon: Settings, section: 'Sistema', roleRequired: 'owner' },
   ];
@@ -487,9 +564,22 @@ export const AppShell: React.FC<AppShellProps> = ({
             );
             if (visibleItems.length === 0) return null;
 
+            const isAdministration = section.title === 'ADMINISTRAÇÃO';
+            const sectionExpanded = !isAdministration || administrationOpen || visibleItems.some((item) => item.id === activeTab);
+
             return (
               <div key={section.title} className="space-y-1">
-                {!collapsed ? (
+                {!collapsed && isAdministration ? (
+                  <button
+                    type="button"
+                    onClick={() => setAdministrationOpen((open) => !open)}
+                    className="w-full px-2.5 py-1.5 text-xs font-bold tracking-wider text-slate-400 hover:text-slate-200 uppercase font-heading flex items-center justify-between"
+                    aria-expanded={sectionExpanded}
+                  >
+                    <span>{section.title}</span>
+                    <ChevronRight className={`h-3.5 w-3.5 transition-transform ${sectionExpanded ? 'rotate-90' : ''}`} />
+                  </button>
+                ) : !collapsed ? (
                               <div className="px-2.5 py-1.5 text-xs font-bold tracking-wider text-slate-400 uppercase font-heading">
                                 {section.title}
                               </div>
@@ -497,15 +587,17 @@ export const AppShell: React.FC<AppShellProps> = ({
                               <div className="h-px bg-slate-800/80 my-2 mx-1" />
                             )}
 
-                {visibleItems.map((item) => {
-                  const isActive = activeTab === item.id;
+                {sectionExpanded && visibleItems.map((item) => {
+                  const isActive = activeTab === item.id && (
+                    item.id !== 'conversas' || !item.conversationsMode || activeConversationsMode === item.conversationsMode
+                  );
                   const Icon = item.icon;
 
                   return (
-                    <React.Fragment key={item.id}>
+                    <React.Fragment key={`${item.id}-${item.conversationsMode || 'default'}`}>
                       <button
-                        id={`sidebar-nav-${item.id}`}
-                        onClick={() => handleNavClick(item.id)}
+                        id={`sidebar-nav-${item.id}${item.conversationsMode ? `-${item.conversationsMode}` : ''}`}
+                        onClick={() => handleNavClick(item.id, item.conversationsMode)}
                         aria-current={isActive ? 'page' : undefined}
                         title={collapsed ? item.label : undefined}
                         style={{
@@ -561,14 +653,20 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {/* Subcategories for Playbook / Inteligência */}
                       {item.id === 'playbook' && isActive && !collapsed && (
                         <div className="mt-1 pl-6 bg-slate-800/30 space-y-0.5">
-                          {[
+                          {(isProductionMvp ? [
+                            { id: 'profile', label: 'Perfil da Empresa' },
+                            { id: 'knowledge', label: 'Base de Conhecimento' },
+                            { id: 'catalog', label: 'Catálogo de Serviços' },
+                            { id: 'diagnosis', label: 'Diagnóstico da operação' },
+                          ] : [
+                            { id: 'profile', label: 'Perfil da Empresa' },
                             { id: 'knowledge', label: 'Base de Conhecimento' },
                             { id: 'catalog', label: 'Catálogo de Serviços' },
                             { id: 'agent', label: 'Robôs Especialistas' },
                             { id: 'learning', label: 'Curadoria & Aprendizado' },
                             { id: 'thesis', label: 'Tese & Tom de Voz' },
                             { id: 'diagnosis', label: 'Diagnóstico Histórico' },
-                          ].map((sub) => {
+                          ]).map((sub) => {
                             const isSubActive = activeIntelligenceSubTab === sub.id;
                             return (
                               <button
@@ -621,14 +719,17 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {/* Subcategories for Gestão de Campanhas */}
                       {item.id === 'resultados' && isActive && !collapsed && (
                         <div className="mt-1 pl-6 bg-slate-800/30 space-y-0.5">
-                          {[
+                          {(isProductionMvp ? [
+                            { id: 'traffic_proof', label: 'Resultados dos anúncios' },
+                            ...(isOwner ? [{ id: 'tracking', label: 'Conectar Meta Ads' }] : []),
+                          ] : [
                             { id: 'analytics', label: 'Analytics & ROI' },
                             { id: 'traffic_proof', label: 'Anúncios & CTWA' },
                             { id: 'broadcast', label: 'Disparo em Massa (Broadcast)' },
                             { id: 'campaign_links', label: 'Links & QR Code' },
                             { id: 'waba_templates', label: 'Modelos WABA' },
                             { id: 'tracking', label: 'Traqueamento' },
-                          ].map((sub) => {
+                          ]).map((sub) => {
                             const isSubActive = activeResultsSubTab === sub.id;
                             return (
                               <button
@@ -652,13 +753,18 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {/* Subcategories for Configurações */}
                       {item.id === 'configuracoes' && isActive && !collapsed && (
                         <div className="mt-1 pl-6 bg-slate-800/30 rounded-r-lg space-y-0.5">
-                          {[
+                          {(isProductionMvp ? [
+                            { id: 'canais', label: 'WhatsApp' },
+                            { id: 'ia', label: 'Atendimento com IA' },
+                            { id: 'sla', label: 'Tempo de resposta' },
+                            { id: 'membros', label: 'Equipe' },
+                          ] : [
                             { id: 'team', label: 'Equipe & Usuários' },
                             { id: 'api_webhooks', label: 'API & Webhooks' },
                             { id: 'channels', label: 'Canais de WhatsApp' },
                             { id: 'feature_flags', label: 'Parâmetros Globais' },
                             { id: 'engines', label: 'Infra & Modelos' },
-                          ].map((sub) => {
+                          ]).map((sub) => {
                             const isSubActive = activeSettingsSubTab === sub.id;
                             return (
                               <button
@@ -704,15 +810,17 @@ export const AppShell: React.FC<AppShellProps> = ({
             {!collapsed ? (
               <div
                 className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between text-xs font-semibold ${
-                  isChannelPaused
-                    ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
-                    : isChannelOnline
+                  channelBadgeState === 'online'
                     ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60'
-                    : isChannelScanning
+                    : channelBadgeState === 'configured'
+                    ? 'bg-sky-950/40 text-sky-300 border-sky-800/60'
+                    : channelBadgeState === 'paused' || channelBadgeState === 'scanning' || channelBadgeState === 'attention'
                     ? 'bg-amber-950/40 text-amber-300 border-amber-800/60'
                     : 'bg-rose-950/40 text-rose-300 border-rose-800/60'
                 }`}
-                title={`WhatsApp: ${isChannelOnline ? 'Online' : 'Desconectado'} · (${channelEngine})`}
+                title={channelBadgeState === 'configured'
+                  ? 'Meta configurado; a conexão ao Graph ainda não foi verificada neste indicador.'
+                  : `WhatsApp: ${channelBadgeCopy} · (${channelEngine})`}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="relative flex h-2 w-2 shrink-0">
@@ -721,24 +829,20 @@ export const AppShell: React.FC<AppShellProps> = ({
                     )}
                     <span
                       className={`relative inline-flex rounded-full h-2 w-2 ${
-                        isChannelPaused
-                          ? 'bg-amber-400'
-                          : isChannelOnline
+                        channelBadgeState === 'online'
                           ? 'bg-emerald-400'
-                          : isChannelScanning
+                          : channelBadgeState === 'configured'
+                          ? 'bg-sky-400'
+                          : channelBadgeState === 'paused' || channelBadgeState === 'attention'
+                          ? 'bg-amber-400'
+                          : channelBadgeState === 'scanning'
                           ? 'bg-amber-400 animate-pulse'
                           : 'bg-rose-400'
                       }`}
                     />
                   </span>
                   <span className="truncate text-xs">
-                    {isChannelPaused
-                      ? 'WhatsApp Pausado'
-                      : isChannelOnline
-                      ? 'WhatsApp Online'
-                      : isChannelScanning
-                      ? 'Aguardando QR'
-                      : 'WhatsApp Offline'}
+                    {channelBadgeCopy}
                   </span>
                 </div>
                 <span className="text-[9px] font-mono opacity-70 shrink-0">
@@ -748,7 +852,9 @@ export const AppShell: React.FC<AppShellProps> = ({
             ) : (
               <div
                 className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center bg-slate-800/60 border border-slate-700/60"
-                title={`WhatsApp: ${isChannelOnline ? 'Online' : 'Desconectado'}`}
+                title={channelBadgeState === 'configured'
+                  ? 'Meta configurado; conexão ao Graph não verificada neste indicador.'
+                  : `WhatsApp: ${channelBadgeCopy}`}
               >
                 <span className="relative flex h-2.5 w-2.5">
                   {isChannelOnline && (
@@ -756,7 +862,13 @@ export const AppShell: React.FC<AppShellProps> = ({
                   )}
                   <span
                     className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                      isChannelOnline ? 'bg-emerald-400' : 'bg-rose-400'
+                      channelBadgeState === 'online'
+                        ? 'bg-emerald-400'
+                        : channelBadgeState === 'configured'
+                        ? 'bg-sky-400'
+                        : channelBadgeState === 'paused' || channelBadgeState === 'attention' || channelBadgeState === 'scanning'
+                        ? 'bg-amber-400'
+                        : 'bg-rose-400'
                     }`}
                   />
                 </span>
@@ -774,13 +886,13 @@ export const AppShell: React.FC<AppShellProps> = ({
               <button
                 type="button"
                 onClick={toggleGlobalAiMode}
-                disabled={aiModeLoading}
+                disabled={aiModeLoading || !isOwner}
                 className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                   globalAiMode === 'autonomous_24_7'
                     ? 'bg-[#00A884]/20 hover:bg-[#00A884]/30 text-emerald-300 border-[#00A884]/40'
                     : 'bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 border-indigo-800/60'
                 }`}
-                title={aiModeError || 'Alterar modo publicado da IA no backend'}
+                title={aiModeError || (isOwner ? 'Alterar modo publicado da IA no backend' : 'Somente o proprietário altera o modo da IA')}
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   {globalAiMode === 'autonomous_24_7' ? (
@@ -808,9 +920,9 @@ export const AppShell: React.FC<AppShellProps> = ({
               <button
                 type="button"
                 onClick={toggleGlobalAiMode}
-                disabled={aiModeLoading}
+                disabled={aiModeLoading || !isOwner}
                 className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 text-slate-300 transition-colors cursor-pointer"
-                title={aiModeError || `IA: ${globalAiMode === 'autonomous_24_7' ? '24/7 ativa no backend' : 'Copiloto supervisionado'}`}
+                title={aiModeError || (isOwner ? `IA: ${globalAiMode === 'autonomous_24_7' ? '24/7 ativa no backend' : 'Copiloto supervisionado'}` : 'Somente o proprietário altera o modo da IA')}
               >
                 {globalAiMode === 'autonomous_24_7' ? (
                   <Sparkles className="w-4 h-4 text-emerald-400" />

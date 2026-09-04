@@ -1,10 +1,11 @@
 /**
  * TX COMMERCIAL CORE — NVIDIA NIM SOVEREIGN AI INFERENCE ENGINE
  * https://build.nvidia.com/
- * High-speed, sovereign model inference for Llama 3.3 70B, DeepSeek R1, Nemotron & Vision
+ * High-speed, sovereign model inference for Llama 3.1 70B, DeepSeek R1, Nemotron & Vision
  */
 
 import { PromptGuard } from './prompt-guard.js';
+import { isProductionRuntime } from '../security/runtime-safety.js';
 
 export interface NvidiaChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -35,9 +36,11 @@ export interface NvidiaChatCompletionResult {
 }
 
 export const NVIDIA_MODEL_TIERS = {
-  FAST: 'meta/llama-3.3-70b-instruct',
+  FAST: 'meta/llama-3.1-70b-instruct',
   REASONING: 'deepseek-ai/deepseek-r1',
-  NEMOTRON: 'nvidia/nemotron-4-340b-instruct',
+  // Kept as an explicit opt-in tier for compatibility. It is never selected
+  // as an automatic fallback because the old 340B endpoint is retired.
+  NEMOTRON: 'nvidia/llama-3.3-nemotron-super-49b-v1',
   VISION: 'meta/llama-3.2-11b-vision-instruct',
 };
 
@@ -45,15 +48,20 @@ export class NvidiaNimEngine {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly defaultModel: string;
+  private readonly timeoutMs: number;
 
   constructor(
     apiKey?: string,
     baseUrl = 'https://integrate.api.nvidia.com/v1',
-    defaultModel = NVIDIA_MODEL_TIERS.FAST
+    defaultModel = NVIDIA_MODEL_TIERS.FAST,
+    timeoutMs = Number(process.env.NVIDIA_NIM_TIMEOUT_MS || 25_000),
   ) {
     this.apiKey = apiKey || process.env.NVIDIA_API_KEY || '';
     this.baseUrl = baseUrl;
     this.defaultModel = defaultModel;
+    this.timeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? Math.min(timeoutMs, 120_000)
+      : 25_000;
   }
 
   public isConfigured(): boolean {
@@ -85,7 +93,7 @@ export class NvidiaNimEngine {
         return NVIDIA_MODEL_TIERS.VISION;
       case 'auto':
       default:
-        return NVIDIA_MODEL_TIERS.FAST;
+        return this.defaultModel;
     }
   }
 
@@ -117,10 +125,14 @@ export class NvidiaNimEngine {
       : sanitizedMessages;
 
     const requestedModel = options?.model || this.resolveModelForTier(options?.tier);
+    // In production one request must not silently switch model families or
+    // bill a second endpoint after a timeout. Non-production may still use a
+    // single explicit FAST fallback for local experiments.
     const modelsToTry = [
       requestedModel,
-      NVIDIA_MODEL_TIERS.FAST,
-      NVIDIA_MODEL_TIERS.NEMOTRON,
+      ...(isProductionRuntime() || requestedModel === NVIDIA_MODEL_TIERS.FAST
+        ? []
+        : [NVIDIA_MODEL_TIERS.FAST]),
     ].filter((val, idx, arr) => arr.indexOf(val) === idx);
 
     let lastError: Error | null = null;
@@ -137,14 +149,27 @@ export class NvidiaNimEngine {
           bodyPayload.top_p = options.topP;
         }
 
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.apiKey}`,
-          },
-          body: JSON.stringify(bodyPayload),
-        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+        let response: Response;
+        try {
+          response = await fetch(`${this.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.apiKey}`,
+            },
+            body: JSON.stringify(bodyPayload),
+            signal: controller.signal,
+          });
+        } catch (error) {
+          if (controller.signal.aborted) {
+            throw new Error(`NVIDIA NIM request timed out after ${this.timeoutMs}ms`);
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeout);
+        }
 
         if (!response.ok) {
           const errorText = await response.text();

@@ -5,12 +5,13 @@ import {
   HandoffRuleViolationError,
   HandoffTransitionConflictError,
 } from '../../../application/ports/handoff-operations-gateway.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface HandoffOperationRouteDependencies {
   handoffOperationsGateway?: HandoffOperationsGateway;
 }
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const paramsSchema = z.object({ workspaceId: uuid, handoffCaseId: uuid });
 const idempotencySchema = z.object({ 'idempotency-key': uuid });
 const returnSchema = z.object({ reason: z.string().trim().min(3).max(500) });

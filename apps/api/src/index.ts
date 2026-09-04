@@ -1,11 +1,15 @@
 export { WahaWebhookAdapter } from './infrastructure/channels/waha/waha-webhook-adapter.js';
 export { WahaLidIdentityResolver } from './infrastructure/channels/waha/waha-lid-identity-resolver.js';
+export { WahaOutboundAdapter } from './infrastructure/channels/waha/waha-outbound-adapter.js';
 export { PostgresNotesGateway } from './infrastructure/database/postgres-notes-gateway.js';
+export { PostgresWorkspaceOperationalGateway } from './infrastructure/database/postgres-workspace-operational-gateway.js';
 export { PostgresWorkspaceProvisioningGateway } from './infrastructure/database/postgres-workspace-provisioning-gateway.js';
 export { PostgresWabaChannelInfoGateway } from './infrastructure/database/postgres-waba-channel-info-gateway.js';
 export { PostgresMetaBusinessAgentGateway } from './infrastructure/database/postgres-meta-business-agent-gateway.js';
 export { MetaBusinessAgentClient } from './infrastructure/channels/meta/meta-business-agent-client.js';
+export { ReceptionistAgent } from './application/agents/receptionist-agent.js';
 export { PostgresWorkspaceDirectory } from './infrastructure/database/postgres-workspace-directory.js';
+export { PostgresWorkspaceMembershipGateway } from './infrastructure/database/postgres-workspace-membership-gateway.js';
 export { PostgresCockpitReadGateway } from './infrastructure/database/postgres-cockpit-read-gateway.js';
 export { PostgresHandoffOperationsGateway } from './infrastructure/database/postgres-handoff-operations-gateway.js';
 export { PostgresJourneyOperationsGateway } from './infrastructure/database/postgres-journey-operations-gateway.js';

@@ -33,6 +33,7 @@ export class PostgresWorkspaceDirectory implements WorkspaceDirectory {
         INNER JOIN public.workspace_memberships wm
           ON wm.workspace_id = w.id
         WHERE wm.user_id = $1::uuid
+          AND w.active = true
         ORDER BY w.name ASC, w.id ASC
       `, [actor.userId]);
 

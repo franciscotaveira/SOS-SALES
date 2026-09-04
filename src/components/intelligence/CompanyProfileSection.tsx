@@ -21,12 +21,14 @@ import {
 
 interface CompanyProfileSectionProps {
   profile: CompanyProfile;
-  onSaveProfile?: (updated: CompanyProfile) => void;
+  onSaveProfile?: (updated: CompanyProfile) => void | Promise<boolean>;
+  readOnly?: boolean;
 }
 
 export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
   profile: initialProfile,
   onSaveProfile,
+  readOnly = false,
 }) => {
   const [profile, setProfile] = React.useState<CompanyProfile>(initialProfile);
   const [saved, setSaved] = React.useState(false);
@@ -35,13 +37,31 @@ export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
     setProfile(initialProfile);
   }, [initialProfile]);
 
-  const handleSave = (e: React.FormEvent) => {
+  const officialInfo = profile.wabaOfficialInfo;
+  const hasOfficialNumber = Boolean(officialInfo?.phoneId?.trim() && officialInfo?.phoneNumber?.trim());
+  const qualityLabel = !hasOfficialNumber
+    ? 'Não confirmado'
+    : officialInfo.qualityRating === 'GREEN'
+      ? 'Verde'
+      : officialInfo.qualityRating === 'YELLOW'
+        ? 'Atenção'
+        : 'Baixa';
+  const catalogLabel = !hasOfficialNumber
+    ? 'Não confirmado'
+    : officialInfo.wabaCatalogSync
+      ? 'Sincronizado'
+      : 'Não sincronizado';
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (readOnly) return;
     if (onSaveProfile) {
-      onSaveProfile(profile);
+      const result = await onSaveProfile(profile);
+      if (result === false) return;
+    } else {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
     }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
   };
 
   const dayLabels: Record<string, string> = {
@@ -56,15 +76,22 @@ export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
 
   return (
     <form onSubmit={handleSave} className="space-y-6 animate-in fade-in duration-200">
+      <fieldset disabled={readOnly} className="contents">
       {/* Header Banner */}
       <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-lg p-3 sm:p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="space-y-1">
           <div className="flex items-center gap-1.5">
             <Building2 className="w-9 h-9 text-[var(--sos-success)]" />
             <h2 className="text-base font-bold font-heading">{profile.tradeName}</h2>
-            <span className="text-[8.5px] bg-[var(--sos-success)]/20 text-[var(--sos-success)] font-bold px-1.5 py-0.5 rounded-full border border-[var(--sos-success)]/30 flex items-center gap-1">
-              <ShieldCheck className="w-2.5 h-2.5" /> WhatsApp Oficial Conectado
-            </span>
+            {hasOfficialNumber ? (
+              <span className="text-[8.5px] bg-[var(--sos-success)]/20 text-[var(--sos-success)] font-bold px-1.5 py-0.5 rounded-full border border-[var(--sos-success)]/30 flex items-center gap-1">
+                <ShieldCheck className="w-2.5 h-2.5" /> WhatsApp Oficial identificado
+              </span>
+            ) : (
+              <span className="text-[8.5px] bg-amber-50 text-amber-700 font-bold px-1.5 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
+                <AlertCircle className="w-2.5 h-2.5" /> WhatsApp Oficial não confirmado
+              </span>
+            )}
           </div>
           <p className="text-[9.5px] text-[var(--sos-muted)] max-w-2xl">{profile.tagline}</p>
         </div>
@@ -72,7 +99,7 @@ export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
         <button
           type="submit"
           id="btn-save-company-profile"
-          className="flex items-center justify-center gap-1 px-2.5 py-1.5 bg-[var(--sos-success)] hover:bg-[var(--sos-success)]/90 text-[var(--sos-background)] rounded-lg text-[9px] font-bold transition-all shadow-2xs shrink-0 cursor-pointer"
+          className="flex items-center justify-center gap-1 px-2.5 py-1.5 bg-[var(--sos-success)] hover:bg-[var(--sos-success)]/90 text-[var(--sos-background)] rounded-lg text-[9px] font-bold transition-all shadow-2xs shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saved ? (
             <>
@@ -104,33 +131,43 @@ export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
               </p>
             </div>
           </div>
-          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-            Conexão Ativa
+          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${
+            hasOfficialNumber
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-amber-50 text-amber-700 border-amber-200'
+          }`}>
+            {hasOfficialNumber ? 'Identificação informada' : 'Conexão não confirmada'}
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
           <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5">
             <span className="text-[10px] text-slate-400 font-semibold uppercase">Nome no WhatsApp</span>
-            <p className="font-bold text-slate-800">{profile.wabaOfficialInfo.verifiedName}</p>
+            <p className="font-bold text-slate-800">{officialInfo?.verifiedName || 'Não informado'}</p>
           </div>
 
           <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5">
             <span className="text-[10px] text-slate-400 font-semibold uppercase">Número Conectado</span>
-            <p className="font-bold text-slate-800 font-mono">{profile.wabaOfficialInfo.phoneNumber}</p>
+            <p className="font-bold text-slate-800 font-mono">{officialInfo?.phoneNumber || 'Não informado'}</p>
           </div>
 
           <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5">
             <span className="text-[10px] text-slate-400 font-semibold uppercase">Qualidade do Número</span>
-            <p className="font-bold text-emerald-600 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Alta Qualidade (Sem bloqueios)
+            <p className={`font-bold flex items-center gap-1 ${
+              !hasOfficialNumber || officialInfo.qualityRating === 'RED' ? 'text-amber-600' : 'text-emerald-600'
+            }`}>
+              {!hasOfficialNumber || officialInfo.qualityRating !== 'GREEN' ? <AlertCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              {qualityLabel}
             </p>
           </div>
 
           <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5">
             <span className="text-[10px] text-slate-400 font-semibold uppercase">Catálogo no WhatsApp</span>
-            <p className="font-bold text-indigo-600 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Catálogo Ativo
+            <p className={`font-bold flex items-center gap-1 ${
+              officialInfo.wabaCatalogSync && hasOfficialNumber ? 'text-indigo-600' : 'text-slate-500'
+            }`}>
+              {officialInfo.wabaCatalogSync && hasOfficialNumber ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+              {catalogLabel}
             </p>
           </div>
         </div>
@@ -468,6 +505,12 @@ export const CompanyProfileSection: React.FC<CompanyProfileSectionProps> = ({
           </div>
         </div>
       </div>
+      </fieldset>
+      {readOnly && (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-semibold text-slate-600">
+          Somente o proprietário do workspace pode editar o perfil da empresa.
+        </p>
+      )}
     </form>
   );
 };

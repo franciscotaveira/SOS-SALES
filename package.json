@@ -7,6 +7,7 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "web:install": "bun install --frozen-lockfile",
@@ -20,7 +21,8 @@
     "check": "npm run check:web && npm run check:api",
     "generate:openapi": "npm --prefix apps/api run generate:openapi",
     "smoke": "bash scripts/smoke-test.sh",
-    "audit:contracts": "node scripts/audit-frontend-backend-contract.mjs"
+    "audit:contracts": "node scripts/audit-frontend-backend-contract.mjs",
+    "test:live-sync": "node scripts/test-live-cockpit-sync.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -45,6 +47,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "vitest": "^4.1.11"
   }
 }

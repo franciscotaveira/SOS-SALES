@@ -59,6 +59,42 @@ export interface ApiWorkspace {
   role: 'owner' | 'operator' | 'viewer';
 }
 
+export interface ApiWorkspaceMember {
+  membershipId: string;
+  userId: string;
+  role: 'owner' | 'operator' | 'viewer';
+  createdAt: string;
+  isCurrentActor: boolean;
+}
+
+export interface ApiAcceptedWorkspaceInvitation {
+  workspaceId: string;
+  role: 'owner' | 'operator' | 'viewer';
+}
+
+export type ApiCustomerLoyaltyType = 'NEW' | 'RECURRING';
+
+export interface ApiWorkspaceOperationalSettings {
+  workspaceId: string;
+  commercialConfig: Record<string, unknown>;
+  loyaltyOverrides: Record<string, ApiCustomerLoyaltyType>;
+  dailyTargetRevenueMinor: number;
+  slaPolicy: { firstResponseMinutes: number };
+  updatedAt: string | null;
+}
+
+export interface ApiWorkspaceOperationalSettingsPatch {
+  commercialConfig?: Record<string, unknown>;
+  loyaltyOverrides?: Record<string, ApiCustomerLoyaltyType>;
+  dailyTargetRevenueMinor?: number;
+  slaPolicy?: { firstResponseMinutes: number };
+}
+
+export interface ApiUpdatedContact {
+  contactId: string;
+  name: string | null;
+}
+
 export interface ApiClientWorkspaceResult {
   workspaceId: string;
   workspaceName: string;
@@ -291,6 +327,15 @@ export interface SalesOsGateway {
   updateNote(workspaceId: string, noteId: string, input: Partial<OperationalNote>): Promise<OperationalNote>;
   deleteNote(workspaceId: string, noteId: string): Promise<void>;
 
+  getWorkspaceOperationalSettings(workspaceId: string): Promise<ApiWorkspaceOperationalSettings>;
+  listWorkspaceMembers(workspaceId: string): Promise<ApiWorkspaceMember[]>;
+  acceptWorkspaceInvitation(code: string): Promise<ApiAcceptedWorkspaceInvitation>;
+  updateWorkspaceOperationalSettings(
+    workspaceId: string,
+    input: ApiWorkspaceOperationalSettingsPatch,
+  ): Promise<ApiWorkspaceOperationalSettings>;
+  updateContactName(workspaceId: string, contactId: string, name: string): Promise<ApiUpdatedContact>;
+
   getGhostingOpportunities(workspaceId: string): Promise<any[]>;
   resurrectJourney(workspaceId: string, journeyId: string): Promise<any | null>;
   getRetentionOpportunities(workspaceId: string): Promise<any[]>;
@@ -303,6 +348,7 @@ export class MockSalesOsGateway implements SalesOsGateway {
   private journeys: Map<string, Journey[]> = new Map();
   private messages: Map<string, Message[]> = new Map();
   private drafts: Map<string, string> = new Map();
+  private operationalSettings: Map<string, ApiWorkspaceOperationalSettings> = new Map();
   public simulateNetworkDelayMs = 200;
   public shouldFailNextSend = false;
 
@@ -862,6 +908,49 @@ export class MockSalesOsGateway implements SalesOsGateway {
     this.mockNotesList = this.mockNotesList.filter((n) => n.id !== noteId);
   }
 
+  async getWorkspaceOperationalSettings(workspaceId: string): Promise<ApiWorkspaceOperationalSettings> {
+    await this.sleep(80);
+    const settings = this.operationalSettings.get(workspaceId) ?? {
+      workspaceId,
+      commercialConfig: {},
+      loyaltyOverrides: {},
+      dailyTargetRevenueMinor: 0,
+      slaPolicy: { firstResponseMinutes: 15 },
+      updatedAt: null,
+    };
+    return JSON.parse(JSON.stringify(settings));
+  }
+
+  async listWorkspaceMembers(_workspaceId: string): Promise<ApiWorkspaceMember[]> {
+    return [];
+  }
+
+  async acceptWorkspaceInvitation(_code: string): Promise<ApiAcceptedWorkspaceInvitation> {
+    throw new SalesOsOperationUnavailableError('Aceitar convite de workspace');
+  }
+
+  async updateWorkspaceOperationalSettings(
+    workspaceId: string,
+    input: ApiWorkspaceOperationalSettingsPatch,
+  ): Promise<ApiWorkspaceOperationalSettings> {
+    await this.sleep(100);
+    const current = await this.getWorkspaceOperationalSettings(workspaceId);
+    const next: ApiWorkspaceOperationalSettings = {
+      workspaceId,
+      commercialConfig: input.commercialConfig ?? current.commercialConfig,
+      loyaltyOverrides: input.loyaltyOverrides ?? current.loyaltyOverrides,
+      dailyTargetRevenueMinor: input.dailyTargetRevenueMinor ?? current.dailyTargetRevenueMinor,
+      slaPolicy: input.slaPolicy ?? current.slaPolicy,
+      updatedAt: new Date().toISOString(),
+    };
+    this.operationalSettings.set(workspaceId, next);
+    return JSON.parse(JSON.stringify(next));
+  }
+
+  async updateContactName(_workspaceId: string, _contactId: string, _name: string): Promise<ApiUpdatedContact> {
+    throw new SalesOsOperationUnavailableError('Atualizar nome de contato');
+  }
+
   async getGhostingOpportunities(_workspaceId: string): Promise<any[]> {
     return [];
   }
@@ -937,6 +1026,13 @@ export class HttpSalesOsGateway implements SalesOsGateway {
       `/workspaces/${encodeURIComponent(parentWorkspaceId)}/client-workspaces`,
       { method: 'POST', body: input },
     )).data;
+  }
+
+  async deactivateWorkspace(workspaceId: string): Promise<void> {
+    await this.request<ApiEnvelope<{ workspaceId: string; status: 'deactivated' }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}`,
+      { method: 'DELETE' },
+    );
   }
 
   async listPriorities(workspaceId: string, limit = 5): Promise<ApiPriority[]> {
@@ -1085,7 +1181,7 @@ export class HttpSalesOsGateway implements SalesOsGateway {
   ): Promise<OperationalNote[]> {
     const params = new URLSearchParams();
     if (filters?.category) params.set('category', filters.category);
-    if (filters?.pinned !== undefined) params.set('pinned', String(filters.pinned));
+    if (filters?.pinned !== undefined) params.set('pinnedOnly', String(filters.pinned));
     const qs = params.toString() ? `?${params.toString()}` : '';
     const response = await this.request<ApiEnvelope<OperationalNote[]>>(
       `/workspaces/${encodeURIComponent(workspaceId)}/notes${qs}`,
@@ -1129,6 +1225,45 @@ export class HttpSalesOsGateway implements SalesOsGateway {
         method: 'DELETE',
       },
     );
+  }
+
+  async getWorkspaceOperationalSettings(workspaceId: string): Promise<ApiWorkspaceOperationalSettings> {
+    const response = await this.request<ApiEnvelope<ApiWorkspaceOperationalSettings>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/operational-settings`,
+    );
+    return response.data;
+  }
+
+  async listWorkspaceMembers(workspaceId: string): Promise<ApiWorkspaceMember[]> {
+    return (await this.request<ApiEnvelope<ApiWorkspaceMember[]>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/members`,
+    )).data;
+  }
+
+  async acceptWorkspaceInvitation(code: string): Promise<ApiAcceptedWorkspaceInvitation> {
+    return (await this.request<ApiEnvelope<ApiAcceptedWorkspaceInvitation>>(
+      '/workspace-member-invitations/accept',
+      { method: 'POST', body: { code } },
+    )).data;
+  }
+
+  async updateWorkspaceOperationalSettings(
+    workspaceId: string,
+    input: ApiWorkspaceOperationalSettingsPatch,
+  ): Promise<ApiWorkspaceOperationalSettings> {
+    const response = await this.request<ApiEnvelope<ApiWorkspaceOperationalSettings>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/operational-settings`,
+      { method: 'PATCH', body: input },
+    );
+    return response.data;
+  }
+
+  async updateContactName(workspaceId: string, contactId: string, name: string): Promise<ApiUpdatedContact> {
+    const response = await this.request<ApiEnvelope<ApiUpdatedContact>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/contacts/${encodeURIComponent(contactId)}`,
+      { method: 'PATCH', body: { name } },
+    );
+    return response.data;
   }
 
   async acceptHandoff(
@@ -1277,7 +1412,9 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     text: string,
   ): Promise<{ success: boolean; dispatchId: string; status: string; message: string }> {
     return this.request<{ success: boolean; dispatchId: string; status: string; message: string }>(
-      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/send-message`,
+      // baseUrl already ends in /api/v1 in authenticated production mode.
+      // Keeping this path relative prevents the broken /api/v1/api/v1 route.
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/send-message`,
       {
         method: 'POST',
         body: { text },
@@ -1502,6 +1639,7 @@ export class HttpSalesOsGateway implements SalesOsGateway {
         method: options.method ?? 'GET',
         headers,
         body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        cache: (options.method ?? 'GET') === 'GET' ? 'no-store' : undefined,
       });
     } catch {
       throw new SalesOsTransportError('Não foi possível alcançar a API do SOS Sales.');

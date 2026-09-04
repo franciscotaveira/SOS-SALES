@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
-import { Building2, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { Building2, Sparkles, ArrowRight, Loader2, KeyRound } from 'lucide-react';
 
 interface WorkspaceInitModalProps {
   onInit: (name?: string) => Promise<void>;
+  onAcceptInvite?: (code: string) => Promise<void>;
   defaultName?: string;
 }
 
 export const WorkspaceInitModal: React.FC<WorkspaceInitModalProps> = ({
   onInit,
+  onAcceptInvite,
   defaultName = '',
 }) => {
   const [workspaceName, setWorkspaceName] = useState(defaultName);
+  const [mode, setMode] = useState<'create' | 'join'>('create');
+  const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,7 +23,13 @@ export const WorkspaceInitModal: React.FC<WorkspaceInitModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      await onInit(workspaceName.trim() || undefined);
+      if (mode === 'join') {
+        if (!onAcceptInvite) throw new Error('O ingresso por convite não está disponível nesta sessão.');
+        if (!inviteCode.trim()) throw new Error('Informe o código de acesso recebido.');
+        await onAcceptInvite(inviteCode.trim());
+      } else {
+        await onInit(workspaceName.trim() || undefined);
+      }
     } catch (err: any) {
       setError(err?.message || 'Falha ao criar o espaço de trabalho. Tente novamente.');
       setLoading(false);
@@ -37,13 +47,15 @@ export const WorkspaceInitModal: React.FC<WorkspaceInitModalProps> = ({
             <Building2 className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Configure seu Workspace</h2>
-            <p className="text-xs text-slate-400">Inicie seu cockpit comercial soberano em segundos</p>
+            <h2 className="text-xl font-bold text-white tracking-tight">{mode === 'create' ? 'Configure seu Workspace' : 'Entrar em um Workspace'}</h2>
+            <p className="text-xs text-slate-400">{mode === 'create' ? 'Inicie seu cockpit comercial em segundos' : 'Use o código enviado pelo proprietário'}</p>
           </div>
         </div>
 
         <p className="text-sm text-slate-300 mb-6 leading-relaxed">
-          Vamos provisionar seu espaço dedicado com canal WhatsApp oficial, squad de IA especialista e políticas de SLA ativas.
+          {mode === 'create'
+            ? 'Crie o espaço da sua empresa. Você poderá conectar o WhatsApp oficial e definir o atendimento depois.'
+            : 'O código só funciona para o e-mail que recebeu o convite, enquanto estiver dentro do prazo de validade.'}
         </p>
 
         {error && (
@@ -53,20 +65,38 @@ export const WorkspaceInitModal: React.FC<WorkspaceInitModalProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              Nome da sua Empresa ou Clínica
-            </label>
-            <input
-              type="text"
-              value={workspaceName}
-              onChange={(e) => setWorkspaceName(e.target.value)}
-              placeholder="Ex: Clínica Sorriso & Implantes"
-              className="w-full px-4 py-3 bg-slate-950/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
-              disabled={loading}
-              autoFocus
-            />
-          </div>
+          {mode === 'create' ? (
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                Nome da sua Empresa ou Clínica
+              </label>
+              <input
+                type="text"
+                value={workspaceName}
+                onChange={(e) => setWorkspaceName(e.target.value)}
+                placeholder="Ex: Clínica Sorriso & Implantes"
+                className="w-full px-4 py-3 bg-slate-950/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                disabled={loading}
+                autoFocus
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                Código de acesso
+              </label>
+              <input
+                type="text"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                placeholder="Cole o código enviado pelo proprietário"
+                className="w-full px-4 py-3 bg-slate-950/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                disabled={loading}
+                autoFocus
+                autoComplete="one-time-code"
+              />
+            </div>
+          )}
 
           <div className="pt-2">
             <button
@@ -81,14 +111,24 @@ export const WorkspaceInitModal: React.FC<WorkspaceInitModalProps> = ({
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>Criar Espaço Comercial</span>
+                  {mode === 'create' ? <Sparkles className="w-4 h-4" /> : <KeyRound className="w-4 h-4" />}
+                  <span>{mode === 'create' ? 'Criar Espaço Comercial' : 'Entrar no Workspace'}</span>
                   <ArrowRight className="w-4 h-4 ml-1" />
                 </>
               )}
             </button>
           </div>
         </form>
+        {onAcceptInvite && (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => { setMode((current) => current === 'create' ? 'join' : 'create'); setError(null); }}
+            className="mt-4 w-full text-center text-xs font-semibold text-emerald-300 hover:text-emerald-200 disabled:opacity-50"
+          >
+            {mode === 'create' ? 'Recebi um código de acesso' : 'Quero criar um novo workspace'}
+          </button>
+        )}
       </div>
     </div>
   );

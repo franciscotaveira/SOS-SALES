@@ -194,6 +194,47 @@ describe('WAHA Outbound Worker — Supervised Message Sending', () => {
     });
   });
 
+  it('OUTBOUND-WORKER-02B: marks transient WAHA failures as retryable for durable backoff', async () => {
+    const dispatchId = 'd2000000-0000-4000-8000-000000000022';
+    const claimToken = 'c2000000-0000-4000-8000-000000000022';
+    let failurePayload: any = null;
+    const gateway = {
+      createDraft: vi.fn(), approve: vi.fn(), cancel: vi.fn(), get: vi.fn(),
+      listClaimableDispatches: vi.fn().mockResolvedValue([{ dispatchId, workspaceId: 'w' }]),
+      claimDispatch: vi.fn().mockResolvedValue({
+        dispatchId,
+        claimToken,
+        textContent: 'Mensagem temporária',
+        channelConnectionId: 'cc',
+        contactId: 'ct',
+        contactPhone: '+5511999998888',
+        session: 'default',
+      }),
+      recordProviderAcceptance: vi.fn(),
+      recordProviderFailure: vi.fn().mockImplementation((payload) => {
+        failurePayload = payload;
+        return Promise.resolve({ dispatchId, status: 'APPROVED', idempotent: false });
+      }),
+    } as unknown as OutboundDispatchGateway;
+    const adapter = new WahaOutboundAdapter({ endpoint: 'http://localhost:3002' });
+    vi.spyOn(adapter, 'sendText').mockResolvedValue({
+      success: false,
+      kind: 'RETRYABLE',
+      failureCode: 'NETWORK_ERROR',
+      message: 'temporary network failure',
+    });
+
+    const worker = new WahaOutboundWorker({ dispatchGateway: gateway, outboundAdapter: adapter, workerId: 'retry-test' });
+    await expect(worker.processSingleBatch()).resolves.toBe(1);
+    expect(failurePayload).toEqual({
+      dispatchId,
+      claimToken,
+      workerId: 'retry-test',
+      failureCode: 'NETWORK_ERROR',
+      retryable: true,
+    });
+  });
+
   it('OUTBOUND-WORKER-03: marks ambiguous timeout as failure without blind retries', async () => {
     const dispatchId = 'd3000000-0000-4000-8000-000000000003';
     const claimToken = 'c3000000-0000-4000-8000-000000000003';

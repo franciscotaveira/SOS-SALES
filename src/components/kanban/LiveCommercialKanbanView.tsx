@@ -22,6 +22,7 @@ import { getSupabaseClient } from '../../services/supabaseAuth';
 import { ContactAvatar } from '../cockpit/ContactAvatar';
 import { StartConversationModal } from '../conversations/StartConversationModal';
 import { getWorkspaceCommercialConfig } from '../../services/workspaceCommercialConfig';
+import { salesOsRuntimeConfig } from '../../config/runtime';
 
 interface LiveCommercialKanbanViewProps {
   workspaceId: string;
@@ -378,28 +379,27 @@ export const normalizeStage = (stage?: string | null): string => {
 };
 
 // Helper semântico de serviço para os cards do Kanban adaptável ao nicho
-function detectKanbanService(item: ApiJourney, isHairSalon: boolean) {
-  const name = (item.contactName || '').toLowerCase();
+export function detectKanbanService(item: ApiJourney, isHairSalon: boolean) {
   const raw = (item.primaryServiceOrProduct || '').toLowerCase();
-  const text = `${name} ${raw}`.toLowerCase();
+  const text = raw;
 
   if (isHairSalon) {
-    if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || name.includes('rosy') || name.includes('haven') || name.includes('priscila')) {
+    if (text.includes('escova') || text.includes('modelad') || text.includes('liso')) {
       return { tag: '💇‍♀️ Escova Modelada', bg: 'bg-purple-100 text-purple-900 border-purple-200', price: 'Valor não informado', numericValue: 0 };
     }
-    if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('fibra') || name.includes('thaís') || name.includes('thais') || name.includes('suzana')) {
+    if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('fibra')) {
       return { tag: '💅 Unhas em Gel', bg: 'bg-pink-100 text-pink-900 border-pink-200', price: 'Valor não informado', numericValue: 0 };
     }
-    if (text.includes('corte') || text.includes('visagismo') || name.includes('édina') || name.includes('edina') || name.includes('carolina')) {
+    if (text.includes('corte') || text.includes('visagismo')) {
       return { tag: '✂️ Corte & Visagismo', bg: 'bg-indigo-100 text-indigo-900 border-indigo-200', price: 'Valor não informado', numericValue: 0 };
     }
-    if (text.includes('loiro') || text.includes('mechas') || text.includes('color') || name.includes('allane') || name.includes('silvia')) {
+    if (text.includes('loiro') || text.includes('mechas') || text.includes('color')) {
       return { tag: '🎨 Mechas & Loiro', bg: 'bg-amber-100 text-amber-950 border-amber-300', price: 'Valor não informado', numericValue: 0 };
     }
-    if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('ozonio') || text.includes('ozônio') || name.includes('sōra') || name.includes('rubiele')) {
+    if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('ozonio') || text.includes('ozônio')) {
       return { tag: '🧴 Tratamento Ozônio', bg: 'bg-emerald-100 text-emerald-950 border-emerald-300', price: 'Valor não informado', numericValue: 0 };
     }
-    if (text.includes('make') || text.includes('maquiagem') || text.includes('noiva') || name.includes('audrin')) {
+    if (text.includes('make') || text.includes('maquiagem') || text.includes('noiva')) {
       return { tag: '💄 Make & Eventos', bg: 'bg-rose-100 text-rose-950 border-rose-300', price: 'Valor não informado', numericValue: 0 };
     }
   }
@@ -416,8 +416,9 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   onSelectJourney,
   onSwitchToCockpit,
 }) => {
+  const isLiveApi = salesOsRuntimeConfig.mode === 'api';
   const commercialConfig = useMemo(() => getWorkspaceCommercialConfig(workspaceId), [workspaceId]);
-  const isHairSalon = (commercialConfig.businessType === 'hair_salon') || workspaceId.toLowerCase().includes('haven') || workspaceId.toLowerCase().includes('escovaria');
+  const isHairSalon = commercialConfig.businessType === 'hair_salon';
   const availablePipelines = isHairSalon ? SALON_PIPELINES : UNIVERSAL_PIPELINES;
 
   const [journeys, setJourneys] = useState<ApiJourney[]>([]);
@@ -430,6 +431,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [customColumnsMap, setCustomColumnsMap] = useState<Record<string, { title: string; subtitle?: string }>>(() => {
+    if (isLiveApi) return {};
     try {
       const saved = localStorage.getItem(`sos_sales_custom_kanban_${workspaceId}`);
       if (saved) return JSON.parse(saved);
@@ -439,16 +441,23 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
 
   const activePipeline = useMemo(() => {
     const base = availablePipelines.find((p) => p.id === activePipelineId) || availablePipelines[0];
+    const visibleColumns = isLiveApi
+      ? base.columns.filter((column) => column.id !== 'GANHO')
+      : base.columns;
     return {
       ...base,
-      columns: base.columns.map((col) => {
+      columns: visibleColumns.map((col) => {
         const custom = customColumnsMap[col.id];
         return custom ? { ...col, title: custom.title, subtitle: custom.subtitle || col.subtitle } : col;
       }),
     };
-  }, [availablePipelines, activePipelineId, customColumnsMap]);
+  }, [availablePipelines, activePipelineId, customColumnsMap, isLiveApi]);
 
   const handleCustomizePipeline = () => {
+    if (isLiveApi) {
+      setError('Nomes personalizados do funil ainda não têm contrato persistido no backend. Nenhuma alteração local foi aplicada.');
+      return;
+    }
     const colListStr = activePipeline.columns.map((c) => c.title).join(' | ');
     const promptVal = window.prompt(
       'Renomeie as 5 etapas do funil separadas por barra vertical " | " (ex: 1. Novo Lead | 2. Qualificação | 3. Proposta | 4. Negociação | 5. Fechado):',
@@ -464,9 +473,11 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
           }
         });
         setCustomColumnsMap(newMap);
-        try {
-          localStorage.setItem(`sos_sales_custom_kanban_${workspaceId}`, JSON.stringify(newMap));
-        } catch {}
+        if (!isLiveApi) {
+          try {
+            localStorage.setItem(`sos_sales_custom_kanban_${workspaceId}`, JSON.stringify(newMap));
+          } catch {}
+        }
       }
     }
   };
@@ -535,6 +546,10 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   }, [workspaceId, fetchJourneys]);
 
   const updateStageDirectly = async (journeyId: string, nextStage: string) => {
+    if (nextStage === 'GANHO') {
+      setError('Para concluir uma venda ou agendamento, abra a conversa e use Concluir. Esse fluxo registra o resultado e o valor de forma auditável.');
+      return;
+    }
     setUpdatingId(journeyId);
     try {
       if ('setJourneyStage' in gateway && typeof (gateway as any).setJourneyStage === 'function') {
@@ -609,6 +624,10 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
 
   const filtered = useMemo(() => {
     return journeys.filter((j) => {
+      // The live funnel is an active-work queue. Closed outcomes are owned by
+      // the result/outcome projection and must not silently disappear into a
+      // non-rendered column or inflate the active count.
+      if (isLiveApi && j.status !== 'OPEN') return false;
       if (!search.trim()) return true;
       const q = search.toLowerCase();
       return (
@@ -617,28 +636,17 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
         (j.primaryServiceOrProduct && j.primaryServiceOrProduct.toLowerCase().includes(q))
       );
     });
-  }, [journeys, search]);
+  }, [isLiveApi, journeys, search]);
 
   const columnsData = useMemo(() => {
     return activePipeline.columns.map((col) => {
       const items = filtered.filter((j) => normalizeStage(j.pipelineStage) === col.id);
-      const totalColValue = items.reduce((sum, item) => sum + detectKanbanService(item, isHairSalon).numericValue, 0);
       return {
         ...col,
         items,
-        totalColValue,
       };
     });
-  }, [filtered, activePipeline, isHairSalon]);
-
-  const totalPipelineValue = useMemo(() => {
-    return filtered.reduce((sum, item) => sum + detectKanbanService(item, isHairSalon).numericValue, 0);
-  }, [filtered, isHairSalon]);
-
-  const wonColumn = columnsData.find((c) => c.id === 'GANHO');
-  const wonValue = wonColumn ? wonColumn.totalColValue : 0;
-  const wonCount = wonColumn ? wonColumn.items.length : 0;
-  const conversionRate = filtered.length > 0 ? Math.round((wonCount / filtered.length) * 100) : 0;
+  }, [filtered, activePipeline]);
 
   return (
     <div className="flex flex-col h-full bg-[var(--sos-canvas)] text-[var(--sos-ink)] p-2 sm:p-3 overflow-hidden w-full space-y-2.5">
@@ -650,7 +658,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
               <Columns3 className="w-4.5 h-4.5 text-[var(--sos-action)]" /> Funil Comercial Ao Vivo
             </h1>
             <p className="text-xs text-[var(--sos-muted)] mt-0.5">
-              Supervisão de fluxos por serviço com movimentação rápida de etapas.
+              {filtered.length} oportunidades ativas. Para registrar venda ou agendamento, abra a conversa e use Concluir.
             </p>
           </div>
 
@@ -671,7 +679,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
               </button>
             ))}
 
-            <button
+            {!isLiveApi && <button
               type="button"
               onClick={handleCustomizePipeline}
               className="px-2 py-0.5 rounded-md text-[11px] font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer flex items-center gap-1 border-l border-slate-200 ml-1 pl-1.5"
@@ -679,7 +687,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
             >
               <span>⚙️</span>
               <span className="hidden sm:inline">Personalizar Etapas</span>
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -716,57 +724,6 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
         </div>
       </div>
 
-      {/* KPI Ribbon Financeiro do Funil - compact */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
-        <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] p-2 rounded-lg flex items-center justify-between shadow-2xs">
-          <div>
-            <span className="text-xs uppercase font-bold text-[var(--sos-muted)] block tracking-wider">Pipeline Ativo</span>
-            <span className="text-sm font-extrabold text-[var(--sos-ink)] font-mono">
-              R$ {totalPipelineValue.toLocaleString('pt-BR')}
-            </span>
-          </div>
-          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-border)] text-[var(--sos-muted)]">
-            {filtered.length} leads
-          </span>
-        </div>
-
-        <div className="bg-[var(--sos-surface)] border border-[var(--sos-action)]/30 p-2 rounded-lg flex items-center justify-between shadow-2xs">
-          <div>
-            <span className="text-xs uppercase font-bold text-[var(--sos-action)] block tracking-wider">Fechados (Ganho)</span>
-            <span className="text-sm font-extrabold text-[var(--sos-action)] font-mono">
-              R$ {wonValue.toLocaleString('pt-BR')}
-            </span>
-          </div>
-          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-action-subtle)] text-[var(--sos-action)] border border-[var(--sos-action)]/30">
-            {wonCount} ganhos
-          </span>
-        </div>
-
-        <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] p-2 rounded-lg flex items-center justify-between shadow-2xs">
-          <div>
-            <span className="text-xs uppercase font-bold text-[var(--sos-muted)] block tracking-wider">Taxa de Conversão</span>
-            <span className="text-sm font-extrabold text-[var(--sos-ai)] font-mono">
-              {conversionRate}%
-            </span>
-          </div>
-          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)]">
-            Funil Geral
-          </span>
-        </div>
-
-        <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] p-2 rounded-lg flex items-center justify-between shadow-2xs">
-          <div>
-            <span className="text-xs uppercase font-bold text-[var(--sos-muted)] block tracking-wider">Média por Lead</span>
-            <span className="text-sm font-extrabold text-[var(--sos-operational)] font-mono">
-              R$ {filtered.length > 0 ? Math.round(totalPipelineValue / filtered.length) : 0}
-            </span>
-          </div>
-          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-operational-subtle)] text-[var(--sos-operational)]">
-            Ticket Médio
-          </span>
-        </div>
-      </div>
-
       {error && (
         <div className="p-2.5 rounded-lg bg-[var(--sos-danger-subtle)] border border-[var(--sos-danger)]/30 text-xs text-[var(--sos-danger)] flex items-center gap-2 shrink-0">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 text-[var(--sos-danger)]" />
@@ -781,7 +738,10 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
       )}
 
       {/* Kanban Board Grid - Largura Total */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-2.5 flex-1 min-h-0 overflow-x-auto">
+      <div
+        className="grid grid-cols-1 gap-2.5 flex-1 min-h-0 overflow-x-auto"
+        style={{ gridTemplateColumns: `repeat(${columnsData.length}, minmax(240px, 1fr))` }}
+      >
         {columnsData.map((col, colIdx) => {
           const isDragOver = dragOverColId === col.id;
 
@@ -801,11 +761,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
               <div className={`p-2.5 border-b bg-[var(--sos-surface)] flex items-center justify-between ${col.headerBorder}`}>
                 <div className="min-w-0">
                   <span className="font-bold text-xs text-[var(--sos-ink)] block font-heading truncate">{col.title}</span>
-                  <div className="flex items-center gap-1.5 text-[10px] text-[var(--sos-muted)]">
-                    <span className="truncate">{col.subtitle}</span>
-                    <span>•</span>
-                    <span className="font-mono font-bold text-[var(--sos-muted)]">R$ {col.totalColValue}</span>
-                  </div>
+                  <div className="truncate text-[10px] text-[var(--sos-muted)]">{col.subtitle}</div>
                 </div>
                 <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${col.badgeBg} ${col.badgeText} shrink-0`}>
                   {col.items.length}
@@ -829,13 +785,14 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                     const isBeingDragged = draggedJourneyId === journey.id;
                     const title = journey.contactName || (journey.contactPhone ? `Contato +${journey.contactPhone}` : 'Novo Lead');
                     const serviceInfo = detectKanbanService(journey, isHairSalon);
-                    const isHot = (journey.pipelineStage === 'PROPOSAL' || journey.pipelineStage === 'NEGOTIATION' || (journey as any).slaState === 'OVERDUE' || serviceInfo.tag.includes('Mechas') || serviceInfo.tag.includes('Truss'));
-                    const isWarm = (journey.pipelineStage === 'QUALIFIED' || journey.pipelineStage === 'LEAD');
+                    const normalizedStage = normalizeStage(journey.pipelineStage);
+                    const isHot = normalizedStage === 'PROPOSTA' || normalizedStage === 'NEGOCIACAO' || (journey as any).slaState === 'OVERDUE';
+                    const isWarm = normalizedStage === 'QUALIFICADO';
                     const leadBadge = isHot
-                      ? { label: '🔥 Quente', bg: 'bg-amber-100 text-amber-900 border-amber-300' }
+                      ? { label: 'Etapa avançada', bg: 'bg-amber-100 text-amber-900 border-amber-300' }
                       : isWarm
-                        ? { label: '⚡ Negociação', bg: 'bg-blue-100 text-blue-900 border-blue-300' }
-                        : { label: '❄️ Frio', bg: 'bg-slate-100 text-slate-700 border-slate-300' };
+                        ? { label: 'Qualificado', bg: 'bg-blue-100 text-blue-900 border-blue-300' }
+                        : { label: 'Novo', bg: 'bg-slate-100 text-slate-700 border-slate-300' };
 
                     return (
                       <div
@@ -850,7 +807,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                           isBeingDragged ? 'opacity-40 scale-95' : ''
                         } ${isUpdating ? 'animate-pulse' : ''}`}
                       >
-                        {/* Linha 1: Avatar + Nome + Preço */}
+                        {/* Linha 1: Avatar + Nome */}
                         <div className="flex items-start gap-1.5">
                           <ContactAvatar
                             name={journey.contactName}
@@ -860,13 +817,10 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                             size="sm"
                           />
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1">
                               <p className="text-xs font-bold text-[var(--sos-ink)] group-hover:text-[var(--sos-action)] transition-colors truncate">
                                 {title}
                               </p>
-                              <span className="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold bg-[var(--sos-action-subtle)] text-[var(--sos-action)] border border-[var(--sos-action)]/30 font-mono shrink-0">
-                                {serviceInfo.price}
-                              </span>
                             </div>
                             {journey.contactPhone && (
                               <p className="text-[9.5px] text-[var(--sos-muted)] font-mono truncate">
@@ -890,7 +844,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
                         <div className="flex items-center justify-between pt-1 border-t border-[var(--sos-border)]/50 text-[9.5px] text-[var(--sos-muted)]">
                           <div className="flex items-center gap-1 font-medium">
                             <Clock className="w-2.5 h-2.5 text-[var(--sos-muted)]" />
-                            <span>Hoje</span>
+                            <span>{new Date(journey.updatedAt).toLocaleDateString('pt-BR')}</span>
                           </div>
 
                           {/* Fast Move Buttons */}
@@ -928,7 +882,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
       </div>
 
       <StartConversationModal
-        workspace={{ id: workspaceId, name: 'Workspace Ativo', slug: 'active' } as any}
+        workspace={{ id: workspaceId, name: 'Workspace autenticado', slug: workspaceId } as any}
         isOpen={isStartModalOpen}
         onClose={() => setIsStartModalOpen(false)}
         onConversationStarted={(newJourney) => {

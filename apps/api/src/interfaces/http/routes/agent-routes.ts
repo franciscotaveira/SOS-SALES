@@ -16,6 +16,12 @@ import { normalizeWorkspaceUuid } from './whatsapp-channel-routes.js';
 import { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
 import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
 import { verifyOperatorAuth, assertTenantAccess, unauthorized } from '../helpers/auth-guard.js';
+import {
+  isMetaAgentReady as isMetaAgentReadyPolicy,
+  shouldSosSalesRespond,
+  type ResponderMode,
+  type ResponderOwner,
+} from '../../../application/agents/receptionist-agent.js';
 
 interface BotParams {
   workspaceId: string;
@@ -26,6 +32,13 @@ const autonomyModeSchema = z.enum([
   'copilot_supervised',
   'semi_autonomous',
   'autonomous_24_7',
+]);
+
+const responderModeSchema = z.enum([
+  'sos_sales',
+  'meta_business_agent',
+  'auto_fallback',
+  'manual',
 ]);
 
 const behaviorConfigSchema = z.object({
@@ -53,6 +66,7 @@ const behaviorConfigSchema = z.object({
 const agentConfigUpdateSchema = z.object({
   autonomyMode: autonomyModeSchema.optional(),
   runtimeEnabled: z.boolean().optional(),
+  responderMode: responderModeSchema.optional(),
   behaviorConfig: behaviorConfigSchema.optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, {
   message: 'At least one agent configuration field is required',
@@ -61,14 +75,166 @@ const agentConfigUpdateSchema = z.object({
 interface WorkspaceAgentRuntimeConfig {
   autonomyMode: z.infer<typeof autonomyModeSchema>;
   runtimeEnabled: boolean;
+  responderMode: z.infer<typeof responderModeSchema>;
+  metaAgentId: string | null;
+  metaAgentChannelConnectionId: string | null;
+  metaAgentEnabled: boolean;
+  metaAgentEligibilityStatus: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
+  metaAgentCheckedAt: string | null;
+  metaAgentActivationStatus: 'NOT_STARTED' | 'PENDING' | 'READY' | 'FAILED';
+  metaAgentOnboardingStartedAt: string | null;
+  metaAgentReadyAt: string | null;
+  metaAgentLastError: string | null;
   behaviorConfig: Record<string, unknown>;
   publishedAt: string | null;
   publishedBy: string | null;
 }
 
-async function readWorkspaceAgentRuntimeConfig(workspaceId: string): Promise<WorkspaceAgentRuntimeConfig> {
-  const result = await dbPool.query(
-    `SELECT autonomy_mode, runtime_enabled, behavior_config, published_at, published_by
+type DatabaseQuery = typeof dbPool.query;
+const defaultDatabaseQuery = dbPool.query.bind(dbPool) as DatabaseQuery;
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function nonBlank(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasPublishedHours(value: unknown): boolean {
+  if (nonBlank(value)) return true;
+  const hours = asObject(value);
+  return Object.values(hours).some((day) => {
+    const item = asObject(day);
+    return item.isOpen === true && (nonBlank(item.open) || nonBlank(item.close));
+  });
+}
+
+function validateIntelligenceBundle(value: unknown): { ok: true; bundle: Record<string, unknown>; bytes: number } | { ok: false; error: string } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { ok: false, error: 'Payload de inteligência inválido' };
+  }
+  const bundle = value as Record<string, unknown>;
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(bundle);
+  } catch {
+    return { ok: false, error: 'Payload de inteligência não serializável' };
+  }
+  const bytes = Buffer.byteLength(serialized, 'utf8');
+  if (bytes > 200_000) {
+    return { ok: false, error: 'Payload de inteligência excede o limite de 200 KB' };
+  }
+
+  for (const [key, expected] of [
+    ['companyProfile', 'object'],
+    ['agentConfig', 'object'],
+    ['catalog', 'array'],
+    ['documents', 'array'],
+  ] as const) {
+    if (bundle[key] === undefined) continue;
+    const valid = expected === 'array'
+      ? Array.isArray(bundle[key])
+      : Boolean(bundle[key] && typeof bundle[key] === 'object' && !Array.isArray(bundle[key]));
+    if (!valid) return { ok: false, error: `Campo ${key} possui formato inválido` };
+  }
+  if (bundle.schemaVersion !== undefined
+    && (typeof bundle.schemaVersion !== 'string' || bundle.schemaVersion.trim().length > 32)) {
+    return { ok: false, error: 'schemaVersion inválido' };
+  }
+  return { ok: true, bundle, bytes };
+}
+
+interface AgentPublishReadiness {
+  missing: string[];
+  connectedChannels: number;
+}
+
+/**
+ * A runtime toggle is not a business profile. Before allowing autonomous
+ * publication, prove that the prompt has a real identity, offer, hours,
+ * booking destination and at least one connected WhatsApp channel.
+ */
+async function readAgentPublishReadiness(
+  workspaceId: string,
+  query: DatabaseQuery,
+): Promise<AgentPublishReadiness> {
+  const configResult = await query(
+    `SELECT agent_name, business_type, services_json, working_hours, booking_url
+     FROM public.workspace_agent_config
+     WHERE workspace_id = $1
+     LIMIT 1`,
+    [workspaceId],
+  );
+  const base = configResult.rows[0] as Record<string, unknown> | undefined;
+  let bundle: Record<string, unknown> = {};
+  try {
+    const bundleResult = await query(
+      `SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1 LIMIT 1`,
+      [workspaceId],
+    );
+    bundle = asObject(bundleResult.rows[0]?.bundle);
+  } catch {
+    // The optional intelligence table is not required when the base profile
+    // is complete; a missing table remains visible to deployment preflight.
+    bundle = {};
+  }
+
+  const profile = asObject(bundle.companyProfile);
+  const agentConfig = asObject(bundle.agentConfig);
+  const catalog = Array.isArray(bundle.catalog) ? bundle.catalog : [];
+  const services = Array.isArray(base?.services_json) ? base.services_json : [];
+  const publishedServices = catalog.length > 0 ? catalog : services;
+  const hours = profile.businessHours ?? base?.working_hours;
+  const bookingUrl = profile.bookingUrl
+    ?? agentConfig.bookingUrl
+    ?? bundle.bookingUrl
+    ?? base?.booking_url;
+
+  const channelResult = await query(
+    `SELECT COUNT(*)::int AS connected_channels
+     FROM public.channel_connections
+     WHERE workspace_id = $1
+       AND provider IN ('meta_cloud', 'waha')
+       AND status = 'CONNECTED'`,
+    [workspaceId],
+  );
+  const connectedChannels = Number(channelResult.rows[0]?.connected_channels || 0);
+  const missing: string[] = [];
+  if (!nonBlank(agentConfig.name) && (!nonBlank(base?.agent_name) || base?.agent_name === 'Assistente')) {
+    missing.push('identidade do agente');
+  }
+  if (!nonBlank(profile.segment) && !nonBlank(base?.business_type)) missing.push('segmento da empresa');
+  if (publishedServices.length === 0) missing.push('pelo menos um serviço/produto');
+  if (!hasPublishedHours(hours)) missing.push('horário de atendimento');
+  if (!nonBlank(bookingUrl)) missing.push('link de agendamento');
+  if (connectedChannels === 0) missing.push('um canal WhatsApp conectado');
+
+  return { missing, connectedChannels };
+}
+
+async function readWorkspaceAgentRuntimeConfig(
+  workspaceId: string,
+  query: DatabaseQuery = defaultDatabaseQuery,
+): Promise<WorkspaceAgentRuntimeConfig> {
+  const result = await query(
+    `SELECT autonomy_mode, runtime_enabled, responder_mode, meta_agent_id,
+            meta_agent_channel_connection_id,
+            meta_agent_enabled, meta_agent_eligibility_status, meta_agent_checked_at,
+            meta_agent_activation_status, meta_agent_onboarding_started_at,
+            meta_agent_ready_at, meta_agent_last_error,
+            behavior_config, published_at, published_by
      FROM public.workspace_agent_config
      WHERE workspace_id = $1`,
     [workspaceId]
@@ -78,6 +244,16 @@ async function readWorkspaceAgentRuntimeConfig(workspaceId: string): Promise<Wor
     return {
       autonomyMode: 'copilot_supervised',
       runtimeEnabled: false,
+      responderMode: 'sos_sales',
+      metaAgentId: null,
+      metaAgentChannelConnectionId: null,
+      metaAgentEnabled: false,
+      metaAgentEligibilityStatus: 'UNKNOWN',
+      metaAgentCheckedAt: null,
+      metaAgentActivationStatus: 'NOT_STARTED',
+      metaAgentOnboardingStartedAt: null,
+      metaAgentReadyAt: null,
+      metaAgentLastError: null,
       behaviorConfig: {},
       publishedAt: null,
       publishedBy: null,
@@ -90,6 +266,27 @@ async function readWorkspaceAgentRuntimeConfig(workspaceId: string): Promise<Wor
       ? row.autonomy_mode
       : 'copilot_supervised',
     runtimeEnabled: row.runtime_enabled === true,
+    responderMode: responderModeSchema.safeParse(row.responder_mode).success
+      ? row.responder_mode
+      : 'sos_sales',
+    metaAgentId: row.meta_agent_id ? String(row.meta_agent_id) : null,
+    metaAgentChannelConnectionId: row.meta_agent_channel_connection_id
+      ? String(row.meta_agent_channel_connection_id)
+      : null,
+    metaAgentEnabled: row.meta_agent_enabled === true,
+    metaAgentEligibilityStatus: row.meta_agent_eligibility_status === 'ELIGIBLE'
+      || row.meta_agent_eligibility_status === 'INELIGIBLE'
+      ? row.meta_agent_eligibility_status
+      : 'UNKNOWN',
+    metaAgentCheckedAt: row.meta_agent_checked_at ? new Date(row.meta_agent_checked_at).toISOString() : null,
+    metaAgentActivationStatus: row.meta_agent_activation_status === 'PENDING'
+      || row.meta_agent_activation_status === 'READY'
+      || row.meta_agent_activation_status === 'FAILED'
+      ? row.meta_agent_activation_status
+      : 'NOT_STARTED',
+    metaAgentOnboardingStartedAt: row.meta_agent_onboarding_started_at ? new Date(row.meta_agent_onboarding_started_at).toISOString() : null,
+    metaAgentReadyAt: row.meta_agent_ready_at ? new Date(row.meta_agent_ready_at).toISOString() : null,
+    metaAgentLastError: row.meta_agent_last_error ? String(row.meta_agent_last_error) : null,
     behaviorConfig: row.behavior_config && typeof row.behavior_config === 'object'
       ? row.behavior_config
       : {},
@@ -98,19 +295,79 @@ async function readWorkspaceAgentRuntimeConfig(workspaceId: string): Promise<Wor
   };
 }
 
-function isRuntimeEffective(config: WorkspaceAgentRuntimeConfig): boolean {
+function isRuntimeAvailable(config: WorkspaceAgentRuntimeConfig): boolean {
   return config.runtimeEnabled
     && config.autonomyMode === 'autonomous_24_7'
-    && process.env.RECEPTIONIST_ENABLED === 'true'
-    && Boolean(process.env.NVIDIA_API_KEY);
+    && Boolean(config.publishedAt)
+    && isProviderConfigured();
+}
+
+function isProviderConfigured(): boolean {
+  const enabled = process.env.RECEPTIONIST_ENABLED?.trim().toLowerCase() === 'true';
+  const apiKey = process.env.NVIDIA_API_KEY?.trim() || '';
+  const baseUrl = process.env.NVIDIA_NIM_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1';
+  const model = process.env.NVIDIA_NIM_MODEL?.trim() || 'meta/llama-3.1-70b-instruct';
+  let validBaseUrl = false;
+  try {
+    validBaseUrl = new URL(baseUrl).protocol === 'https:';
+  } catch {
+    validBaseUrl = false;
+  }
+  return enabled && apiKey.startsWith('nvapi-') && validBaseUrl && model.length > 0;
+}
+
+function isMetaAgentReady(config: WorkspaceAgentRuntimeConfig): boolean {
+  return isMetaAgentReadyPolicy({
+    metaAgentEnabled: config.metaAgentEnabled,
+    metaAgentId: config.metaAgentId,
+    metaAgentChannelConnectionId: config.metaAgentChannelConnectionId,
+    metaAgentEligibilityStatus: config.metaAgentEligibilityStatus,
+    metaAgentCheckedAt: config.metaAgentCheckedAt,
+    metaAgentActivationStatus: config.metaAgentActivationStatus,
+  });
+}
+
+function isRuntimeEffective(config: WorkspaceAgentRuntimeConfig): boolean {
+  const metaOwnsByDefault = config.responderMode === 'auto_fallback' && isMetaAgentReady(config);
+  return isRuntimeAvailable(config)
+    && !metaOwnsByDefault
+    && config.responderMode !== 'manual'
+    && config.responderMode !== 'meta_business_agent';
+}
+
+function isJourneyRuntimeEffective(
+  config: WorkspaceAgentRuntimeConfig,
+  responderOwner: ResponderOwner,
+  responderChangedAt: string | Date | null,
+  responderChangeReason?: string | null,
+  journeyChannelConnectionId?: string | null,
+): boolean {
+  const metaChannelMatches = Boolean(config.metaAgentChannelConnectionId)
+    && Boolean(journeyChannelConnectionId)
+    && config.metaAgentChannelConnectionId === journeyChannelConnectionId;
+  if (responderOwner === 'meta_business_agent' && !metaChannelMatches) return false;
+  return isRuntimeAvailable(config) && shouldSosSalesRespond({
+    responderMode: config.responderMode as ResponderMode,
+    responderOwner,
+    responderChangedAt,
+    responderChangeReason,
+    metaAgentEnabled: config.metaAgentEnabled && metaChannelMatches,
+    metaAgentId: config.metaAgentId,
+    metaAgentChannelConnectionId: metaChannelMatches ? config.metaAgentChannelConnectionId : null,
+    metaAgentEligibilityStatus: config.metaAgentEligibilityStatus,
+    metaAgentActivationStatus: config.metaAgentActivationStatus,
+  });
 }
 
 export interface AgentRoutesOptions {
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
+  /** Deployment-owned pool query; avoids the development singleton in production. */
+  query?: DatabaseQuery;
 }
 
 export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: FastifyInstance, options = {}) => {
+  const query = options.query ?? defaultDatabaseQuery;
   // Enforce JWT on all agent bot routes
   app.addHook('onRequest', async (request, reply) => {
     if (!options?.authenticator) {
@@ -127,10 +384,12 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
     const targetWs = params?.workspaceId || query?.workspaceId || body?.workspaceId;
 
     if (targetWs && request.operatorActor) {
-      const isAgentConfigMutation = request.url.includes('/agent/config')
-        && request.method !== 'GET'
-        && request.method !== 'HEAD';
-      const requiredRole = isAgentConfigMutation
+      const isOwnerMutation = (
+        request.url.includes('/agent/config')
+        || request.url.includes('/intelligence')
+        || request.url.includes('/knowledge-docs')
+      ) && request.method !== 'GET' && request.method !== 'HEAD';
+      const requiredRole = isOwnerMutation
         ? 'owner'
         : request.method === 'GET' || request.method === 'HEAD'
           ? 'viewer'
@@ -158,11 +417,12 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       if (!workspaceId) return reply.status(404).send({ error: 'Workspace not found' });
 
       try {
-        const config = await readWorkspaceAgentRuntimeConfig(workspaceId);
+        const config = await readWorkspaceAgentRuntimeConfig(workspaceId, query);
         return reply.status(200).send({
           ...config,
           runtimeEffective: isRuntimeEffective(config),
-          providerConfigured: process.env.RECEPTIONIST_ENABLED === 'true',
+          providerConfigured: isProviderConfigured(),
+          metaAgentReady: isMetaAgentReady(config),
         });
       } catch (err) {
         request.log.error({ err }, 'Error fetching workspace agent config');
@@ -188,41 +448,95 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const actorId = request.operatorActor?.userId;
       if (!actorId) return reply.status(401).send({ error: 'Unauthorized' });
 
-      const { autonomyMode, runtimeEnabled, behaviorConfig } = parsed.data;
+      const { autonomyMode, runtimeEnabled, responderMode, behaviorConfig } = parsed.data;
       try {
-        await dbPool.query(
+        const currentRuntime = await readWorkspaceAgentRuntimeConfig(workspaceId, query);
+        const desiredAutonomyMode = autonomyMode ?? currentRuntime.autonomyMode;
+        const desiredRuntimeEnabled = runtimeEnabled ?? currentRuntime.runtimeEnabled;
+
+        if (desiredRuntimeEnabled && desiredAutonomyMode === 'autonomous_24_7') {
+          if (!isProviderConfigured()) {
+            return reply.status(409).send({
+              error: 'O provedor de IA não está configurado no runtime de produção.',
+              code: 'AI_PROVIDER_NOT_CONFIGURED',
+            });
+          }
+          const readiness = await readAgentPublishReadiness(workspaceId, query);
+          if (readiness.missing.length > 0) {
+            return reply.status(422).send({
+              error: 'Complete o perfil comercial antes de publicar o atendimento autônomo.',
+              code: 'AGENT_PROFILE_INCOMPLETE',
+              missing: readiness.missing,
+            });
+          }
+        }
+        if (responderMode === 'meta_business_agent') {
+          const metaReady = isMetaAgentReady(currentRuntime);
+          if (!metaReady) {
+            return reply.status(409).send({
+              error: 'O Meta Business Agent ainda não está elegível e ativado para este workspace.',
+              code: 'META_BUSINESS_AGENT_NOT_READY',
+            });
+          }
+        }
+        await query(
           `INSERT INTO public.workspace_agent_config (
-             workspace_id, autonomy_mode, runtime_enabled, behavior_config,
+             workspace_id, autonomy_mode, runtime_enabled, responder_mode, behavior_config,
              published_at, published_by, updated_at
            ) VALUES (
              $1,
              COALESCE($2, 'copilot_supervised'),
              COALESCE($3, false),
-             COALESCE($4::jsonb, '{}'::jsonb),
-             NOW(), $5, NOW()
+             COALESCE($4, 'sos_sales'),
+             COALESCE($5::jsonb, '{}'::jsonb),
+             NOW(), $6, NOW()
            )
            ON CONFLICT (workspace_id) DO UPDATE SET
              autonomy_mode = COALESCE($2, workspace_agent_config.autonomy_mode),
              runtime_enabled = COALESCE($3, workspace_agent_config.runtime_enabled),
-             behavior_config = COALESCE($4::jsonb, workspace_agent_config.behavior_config),
+             responder_mode = COALESCE($4, workspace_agent_config.responder_mode),
+             behavior_config = COALESCE($5::jsonb, workspace_agent_config.behavior_config),
              published_at = NOW(),
-             published_by = $5,
+             published_by = $6,
              updated_at = NOW()`,
           [
             workspaceId,
             autonomyMode ?? null,
             runtimeEnabled ?? null,
+            responderMode ?? null,
             behaviorConfig ? JSON.stringify(behaviorConfig) : null,
             actorId,
           ]
         );
 
-        const config = await readWorkspaceAgentRuntimeConfig(workspaceId);
+        const config = await readWorkspaceAgentRuntimeConfig(workspaceId, query);
+        const desiredOwner: ResponderOwner = config.responderMode === 'manual'
+          ? 'human'
+          : isMetaAgentReady(config)
+            && (config.responderMode === 'meta_business_agent' || config.responderMode === 'auto_fallback')
+            ? 'meta_business_agent'
+            : 'sos_sales';
+        // Configuration is workspace-wide. Reconcile journeys still following
+        // the old default, but preserve explicit per-thread takeovers.
+        await query(
+          `UPDATE public.commercial_journeys
+           SET responder_owner = $2,
+               responder_changed_at = NOW(),
+               responder_change_reason = 'workspace_agent_config_published',
+               updated_at = NOW()
+           WHERE workspace_id = $1
+             AND responder_owner <> 'human'
+             AND COALESCE(responder_change_reason, '') NOT LIKE 'meta_thread_control_%'
+             AND COALESCE(responder_change_reason, '') NOT LIKE '%operator%'
+             AND COALESCE(responder_change_reason, '') NOT LIKE '%human%'`,
+          [workspaceId, desiredOwner],
+        );
         return reply.status(200).send({
           success: true,
           ...config,
           runtimeEffective: isRuntimeEffective(config),
-          providerConfigured: process.env.RECEPTIONIST_ENABLED === 'true',
+          providerConfigured: isProviderConfigured(),
+          metaAgentReady: isMetaAgentReady(config),
         });
       } catch (err) {
         request.log.error({ err }, 'Error publishing workspace agent config');
@@ -236,7 +550,8 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
    * Retorna o estado completo do bot para a jornada:
    * - botEnabled: operador habilitou o bot nesta jornada (freio principal)
    * - botPaused: humano está atendendo temporariamente (freio secundário)
-   * - botActive: true somente quando enabled=true E paused=false
+   * - botActive: true somente quando enabled/paused, runtime publicado e
+   *   owner da conversa permitem que a IA própria responda
    */
   app.get<{ Params: BotParams }>(
     '/api/v1/workspaces/:workspaceId/journeys/:journeyId/bot/status',
@@ -245,8 +560,9 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const { journeyId } = request.params;
 
       try {
-        const result = await dbPool.query(
-          `SELECT id, bot_enabled, bot_paused_at, bot_pause_reason, pipeline_stage
+        const result = await query(
+           `SELECT id, channel_connection_id, bot_enabled, bot_paused_at, bot_pause_reason, pipeline_stage,
+                  responder_owner, responder_changed_at, responder_change_reason
            FROM public.commercial_journeys
            WHERE id = $1 AND workspace_id = $2`,
           [journeyId, workspaceId]
@@ -259,8 +575,16 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         const journey = result.rows[0];
         const botEnabled: boolean = journey.bot_enabled === true;
         const botPaused: boolean = !!journey.bot_paused_at;
-        const runtimeConfig = await readWorkspaceAgentRuntimeConfig(workspaceId!);
-        const botActive: boolean = botEnabled && !botPaused && isRuntimeEffective(runtimeConfig);
+        const responderOwner: ResponderOwner = journey.responder_owner === 'meta_business_agent'
+          || journey.responder_owner === 'human'
+          ? journey.responder_owner
+          : 'sos_sales';
+        const responderChangedAt = journey.responder_changed_at || null;
+        const responderChangeReason = journey.responder_change_reason || null;
+        const runtimeConfig = await readWorkspaceAgentRuntimeConfig(workspaceId!, query);
+        const botActive: boolean = botEnabled
+          && !botPaused
+          && isJourneyRuntimeEffective(runtimeConfig, responderOwner, responderChangedAt, responderChangeReason, journey.channel_connection_id);
 
         return reply.status(200).send({
           journeyId,
@@ -270,12 +594,25 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           pausedAt: journey.bot_paused_at || null,
           pauseReason: journey.bot_pause_reason || null,
           pipelineStage: journey.pipeline_stage,
+          responderOwner,
+          responderChangedAt,
+          responderChangeReason,
           engine: 'nvidia_nim',
           model: process.env.NVIDIA_NIM_MODEL || 'meta/llama-3.1-70b-instruct',
           receptionistEnabled: process.env.RECEPTIONIST_ENABLED === 'true',
           autonomyMode: runtimeConfig.autonomyMode,
           workspaceRuntimeEnabled: runtimeConfig.runtimeEnabled,
           runtimeEffective: isRuntimeEffective(runtimeConfig),
+          responderMode: runtimeConfig.responderMode,
+          metaAgentId: runtimeConfig.metaAgentId,
+          metaAgentChannelConnectionId: runtimeConfig.metaAgentChannelConnectionId,
+          metaAgentEnabled: runtimeConfig.metaAgentEnabled,
+          metaAgentEligibilityStatus: runtimeConfig.metaAgentEligibilityStatus,
+          metaAgentActivationStatus: runtimeConfig.metaAgentActivationStatus,
+          metaAgentOnboardingStartedAt: runtimeConfig.metaAgentOnboardingStartedAt,
+          metaAgentReadyAt: runtimeConfig.metaAgentReadyAt,
+          metaAgentLastError: runtimeConfig.metaAgentLastError,
+          metaAgentReady: isMetaAgentReady(runtimeConfig),
         });
       } catch (err) {
         request.log.error({ err }, 'Error fetching bot status');
@@ -296,11 +633,11 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const { journeyId } = request.params;
 
       try {
-        const result = await dbPool.query(
+        const result = await query(
           `UPDATE public.commercial_journeys
            SET bot_enabled = true, bot_paused_at = NULL, bot_pause_reason = NULL, updated_at = NOW()
            WHERE id = $1 AND workspace_id = $2
-           RETURNING id, bot_enabled`,
+           RETURNING id, channel_connection_id, bot_enabled, responder_owner, responder_changed_at, responder_change_reason`,
           [journeyId, workspaceId]
         );
 
@@ -308,19 +645,33 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           return reply.status(404).send({ error: 'Journey not found' });
         }
 
-        const runtimeConfig = await readWorkspaceAgentRuntimeConfig(workspaceId!);
+        const runtimeConfig = await readWorkspaceAgentRuntimeConfig(workspaceId!, query);
         const runtimeEffective = isRuntimeEffective(runtimeConfig);
+        const responderOwner: ResponderOwner = result.rows[0].responder_owner === 'meta_business_agent'
+          || result.rows[0].responder_owner === 'human'
+          ? result.rows[0].responder_owner
+          : 'sos_sales';
+        const responderChangedAt = result.rows[0].responder_changed_at || null;
+        const responderChangeReason = result.rows[0].responder_change_reason || null;
+        const botActive = isJourneyRuntimeEffective(runtimeConfig, responderOwner, responderChangedAt, responderChangeReason, result.rows[0].channel_connection_id);
 
         return reply.status(200).send({
           journeyId,
           botEnabled: true,
           botPaused: false,
-          botActive: runtimeEffective,
+          botActive,
+          responderOwner,
+          responderChangedAt,
+          responderChangeReason,
           autonomyMode: runtimeConfig.autonomyMode,
           workspaceRuntimeEnabled: runtimeConfig.runtimeEnabled,
           runtimeEffective,
-          message: runtimeEffective
+          message: botActive
             ? 'Bot habilitado. Atendimento automático 24/7 ativo.'
+            : responderOwner === 'meta_business_agent'
+              ? 'Jornada habilitada, mas o Meta Business Agent é o responsável desta conversa.'
+              : responderOwner === 'human'
+                ? 'Jornada habilitada, mas o atendimento automático está em modo manual.'
             : 'Bot habilitado para a jornada, mas o runtime autônomo do workspace está desativado.',
         });
       } catch (err) {
@@ -342,11 +693,11 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const { journeyId } = request.params;
 
       try {
-        const result = await dbPool.query(
+        const result = await query(
           `UPDATE public.commercial_journeys
            SET bot_enabled = false, bot_paused_at = NULL, bot_pause_reason = NULL, updated_at = NOW()
            WHERE id = $1 AND workspace_id = $2
-           RETURNING id, bot_enabled`,
+           RETURNING id, bot_enabled, responder_owner, responder_changed_at, responder_change_reason`,
           [journeyId, workspaceId]
         );
 
@@ -381,7 +732,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const reason = (request.body as { reason?: string })?.reason || 'Pausado manualmente pelo operador';
 
       try {
-        const result = await dbPool.query(
+        const result = await query(
           `UPDATE public.commercial_journeys
            SET bot_paused_at = NOW(), bot_pause_reason = $3, updated_at = NOW()
            WHERE id = $1 AND workspace_id = $2
@@ -421,11 +772,11 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const { journeyId } = request.params;
 
       try {
-        const result = await dbPool.query(
+        const result = await query(
           `UPDATE public.commercial_journeys
            SET bot_paused_at = NULL, bot_pause_reason = NULL, updated_at = NOW()
            WHERE id = $1 AND workspace_id = $2
-           RETURNING id, bot_enabled`,
+           RETURNING id, channel_connection_id, bot_enabled, responder_owner, responder_changed_at`,
           [journeyId, workspaceId]
         );
 
@@ -434,8 +785,14 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         }
 
         const botEnabled: boolean = result.rows[0].bot_enabled === true;
-        const runtimeConfig = await readWorkspaceAgentRuntimeConfig(workspaceId!);
-        const botActive = botEnabled && isRuntimeEffective(runtimeConfig);
+        const runtimeConfig = await readWorkspaceAgentRuntimeConfig(workspaceId!, query);
+        const responderOwner: ResponderOwner = result.rows[0].responder_owner === 'meta_business_agent'
+          || result.rows[0].responder_owner === 'human'
+          ? result.rows[0].responder_owner
+          : 'sos_sales';
+        const responderChangedAt = result.rows[0].responder_changed_at || null;
+        const responderChangeReason = result.rows[0].responder_change_reason || null;
+        const botActive = botEnabled && isJourneyRuntimeEffective(runtimeConfig, responderOwner, responderChangedAt, responderChangeReason, result.rows[0].channel_connection_id);
         return reply.status(200).send({
           journeyId,
           botEnabled,
@@ -444,6 +801,9 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           autonomyMode: runtimeConfig.autonomyMode,
           workspaceRuntimeEnabled: runtimeConfig.runtimeEnabled,
           runtimeEffective: isRuntimeEffective(runtimeConfig),
+          responderOwner,
+          responderChangedAt,
+          responderChangeReason,
           message: botActive
             ? 'Bot retomado. Atendimento automático ativo.'
             : botEnabled
@@ -468,8 +828,10 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       if (!workspaceId) return reply.status(404).send({ error: 'Workspace not found' });
 
       try {
-        const result = await dbPool.query(
-          `SELECT bundle, updated_at FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`,
+        const result = await query(
+          `SELECT bundle, schema_version, published_at, published_by, updated_at
+             FROM public.workspace_intelligence_bundles
+            WHERE workspace_id = $1`,
           [workspaceId]
         );
 
@@ -478,6 +840,9 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
             workspaceId,
             bundle: null,
             isDefault: true,
+            schemaVersion: null,
+            publishedAt: null,
+            publishedBy: null,
           });
         }
 
@@ -485,6 +850,9 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           workspaceId,
           bundle: result.rows[0].bundle,
           updatedAt: result.rows[0].updated_at,
+          schemaVersion: result.rows[0].schema_version || null,
+          publishedAt: result.rows[0].published_at || null,
+          publishedBy: result.rows[0].published_by || null,
           isDefault: false,
         });
       } catch (err) {
@@ -505,23 +873,39 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       if (!workspaceId) return reply.status(404).send({ error: 'Workspace not found' });
 
       const bundle = (request.body as any)?.bundle || request.body;
-      if (!bundle || typeof bundle !== 'object') {
-        return reply.status(400).send({ error: 'Payload de inteligência inválido' });
-      }
+      const validatedBundle = validateIntelligenceBundle(bundle);
+      if (!validatedBundle.ok) return reply.status(400).send({ error: validatedBundle.error, code: 'INTELLIGENCE_BUNDLE_INVALID' });
+      const actorId = request.operatorActor?.userId;
+      if (!actorId) return reply.status(401).send({ error: 'Unauthorized' });
 
       try {
-        await dbPool.query(
-          `INSERT INTO public.workspace_intelligence_bundles (workspace_id, bundle, updated_at)
-           VALUES ($1, $2::jsonb, NOW())
+        await query(
+          `INSERT INTO public.workspace_intelligence_bundles (
+             workspace_id, bundle, schema_version, published_at, published_by, updated_at
+           ) VALUES ($1, $2::jsonb, $3, NOW(), $4, NOW())
            ON CONFLICT (workspace_id) DO UPDATE SET
              bundle = $2::jsonb,
+             schema_version = $3,
+             published_at = NOW(),
+             published_by = $4,
              updated_at = NOW()`,
-          [workspaceId, JSON.stringify(bundle)]
+          [
+            workspaceId,
+            JSON.stringify(validatedBundle.bundle),
+            typeof validatedBundle.bundle.schemaVersion === 'string' && validatedBundle.bundle.schemaVersion.trim()
+              ? validatedBundle.bundle.schemaVersion.trim()
+              : '1.0',
+            actorId,
+          ]
         );
 
         return reply.status(200).send({
           success: true,
           workspaceId,
+          schemaVersion: typeof validatedBundle.bundle.schemaVersion === 'string' && validatedBundle.bundle.schemaVersion.trim()
+            ? validatedBundle.bundle.schemaVersion.trim()
+            : '1.0',
+          publishedAt: new Date().toISOString(),
           message: 'Inteligência comercial do agente salva com sucesso!',
         });
       } catch (err) {
@@ -529,6 +913,53 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         return reply.status(500).send({ error: 'Falha ao salvar inteligência do workspace' });
       }
     }
+  );
+
+  /**
+   * GET /api/v1/workspaces/:workspaceId/intelligence/diagnosis
+   * Returns only facts that can be calculated from persisted messages. There
+   * is intentionally no seeded "historical analysis" or synthetic KPI.
+   */
+  app.get<{ Params: { workspaceId: string } }>(
+    '/api/v1/workspaces/:workspaceId/intelligence/diagnosis',
+    async (request, reply) => {
+      const workspaceId = normalizeWorkspaceUuid(request.params.workspaceId);
+      if (!workspaceId) return reply.status(404).send({ error: 'Workspace not found' });
+
+      try {
+        const result = await query(
+          `SELECT
+             COUNT(*)::int AS total_messages,
+             COUNT(*) FILTER (WHERE direction = 'inbound')::int AS inbound_messages,
+             COUNT(*) FILTER (WHERE direction = 'outbound')::int AS outbound_messages,
+             COUNT(*) FILTER (
+               WHERE EXTRACT(HOUR FROM sent_at AT TIME ZONE 'America/Sao_Paulo') >= 20
+                  OR EXTRACT(HOUR FROM sent_at AT TIME ZONE 'America/Sao_Paulo') < 9
+             )::int AS out_of_hours_messages,
+             COUNT(*) FILTER (WHERE media_payload IS NOT NULL AND media_payload <> '{}'::jsonb)::int AS media_messages,
+             MIN(sent_at) AS first_message_at,
+             MAX(sent_at) AS last_message_at
+           FROM public.conversation_messages
+           WHERE workspace_id = $1`,
+          [workspaceId],
+        );
+        const row = result.rows[0] || {};
+        return reply.status(200).send({
+          workspaceId,
+          hasData: Number(row.total_messages || 0) > 0,
+          totalMessages: Number(row.total_messages || 0),
+          inboundMessages: Number(row.inbound_messages || 0),
+          outboundMessages: Number(row.outbound_messages || 0),
+          outOfHoursMessages: Number(row.out_of_hours_messages || 0),
+          mediaMessages: Number(row.media_messages || 0),
+          firstMessageAt: row.first_message_at || null,
+          lastMessageAt: row.last_message_at || null,
+        });
+      } catch (err) {
+        request.log.error({ err }, 'Error fetching persisted intelligence diagnosis');
+        return reply.status(503).send({ error: 'Diagnóstico histórico indisponível' });
+      }
+    },
   );
 
   /**
@@ -542,7 +973,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       if (!workspaceId) return reply.status(404).send({ error: 'Workspace not found' });
 
       try {
-        const result = await dbPool.query(
+        const result = await query(
           `SELECT id, workspace_id, title, category, file_name, file_size, chunks_count, status, created_at, updated_at
            FROM public.workspace_knowledge_documents
            WHERE workspace_id = $1
@@ -572,22 +1003,29 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const workspaceId = normalizeWorkspaceUuid(request.params.workspaceId);
       if (!workspaceId) return reply.status(404).send({ error: 'Workspace not found' });
 
-      const body = request.body as any;
-      const title = body?.title || body?.fileName || 'Documento sem título';
-      const category = body?.category || 'Geral';
-      const content = body?.content || '';
-      const fileName = body?.fileName || body?.file_name || null;
-      const fileSize = body?.fileSize || body?.file_size || '100 KB';
-      const chunksCount = body?.chunksCount || Math.max(1, Math.ceil((content.length || 500) / 300));
+      const parsed = z.object({
+        title: z.string().trim().min(1).max(240),
+        category: z.string().trim().min(1).max(80),
+        content: z.string().trim().min(1).max(500_000),
+        fileName: z.string().trim().max(240).optional(),
+        fileSize: z.string().trim().max(40).optional(),
+        chunksCount: z.number().int().min(0).max(10_000).optional(),
+      }).strict().safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Documento inválido: título, categoria e conteúdo não podem ficar vazios.' });
+      }
+
+      const { title, category, content, fileName, fileSize } = parsed.data;
+      const chunksCount = parsed.data.chunksCount ?? Math.max(1, Math.ceil(content.length / 300));
 
       try {
-        const result = await dbPool.query(
+        const result = await query(
           `INSERT INTO public.workspace_knowledge_documents (
              id, workspace_id, title, category, content, file_name, file_size, chunks_count, status, created_at, updated_at
            ) VALUES (
              gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'ready', NOW(), NOW()
            ) RETURNING *`,
-          [workspaceId, title, category, content, fileName, fileSize, chunksCount]
+          [workspaceId, title, category, content, fileName || null, fileSize || null, chunksCount]
         );
 
         return reply.status(201).send({
@@ -611,10 +1049,14 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const { docId } = request.params;
 
       try {
-        await dbPool.query(
+        const result = await query(
           `DELETE FROM public.workspace_knowledge_documents WHERE id = $1 AND workspace_id = $2`,
           [docId, workspaceId]
         );
+
+        if (result.rowCount !== 1) {
+          return reply.status(404).send({ error: 'Documento não encontrado neste workspace.' });
+        }
 
         return reply.status(200).send({ success: true, message: 'Documento removido com sucesso' });
       } catch (err) {

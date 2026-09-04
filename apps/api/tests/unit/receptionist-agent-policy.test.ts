@@ -174,6 +174,95 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
       expect(cfg.services[0].price).toBe('80');
       expect(cfg.bookingUrl).toBe('https://agenda.studio.com');
     });
+
+    it('overlays the persisted intelligence bundle and ready knowledge into the runtime prompt config', async () => {
+      const query = vi.fn(async (sql: string) => {
+        if (sql.includes('FROM public.workspace_agent_config')) {
+          return {
+            rows: [{
+              workspace_name: 'Studio Publicado',
+              agent_name: 'Assistente Base',
+              business_type: 'Serviços',
+              services_json: [{ name: 'Serviço legado' }],
+              working_hours: 'Seg a Sex 09h-18h',
+              phone: '+5549999999999',
+              city: 'Chapecó',
+              booking_url: 'https://agenda.studio.com',
+              booking_flow_enabled: false,
+              extra_context: 'Contexto base',
+              behavior_config: {},
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('workspace_intelligence_bundles')) {
+          return {
+            rows: [{
+              bundle: {
+                companyProfile: {
+                  tradeName: 'Studio Publicado Pro',
+                  segment: 'Estética premium',
+                  phone: '+554888887777',
+                  address: { city: 'Florianópolis', state: 'SC' },
+                  businessHours: {
+                    seg: { open: '08:00', close: '18:00', isOpen: true },
+                    ter: { open: '08:00', close: '18:00', isOpen: true },
+                  },
+                  valueProposition: 'Atendimento cuidadoso e pontual',
+                },
+                agentConfig: {
+                  name: 'Nina',
+                  persona: 'Consultora breve e acolhedora',
+                  toneOfVoice: 'acolhedor_empatico',
+                  creativityTemperature: 0.1,
+                  maxDiscountPercent: 5,
+                  installmentLimitWithoutInterest: 3,
+                  allowedPaymentMethods: ['PIX'],
+                  safetyGuardrails: ['Não inventar disponibilidade'],
+                  escalationTriggers: ['Pedido de atendente humano'],
+                },
+                catalog: [{
+                  name: 'Avaliação facial',
+                  basePrice: 120,
+                  durationOrExecutionTime: '30 min',
+                  inStock: true,
+                }],
+                documents: [{
+                  name: 'FAQ oficial',
+                  summary: 'Perguntas frequentes',
+                  rawContentSnippet: 'A avaliação inclui análise personalizada.',
+                }],
+              },
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('workspace_knowledge_documents')) {
+          return {
+            rows: [{ title: 'Política publicada', content: 'Cancelamentos devem ser avisados com antecedência.', status: 'ready' }],
+            rowCount: 1,
+          };
+        }
+        throw new Error(`Unexpected test SQL: ${sql}`);
+      }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
+
+      const agent = new ReceptionistAgent({ query }) as unknown as {
+        loadWorkspaceConfig(workspaceId: string): Promise<import('../../src/infrastructure/ai/receptionist-system-prompt.js').WorkspaceConfig>;
+      };
+
+      const cfg = await agent.loadWorkspaceConfig('published-workspace');
+      expect(cfg.name).toBe('Studio Publicado Pro');
+      expect(cfg.agentName).toBe('Nina');
+      expect(cfg.businessType).toBe('Estética premium');
+      expect(cfg.city).toBe('Florianópolis, SC');
+      expect(cfg.workingHours).toContain('Segunda 08:00-18:00');
+      expect(cfg.services).toEqual([{ name: 'Avaliação facial', price: '120,00', duration: '30 min' }]);
+      expect(cfg.behavior?.tone).toBe('empatico_cuidadoso');
+      expect(cfg.behavior?.maxDiscountPercent).toBe(5);
+      expect(cfg.temperature).toBe(0.1);
+      expect(cfg.extraContext).toContain('A avaliação inclui análise personalizada.');
+      expect(cfg.extraContext).toContain('Cancelamentos devem ser avisados com antecedência.');
+    });
   });
 
   describe('Durable worker retry and ambiguous WABA delivery safety', () => {
@@ -189,7 +278,7 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
       phoneNumberId: 'phone-number-id',
     };
 
-    function runtimeQuery() {
+    function runtimeQuery(handoffId: string | null = 'handoff-id') {
       return vi.fn(async (sql: string) => {
         if (sql.includes('SELECT') && sql.includes('j.bot_enabled')) {
           return {
@@ -227,6 +316,8 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
         if (sql.includes('FROM public.channel_connections cc')) {
           return {
             rows: [{
+              provider: 'meta_cloud',
+              status: 'CONNECTED',
               public_config: { phoneNumberId: 'phone-number-id' },
               secret_payload: { accessToken: 'redacted-test-token' },
             }],
@@ -234,7 +325,9 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
           };
         }
         if (sql.includes('pause_receptionist_and_open_handoff')) {
-          return { rows: [{ handoff_id: 'handoff-id' }], rowCount: 1 };
+          return handoffId
+            ? { rows: [{ handoff_id: handoffId }], rowCount: 1 }
+            : { rows: [], rowCount: 0 };
         }
         if (sql.includes('INSERT INTO public.conversation_messages')) {
           return { rows: [], rowCount: 1 };
@@ -319,5 +412,327 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
         expect.anything()
       );
     });
+
+    it('does not acknowledge an ambiguous delivery when the human handoff cannot be persisted', async () => {
+      vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
+      const query = runtimeQuery(null);
+      const nim = {
+        isConfigured: () => true,
+        generateChatCompletion: vi.fn().mockResolvedValue({
+          content: '{"intent":"greeting","escalate":false,"sendBookingFlow":false}\nOlá!',
+          model: 'test-model',
+          latencyMs: 8,
+        }),
+      };
+      const waba = {
+        sendText: vi.fn().mockRejectedValue(new Error('ambiguous timeout')),
+        sendFlow: vi.fn(),
+      };
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const agent = new ReceptionistAgent({ nim: nim as any, waba: waba as any, query });
+
+      await expect(agent.handleInbound(input)).rejects.toThrow('RECEPTIONIST_FAIL_CLOSED_HANDOFF_UNAVAILABLE');
+    });
+
+    it('routes an autonomous WAHA journey through its bound session, never through WABA', async () => {
+      vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
+      const input = { ...thisInputForWaha() };
+      const query = vi.fn(async (sql: string) => {
+        if (sql.includes('j.bot_enabled')) {
+          return {
+            rows: [{
+              bot_enabled: true,
+              bot_paused_at: null,
+              responder_owner: 'sos_sales',
+              responder_mode: 'sos_sales',
+              runtime_enabled: true,
+              autonomy_mode: 'autonomous_24_7',
+              published_at: new Date(),
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('FROM public.workspace_agent_config')) {
+          return {
+            rows: [{
+              workspace_name: 'Empresa WAHA',
+              agent_name: 'Assistente',
+              business_type: 'Serviços',
+              services_json: [{ name: 'Serviço conhecido' }],
+              working_hours: 'Seg a Sex 09h-18h',
+              phone: '+5549999999999',
+              city: 'Chapecó',
+              booking_url: null,
+              booking_flow_enabled: false,
+              extra_context: null,
+              behavior_config: {},
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('workspace_intelligence_bundles')) return { rows: [], rowCount: 0 };
+        if (sql.includes('workspace_knowledge_documents')) return { rows: [], rowCount: 0 };
+        if (sql.includes('FROM public.conversation_messages')) return { rows: [], rowCount: 0 };
+        if (sql.includes('FROM public.channel_connections cc')) {
+          return {
+            rows: [{
+              provider: 'waha',
+              status: 'CONNECTED',
+              public_config: { sessionName: 'sos-sales' },
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('INSERT INTO public.conversation_messages')) return { rows: [], rowCount: 1 };
+        throw new Error(`Unexpected test SQL: ${sql}`);
+      }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
+      const nim = {
+        isConfigured: () => true,
+        generateChatCompletion: vi.fn().mockResolvedValue({
+          content: '{"intent":"greeting","escalate":false,"sendBookingFlow":false}\nOlá pelo WhatsApp!',
+          model: 'test-model',
+          latencyMs: 10,
+        }),
+      };
+      const waba = { sendText: vi.fn(), sendFlow: vi.fn() };
+      const waha = {
+        sendText: vi.fn().mockResolvedValue({
+          success: true,
+          providerMessageId: 'waha-message-1',
+          rawResponse: { id: 'waha-message-1' },
+        }),
+      };
+      const agent = new ReceptionistAgent({ nim: nim as any, waba: waba as any, waha: waha as any, query });
+
+      const result = await agent.handleInbound(input);
+
+      expect(result).toMatchObject({ reply: 'Olá pelo WhatsApp!', escalated: false, bookingFlowSent: false });
+      expect(waha.sendText).toHaveBeenCalledWith({
+        session: 'sos-sales',
+        chatId: '5549999999999@c.us',
+        text: 'Olá pelo WhatsApp!',
+      });
+      expect(waba.sendText).not.toHaveBeenCalled();
+    });
+
+    it('reserves a keyed outbound before WAHA and never replays a sent reply', async () => {
+      vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
+      const input = {
+        ...thisInputForWaha(),
+        conversationMessageId: '50000000-0000-4000-8000-000000000005',
+      };
+      let reservationReads = 0;
+      const query = vi.fn(async (sql: string) => {
+        if (sql.includes('j.bot_enabled')) {
+          return {
+            rows: [{
+              bot_enabled: true,
+              bot_paused_at: null,
+              responder_owner: 'sos_sales',
+              responder_mode: 'sos_sales',
+              runtime_enabled: true,
+              autonomy_mode: 'autonomous_24_7',
+              published_at: new Date(),
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('FROM public.workspace_agent_config')) {
+          return {
+            rows: [{
+              workspace_name: 'Empresa WAHA',
+              agent_name: 'Assistente',
+              business_type: 'Serviços',
+              services_json: [{ name: 'Serviço conhecido' }],
+              working_hours: 'Seg a Sex 09h-18h',
+              phone: '+5549999999999',
+              city: 'Chapecó',
+              booking_url: null,
+              booking_flow_enabled: false,
+              extra_context: null,
+              behavior_config: {},
+            }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('workspace_intelligence_bundles')) return { rows: [], rowCount: 0 };
+        if (sql.includes('workspace_knowledge_documents')) return { rows: [], rowCount: 0 };
+        if (sql.includes('FROM public.conversation_messages')) return { rows: [], rowCount: 0 };
+        if (sql.includes('FROM public.channel_connections cc')) {
+          return {
+            rows: [{ provider: 'waha', status: 'CONNECTED', public_config: { sessionName: 'sos-sales' } }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('reserve_receptionist_outbound')) {
+          reservationReads += 1;
+          return {
+            rows: [{ reservation: reservationReads === 1
+              ? { reservationId: 'reservation-1', status: 'SENDING', shouldSend: true }
+              : { reservationId: 'reservation-1', status: 'SENT', shouldSend: false, providerMessageId: 'waha-reply-1' } }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('complete_receptionist_outbound')) return { rows: [{ ok: true }], rowCount: 1 };
+        throw new Error(`Unexpected test SQL: ${sql}`);
+      }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
+      const nim = {
+        isConfigured: () => true,
+        generateChatCompletion: vi.fn().mockResolvedValue({
+          content: '{"intent":"greeting","escalate":false,"sendBookingFlow":false}\nOlá pelo WhatsApp!',
+          model: 'test-model',
+          latencyMs: 10,
+        }),
+      };
+      const waha = {
+        sendText: vi.fn().mockResolvedValue({
+          success: true,
+          providerMessageId: 'waha-reply-1',
+          rawResponse: { id: 'waha-reply-1' },
+        }),
+      };
+      const agent = new ReceptionistAgent({ nim: nim as any, waha: waha as any, query });
+
+      const first = await agent.handleInbound(input);
+      const second = await agent.handleInbound(input);
+
+      expect(first.reply).toBe('Olá pelo WhatsApp!');
+      expect(second).toMatchObject({ reply: '', skipped: 'outbound_already_sent' });
+      expect(waha.sendText).toHaveBeenCalledTimes(1);
+      expect(query).toHaveBeenCalledWith(
+        expect.stringContaining('reserve_receptionist_outbound'),
+        expect.arrayContaining([input.conversationMessageId]),
+      );
+      expect(query).toHaveBeenCalledWith(
+        expect.stringContaining('complete_receptionist_outbound'),
+        expect.arrayContaining(['reservation-1', 'waha-reply-1']),
+      );
+    });
+  });
+});
+
+function thisInputForWaha() {
+  return {
+    workspaceId: '10000000-0000-4000-8000-000000000001',
+    journeyId: '20000000-0000-4000-8000-000000000002',
+    contactId: '30000000-0000-4000-8000-000000000003',
+    fromPhone: '+5549999999999',
+    pushName: 'Cliente WAHA',
+    textContent: 'Olá',
+    messageType: 'text',
+    channelConnectionId: '40000000-0000-4000-8000-000000000004',
+    phoneNumberId: null,
+  };
+}
+
+describe('receptionist responder ownership policy', () => {
+  const freshMetaCheck = new Date().toISOString();
+  const base = {
+    responderMode: 'auto_fallback' as const,
+    responderOwner: 'sos_sales' as const,
+    metaAgentEnabled: false,
+    metaAgentId: null,
+    metaAgentChannelConnectionId: '40000000-0000-4000-8000-000000000004',
+    metaAgentEligibilityStatus: 'UNKNOWN' as const,
+  };
+
+  it('uses SOS Sales when fallback mode has no ready Meta agent', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond(base)).toBe(true);
+  });
+
+  it('does not let SOS Sales answer while a ready Meta agent owns the default', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({
+      ...base,
+      responderOwner: 'meta_business_agent',
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentChannelConnectionId: '40000000-0000-4000-8000-000000000004',
+      metaAgentEligibilityStatus: 'ELIGIBLE',
+      metaAgentCheckedAt: freshMetaCheck,
+      metaAgentActivationStatus: 'READY',
+    })).toBe(false);
+    expect(shouldSosSalesRespond({
+      ...base,
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'ELIGIBLE',
+      metaAgentCheckedAt: freshMetaCheck,
+      metaAgentActivationStatus: 'READY',
+    })).toBe(false);
+  });
+
+  it('does not switch a Meta-owned thread while provider state is unknown', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({
+      ...base,
+      responderOwner: 'meta_business_agent',
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'UNKNOWN',
+    })).toBe(false);
+    expect(shouldSosSalesRespond({
+      ...base,
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'INELIGIBLE',
+    })).toBe(true);
+  });
+
+  it('falls back to SOS Sales for a stale Meta owner after an ineligible result', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({
+      ...base,
+      responderOwner: 'meta_business_agent',
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'INELIGIBLE',
+    })).toBe(true);
+  });
+
+  it('allows an explicit SOS takeover while workspace default is Meta', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({
+      responderMode: 'meta_business_agent',
+      responderOwner: 'sos_sales',
+      responderChangedAt: new Date().toISOString(),
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentChannelConnectionId: '40000000-0000-4000-8000-000000000004',
+      metaAgentEligibilityStatus: 'ELIGIBLE',
+      metaAgentCheckedAt: freshMetaCheck,
+      responderChangeReason: 'meta_thread_control_take',
+    })).toBe(true);
+  });
+
+  it('rejects a ready Meta agent without an exact channel binding', async () => {
+    const { isMetaAgentReady } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(isMetaAgentReady({
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'ELIGIBLE',
+      metaAgentCheckedAt: freshMetaCheck,
+      metaAgentActivationStatus: 'READY',
+    })).toBe(false);
+  });
+
+  it('does not switch a Meta-owned thread on an old eligibility result', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({
+      ...base,
+      responderOwner: 'meta_business_agent',
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'ELIGIBLE',
+      metaAgentCheckedAt: new Date(Date.now() - (25 * 60 * 60 * 1000)).toISOString(),
+      metaAgentActivationStatus: 'READY',
+    })).toBe(false);
+  });
+
+  it('never answers automatically for a human-owned or manual conversation', async () => {
+    const { shouldSosSalesRespond } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(shouldSosSalesRespond({ ...base, responderOwner: 'human' })).toBe(false);
+    expect(shouldSosSalesRespond({ ...base, responderMode: 'manual', responderOwner: 'sos_sales' })).toBe(false);
   });
 });

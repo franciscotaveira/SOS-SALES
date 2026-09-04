@@ -8,6 +8,8 @@ export interface AccessibleWorkspace {
   role: 'owner' | 'operator' | 'viewer';
 }
 
+/** A persisted workspace membership. Personal profile fields are deliberately
+ * absent: this table is the RBAC source of truth, not a user-directory mirror. */
 /**
  * Read port for the authenticated user's own workspace memberships.
  * It intentionally receives the verifier-derived actor rather than a

@@ -33,9 +33,11 @@ interface ClientAgentHubViewProps {
   onSelectWorkspace: (ws: Workspace) => void;
   activeSubTab?: IntelligenceTab;
   onChangeSubTab?: (tab: IntelligenceTab) => void;
+  canManage?: boolean;
 }
 
 export type IntelligenceTab =
+  | 'profile'
   | 'thesis'
   | 'diagnosis'
   | 'knowledge'
@@ -77,18 +79,31 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   workspaces,
   onSelectWorkspace,
   activeSubTab: externalActiveSubTab,
-  onChangeSubTab: externalOnChangeSubTab,
+  canManage = false,
 }) => {
-  const [internalActiveTab, setInternalActiveTab] = React.useState<IntelligenceTab>('knowledge');
-  const activeTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalActiveTab;
-  const setActiveTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalActiveTab;
+  const requestedActiveTab = externalActiveSubTab ?? 'knowledge';
+  const productionTabs = new Set<IntelligenceTab>(['profile', 'knowledge', 'catalog', 'diagnosis']);
+  const activeTab: IntelligenceTab = salesOsRuntimeConfig.mode === 'api' && !productionTabs.has(requestedActiveTab)
+    ? 'knowledge'
+    : requestedActiveTab;
 
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [saveSuccess, setSaveSuccess] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [bundleStatus, setBundleStatus] = React.useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
+  const [wabaChannelInfo, setWabaChannelInfo] = React.useState<{
+    configured?: boolean;
+    credentialsAvailable?: boolean;
+    phoneNumber?: string | null;
+    phoneNumberId?: string | null;
+    wabaId?: string | null;
+    verifiedName?: string | null;
+    qualityRating?: string | null;
+  } | null>(null);
 
   const [bundleMap, setBundleMap] = React.useState<Record<string, ClientIntelligenceBundle>>({});
+  const intelligenceCanManage = canManage && bundleStatus !== 'loading' && bundleStatus !== 'error';
 
   React.useEffect(() => {
     let isMounted = true;
@@ -128,64 +143,123 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
     };
   }, [currentWorkspace.id]);
 
+  // The authenticated workspace shell intentionally does not invent channel
+  // data. Hydrate the profile from the WABA read model instead of relying on
+  // `currentWorkspace.channels`, which is empty until a dedicated workspace
+  // projection exists.
+  React.useEffect(() => {
+    let isMounted = true;
+    setWabaChannelInfo(null);
+    authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/channels/waba/channel-info`)
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then((data) => {
+        if (isMounted) setWabaChannelInfo(data && typeof data === 'object' ? data : null);
+      })
+      .catch(() => {
+        if (isMounted) setWabaChannelInfo(null);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [currentWorkspace.id]);
+
   const currentBundle = React.useMemo(() => {
     const fallback = resolveWorkspaceIntelligenceBundle(currentWorkspace.id, currentWorkspace.name);
-    const existing = bundleMap[currentWorkspace.id];
-    if (!existing) return fallback;
+    const existing = bundleMap[currentWorkspace.id] || null;
+
+    const liveQuality = String(wabaChannelInfo?.qualityRating || '').toUpperCase();
+    const normalizedQuality = liveQuality === 'GREEN' || liveQuality === 'YELLOW' || liveQuality === 'RED'
+      ? liveQuality as 'GREEN' | 'YELLOW' | 'RED'
+      : fallback.companyProfile.wabaOfficialInfo.qualityRating;
+    const liveWabaInfo = wabaChannelInfo?.configured && wabaChannelInfo.credentialsAvailable === true
+      ? {
+          ...fallback.companyProfile.wabaOfficialInfo,
+          verifiedName: wabaChannelInfo.verifiedName || fallback.companyProfile.wabaOfficialInfo.verifiedName,
+          metaBusinessId: wabaChannelInfo.wabaId || fallback.companyProfile.wabaOfficialInfo.metaBusinessId,
+          phoneId: wabaChannelInfo.phoneNumberId || fallback.companyProfile.wabaOfficialInfo.phoneId,
+          phoneNumber: wabaChannelInfo.phoneNumber || fallback.companyProfile.wabaOfficialInfo.phoneNumber,
+          qualityRating: normalizedQuality,
+        }
+      : null;
 
     return {
       ...fallback,
-      ...existing,
-      companyProfile: { ...fallback.companyProfile, ...(existing.companyProfile || {}) },
+      ...(existing || {}),
+      companyProfile: {
+        ...fallback.companyProfile,
+        ...(existing?.companyProfile || {}),
+        ...(liveWabaInfo ? { wabaOfficialInfo: liveWabaInfo } : {}),
+      },
       agentConfig: {
         ...fallback.agentConfig,
-        ...(existing.agentConfig || {}),
-        safetyGuardrails: Array.isArray(existing.agentConfig?.safetyGuardrails)
+        ...(existing?.agentConfig || {}),
+        safetyGuardrails: Array.isArray(existing?.agentConfig?.safetyGuardrails)
           ? existing.agentConfig.safetyGuardrails
           : fallback.agentConfig.safetyGuardrails,
       },
-      catalog: Array.isArray(existing.catalog) ? existing.catalog.map((item) => ({
+      catalog: Array.isArray(existing?.catalog) ? existing.catalog.map((item) => ({
         ...item,
         basePrice: Number(item?.basePrice || 0),
         minPromoPrice: Number(item?.minPromoPrice ?? item?.basePrice ?? 0),
         tags: Array.isArray(item?.tags) ? item.tags : [],
         frequentlyAsked: Array.isArray(item?.frequentlyAsked) ? item.frequentlyAsked : [],
       })) : fallback.catalog,
-      documents: Array.isArray(existing.documents) ? existing.documents : fallback.documents,
-      learningRecords: Array.isArray(existing.learningRecords) ? existing.learningRecords.map((r) => ({
+      documents: Array.isArray(existing?.documents) ? existing.documents : fallback.documents,
+      learningRecords: Array.isArray(existing?.learningRecords) ? existing.learningRecords.map((r) => ({
         ...r,
         confidenceScore: Number(r?.confidenceScore || 0),
       })) : fallback.learningRecords,
-      sources: Array.isArray(existing.sources) ? existing.sources : [],
-      destinations: Array.isArray(existing.destinations) ? existing.destinations : [],
+      sources: Array.isArray(existing?.sources) ? existing.sources : [],
+      destinations: Array.isArray(existing?.destinations) ? existing.destinations : [],
     };
-  }, [bundleMap, currentWorkspace]);
+  }, [bundleMap, currentWorkspace, wabaChannelInfo]);
 
-  const updateCurrentBundle = (updater: (prev: ClientIntelligenceBundle) => ClientIntelligenceBundle) => {
+  const hasWabaConfiguration = Boolean(
+    wabaChannelInfo?.configured
+      && wabaChannelInfo.credentialsAvailable === true
+      && wabaChannelInfo.phoneNumberId,
+  );
+
+  const updateCurrentBundle = async (updater: (prev: ClientIntelligenceBundle) => ClientIntelligenceBundle): Promise<boolean> => {
+    if (!intelligenceCanManage) {
+      setSaveError('Somente o proprietário pode editar a inteligência e o backend ainda não confirmou este bundle.');
+      return false;
+    }
     const updated = updater(currentBundle);
+    setSaveError(null);
     setBundleMap((prev) => ({
       ...prev,
       [currentWorkspace.id]: updated,
     }));
 
     setIsSaving(true);
-    authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/intelligence`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bundle: updated }),
-    })
-      .then((r) => {
-        if (r.ok) {
-          setSaveSuccess(true);
-          setTimeout(() => setSaveSuccess(false), 2000);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setIsSaving(false));
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/intelligence`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bundle: updated }),
+      });
+      if (!response.ok) {
+        setSaveError(`Não foi possível persistir a inteligência (HTTP ${response.status}).`);
+        return false;
+      }
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+      return true;
+    } catch {
+      setSaveError('Não foi possível alcançar o backend para persistir a inteligência.');
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleManualSave = async () => {
     setIsSaving(true);
+    setSaveError(null);
     try {
       const res = await authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/intelligence`, {
         method: 'PUT',
@@ -195,7 +269,11 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
       if (res.ok) {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        setSaveError(`Não foi possível persistir a inteligência (HTTP ${res.status}).`);
       }
+    } catch {
+      setSaveError('Não foi possível alcançar o backend para persistir a inteligência.');
     } finally {
       setIsSaving(false);
     }
@@ -215,12 +293,17 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
               <h1 className="text-sm font-bold text-[var(--sos-ink)] font-heading truncate">
                 {currentWorkspace.name}
               </h1>
-              <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border border-[var(--sos-ai)]/30 flex items-center gap-1">
-                <Sparkles className="w-2.5 h-2.5 text-[var(--sos-ai)]" /> Inteligência Comercial
+            <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] border border-[var(--sos-ai)]/30 flex items-center gap-1">
+              <Sparkles className="w-2.5 h-2.5 text-[var(--sos-ai)]" /> Inteligência Comercial
+            </span>
+            {!canManage && (
+              <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                Somente leitura
               </span>
-              {currentWorkspace.channels?.some((c) => c.health === 'healthy' || c.health === 'connected') ? (
-                <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border border-[var(--sos-success)]/30 flex items-center gap-1">
-                  <CheckCircle2 className="w-2.5 h-2.5 text-[var(--sos-success)]" /> WhatsApp Conectado
+            )}
+              {hasWabaConfiguration ? (
+                <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200 flex items-center gap-1">
+                  <CheckCircle2 className="w-2.5 h-2.5 text-sky-600" /> Credenciais Meta registradas
                 </span>
               ) : (
                 <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1">
@@ -245,12 +328,16 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
             <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
               <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Salvo no Supabase
             </span>
+          ) : saveError ? (
+            <span role="alert" className="text-[11px] font-medium text-rose-600 flex items-center gap-1">
+              {saveError}
+            </span>
           ) : null}
 
           <button
             type="button"
             onClick={handleManualSave}
-            disabled={isSaving}
+            disabled={isSaving || !intelligenceCanManage}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-2xs transition active:scale-95 disabled:opacity-50 cursor-pointer"
           >
             <Save className="w-3.5 h-3.5" />
@@ -280,8 +367,60 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
       {(activeTab === 'knowledge' || !activeTab) && (
         <AgentKnowledgeBaseSection
           documents={currentBundle.documents}
+          onUploadDocument={async (input) => {
+            if (!intelligenceCanManage) throw new Error('Somente o proprietário pode editar a base de conhecimento.');
+            const res = await authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/knowledge-docs`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title: input.name,
+                category: input.category,
+                content: input.content,
+                fileName: input.name,
+                fileSize: input.fileSize,
+              }),
+            });
+            if (!res.ok) throw new Error(`Knowledge document API ${res.status}`);
+            const data = await res.json();
+            const document = data?.document;
+            if (!document?.id) throw new Error('Knowledge document response missing id');
+            return {
+              id: String(document.id),
+              name: String(document.title || input.name),
+              fileType: input.fileType,
+              fileSize: String(document.file_size || input.fileSize),
+              uploadedAt: String(document.created_at || new Date().toISOString()),
+              uploadedBy: 'Backend SOS Sales',
+              category: input.category,
+              status: document.status === 'ready' ? 'indexed' : 'pending',
+              extractedChunksCount: Number(document.chunks_count || 1),
+              tokenCount: Math.max(1, Math.floor(input.content.length / 4)),
+              summary: String(document.title || input.name),
+              rawContentSnippet: input.content.slice(0, 1400),
+              isPrioritizedFact: false,
+              factType: input.category === 'tabela_precos' ? 'pricing' : 'faq',
+            };
+          }}
+          onDeleteDocument={async (id) => {
+            if (!intelligenceCanManage) return false;
+            const res = await authenticatedFetch(`/api/v1/workspaces/${currentWorkspace.id}/knowledge-docs/${id}`, {
+              method: 'DELETE',
+            });
+            return res.ok;
+          }}
           onUpdateDocuments={(docs) => {
-            updateCurrentBundle((prev) => ({ ...prev, documents: docs }));
+            void updateCurrentBundle((prev) => ({ ...prev, documents: docs }));
+          }}
+          canManage={intelligenceCanManage}
+        />
+      )}
+
+      {activeTab === 'profile' && (
+        <CompanyProfileSection
+          profile={currentBundle.companyProfile}
+          readOnly={!intelligenceCanManage}
+          onSaveProfile={async (profile) => {
+            return updateCurrentBundle((prev) => ({ ...prev, companyProfile: profile }));
           }}
         />
       )}
@@ -289,8 +428,9 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
       {activeTab === 'catalog' && (
         <ProductCatalogSection
           catalog={currentBundle.catalog}
+          canManage={intelligenceCanManage}
           onUpdateCatalog={(items) => {
-            updateCurrentBundle((prev) => ({ ...prev, catalog: items }));
+            void updateCurrentBundle((prev) => ({ ...prev, catalog: items }));
           }}
         />
       )}

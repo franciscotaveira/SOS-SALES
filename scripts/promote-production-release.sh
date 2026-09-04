@@ -4,11 +4,46 @@ set -euo pipefail
 VPS_ALIAS="${VPS_ALIAS:-vps}"
 PRODUCTION_URL="${PRODUCTION_URL:-https://crm.iaparavendas.tech}"
 RELEASE_SHA="${1:-}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SUPABASE_PROJECT_REF="${SUPABASE_PROJECT_REF:-yiiuebhyqixzluguxsqi}"
 
 if [[ ! "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "usage: $0 <40-character-release-sha>" >&2
   exit 1
 fi
+
+# The runtime DATABASE_URL intentionally uses the application database role,
+# which must not read Supabase's internal migration ledger. Verify that ledger
+# from the operator machine using the authenticated Supabase CLI before the
+# VPS can switch the release symlink.
+verify_linked_schema_ledger() {
+  local listing expected
+  # A release worktree is intentionally isolated from a developer's local
+  # Supabase link metadata. Supplying the explicit project ref keeps this
+  # production gate authoritative without copying credentials into a checkout.
+  listing="$(cd "${REPO_ROOT}/apps/api" && npx supabase migration list --project-ref "${SUPABASE_PROJECT_REF}")"
+  expected="$(find "${REPO_ROOT}/apps/api/supabase/migrations" -maxdepth 1 -type f -name '*.sql' -exec basename {} \; | sed -E 's/^([0-9]{14})_.*/\1/' | sort)"
+  printf '%s\n' "${listing}" | node -e '
+    const fs = require("node:fs");
+    const output = fs.readFileSync(0, "utf8");
+    const expected = process.argv.slice(1);
+    let remote;
+    try {
+      const parsed = JSON.parse(output);
+      remote = new Map((parsed.migrations || []).map(({ local, remote }) => [local, remote]));
+    } catch {
+      const matches = [...output.matchAll(/`(\d{14})`\s*\|\s*`(\d{14})`/g)];
+      remote = new Map(matches.map(([, local, applied]) => [local, applied]));
+    }
+    const missing = expected.filter((version) => remote.get(version) !== version);
+    if (missing.length) {
+      throw new Error(`Supabase migration ledger mismatch: ${missing.join(", ")}`);
+    }
+  ' ${expected}
+  echo "[schema-gate] verified linked Supabase migration ledger"
+}
+
+verify_linked_schema_ledger
 
 ssh "${VPS_ALIAS}" "bash -s -- '${RELEASE_SHA}' '${PRODUCTION_URL}'" <<'REMOTE_SCRIPT'
 set -euo pipefail
@@ -29,18 +64,26 @@ atomic_link() {
 }
 
 verify_active_release() {
-  curl --retry 10 --retry-delay 2 --retry-connrefused -fsS "${production_url}/health" >/dev/null || return 1
-  curl --retry 10 --retry-delay 2 --retry-connrefused -fsS "${production_url}/ready" >/dev/null || return 1
+  # Caddy may need to reopen HTTPS listeners after a release mount changes.
+  # Keep the release candidate alive long enough for this expected warm-up,
+  # while still restoring automatically on a persistent failure.
+  curl --retry 20 --retry-delay 2 --retry-connrefused -fsS "${production_url}/health" >/dev/null || return 1
+  curl --retry 20 --retry-delay 2 --retry-connrefused -fsS "${production_url}/ready" >/dev/null || return 1
 }
 
 recreate_active_release() {
   cd "${root}"
+  # caddy and the API intentionally have stable container names. Compose can
+  # otherwise retain an orphan from the previous symlinked release and refuse
+  # the replacement before it has a chance to attach the new mount. Removing
+  # only these two disposable runtime containers makes the switch deterministic;
+  # Redis and WAHA sessions are never recreated here.
+  docker rm -f sos-sales-api sos-sales-caddy >/dev/null 2>&1 || true
   SOS_SALES_RELEASE_ROOT="${current}" docker compose \
     -p sos-sales \
     --env-file .env.production \
     -f "${current}/docker-compose.yml" \
     up -d --no-deps --force-recreate sos-sales-api caddy || return 1
-  sleep 3
 }
 
 require_base_release() {
@@ -63,24 +106,29 @@ require_migration_gate() {
   find "${candidate}/api/supabase/migrations" -type f -name '*.sql' -print -quit | grep -q .
 }
 
-verify_release_schema() {
+require_schema_contract() {
+  local candidate="$1"
+  test -f "${candidate}/scripts/verify-production-schema-contract.mjs"
+  # The VPS host is intentionally not a Node.js runtime. Reuse the exact API
+  # image used to install the release dependencies, mounting the candidate
+  # read-only and the production env only as container environment. This keeps
+  # the schema gate independent from host packages and prevents a partial
+  # promotion when the host has no `node` binary.
+  local node_image
+  node_image="$(docker inspect sos-sales-api --format '{{.Config.Image}}')"
+  test -n "${node_image}"
   docker run --rm \
-    -v /opt/sos-sales:/opt/sos-sales \
-    -w "${release}" \
-    -e DATABASE_SSL_CA_FILE="${release}/certs/supabase-ca.crt" \
-    node:20-alpine \
-    node "${release}/scripts/verify-production-schema.mjs" \
-      --env-file "${root}/.env.production" \
-      --migrations-dir "${release}/api/supabase/migrations"
+    --network container:sos-sales-api \
+    --env-file "${root}/.env.production" \
+    -v "${candidate}:/release:ro" \
+    "${node_image}" \
+    node /release/scripts/verify-production-schema-contract.mjs \
+      --ca-file /release/certs/supabase-ca.crt
 }
 
 require_base_release "${release}"
 require_migration_gate "${release}"
-
-# This must happen before touching current/previous. The verifier is read-only
-# and fails closed when the database has not recorded every migration bundled
-# with this immutable release.
-verify_release_schema
+require_schema_contract "${release}"
 
 if [[ -L "${current}" ]]; then
   old_release="$(readlink -f "${current}")"

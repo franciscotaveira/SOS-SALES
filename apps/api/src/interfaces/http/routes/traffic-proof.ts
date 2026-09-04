@@ -1,12 +1,13 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { TrafficProofGateway } from '../../../application/ports/traffic-proof-gateway.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface TrafficProofRouteDependencies {
   trafficProofGateway?: TrafficProofGateway;
 }
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)));
 const querySchema = z.object({
   from: isoDate,

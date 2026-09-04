@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Sliders,
   Smartphone,
@@ -15,10 +15,17 @@ import {
   ShieldCheck,
   Zap,
   Radio,
+  UserPlus,
+  Trash2,
+  FileText,
+  Bot,
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
 import { EmbeddedSignupModal } from './EmbeddedSignupModal';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
+import { WabaTemplatesTab } from '../campaigns/WabaTemplatesTab';
+import { AiRuntimeSettingsView } from './AiRuntimeSettingsView';
+import { MetaBusinessAgentSettingsView } from './MetaBusinessAgentSettingsView';
 
 interface LiveSettingsViewProps {
   workspace: Workspace;
@@ -26,15 +33,40 @@ interface LiveSettingsViewProps {
   onChangeSubTab?: (subTab: string) => void;
 }
 
+interface WorkspaceMember {
+  membershipId: string;
+  userId: string;
+  role: 'owner' | 'operator' | 'viewer';
+  createdAt: string;
+  isCurrentActor: boolean;
+  email?: string | null;
+}
+
+function normalizeTab(tab: string): 'canais' | 'ia' | 'sla' | 'membros' {
+  if (tab === 'channels' || tab === 'canais') return 'canais';
+  if (tab === 'sla') return 'sla';
+  if (tab === 'ia') return 'ia';
+  if (tab === 'membros') return 'membros';
+  return 'canais';
+}
+
+const roleLabel: Record<WorkspaceMember['role'], string> = {
+  owner: 'Proprietário',
+  operator: 'Operador',
+  viewer: 'Visualização',
+};
+
 export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   workspace,
   activeSubTab = 'canais',
   onChangeSubTab,
 }) => {
-  const [currentTab, setCurrentTab] = useState(activeSubTab);
-  const [firstResponseMins, setFirstResponseMins] = useState(15);
-  const [resolutionHours, setResolutionHours] = useState(24);
+  const [currentTab, setCurrentTab] = useState(() => normalizeTab(activeSubTab));
+  const [firstResponseMins, setFirstResponseMins] = useState<number | null>(null);
+  const [slaState, setSlaState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [savedSlaToast, setSavedSlaToast] = useState(false);
+  const [slaError, setSlaError] = useState<string | null>(null);
+  const [isSavingSla, setIsSavingSla] = useState(false);
   const [isEmbeddedModalOpen, setIsEmbeddedModalOpen] = useState(false);
 
   // Live QR Code Modal state
@@ -43,19 +75,164 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   const [qrStatus, setQrStatus] = useState<'INITIAL' | 'STARTING' | 'SCAN_QR_CODE' | 'WORKING' | 'FAILED'>('INITIAL');
   const [isQrLoading, setIsQrLoading] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
+  const [showWahaFallback, setShowWahaFallback] = useState(false);
+  const [showWabaTemplates, setShowWabaTemplates] = useState(false);
+  const [wabaChannel, setWabaChannel] = useState<{
+    state: 'loading' | 'connected' | 'unconfigured' | 'error';
+    phoneNumber?: string | null;
+    verifiedName?: string | null;
+  }>({ state: 'loading' });
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [membersState, setMembersState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [memberEmail, setMemberEmail] = useState('');
+  const [memberRole, setMemberRole] = useState<'operator' | 'viewer'>('operator');
+  const [memberActionError, setMemberActionError] = useState<string | null>(null);
+  const [isSavingMember, setIsSavingMember] = useState(false);
+  const [removingMembershipId, setRemovingMembershipId] = useState<string | null>(null);
+  const [createdInvite, setCreatedInvite] = useState<{ code: string; email: string; expiresAt: string } | null>(null);
 
   const handleTabChange = (tab: string) => {
-    setCurrentTab(tab);
-    onChangeSubTab?.(tab);
-  };
-
-  const handleSaveSla = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavedSlaToast(true);
-    setTimeout(() => setSavedSlaToast(false), 3000);
+    const normalized = normalizeTab(tab);
+    setCurrentTab(normalized);
+    onChangeSubTab?.(normalized);
   };
 
   useEffect(() => {
+    setCurrentTab(normalizeTab(activeSubTab));
+  }, [activeSubTab]);
+
+  const handleSaveSla = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (firstResponseMins === null || !Number.isFinite(firstResponseMins) || firstResponseMins < 1) {
+      setSlaError('Informe um tempo de SLA válido antes de salvar.');
+      return;
+    }
+    setIsSavingSla(true);
+    setSlaError(null);
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/operational-settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slaPolicy: { firstResponseMinutes: firstResponseMins } }),
+      });
+      if (!response.ok) throw new Error('Não foi possível salvar a política de SLA.');
+      const payload = await response.json();
+      const persistedValue = payload?.data?.slaPolicy?.firstResponseMinutes;
+      if (typeof persistedValue !== 'number') throw new Error('O servidor não devolveu a política de SLA persistida.');
+      setFirstResponseMins(persistedValue);
+      setSlaState('ready');
+      setSavedSlaToast(true);
+      setTimeout(() => setSavedSlaToast(false), 3000);
+    } catch (error) {
+      setSlaError(error instanceof Error ? error.message : 'Não foi possível salvar a política de SLA.');
+    } finally {
+      setIsSavingSla(false);
+    }
+  };
+
+  useEffect(() => {
+    setSlaState('loading');
+    setSlaError(null);
+    authenticatedFetch(`/api/v1/workspaces/${workspace.id}/operational-settings`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error || 'Não foi possível consultar a política de SLA.');
+        return payload;
+      })
+      .then((payload) => {
+        const value = payload?.data?.slaPolicy?.firstResponseMinutes;
+        if (typeof value !== 'number') throw new Error('A política de SLA ainda não foi configurada neste workspace.');
+        setFirstResponseMins(value);
+        setSlaState('ready');
+      })
+      .catch((error) => {
+        setFirstResponseMins(null);
+        setSlaState('error');
+        setSlaError(error instanceof Error ? error.message : 'Não foi possível consultar a política de SLA.');
+      });
+  }, [workspace.id]);
+
+  const loadMembers = useCallback(async () => {
+    setMembersState('loading');
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/members`);
+      if (!response.ok) throw new Error('Não foi possível consultar os membros do workspace.');
+      const payload = await response.json();
+      setMembers(Array.isArray(payload?.data) ? payload.data : []);
+      setMembersState('ready');
+    } catch {
+      setMembersState('error');
+    }
+  }, [workspace.id]);
+
+  useEffect(() => {
+    void loadMembers();
+  }, [loadMembers]);
+
+  const handleAddMember = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setMemberActionError(null);
+    setIsSavingMember(true);
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/member-invitations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: memberEmail, role: memberRole }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || 'Não foi possível adicionar este operador.');
+      }
+      const payload = await response.json();
+      setCreatedInvite({ code: payload.data.code, email: payload.data.email, expiresAt: payload.data.expiresAt });
+      setMemberEmail('');
+    } catch (error) {
+      setMemberActionError(error instanceof Error ? error.message : 'Não foi possível adicionar este operador.');
+    } finally {
+      setIsSavingMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (member: WorkspaceMember) => {
+    if (!window.confirm(`Remover o acesso de ${member.email || 'este operador'}?`)) return;
+    setMemberActionError(null);
+    setRemovingMembershipId(member.membershipId);
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/members/${member.membershipId}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || 'Não foi possível remover este operador.');
+      }
+      await loadMembers();
+    } catch (error) {
+      setMemberActionError(error instanceof Error ? error.message : 'Não foi possível remover este operador.');
+    } finally {
+      setRemovingMembershipId(null);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/channel-info`)
+      .then(async (res) => {
+        if (res.status === 404) return { configured: false };
+        if (!res.ok) throw new Error('Não foi possível consultar o canal oficial.');
+        return res.json();
+      })
+      .then((data) => {
+        if (!active) return;
+        setWabaChannel(data?.configured && data?.credentialsAvailable === true
+          ? { state: 'connected', phoneNumber: data.phoneNumber, verifiedName: data.verifiedName }
+          : { state: 'unconfigured' });
+      })
+      .catch(() => {
+        if (active) setWabaChannel({ state: 'error' });
+      });
+    return () => { active = false; };
+  }, [workspace.id]);
+
+  useEffect(() => {
+    if (!showWahaFallback) return;
     authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`)
       .then((res) => res.json())
       .then((data) => {
@@ -64,7 +241,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
         }
       })
       .catch(() => undefined);
-  }, [workspace.id]);
+  }, [workspace.id, showWahaFallback]);
 
   const fetchQrCode = async () => {
     setIsQrLoading(true);
@@ -117,7 +294,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Gestão de canais do WhatsApp, limites de SLA comercial e membros do workspace.
+            WhatsApp, IA, tempo de resposta e equipe em uma única configuração essencial.
           </p>
         </div>
 
@@ -132,6 +309,16 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
             }`}
           >
             <Smartphone className="w-3.5 h-3.5" /> Canais WhatsApp
+          </button>
+          <button
+            onClick={() => handleTabChange('ia')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              currentTab === 'ia'
+                ? 'bg-slate-900 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5" /> Atendimento com IA
           </button>
           <button
             onClick={() => handleTabChange('sla')}
@@ -158,6 +345,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
 
       {/* Main Content Area */}
       <div className="mt-5 flex-1">
+        {currentTab === 'ia' && <AiRuntimeSettingsView workspaceId={workspace.id} />}
         {currentTab === 'canais' && (
           <div className="max-w-4xl space-y-4">
             {/* Meta WABA Official Cloud API Card */}
@@ -169,13 +357,21 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-bold text-slate-900">WhatsApp Oficial Meta · Cloud API (WABA)</h3>
-                    <span className="px-2 py-0.5 rounded-md text-xs font-bold border bg-emerald-50 text-emerald-800 border-emerald-200 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                      Oficial Meta v23.0
+                    <span className={`px-2 py-0.5 rounded-md text-xs font-bold border flex items-center gap-1 ${
+                      wabaChannel.state === 'connected'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : wabaChannel.state === 'error'
+                        ? 'bg-rose-50 text-rose-800 border-rose-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}>
+                      {wabaChannel.state === 'connected' ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <WifiOff className="w-3 h-3" />}
+                      {wabaChannel.state === 'connected' ? 'Configuração registrada' : wabaChannel.state === 'loading' ? 'Consultando...' : wabaChannel.state === 'error' ? 'Status indisponível' : 'Configuração pendente'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    Onboarding via <strong>Embedded Signup v4</strong> com suporte a Marketing Messages & Modo Híbrido.
+                    {wabaChannel.state === 'connected'
+                      ? `Credenciais registradas no backend: ${wabaChannel.phoneNumber || 'número não informado'}${wabaChannel.verifiedName ? ` · ${wabaChannel.verifiedName}` : ''}. A conectividade atual deve ser validada por uma consulta Meta.`
+                      : <>Onboarding via <strong>Embedded Signup</strong>. Conecte o número oficial para começar a receber e responder conversas.</>}
                   </p>
                 </div>
               </div>
@@ -185,11 +381,39 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                 className="px-4 py-2.5 bg-[#00a884] hover:bg-[#008f6f] text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
               >
                 <Zap className="w-4 h-4 text-white" />
-                Conectar via Embedded Signup v4
+                {wabaChannel.state === 'connected' ? 'Gerenciar conexão oficial' : 'Conectar WhatsApp oficial'}
               </button>
             </div>
 
-            {/* WAHA Multi-Device QR Code Card */}
+            {wabaChannel.state === 'connected' && (
+              <button
+                type="button"
+                onClick={() => setShowWabaTemplates((visible) => !visible)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-xs text-slate-600 transition hover:bg-slate-50"
+                aria-expanded={showWabaTemplates}
+              >
+                <span className="inline-flex items-center gap-2 font-bold text-slate-900"><FileText size={14} /> Modelos aprovados da Meta</span>
+                <span className="ml-2">{showWabaTemplates ? 'Ocultar' : 'Gerenciar templates para mensagens fora da janela de 24 horas'}</span>
+              </button>
+            )}
+
+            {showWabaTemplates && wabaChannel.state === 'connected' && (
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <WabaTemplatesTab workspace={workspace} />
+              </div>
+            )}
+
+            <MetaBusinessAgentSettingsView workspaceId={workspace.id} canManage={workspace.operatorRole === 'owner'} />
+
+            {!showWahaFallback ? (
+              <button
+                type="button"
+                onClick={() => setShowWahaFallback(true)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-xs text-slate-600 hover:bg-slate-50 transition"
+              >
+                Precisa usar WhatsApp Web como alternativa? <span className="font-bold text-slate-900">Abrir conexão WAHA</span>
+              </button>
+            ) : (
             <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3.5">
                 <div className="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center shrink-0 shadow-2xs">
@@ -221,6 +445,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                 {qrStatus === 'WORKING' ? 'Reconectar / QR Code' : 'Conectar via QR Code'}
               </button>
             </div>
+            )}
           </div>
         )}
 
@@ -237,8 +462,10 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                 <span className="font-semibold">Políticas de SLA salvas com sucesso no banco de dados!</span>
               </div>
             )}
+            {slaError && <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{slaError}</p>}
 
             <form onSubmit={handleSaveSla} className="space-y-4">
+              {slaState === 'loading' && <p className="text-xs text-slate-500">Consultando a política persistida...</p>}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 font-heading">
                   Tempo Máximo para Primeiro Atendimento (Minutos)
@@ -247,8 +474,9 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                   type="number"
                   min={1}
                   max={1440}
-                  value={firstResponseMins}
-                  onChange={(e) => setFirstResponseMins(Number(e.target.value))}
+                  value={firstResponseMins ?? ''}
+                  onChange={(e) => setFirstResponseMins(e.target.value ? Number(e.target.value) : null)}
+                  disabled={slaState === 'loading'}
                   className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-2xs"
                 />
                 <span className="text-[11px] text-slate-400 mt-1 block">
@@ -256,26 +484,13 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                 </span>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 font-heading">
-                  Tempo Limite para Resolução / Follow-up (Horas)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={720}
-                  value={resolutionHours}
-                  onChange={(e) => setResolutionHours(Number(e.target.value))}
-                  className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-2xs"
-                />
-              </div>
-
               <div className="pt-2">
                 <button
                   type="submit"
+                  disabled={isSavingSla || slaState === 'loading' || firstResponseMins === null}
                   className="px-5 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                 >
-                  Salvar Políticas de SLA
+                  {isSavingSla ? 'Salvando...' : 'Salvar SLA de primeira resposta'}
                 </button>
               </div>
             </form>
@@ -284,24 +499,74 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
 
         {currentTab === 'membros' && (
           <div className="max-w-4xl space-y-3">
-            <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-sm shadow-2xs">
-                  FR
-                </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-slate-900">Francisco Rios (Você)</span>
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
-                      <Crown className="w-3 h-3 text-amber-600" /> Owner (Proprietário)
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">franciscotaveira.mkt@gmail.com • Acesso total e soberano</p>
+                  <h2 className="text-sm font-bold text-slate-900">Acessos do workspace</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">Papéis e acessos persistidos para esta empresa. Status online e perfis pessoais não são inferidos.</p>
                 </div>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-600">
+                  {membersState === 'ready' ? `${members.length} ${members.length === 1 ? 'membro' : 'membros'}` : 'Consultando...'}
+                </span>
               </div>
 
-              <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">Ativo agora</span>
+              <form onSubmit={handleAddMember} className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_150px_auto]">
+                <input
+                  type="email"
+                  required
+                  value={memberEmail}
+                  onChange={(event) => setMemberEmail(event.target.value)}
+                  placeholder="E-mail de quem receberá o acesso"
+                  className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                />
+                <select value={memberRole} onChange={(event) => setMemberRole(event.target.value as 'operator' | 'viewer')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-emerald-500">
+                  <option value="operator">Operador</option>
+                  <option value="viewer">Visualização</option>
+                </select>
+                <button type="submit" disabled={isSavingMember} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60">
+                  <UserPlus className="h-3.5 w-3.5" />{isSavingMember ? 'Gerando...' : 'Gerar acesso'}
+                </button>
+                <p className="sm:col-span-3 text-[11px] text-slate-500">Você compartilhará um código de uso único. A pessoa precisa entrar com este mesmo e-mail para aceitar.</p>
+              </form>
+              {memberActionError && <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{memberActionError}</p>}
+              {createdInvite && (
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+                  <p className="font-bold">Acesso gerado para {createdInvite.email}</p>
+                  <p className="mt-1">Compartilhe este código uma única vez. Ele expira em {new Date(createdInvite.expiresAt).toLocaleDateString('pt-BR')}.</p>
+                  <code className="mt-2 block select-all break-all rounded-lg border border-emerald-200 bg-white px-3 py-2 font-mono text-[11px] text-slate-800">{createdInvite.code}</code>
+                </div>
+              )}
+
+              <div className="mt-4 divide-y divide-slate-100">
+                {membersState === 'loading' && <p className="py-4 text-xs text-slate-500">Carregando acessos reais...</p>}
+                {membersState === 'error' && <p className="py-4 text-xs text-rose-700">Não foi possível carregar os acessos. Tente atualizar a página.</p>}
+                {membersState === 'ready' && members.length === 0 && <p className="py-4 text-xs text-slate-500">Nenhum vínculo de acesso encontrado para este workspace.</p>}
+                {members.map((member) => (
+                  <div key={member.membershipId} className="flex items-center justify-between gap-4 py-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-600">
+                        {member.isCurrentActor ? 'EU' : 'OP'}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-slate-900">{member.isCurrentActor ? 'Você' : 'Operador vinculado'}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-slate-500">{member.email || `ID ${member.userId}`}</p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${member.role === 'owner' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                        {member.role === 'owner' && <Crown className="mr-1 inline h-3 w-3 text-amber-600" />}{roleLabel[member.role]}
+                      </span>
+                      {member.role !== 'owner' && (
+                        <button type="button" onClick={() => void handleRemoveMember(member)} disabled={removingMembershipId === member.membershipId} aria-label={`Remover ${member.email || 'operador'}`} className="rounded-md border border-rose-200 p-1.5 text-rose-700 transition hover:bg-rose-50 disabled:opacity-50">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+            <p className="px-1 text-[11px] text-slate-500">O proprietário é protegido contra remoção nesta tela. Para trocar propriedade, use um processo administrativo auditado.</p>
           </div>
         )}
       </div>
@@ -314,7 +579,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
               <QrCode className="w-6 h-6" />
             </div>
             
-            <h3 className="text-base font-bold text-slate-950 font-heading">Conectar WhatsApp Oficial</h3>
+            <h3 className="text-base font-bold text-slate-950 font-heading">Conectar WhatsApp Web (WAHA)</h3>
             <p className="text-xs text-slate-500 mt-1 mb-4">
               Abra o WhatsApp no celular &gt; Aparelhos Conectados &gt; Conectar Aparelho.
             </p>
@@ -382,7 +647,12 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
         isOpen={isEmbeddedModalOpen}
         onClose={() => setIsEmbeddedModalOpen(false)}
         workspace={workspace}
-        onSuccess={() => {
+        canManage={workspace.operatorRole === 'owner'}
+        onSuccess={(data) => {
+          setWabaChannel({
+            state: 'connected',
+            phoneNumber: data.verifiedPhone,
+          });
           setIsEmbeddedModalOpen(false);
         }}
       />

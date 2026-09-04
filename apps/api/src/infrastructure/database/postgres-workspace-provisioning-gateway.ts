@@ -142,7 +142,10 @@ export class PostgresWorkspaceProvisioningGateway implements WorkspaceProvisioni
         [
           ws.id,
           provider,
-          input.whatsappNumber?.trim() || 'pending',
+          // A disconnected client has no provider identifier yet. Do not use
+          // a shared literal such as "pending": it collides with the
+          // provider-identifier uniqueness index and looks like a real number.
+          input.whatsappNumber?.trim() || '',
           input.provider === 'waba' ? 'WhatsApp Oficial (Meta Cloud)' : 'WhatsApp Principal (WAHA)',
           JSON.stringify(publicConfig),
         ],
@@ -167,6 +170,30 @@ export class PostgresWorkspaceProvisioningGateway implements WorkspaceProvisioni
         channelStatus: 'DISCONNECTED',
         ownerAccess: 'agency_owner',
       };
+    });
+  }
+
+  async deactivateWorkspace(actor: AuthenticatedActor, workspaceId: string): Promise<void> {
+    return this.withServiceRole(async (client) => {
+      // Deactivation is intentionally not a DELETE: messages, journeys and
+      // audit evidence remain intact and no phone number can be reassigned by
+      // accident. Only an owner of this exact workspace may perform it.
+      const result = await client.query(
+        `UPDATE public.workspaces w
+         SET active = false
+         WHERE w.id = $1
+           AND w.active = true
+           AND EXISTS (
+             SELECT 1
+             FROM public.workspace_memberships wm
+             WHERE wm.workspace_id = w.id
+               AND wm.user_id = $2
+               AND wm.role = 'owner'
+           )`,
+        [workspaceId, actor.userId],
+      );
+
+      if (result.rowCount !== 1) throw new Error('WORKSPACE_DEACTIVATION_FORBIDDEN_OR_NOT_FOUND');
     });
   }
 

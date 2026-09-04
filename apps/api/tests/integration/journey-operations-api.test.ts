@@ -118,6 +118,10 @@ describe('Journey operation API — authenticated stage and follow-up mutations'
       method: 'PATCH', url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyA}/stage`,
       headers: { authorization, 'idempotency-key': 'not-a-uuid' }, payload: { stage: 'WON' },
     });
+    const outcomeAsStage = await server.inject({
+      method: 'PATCH', url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyA}/stage`,
+      headers: { authorization, 'idempotency-key': stageKey }, payload: { stage: 'GANHO' },
+    });
     const invalidFollowUp = await server.inject({
       method: 'POST', url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyA}/follow-ups`,
       headers: { authorization, 'idempotency-key': followUpKey }, payload: { dueAt: 'tomorrow', reason: 'x' },
@@ -126,7 +130,7 @@ describe('Journey operation API — authenticated stage and follow-up mutations'
       method: 'PATCH', url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyA}/stage`,
       headers: { 'idempotency-key': stageKey }, payload: { stage: 'CONTACTED' },
     });
-    for (const response of [invalidStage, invalidFollowUp]) {
+    for (const response of [invalidStage, outcomeAsStage, invalidFollowUp]) {
       expect(response.statusCode).toBe(422);
       expect(response.json()).toEqual({ statusCode: 422, error: 'Unprocessable Entity', message: 'Invalid journey operation request' });
     }

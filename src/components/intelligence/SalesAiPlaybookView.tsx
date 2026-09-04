@@ -8,6 +8,7 @@ interface SalesAiPlaybookViewProps {
   onSelectWorkspace: (ws: Workspace) => void;
   activeSubTab?: IntelligenceTab;
   onChangeSubTab?: (tab: IntelligenceTab) => void;
+  canManage?: boolean;
 }
 
 export const SalesAiPlaybookView: React.FC<SalesAiPlaybookViewProps> = ({
@@ -16,6 +17,7 @@ export const SalesAiPlaybookView: React.FC<SalesAiPlaybookViewProps> = ({
   onSelectWorkspace,
   activeSubTab,
   onChangeSubTab,
+  canManage = false,
 }) => {
   return (
     <ClientAgentHubView
@@ -24,6 +26,7 @@ export const SalesAiPlaybookView: React.FC<SalesAiPlaybookViewProps> = ({
       onSelectWorkspace={onSelectWorkspace}
       activeSubTab={activeSubTab}
       onChangeSubTab={onChangeSubTab}
+      canManage={canManage}
     />
   );
 };

@@ -120,6 +120,7 @@ function AppContent({
   userEmail,
   onSignOut,
   onCreateWorkspace,
+  onDeactivateWorkspace,
 }: {
   workspaces: Workspace[];
   currentWorkspace: Workspace;
@@ -152,14 +153,18 @@ function AppContent({
     whatsappNumber: string;
     provider: 'waba' | 'waha';
   }) => Promise<void>;
+  onDeactivateWorkspace?: (workspace: Workspace) => Promise<void>;
 }) {
   const { isFeatureEnabled } = useFeatureFlags();
+  const isProductionMvp = salesOsRuntimeConfig.mode === 'api';
 
   const [conversationsMode, setConversationsMode] = React.useState<'list' | 'kanban' | 'wallboard'>('list');
   const [intelligenceSubTab, setIntelligenceSubTab] = React.useState<any>('knowledge');
-  const [settingsSubTab, setSettingsSubTab] = React.useState<any>('channels');
+  const [settingsSubTab, setSettingsSubTab] = React.useState<any>('canais');
   const [groupSubTab, setGroupSubTab] = React.useState<any>('conversations');
-  const [resultsSubTab, setResultsSubTab] = React.useState<ResultsSubTab>('analytics');
+  const [resultsSubTab, setResultsSubTab] = React.useState<ResultsSubTab>(
+    isProductionMvp ? 'traffic_proof' : 'analytics',
+  );
   const [isAssistantOpen, setIsAssistantOpen] = React.useState(false);
 
   // Role-based security fallback: prevent unauthorized roles from viewing restricted tabs
@@ -193,6 +198,25 @@ function AppContent({
       setActiveTab('agora');
     }
   }, [activeTab, isFeatureEnabled, setActiveTab]);
+
+  // Keep non-core modules preserved for future tiers without leaving direct
+  // URLs, history entries or stale localStorage able to reopen them in the
+  // production MVP. The live MVP exposes only intelligence that has a real
+  // backend contract; legacy simulators and unsupported specialist screens
+  // remain isolated from production navigation.
+  React.useEffect(() => {
+    const hiddenProductionTabs: NavigationTab[] = [
+      'kanban',
+      'agenda',
+      'anotacoes',
+      'grupos',
+      'simulador',
+      'analytics',
+    ];
+    if (isProductionMvp && hiddenProductionTabs.includes(activeTab)) {
+      setActiveTab('agora');
+    }
+  }, [activeTab, isProductionMvp, setActiveTab]);
 
   const pendingCount = journeys.filter((j) => j.handoffStatus === 'pending_operator').length;
   const pendingGroupsCount = agencyGroups.filter(
@@ -333,41 +357,62 @@ function AppContent({
       )}
 
       {activeTab === 'agenda' && (
-        <TabErrorBoundary tabName="Agenda Comercial">
-          <AgendaView
-            workspace={currentWorkspace}
-            gateway={salesOsGateway}
-            onGoToCockpitWithJourney={(journeyId) => {
-              setSelectedJourneyId(journeyId);
-              setActiveTab('agora');
-            }}
+        isProductionMvp ? (
+          <ApiModeUnavailable
+            title="Agenda ainda não está disponível no MVP autenticado"
+            detail="A agenda legada dependia de dados locais. Ela permanece fora do caminho de produção até possuir leitura e gravação reais no backend."
           />
-        </TabErrorBoundary>
+        ) : (
+          <TabErrorBoundary tabName="Agenda Comercial">
+            <AgendaView
+              workspace={currentWorkspace}
+              gateway={salesOsGateway}
+              onGoToCockpitWithJourney={(journeyId) => {
+                setSelectedJourneyId(journeyId);
+                setActiveTab('agora');
+              }}
+            />
+          </TabErrorBoundary>
+        )
       )}
 
       {activeTab === 'anotacoes' && (
-        <TabErrorBoundary tabName="Anotações & Insights">
-          <NotesView
-            workspace={currentWorkspace}
-            gateway={salesOsGateway}
+        isProductionMvp ? (
+          <ApiModeUnavailable
+            title="Anotações ainda não estão disponíveis no MVP autenticado"
+            detail="As anotações legadas usavam armazenamento local. Nenhuma nota será exibida ou gravada até existir um contrato persistido para a equipe."
           />
-        </TabErrorBoundary>
+        ) : (
+          <TabErrorBoundary tabName="Anotações & Insights">
+            <NotesView
+              workspace={currentWorkspace}
+              gateway={salesOsGateway}
+            />
+          </TabErrorBoundary>
+        )
       )}
 
       {activeTab === 'grupos' && isFeatureEnabled('agency_groups') && (
-        <TabErrorBoundary tabName="Hub de Grupos">
-          <GroupsHubView
-            groups={agencyGroups}
-            workspaceId={currentWorkspace.id}
-            onUpdateGroup={(updated) => {
-              setAgencyGroups((prev) =>
-                prev.map((g) => (g.id === updated.id ? updated : g))
-              );
-            }}
-            activeSubTab={groupSubTab}
-            onChangeSubTab={setGroupSubTab}
+        isProductionMvp ? (
+          <ApiModeUnavailable
+            title="Grupos ainda não estão disponíveis no MVP autenticado"
+            detail="O monitor de grupos permanece preservado para uma fase posterior. O modo de produção não exibirá grupos simulados nem estados locais."
           />
-        </TabErrorBoundary>
+        ) : (
+          <TabErrorBoundary tabName="Hub de Grupos">
+            <GroupsHubView
+              groups={agencyGroups}
+              workspaceId={currentWorkspace.id}
+              onUpdateGroup={(updated) => {
+                setAgencyGroups((prev) =>
+                  prev.map((g) => (g.id === updated.id ? updated : g))
+                );
+              }}
+              activeSubTab={groupSubTab}
+              onChangeSubTab={setGroupSubTab}
+            />
+          </TabErrorBoundary>
+        )
       )}
 
       {activeTab === 'clientes' && (
@@ -377,6 +422,7 @@ function AppContent({
             currentWorkspace={currentWorkspace}
             onSelectWorkspace={onSelectWorkspace}
             onCreateWorkspace={onCreateWorkspace}
+            onDeactivateWorkspace={onDeactivateWorkspace}
             onNavigateTab={(tab, subTab) => {
               setActiveTab(tab);
               if (tab === 'playbook' && subTab) {
@@ -408,6 +454,7 @@ function AppContent({
             onSelectWorkspace={onSelectWorkspace}
             activeSubTab={intelligenceSubTab}
             onChangeSubTab={setIntelligenceSubTab}
+            canManage={currentWorkspace.operatorRole === 'owner'}
           />
         </TabErrorBoundary>
       )}
@@ -432,45 +479,51 @@ function AppContent({
 
       {activeTab === 'configuracoes' && (
         <TabErrorBoundary tabName="Configurações">
-          <SettingsShell
-            workspace={currentWorkspace}
-            activeSubTab={settingsSubTab}
-            onChangeSubTab={setSettingsSubTab}
-          />
+          {isAuthenticatedApiMode ? (
+            <LiveSettingsView
+              workspace={currentWorkspace}
+              activeSubTab={settingsSubTab}
+              onChangeSubTab={setSettingsSubTab}
+            />
+          ) : (
+            <SettingsShell
+              workspace={currentWorkspace}
+              activeSubTab={settingsSubTab}
+              onChangeSubTab={setSettingsSubTab}
+            />
+          )}
         </TabErrorBoundary>
       )}
       </React.Suspense>
 
-      {/* Botão Flutuante Atlas IA: Assistente Circular (apenas em desenvolvimento/demo) */}
-      {!isAuthenticatedApiMode && (
-        <>
-          <div className="fixed bottom-6 right-6 z-50">
-            <button
-              onClick={() => setIsAssistantOpen(true)}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-[#020617] text-white shadow-2xl shadow-slate-950/80 hover:scale-110 active:scale-95 transition-all duration-200 border-2 border-emerald-500 group cursor-pointer relative"
-              title="Atlas Copilot IA - Assistente de Configuração"
-              aria-label="Abrir Atlas Copilot IA"
-            >
-              <Bot className="h-6 w-6 text-emerald-400 group-hover:text-white transition-colors" />
-              <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 animate-pulse" />
-            </button>
-          </div>
+        {/* O assistente experimental continua disponível no laboratório, mas
+            não ocupa a operação principal até possuir um contrato de setup
+            específico e alinhado às telas realmente publicadas. */}
+        {!isProductionMvp && <div className="fixed bottom-6 right-6 z-50">
+          <button
+            onClick={() => setIsAssistantOpen(true)}
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-[#020617] text-white shadow-2xl shadow-slate-950/80 hover:scale-110 active:scale-95 transition-all duration-200 border-2 border-emerald-500 group cursor-pointer relative"
+            title="Atlas Copilot IA - Assistente de Configuração"
+            aria-label="Abrir Atlas Copilot IA"
+          >
+            <Bot className="h-6 w-6 text-emerald-400 group-hover:text-white transition-colors" />
+            <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 animate-pulse" />
+          </button>
+        </div>}
 
-          {/* Modal Conversacional de Onboarding */}
-          <OnboardingSetupAssistantModal
-            currentWorkspace={currentWorkspace}
-            isOpen={isAssistantOpen}
-            onClose={() => setIsAssistantOpen(false)}
-            onNavigateToTab={(tab) => {
-              setActiveTab(tab);
-              setIsAssistantOpen(false);
-            }}
-          />
-        </>
-      )}
-    </AppShell>
-  );
-}
+        {/* Modal Conversacional de Onboarding */}
+        {!isProductionMvp && <OnboardingSetupAssistantModal
+          currentWorkspace={currentWorkspace}
+          isOpen={isAssistantOpen}
+          onClose={() => setIsAssistantOpen(false)}
+      onNavigateToTab={(tab) => {
+            setActiveTab(tab);
+            setIsAssistantOpen(false);
+          }}
+        />}
+      </AppShell>
+    );
+  }
 
 function OperationalApp({
   userEmail,
@@ -627,7 +680,10 @@ function OperationalApp({
         setCurrentWorkspace(defaultWs ?? null);
 
         if (!defaultWs) {
-          setOperationalError('Sua conta não possui nenhum workspace disponível.');
+          // A signed-in operator may be entering for the first time, either to
+          // create a workspace or to redeem an owner-issued access code.
+          // This is an expected state, not an operational failure.
+          setOperationalError(null);
           return;
         }
 
@@ -742,33 +798,39 @@ function OperationalApp({
       setWorkspaces((prev) => [...prev, createdWs]);
     }
 
-    // Demo-only persistence. Authenticated API mode never stores client setup locally.
-    try {
-      const intelKey = 'sos_sales_intelligence_bundles_v2';
-      const existing = JSON.parse(localStorage.getItem(intelKey) || '{}');
-      existing[createdWs.id] = {
-        workspaceId: createdWs.id,
-        workspaceName: createdWs.name,
-        companyProfile: {
-          tradeName: createdWs.name,
-          legalName: createdWs.name,
-          cnpj: '',
-          tagline: data.tagline,
-          primaryColorHex: '#00A884',
-          whatsappNumber: data.whatsappNumber,
-          ownerEmail: data.ownerEmail,
-          officialChannelType: data.provider,
-          businessSegment: data.businessType,
-        },
-        catalog: [],
-        documents: [],
-        learningRecords: [],
-      };
-      localStorage.setItem(intelKey, JSON.stringify(existing));
-    } catch {}
+    // Demo-only persistence. Authenticated API mode keeps the backend as the
+    // sole source of truth for client workspaces and their configuration.
+    if (salesOsRuntimeConfig.mode !== 'api') {
+      try {
+        const intelKey = 'sos_sales_intelligence_bundles_v2';
+        const existing = JSON.parse(localStorage.getItem(intelKey) || '{}');
+        existing[createdWs.id] = {
+          workspaceId: createdWs.id,
+          workspaceName: createdWs.name,
+          companyProfile: {
+            tradeName: createdWs.name,
+            legalName: createdWs.name,
+            cnpj: '',
+            tagline: data.tagline,
+            primaryColorHex: '#00A884',
+            whatsappNumber: data.whatsappNumber,
+            ownerEmail: data.ownerEmail,
+            officialChannelType: data.provider,
+            businessSegment: data.businessType,
+          },
+          catalog: [],
+          documents: [],
+          learningRecords: [],
+        };
+        localStorage.setItem(intelKey, JSON.stringify(existing));
+      } catch {}
+    }
 
     // Auto switch to the new workspace
     await handleSelectWorkspace(createdWs);
+    // The next useful action for a new entry-plan customer is connecting the
+    // real WhatsApp channel; do not strand them on an administrative list.
+    setActiveTab('configuracoes');
   };
 
   const handleUpdateJourney = (updated: Journey) => {
@@ -779,6 +841,24 @@ function OperationalApp({
     salesOsGateway.updateJourney(updated).catch((err) => {
       console.error('Failed to persist journey to gateway:', err);
     });
+  };
+
+  const handleDeactivateWorkspace = async (workspace: Workspace) => {
+    if (!(salesOsGateway instanceof HttpSalesOsGateway)) {
+      throw new Error('A desativação de clientes só está disponível na operação autenticada.');
+    }
+    if (workspace.id === currentWorkspace?.id) {
+      throw new Error('Troque para outro cliente antes de desativar esta conta.');
+    }
+    await salesOsGateway.deactivateWorkspace(workspace.id);
+    setWorkspaces((previous) => previous.filter((item) => item.id !== workspace.id));
+    try {
+      if (localStorage.getItem('sos_selected_workspace_id') === workspace.id) {
+        localStorage.removeItem('sos_selected_workspace_id');
+      }
+    } catch {
+      // Browser storage is only a convenience, never a source of truth.
+    }
   };
 
   const handleSimulateIncomingLeadMessage = async () => {
@@ -857,6 +937,27 @@ function OperationalApp({
               setIsLoading(false);
             }
           }}
+          onAcceptInvite={async (code) => {
+            setIsLoading(true);
+            try {
+              if (!(salesOsGateway instanceof HttpSalesOsGateway)) {
+                throw new Error('O ingresso por convite exige uma sessão autenticada.');
+              }
+              await salesOsGateway.acceptWorkspaceInvitation(code);
+              const wsList = await salesOsGateway.getWorkspaces();
+              if (wsList.length === 0) throw new Error('O convite foi aceito, mas nenhum workspace pôde ser carregado. Atualize a página.');
+              const defaultWs = wsList[0];
+              setOperationalError(null);
+              setWorkspaces(wsList);
+              setCurrentWorkspace(defaultWs);
+              if (defaultWs.operatorRole) setRole(defaultWs.operatorRole);
+            } catch (err: any) {
+              setOperationalError(err?.message || 'Não foi possível aceitar o convite.');
+              throw err;
+            } finally {
+              setIsLoading(false);
+            }
+          }}
         />
       );
     }
@@ -905,6 +1006,7 @@ function OperationalApp({
           userEmail={userEmail}
           onSignOut={onSignOut}
           onCreateWorkspace={handleCreateWorkspace}
+          onDeactivateWorkspace={handleDeactivateWorkspace}
         />
       </FeatureFlagProvider>
     </>

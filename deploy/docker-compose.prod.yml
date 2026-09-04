@@ -70,6 +70,15 @@ services:
       WAHA_DASHBOARD_ENABLED: "true"
       WHATSAPP_SWAGGER_ENABLED: "true"
       WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY is required}
+      # Use the authenticated durable endpoint. The strict HMAC route is
+      # channel-scoped and cannot be configured here without a per-session
+      # connection id; the durable route resolves that binding in the API.
+      WHATSAPP_HOOK_URL: http://sos-sales-api:4334/api/v1/channels/waha/webhook
+      WHATSAPP_HOOK_EVENTS: message,message.any,session.status
+      WHATSAPP_HOOK_CUSTOM_HEADERS: x-api-key:${WAHA_API_KEY}
+      WAHA_WEBHOOK_URL: http://sos-sales-api:4334/api/v1/channels/waha/webhook
+      WAHA_WEBHOOK_EVENTS: message,message.any,session.status
+      WAHA_WEBHOOK_CUSTOM_HEADERS: x-api-key:${WAHA_API_KEY}
       WAHA_LOG_FORMAT: JSON
       TZ: America/Sao_Paulo
       # Webhook ACK timeout: aumentado de 5s (padrão) para 15s

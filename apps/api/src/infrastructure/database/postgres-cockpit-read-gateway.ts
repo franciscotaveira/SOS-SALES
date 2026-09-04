@@ -8,7 +8,6 @@ import {
   CursorPage,
 } from '../../application/ports/cockpit-read-gateway.js';
 import { AuthenticatedActor } from '../../application/ports/operator-authenticator.js';
-import { analyzeConversationDossier } from '../../application/services/cognitive-analyzer.js';
 import { dbPool } from './pool.js';
 
 type PgConnector = Pick<Pool, 'connect'>;
@@ -297,54 +296,37 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
       const handoff = row.handoff as Record<string, unknown> | null;
       const outcome = row.outcome as Record<string, unknown> | null;
 
-      // Realtime Cognitive Enrichment
-      const parsedMessages = messagesList.map((m: any) => ({
-        id: m.id,
-        direction: m.direction,
-        senderType: m.sender_type,
-        textContent: m.text_content,
-        sentAt: m.sent_at,
+      // The authenticated cockpit is a read model, not a place to invent
+      // commercial facts.  In particular, absence of an attribution, service
+      // or stage must stay absent; heuristic enrichment belongs in an
+      // explicitly labelled/ persisted intelligence projection and must never
+      // look like a confirmed customer fact here.
+      const finalService = row.primary_service_or_product;
+      const finalStage = row.pipeline_stage;
+
+      const finalAcquisitions = acquisitionsList.map((item: any) => ({
+        id: String(item.id),
+        source: String(item.source),
+        campaignId: item.campaign_id as string | null,
+        campaignName: item.campaign_name as string | null,
+        adSetId: item.ad_set_id as string | null,
+        adId: item.ad_id as string | null,
+        creativeCode: item.creative_code as string | null,
+        offerHook: item.offer_hook as string | null,
+        entryMessage: item.entry_message as string | null,
+        confidence: String(item.confidence),
+        occurredAt: new Date(item.occurred_at as Date).toISOString(),
       }));
-      const inferred = analyzeConversationDossier(parsedMessages, row.contact_name);
 
-      const finalService = row.primary_service_or_product || (inferred.confidenceService > 0.5 ? inferred.primaryServiceOrProduct : 'Atendimento Geral');
-      const finalStage = row.pipeline_stage || inferred.suggestedStage;
-
-      const finalAcquisitions = acquisitionsList.length > 0
-        ? acquisitionsList.map((item: any) => ({
-            id: String(item.id), source: String(item.source),
-            campaignId: item.campaign_id as string | null,
-            campaignName: item.campaign_name as string | null,
-            adSetId: item.ad_set_id as string | null,
-            adId: item.ad_id as string | null,
-            creativeCode: item.creative_code as string | null,
-            offerHook: item.offer_hook as string | null,
-            entryMessage: item.entry_message as string | null,
-            confidence: String(item.confidence),
-            occurredAt: new Date(item.occurred_at as Date).toISOString(),
-          }))
-        : [{
-            id: 'inferred-acq',
-            source: inferred.originType,
-            campaignId: null,
-            campaignName: inferred.campaignName,
-            adSetId: null,
-            adId: null,
-            creativeCode: null,
-            offerHook: inferred.offerHook || null,
-            entryMessage: inferred.entryMessage || null,
-            confidence: '0.90',
-            occurredAt: new Date(row.started_at).toISOString(),
-          }];
-
-      const finalFacts = factsList.length > 0
-        ? factsList.map((fact: any) => ({
-            id: String(fact.id), key: String(fact.key), value: fact.value,
-            source: String(fact.source), confidence: Number(fact.confidence),
-            confirmedByCustomer: Boolean(fact.confirmed_by_customer),
-            observedAt: new Date(fact.observed_at as Date).toISOString(),
-          }))
-        : inferred.knownFacts;
+      const finalFacts = factsList.map((fact: any) => ({
+        id: String(fact.id),
+        key: String(fact.key),
+        value: fact.value,
+        source: String(fact.source),
+        confidence: Number(fact.confidence),
+        confirmedByCustomer: Boolean(fact.confirmed_by_customer),
+        observedAt: new Date(fact.observed_at as Date).toISOString(),
+      }));
 
       return {
         journey: {

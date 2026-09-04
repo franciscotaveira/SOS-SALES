@@ -40,6 +40,7 @@ interface AgencyClientsManagerProps {
     provider: 'waba' | 'waha';
   }) => Promise<void>;
   onNavigateTab?: (tab: any, subTab?: string) => void;
+  onDeactivateWorkspace?: (workspace: Workspace) => Promise<void>;
 }
 
 export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
@@ -48,6 +49,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
   onSelectWorkspace,
   onCreateWorkspace,
   onNavigateTab,
+  onDeactivateWorkspace,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'hair_salon' | 'auto_film' | 'general_services'>('all');
@@ -61,10 +63,13 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
   const [newTagline, setNewTagline] = useState('');
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
   const [newWhatsappNumber, setNewWhatsappNumber] = useState('');
-  const [newProvider, setNewProvider] = useState<'waba' | 'waha'>('waba');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [workspacePendingDeactivation, setWorkspacePendingDeactivation] = useState<Workspace | null>(null);
+  const [deactivationConfirmation, setDeactivationConfirmation] = useState('');
+  const [deactivationError, setDeactivationError] = useState<string | null>(null);
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
   // Filtered Workspaces
   const filteredWorkspaces = useMemo(() => {
@@ -93,7 +98,9 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
     (acc, ws) => acc + ws.channels.filter((c) => c.health === 'connected' || c.health === 'healthy').length,
     0
   );
-  const totalOperatorsCount = workspaces.reduce((acc, ws) => acc + (ws.activeOperatorCount || 1), 0);
+  // A missing operator count means "not reported", not one active operator.
+  // Never inflate an operational KPI with a UI fallback.
+  const totalOperatorsCount = workspaces.reduce((acc, ws) => acc + (ws.activeOperatorCount ?? 0), 0);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -119,7 +126,10 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
           tagline: newTagline.trim() || `Operação comercial dedicada para ${newName.trim()}`,
           ownerEmail: newOwnerEmail.trim(),
           whatsappNumber: newWhatsappNumber.trim(),
-          provider: newProvider,
+          // The entry product starts every account in the official Meta
+          // onboarding path. WAHA remains a controlled fallback in channel
+          // settings, not a technical decision required at account creation.
+          provider: 'waba',
         });
       }
       setSubmitSuccess(true);
@@ -136,6 +146,26 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
       setSubmitError(err?.message || 'Falha ao provisionar nova conta de cliente.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const confirmDeactivation = async () => {
+    const workspace = workspacePendingDeactivation;
+    if (!workspace || !onDeactivateWorkspace) return;
+    if (deactivationConfirmation.trim() !== workspace.name) {
+      setDeactivationError('Digite o nome completo da empresa para confirmar.');
+      return;
+    }
+    setIsDeactivating(true);
+    setDeactivationError(null);
+    try {
+      await onDeactivateWorkspace(workspace);
+      setWorkspacePendingDeactivation(null);
+      setDeactivationConfirmation('');
+    } catch (error) {
+      setDeactivationError(error instanceof Error ? error.message : 'Não foi possível desativar esta conta.');
+    } finally {
+      setIsDeactivating(false);
     }
   };
 
@@ -160,7 +190,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
-              Painel central para visualizar workspaces confirmados pelo backend. Criação de subcontas e conexão de WhatsApp exigem contratos operacionais próprios.
+              Crie a empresa primeiro. A conexão oficial do WhatsApp é guiada no próximo passo, sem exigir configuração técnica nesta tela.
             </p>
           </div>
         </div>
@@ -393,7 +423,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
                       <Users className="w-3.5 h-3.5 text-slate-500" /> Time & Licenças:
                     </span>
                     <span className="text-slate-300 font-medium">
-                      {ws.activeOperatorCount || 1} atendentes
+                      {ws.activeOperatorCount ?? 0} atendentes
                     </span>
                   </div>
 
@@ -448,6 +478,19 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
                 >
                   <Bot className="w-4 h-4 text-purple-400" />
                 </button>
+                {!isSelected && onDeactivateWorkspace && (
+                  <button
+                    onClick={() => {
+                      setWorkspacePendingDeactivation(ws);
+                      setDeactivationConfirmation('');
+                      setDeactivationError(null);
+                    }}
+                    className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-rose-300 hover:border-rose-800/70 transition-colors cursor-pointer"
+                    title="Desativar cliente sem apagar histórico"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -527,19 +570,9 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
                   </select>
                 </div>
 
-                {/* WhatsApp Engine */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Motor de WhatsApp
-                  </label>
-                  <select
-                    value={newProvider}
-                    onChange={(e) => setNewProvider(e.target.value as any)}
-                    className="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-[#00a884]"
-                  >
-                    <option value="waba">Meta WABA Oficial (Cloud API v23.0)</option>
-                    <option value="waha">WhatsApp Web (WAHA Local)</option>
-                  </select>
+                <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 px-3 py-2.5 text-xs text-emerald-100">
+                  <p className="font-bold">WhatsApp Oficial</p>
+                  <p className="mt-1 leading-5 text-emerald-200/80">A conexão Meta Cloud será feita depois da criação. WAHA só aparece se for necessário como alternativa técnica.</p>
                 </div>
               </div>
 
@@ -547,7 +580,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Telefone WhatsApp do Cliente
+                    Telefone WhatsApp do Cliente <span className="normal-case font-normal text-slate-500">(opcional)</span>
                   </label>
                   <input
                     type="text"
@@ -560,7 +593,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                    E-mail de referência do cliente
+                    E-mail de referência do cliente <span className="normal-case font-normal text-slate-500">(opcional)</span>
                   </label>
                   <input
                     type="email"
@@ -618,6 +651,32 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {workspacePendingDeactivation && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <section className="w-full max-w-md rounded-2xl border border-rose-900/70 bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/15 text-rose-300"><AlertCircle className="h-5 w-5" /></div>
+              <div>
+                <h2 className="text-base font-bold text-white">Desativar cliente?</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-400">A conta sairá da operação ativa e não poderá receber ou disparar mensagens. Jornadas, mensagens e evidências permanecem preservadas.</p>
+              </div>
+            </div>
+            <label className="mt-5 block text-xs font-bold uppercase tracking-wider text-slate-300">Digite <span className="normal-case text-rose-300">{workspacePendingDeactivation.name}</span> para confirmar</label>
+            <input
+              value={deactivationConfirmation}
+              onChange={(event) => setDeactivationConfirmation(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-xs text-white outline-none focus:border-rose-500"
+              autoFocus
+            />
+            {deactivationError && <p className="mt-2 text-xs text-rose-300">{deactivationError}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setWorkspacePendingDeactivation(null)} disabled={isDeactivating} className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-bold text-slate-300">Cancelar</button>
+              <button onClick={() => void confirmDeactivation()} disabled={isDeactivating} className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60">{isDeactivating ? 'Desativando…' : 'Desativar conta'}</button>
+            </div>
+          </section>
         </div>
       )}
     </div>

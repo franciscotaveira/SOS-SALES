@@ -177,7 +177,12 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
         message_kind: string;
         message_payload: Record<string, unknown> | string | null;
       }>(
-          `SELECT c.phone, cc.public_config->>'session' AS session_name, cc.provider, cc.public_config,
+        `SELECT c.phone,
+          COALESCE(
+            NULLIF(btrim(cc.public_config->>'sessionName'), ''),
+            NULLIF(btrim(cc.public_config->>'session'), '')
+          ) AS session_name,
+          cc.provider, cc.public_config,
           secrets.secret_payload, od.message_kind, od.message_payload
            FROM public.outbound_dispatches od
            JOIN public.contacts c ON c.id = od.contact_id
@@ -192,8 +197,8 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
              LIMIT 1
            ) secrets ON TRUE
            WHERE od.id = $1`,
-        [params.dispatchId],
-      );
+          [params.dispatchId],
+        );
       const details = detailsQuery.rows[0];
       const publicConfig = typeof details?.public_config === 'string'
         ? JSON.parse(details.public_config)
@@ -232,11 +237,11 @@ export class PostgresOutboundDispatchGateway implements OutboundDispatchGateway 
     });
   }
 
-  async recordProviderFailure(params: { dispatchId: string; claimToken: string; workerId: string; failureCode: string }): Promise<OutboundDispatchMutationResult | null> {
+  async recordProviderFailure(params: { dispatchId: string; claimToken: string; workerId: string; failureCode: string; retryable?: boolean }): Promise<OutboundDispatchMutationResult | null> {
     return this.withServiceRole(async (client) => {
       const query = await client.query<RpcRow>(
-        'SELECT public.record_outbound_provider_failure($1, $2, $3, $4) AS result',
-        [params.dispatchId, params.claimToken, params.workerId, params.failureCode],
+        'SELECT public.record_outbound_provider_failure($1, $2, $3, $4, $5) AS result',
+        [params.dispatchId, params.claimToken, params.workerId, params.failureCode, params.retryable ?? false],
       );
       return parseMutation(query.rows[0]?.result);
     });

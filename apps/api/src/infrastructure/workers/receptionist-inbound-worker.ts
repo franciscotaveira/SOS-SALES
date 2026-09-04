@@ -143,6 +143,7 @@ export class ReceptionistInboundWorker {
   private async processEvent(event: {
     id: string;
     aggregateType: string;
+    aggregateId: string;
     claimToken: string;
     payload: Record<string, unknown>;
   }): Promise<void> {
@@ -154,8 +155,26 @@ export class ReceptionistInboundWorker {
     }
 
     // 2. Drive the AI Receptionist with the self-contained payload
-    const input = this.toReceptionistInput(event.payload);
-    await this.receptionistAgent.handleInbound(input);
+    const input = this.toReceptionistInput(event.payload, event.aggregateId);
+    let renewalError: Error | null = null;
+    const renewalIntervalMs = Math.max(1_000, Math.floor((this.leaseSeconds * 1_000) / 3));
+    const renewalTimer = this.outboxGateway.renewLease
+      ? setInterval(() => {
+          void this.outboxGateway!.renewLease!({
+            eventId: event.id,
+            claimToken: event.claimToken,
+            workerId: this.workerId,
+          }).catch((error: unknown) => {
+            renewalError = error instanceof Error ? error : new Error('Outbox lease renewal failed');
+          });
+        }, renewalIntervalMs)
+      : null;
+    try {
+      await this.receptionistAgent.handleInbound(input);
+      if (renewalError) throw renewalError;
+    } finally {
+      if (renewalTimer) clearInterval(renewalTimer);
+    }
 
     // 3. Complete outbox event using the fencing token
     await this.outboxGateway.completeEvent({
@@ -166,7 +185,7 @@ export class ReceptionistInboundWorker {
   }
 
   /** Validates the outbox payload into a ReceptionistInput (fail fast on drift). */
-  private toReceptionistInput(payload: Record<string, unknown>): ReceptionistInput {
+  private toReceptionistInput(payload: Record<string, unknown>, aggregateId: string): ReceptionistInput {
     const asString = (key: string): string => {
       const value = payload[key];
       if (typeof value !== 'string' || value.length === 0) {
@@ -184,7 +203,17 @@ export class ReceptionistInboundWorker {
       textContent: asString('textContent'),
       messageType: asString('messageType'),
       channelConnectionId: asString('channelConnectionId'),
-      phoneNumberId: asString('phoneNumberId'),
+      // WAHA has no Meta phone-number id. The agent resolves the provider
+      // from channel_connection_id and only requires this value for Meta.
+      phoneNumberId: typeof payload.phoneNumberId === 'string' && payload.phoneNumberId.trim()
+        ? payload.phoneNumberId.trim()
+        : null,
+      // The outbox aggregate is the persisted conversation_messages.id. It is
+      // the fallback for events written by an older enqueue function that did
+      // not include an explicit conversationMessageId field.
+      conversationMessageId: typeof payload.conversationMessageId === 'string' && payload.conversationMessageId.trim()
+        ? payload.conversationMessageId.trim()
+        : aggregateId,
     };
   }
 

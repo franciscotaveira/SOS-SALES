@@ -33,8 +33,9 @@ required_artifacts=(
   "apps/api/supabase/migrations/20260814000000_supabase_roles.sql"
   "apps/api/supabase/config.toml"
   "scripts/verify-production-schema.mjs"
+  "scripts/verify-production-schema-contract.mjs"
   "scripts/PRODUCTION_MIGRATIONS_OPERATOR.md"
-  "apps/api/node_modules/.package-lock.json"
+  "apps/api/package-lock.json"
   "docker-compose.prod.yml"
   "deploy/docker-compose.prod.yml"
   "certs/supabase-ca.crt"
@@ -70,6 +71,24 @@ manifest_commit="$(node -p "JSON.parse(require('fs').readFileSync('${REPO_ROOT}/
 current_commit="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 if [[ "${manifest_commit}" != "${current_commit}" ]]; then
   echo "[preflight] API manifest commit ${manifest_commit} does not match HEAD ${current_commit}" >&2
+  exit 1
+fi
+
+# The browser bundle is fail-closed in production. A valid API release is not
+# sufficient if Vite was compiled without the public API and Supabase runtime
+# values: the customer would see the safe configuration screen instead of the
+# authenticated application.
+for frontend_value in \
+  "https://crm.iaparavendas.tech/api/v1" \
+  "https://yiiuebhyqixzluguxsqi.supabase.co"; do
+  if ! grep -R -F -q -- "${frontend_value}" "${REPO_ROOT}/dist"; then
+    echo "[preflight] frontend bundle is missing required production runtime value: ${frontend_value}" >&2
+    exit 1
+  fi
+done
+
+if ! grep -R -E -q -- '(eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}|sb_publishable_[A-Za-z0-9_-]{12,})' "${REPO_ROOT}/dist"; then
+  echo "[preflight] frontend bundle is missing a Supabase public anon/publishable key" >&2
   exit 1
 fi
 

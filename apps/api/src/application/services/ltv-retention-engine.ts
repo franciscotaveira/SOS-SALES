@@ -17,7 +17,15 @@ export interface RetentionOpportunity {
   recommendedCycleDays: number;
   retentionStatus: 'EARLY' | 'OPTIMAL_WINDOW' | 'OVERDUE_RISK';
   suggestedRetentionMessage: string;
-  estimatedLtvPotentialMinor: number;
+  estimatedLtvPotentialMinor: number | null;
+}
+
+export function buildSafeRetentionMessage(
+  contactName: string,
+  service: string,
+  daysSince: number,
+): string {
+  return `Oi ${contactName}! Faz ${daysSince} dias desde o atendimento de ${service}. Como foi sua experiência? Se quiser continuar, posso pedir para a equipe confirmar as opções disponíveis.`;
 }
 
 export class LtvRetentionEngine {
@@ -45,7 +53,7 @@ export class LtvRetentionEngine {
               c.name AS contact_name,
               c.phone AS contact_phone,
               co.id AS outcome_id,
-              co.revenue_minor,
+              co.final_revenue_minor,
               co.occurred_at,
               j.primary_service_or_product
        FROM public.commercial_outcomes co
@@ -77,15 +85,7 @@ export class LtvRetentionEngine {
       if (daysSince < 10) continue;
 
       const contactName = row.contact_name || 'Cliente';
-      let suggestedRetentionMessage = '';
-
-      if (/unha|gel|manicure/.test(service.toLowerCase())) {
-        suggestedRetentionMessage = `Oi ${contactName}! Faz ${daysSince} dias que fizemos suas unhas. Como elas estão? Vamos garantir seu horário de manutenção para manter elas impecáveis e saudáveis?`;
-      } else if (/cronograma|tratamento|hidratação|cabelo/.test(service.toLowerCase())) {
-        suggestedRetentionMessage = `Oi ${contactName}! Passando para saber como seu cabelo tem respondido ao ${service}. Já estamos na janela ideal para a próxima etapa do seu cronograma! Quer que eu veja os horários?`;
-      } else {
-        suggestedRetentionMessage = `Oi ${contactName}! Tudo bem querida? Faz quase um mês do seu ${service} com a gente. Já separei um espacinho exclusivo na agenda para renovarmos seu visual esta semana!`;
-      }
+      const suggestedRetentionMessage = buildSafeRetentionMessage(contactName, service, daysSince);
 
       opportunities.push({
         contactId: row.contact_id,
@@ -98,7 +98,9 @@ export class LtvRetentionEngine {
         recommendedCycleDays: cycleDays,
         retentionStatus,
         suggestedRetentionMessage,
-        estimatedLtvPotentialMinor: Number(row.revenue_minor || 12000),
+        estimatedLtvPotentialMinor: row.final_revenue_minor === null || row.final_revenue_minor === undefined
+          ? null
+          : Number(row.final_revenue_minor),
       });
     }
 

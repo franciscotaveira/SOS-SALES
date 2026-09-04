@@ -189,6 +189,22 @@ describe('WahaWebhookAdapter — Pure Unit Tests (P0.3A-R2E Contract)', () => {
     expect(event1.providerEventId).toBe(event2.providerEventId);
   });
 
+  it('should normalize WAHA object-shaped WhatsApp IDs instead of rejecting a real message', () => {
+    const event = adapter.extractEvent({
+      event: 'message',
+      payload: {
+        id: {
+          _serialized: 'false_5511999998888@c.us_3EB0A1',
+          fromMe: false,
+          remote: '5511999998888@c.us',
+          id: '3EB0A1',
+        },
+      },
+    });
+
+    expect(event.providerEventId).toBe('message:false_5511999998888@c.us_3EB0A1');
+  });
+
   it('should generate distinct providerEventIds for two ACKs of the same internal message ID with different top-level IDs', () => {
     const internalMsgId = 'wamid_shared_123';
     const topLevelAck1 = '01J5K4M7N8P9Q0R1S2T3U4V5A1';
@@ -289,6 +305,23 @@ describe('WahaWebhookAdapter — Pure Unit Tests (P0.3A-R2E Contract)', () => {
       expect(res.message.contactName).toBe('Juliana Silva');
       expect(res.message.textContent).toBe('Gostaria de agendar uma escova');
       expect(res.message.isFromMe).toBe(false);
+    }
+  });
+
+  it('should parse inbound messages whose provider ID is the WAHA object shape', () => {
+    const result = adapter.parseInboundMessage({
+      event: 'message',
+      payload: {
+        id: { _serialized: 'false_5549999112233@c.us_3EB0B2', id: '3EB0B2' },
+        from: '5549999112233@c.us',
+        body: 'Olá',
+        timestamp: 1723600000000,
+      },
+    });
+
+    expect(result.kind).toBe('PARSED');
+    if (result.kind === 'PARSED') {
+      expect(result.message.providerMessageId).toBe('false_5549999112233@c.us_3EB0B2');
     }
   });
 
@@ -450,6 +483,44 @@ describe('WahaWebhookAdapter — Pure Unit Tests (P0.3A-R2E Contract)', () => {
     expect(res.kind).toBe('IGNORED');
     if (res.kind === 'IGNORED') {
       expect(res.reason).toBe('group_message');
+    }
+  });
+
+  it('should mark newsletter feeds (@newsletter) as IGNORED', () => {
+    const payload = {
+      event: 'message',
+      payload: {
+        id: 'wamid_newsletter_001',
+        from: '120363404701403742@newsletter',
+        body: 'Atualização de canal',
+      },
+    };
+
+    const res = adapter.parseInboundMessage(payload);
+    expect(res.kind).toBe('IGNORED');
+    if (res.kind === 'IGNORED') {
+      expect(res.reason).toBe('newsletter_message');
+    }
+  });
+
+  it('should retain the WAHA media type when a media event has no explicit media object', () => {
+    const payload = {
+      event: 'message',
+      payload: {
+        id: 'wamid_media_type_001',
+        from: '5549999112233@s.whatsapp.net',
+        type: 'image',
+        caption: 'Foto do produto',
+      },
+    };
+
+    const res = adapter.parseInboundMessage(payload);
+    expect(res.kind).toBe('PARSED');
+    if (res.kind === 'PARSED') {
+      expect(res.message.mediaPayload).toMatchObject({
+        mediaType: 'image',
+        caption: 'Foto do produto',
+      });
     }
   });
 

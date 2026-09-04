@@ -5,12 +5,13 @@ import {
   KnownFactOperationsGateway,
   KnownFactRuleViolationError,
 } from '../../../application/ports/known-fact-operations-gateway.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface KnownFactOperationRouteDependencies {
   knownFactOperationsGateway?: KnownFactOperationsGateway;
 }
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const paramsSchema = z.object({ workspaceId: uuid, journeyId: uuid });
 const headersSchema = z.object({ 'idempotency-key': uuid });
 const factKey = z.string().trim().regex(/^[a-z][a-z0-9_]{0,31}(\.[a-z][a-z0-9_]{0,63})+$/).max(128);

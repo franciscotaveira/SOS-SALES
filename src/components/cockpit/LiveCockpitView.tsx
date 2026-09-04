@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   Link2,
   MessageSquare,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Send,
@@ -48,12 +49,12 @@ import {
   ApiJourney,
   ApiPriority,
   ApiMessage,
+  ApiWorkspaceOperationalSettings,
   HttpSalesOsGateway,
   SalesOsTransportError,
 } from "../../services/salesOsGateway";
 import { getSupabaseClient } from "../../services/supabaseAuth";
 import { authenticatedFetch } from "../../services/authenticatedFetch";
-import { analyzeConversationDossier } from "../../utils/cognitiveAnalyzer";
 import { normalizeStage } from "../kanban/LiveCommercialKanbanView";
 import { MessageMediaRenderer, MessageMediaPayload } from "./MessageMediaRenderer";
 import { SalesMediaVaultModal } from "./SalesMediaVaultModal";
@@ -61,7 +62,11 @@ import { SalesMediaResource } from "../../data/salesMediaVault";
 import { ContactAvatar } from "./ContactAvatar";
 import { ExternalAgendaDrawer, getExternalAgendaConfig } from "./ExternalAgendaDrawer";
 import { StartConversationModal } from "../conversations/StartConversationModal";
-import { getWorkspaceCommercialConfig } from "../../services/workspaceCommercialConfig";
+import {
+  getWorkspaceCommercialConfig,
+  normalizeWorkspaceCommercialConfig,
+  WorkspaceCommercialConfig,
+} from "../../services/workspaceCommercialConfig";
 import { QuickToolsPopover, QuickToolItem } from "./QuickToolsPopover";
 import { DossierFocusModal } from "./DossierFocusModal";
 import { WabaActionsModal } from "./WabaActionsModal";
@@ -85,7 +90,6 @@ export const PIPELINE_STAGES = [
   { value: "QUALIFICADO", label: "2. Qualificado / Interesse" },
   { value: "PROPOSTA", label: "3. Proposta Enviada" },
   { value: "NEGOCIACAO", label: "4. Negociação / Horário" },
-  { value: "GANHO", label: "5. Agendado / Fechado" },
 ] as const;
 
 function formatDate(value: string | null | undefined): string {
@@ -116,7 +120,7 @@ function valueToText(value: unknown): string {
 }
 
 function stageLabel(value: string | null): string {
-  if (!value) return "1. Novo Lead";
+  if (!value) return "Estágio não informado";
   const normalized = normalizeStage(value);
   const match = PIPELINE_STAGES.find((s) => s.value === normalized);
   return match ? match.label : value;
@@ -131,88 +135,25 @@ function availability(label: string, detail: string) {
   );
 }
 
-// Helper para detecção semântica e visual de interesse (Design cognitivo anti-sobrecarga TDAH)
+// The queue only presents persisted classification. Semantic inference belongs
+// to the backend decision pipeline, where it can be versioned and audited.
 function detectServiceAndIntent(item: ApiPriority | ApiJourney) {
-  const name = (item.contactName || '').toLowerCase();
-  const phone = (item.contactPhone || '');
   const rawService = ('primaryServiceOrProduct' in item ? item.primaryServiceOrProduct : null) || '';
   const lastMsg = ('lastMessageText' in item ? item.lastMessageText : null) || '';
   const reason = ('priorityReason' in item ? item.priorityReason : null) || '';
-  
-  const text = `${name} ${rawService} ${lastMsg} ${reason}`.toLowerCase();
 
-  // 1. Verificação explícita por palavras-chave de serviços
-  if (text.includes('escova') || text.includes('modelad') || text.includes('liso') || text.includes('chapinha') || text.includes('secagem') || text.includes('lavagem') || name.includes('rosy') || name.includes('haven')) {
-    return {
-      service: '💇‍♀️ Escova Modelada & Lavagem',
-      badgeClass: 'bg-purple-100/90 text-purple-900 border-purple-200 font-extrabold',
-      preview: lastMsg || 'Interesse em agendar Escova Express ou Modelada',
-    };
-  }
-  if (text.includes('unha') || text.includes('esmalte') || text.includes('gel') || text.includes('alongamento') || text.includes('fibra') || text.includes('manicure') || text.includes('pedicure') || name.includes('thaís') || name.includes('thais')) {
-    return {
-      service: '💅 Esmaltação & Unhas em Gel',
-      badgeClass: 'bg-pink-100/90 text-pink-900 border-pink-200 font-extrabold',
-      preview: lastMsg || 'Interesse em Alongamento de Fibra ou Esmaltação em Gel',
-    };
-  }
-  if (text.includes('corte') || text.includes('visagismo') || text.includes('pontas') || text.includes('franja') || name.includes('édina') || name.includes('edina')) {
-    return {
-      service: '✂️ Corte Feminino & Visagismo',
-      badgeClass: 'bg-indigo-100/90 text-indigo-900 border-indigo-200 font-extrabold',
-      preview: lastMsg || 'Interesse em Corte com Visagismo ou Repicado',
-    };
-  }
-  if (text.includes('loiro') || text.includes('mechas') || text.includes('luzes') || text.includes('morena') || text.includes('color') || text.includes('tinta')) {
-    return {
-      service: '🎨 Mechas, Loiro & Morena Ilum.',
-      badgeClass: 'bg-amber-100/90 text-amber-950 border-amber-300 font-extrabold',
-      preview: lastMsg || 'Interesse em Avaliação para Mechas / Coloração',
-    };
-  }
-  if (text.includes('truss') || text.includes('reconstru') || text.includes('hidrata') || text.includes('cronograma') || text.includes('ozonio') || text.includes('detox') || name.includes('sōra') || name.includes('sora')) {
-    return {
-      service: '🧴 Tratamento Truss & Spa Capilar',
-      badgeClass: 'bg-emerald-100/90 text-emerald-950 border-emerald-300 font-extrabold',
-      preview: lastMsg || 'Interesse em Cronograma de Reconstrução Truss',
-    };
-  }
-  if (text.includes('make') || text.includes('maquiagem') || text.includes('penteado') || text.includes('noiva') || text.includes('casamento') || text.includes('festa')) {
-    return {
-      service: '💄 Make & Produção de Eventos',
-      badgeClass: 'bg-rose-100/90 text-rose-950 border-rose-300 font-extrabold',
-      preview: lastMsg || 'Interesse em Maquiagem e Penteado para Evento',
-    };
-  }
-  if (text.includes('preço') || text.includes('valor') || text.includes('quanto') || text.includes('tabela') || name.includes('ju')) {
-    return {
-      service: '💰 Consulta de Valores & Tabela',
-      badgeClass: 'bg-blue-100/90 text-blue-900 border-blue-200 font-extrabold',
-      preview: lastMsg || 'Dúvida sobre Tabela de Valores e Pacotes',
-    };
-  }
-  if (text.includes('horario') || text.includes('horário') || text.includes('vaga') || text.includes('hoje') || text.includes('amanha') || text.includes('amanhã') || text.includes('sabado') || text.includes('sábado')) {
-    return {
-      service: '📅 Agendamento de Horário',
-      badgeClass: 'bg-sky-100/90 text-sky-900 border-sky-200 font-extrabold',
-      preview: lastMsg || 'Solicitação de horário disponível para atendimento',
-    };
-  }
-
-  // 2. Fallback baseado no cadastro de serviço real
   if (rawService && rawService !== 'Interessada em Serviços / Atendimento') {
     return {
-      service: `✨ ${rawService}`,
+      service: rawService,
       badgeClass: 'bg-indigo-100 text-indigo-900 border-indigo-200 font-bold',
       preview: lastMsg || rawService,
     };
   }
 
-  // 3. Fallback inteligente padrão
   return {
-    service: '💬 Atendimento Geral / Dúvidas',
+    service: 'Serviço não informado',
     badgeClass: 'bg-slate-100 text-slate-800 border-slate-200 font-bold',
-    preview: lastMsg || (reason || 'Cliente aguardando resposta no WhatsApp'),
+    preview: lastMsg || reason || 'Sem mensagem registrada',
   };
 }
 
@@ -222,7 +163,7 @@ export function detectCustomerLoyalty(
   item: ApiPriority | ApiJourney,
   loyaltyMap?: Record<string, CustomerLoyaltyType>
 ): {
-  type: CustomerLoyaltyType;
+  type: CustomerLoyaltyType | null;
   label: string;
   badgeClass: string;
   description: string;
@@ -249,37 +190,11 @@ export function detectCustomerLoyalty(
     }
   }
 
-  // Detecção automática por nome ou contexto
-  const name = (item.contactName || '').toLowerCase();
-  const text = (('lastMessageText' in item ? item.lastMessageText : '') || '').toLowerCase();
-
-  const isKnownOld =
-    name.includes('suzana') ||
-    name.includes('sidi') ||
-    name.includes('diogo') ||
-    name.includes('mateus') ||
-    name.includes('amato') ||
-    name.includes('leandro') ||
-    name.includes('vip') ||
-    text.includes('mesmo de sempre') ||
-    text.includes('como sempre') ||
-    text.includes('novamente') ||
-    text.includes('já fiz');
-
-  if (isKnownOld) {
-    return {
-      type: 'RECURRING',
-      label: '⭐ Recorrente',
-      badgeClass: 'bg-purple-100 text-purple-900 border-purple-300 font-extrabold',
-      description: 'Cliente fidelizado com histórico anterior',
-    };
-  }
-
   return {
-    type: 'NEW',
-    label: '🌱 Novo Lead',
-    badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300 font-extrabold',
-    description: 'Lead em primeiro contato comercial',
+    type: null,
+    label: '◌ Não classificado',
+    badgeClass: 'bg-slate-100 text-slate-700 border-slate-300 font-bold',
+    description: 'Sem classificação de fidelidade persistida',
   };
 }
 
@@ -299,7 +214,8 @@ function QueueCard({
   const hasPriority = "priorityReason" in item;
   const title = item.contactName || (item.contactPhone ? `Cliente ${item.contactPhone.slice(-4)}` : "Contato sem nome");
   const time = hasPriority ? item.lastMessageAt : item.updatedAt;
-  const urgent = hasPriority && item.slaState === "OVERDUE";
+  const slaState = hasPriority ? (item as ApiPriority).slaState : undefined;
+  const urgent = slaState === "OVERDUE";
   const avatarUrl = (item as any).contactAvatar || (item as any).avatarUrl;
   
   // Detecção inteligente do serviço e resumo de intenção
@@ -310,55 +226,38 @@ function QueueCard({
   const timeDisplay = React.useMemo(() => {
     try {
       const d = new Date(time || Date.now());
-      if (isNaN(d.getTime())) return "Hoje";
+      if (!time) return "Sem horário";
+      if (isNaN(d.getTime())) return "Data indisponível";
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     } catch {
       return "Agora";
     }
   }, [time]);
 
-  // Origem do Lead
+  // Canal comes from the persisted provider, never from words typed by the customer.
   const sourceTag = React.useMemo(() => {
-    const text = (item.contactName + " " + intent.preview).toLowerCase();
-    if (text.includes("anúncio") || text.includes("ctwa") || text.includes("click_wa") || text.includes("campanha") || text.includes("59")) {
-      return { label: "🎯 Click WA", bg: "bg-emerald-50 text-emerald-800 border-emerald-200" };
+    const provider = String((item as any).channel?.provider || (item as any).origin || '').toLowerCase();
+    if (provider.includes('instagram')) return { label: 'Instagram', bg: 'bg-pink-50 text-pink-800 border-pink-200' };
+    if (provider.includes('messenger')) return { label: 'Messenger', bg: 'bg-blue-50 text-blue-800 border-blue-200' };
+    if (provider.includes('waha') || provider.includes('meta') || provider.includes('waba') || provider.includes('whatsapp')) {
+      return { label: 'WhatsApp', bg: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
     }
-    if (text.includes("instagram") || text.includes("insta")) {
-      return { label: "📸 Insta Ads", bg: "bg-pink-50 text-pink-800 border-pink-200" };
-    }
-    return { label: "💬 WhatsApp", bg: "bg-slate-50 text-slate-700 border-slate-200" };
-  }, [item.contactName, intent.preview]);
+    return { label: 'Canal não informado', bg: 'bg-slate-50 text-slate-700 border-slate-200' };
+  }, [item]);
 
-  // Classificação Inteligente de Potencial de Lead (Motor Invisível de IA)
+  // A fila não recebe score de conversão no contrato autenticado. Exiba
+  // apenas fatos persistidos (SLA/estágio), nunca percentuais heurísticos.
   const leadPotential = React.useMemo(() => {
-    const stage = item.pipelineStage;
-    const isOverdue = hasPriority && item.slaState === "OVERDUE";
-    const text = (item.contactName + " " + intent.preview).toLowerCase();
-
-    if (
-      isOverdue ||
-      stage === "PROPOSAL" ||
-      stage === "NEGOTIATION" ||
-      text.includes("pix") ||
-      text.includes("horário") ||
-      text.includes("fechar") ||
-      text.includes("agendar") ||
-      text.includes("truss") ||
-      text.includes("mechas")
-    ) {
-      return { label: "🔥 85% Quente", color: "text-amber-950 bg-amber-100 border-amber-300" };
+    const isOverdue = slaState === "OVERDUE";
+    if (isOverdue) {
+      return { label: "SLA vencido", color: "text-rose-950 bg-rose-100 border-rose-300" };
     }
-    if (
-      stage === "QUALIFIED" ||
-      stage === "IN_PROGRESS" ||
-      text.includes("preço") ||
-      text.includes("valor") ||
-      text.includes("quanto")
-    ) {
-      return { label: "⚡ 60% Proposta", color: "text-blue-950 bg-blue-100 border-blue-300" };
+    const stage = normalizeStage(item.pipelineStage);
+    if (stage === "PROPOSTA" || stage === "NEGOCIACAO") {
+      return { label: "Etapa avançada", color: "text-blue-950 bg-blue-100 border-blue-300" };
     }
-    return { label: "❄️ 20% Frio", color: "text-slate-700 bg-slate-100 border-slate-300" };
-  }, [item.pipelineStage, hasPriority, (item as any).slaState, item.contactName, intent.preview]);
+    return { label: "Sem score persistido", color: "text-slate-700 bg-slate-100 border-slate-300" };
+  }, [item.pipelineStage, slaState]);
 
   return (
     <button
@@ -381,7 +280,7 @@ function QueueCard({
             workspaceId={workspaceId}
             avatarUrl={avatarUrl}
             size="sm"
-            showOnlineBadge={hasPriority ? item.slaState === "OK" : true}
+            showOnlineBadge={false}
             className="shadow-2xs"
           />
         </div>
@@ -406,10 +305,10 @@ function QueueCard({
 
       {/* Linha 2: Chips de Inteligência (Origem + Recorrência + Serviço Detectado) */}
       <div className="flex items-center gap-1 overflow-hidden flex-wrap">
-        <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold border shrink-0 ${loyalty.badgeClass}`}>
+        {loyalty.type && <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold border shrink-0 ${loyalty.badgeClass}`}>
           {loyalty.label}
-        </span>
-        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border shrink-0 ${sourceTag.bg}`}>
+        </span>}
+            <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border shrink-0 ${sourceTag.bg}`}>
           {sourceTag.label}
         </span>
         <span className={`px-1.5 py-0.2 rounded text-[9px] font-medium border truncate max-w-[130px] ${intent.badgeClass}`}>
@@ -440,7 +339,10 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   const [journeys, setJourneys] = React.useState<LoadState<ApiJourney[]>>({ state: "loading" });
   const [cockpit, setCockpit] = React.useState<LoadState<ApiCockpitView>>({ state: "loading" });
   const [refreshing, setRefreshing] = React.useState(false);
+  const [syncError, setSyncError] = React.useState<string | null>(null);
   const [feedback, setFeedback] = React.useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [operationalSettings, setOperationalSettings] = React.useState<ApiWorkspaceOperationalSettings | null>(null);
+  const [operationalSettingsLoading, setOperationalSettingsLoading] = React.useState(true);
 
   // Modals & Action States
   const [followUpModalOpen, setFollowUpModalOpen] = React.useState(false);
@@ -472,6 +374,37 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       return next;
     });
   };
+
+  const loadOperationalSettings = React.useCallback(async () => {
+    setOperationalSettingsLoading(true);
+    try {
+      const settings = await gateway.getWorkspaceOperationalSettings(workspaceId);
+      setOperationalSettings(settings);
+      return settings;
+    } catch (error) {
+      setOperationalSettings(null);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error
+          ? `Configuração comercial indisponível: ${error.message}`
+          : "Configuração comercial indisponível.",
+      });
+      return null;
+    } finally {
+      setOperationalSettingsLoading(false);
+    }
+  }, [gateway, workspaceId]);
+
+  React.useEffect(() => {
+    void loadOperationalSettings();
+  }, [loadOperationalSettings]);
+
+  const commercialConfig = React.useMemo<WorkspaceCommercialConfig>(() => {
+    if (operationalSettings) {
+      return normalizeWorkspaceCommercialConfig(workspaceId, operationalSettings.commercialConfig);
+    }
+    return getWorkspaceCommercialConfig(workspaceId);
+  }, [operationalSettings, workspaceId]);
 
   const queueWabaAction = async (payload: Record<string, unknown>) => {
     if (!selectedJourneyId) throw new Error("Selecione uma conversa antes de preparar o envio WABA.");
@@ -582,12 +515,14 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       setJourneys(journeyPage.data.length ? { state: "ready", value: journeyPage.data } : { state: "empty" });
       const firstId = priorityData[0]?.journeyId || journeyPage.data[0]?.id;
       if (!selectedJourneyRef.current && firstId) onSelectedJourneyChange(firstId);
+      return true;
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível carregar a fila autenticada.";
       if (!silent) {
-        const message = error instanceof Error ? error.message : "Não foi possível carregar a fila autenticada.";
         setPriorities({ state: "error", message });
         setJourneys({ state: "error", message });
       }
+      return false;
     }
   }, [gateway, onSelectedJourneyChange, workspaceId]);
 
@@ -624,20 +559,25 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
 
   const refresh = React.useCallback(async (silent = true) => {
     if (!silent) setRefreshing(true);
-    await loadQueue(silent);
+    const queueUpdated = await loadQueue(silent);
+    let cockpitUpdated = !selectedJourneyId;
+    let refreshMessage = queueUpdated ? null : "A fila não pôde ser atualizada.";
     if (selectedJourneyId) {
       try {
         const data = await gateway.getCockpit(workspaceId, selectedJourneyId);
         setCockpit({ state: "ready", value: data });
+        cockpitUpdated = true;
       } catch (error) {
+        refreshMessage = error instanceof Error ? error.message : "A conversa não pôde ser atualizada.";
         if (!silent) {
           setCockpit({
             state: "error",
-            message: error instanceof Error ? error.message : "Não foi possível atualizar a jornada.",
+            message: refreshMessage,
           });
         }
       }
     }
+    setSyncError(queueUpdated && cockpitUpdated ? null : refreshMessage ?? "A atualização automática foi interrompida.");
     if (!silent) setRefreshing(false);
   }, [gateway, loadQueue, selectedJourneyId, workspaceId]);
 
@@ -812,40 +752,44 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
-  type QueueTabType = 'all' | 'priorities' | 'in_progress' | 'recurring' | 'new';
+  type QueueTabType = 'all' | 'priorities' | 'in_progress';
   const [queueTab, setQueueTab] = React.useState<QueueTabType>('all');
+  const [customerFilter, setCustomerFilter] = React.useState<'all' | 'recurring' | 'new'>('all');
   const [queueSearch, setQueueSearch] = React.useState('');
 
   // Loyalty Overrides State (⭐ Recorrente vs 🌱 Novo Lead)
-  const [loyaltyMap, setLoyaltyMap] = React.useState<Record<string, CustomerLoyaltyType>>(() => {
-    try {
-      const saved = localStorage.getItem(`sos_sales_loyalty_map_${workspaceId}`);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [loyaltyMap, setLoyaltyMap] = React.useState<Record<string, CustomerLoyaltyType>>({});
 
-  const handleToggleLoyalty = React.useCallback((id: string, phone?: string) => {
-    setLoyaltyMap((prev) => {
-      const cleanPhone = (phone || '').replace(/\D/g, '');
-      const current = prev[id] || (cleanPhone ? prev[cleanPhone] : undefined);
-      const currentType: CustomerLoyaltyType = current || 'NEW';
-      const nextType: CustomerLoyaltyType = currentType === 'RECURRING' ? 'NEW' : 'RECURRING';
-      const updated = { ...prev, [id]: nextType };
-      if (cleanPhone) {
-        updated[cleanPhone] = nextType;
-      }
-      try {
-        localStorage.setItem(`sos_sales_loyalty_map_${workspaceId}`, JSON.stringify(updated));
-      } catch {}
+  React.useEffect(() => {
+    setLoyaltyMap(operationalSettings?.loyaltyOverrides ?? {});
+  }, [operationalSettings?.loyaltyOverrides, workspaceId]);
+
+  const handleToggleLoyalty = React.useCallback(async (id: string, phone?: string) => {
+    const cleanPhone = (phone || '').replace(/\D/g, '');
+    const current = loyaltyMap[id] || (cleanPhone ? loyaltyMap[cleanPhone] : undefined);
+    const currentType: CustomerLoyaltyType = current || 'NEW';
+    const nextType: CustomerLoyaltyType = currentType === 'RECURRING' ? 'NEW' : 'RECURRING';
+    const updated = { ...loyaltyMap, [id]: nextType };
+    if (cleanPhone) updated[cleanPhone] = nextType;
+
+    setActionInProgress(true);
+    try {
+      const saved = await gateway.updateWorkspaceOperationalSettings(workspaceId, { loyaltyOverrides: updated });
+      setOperationalSettings(saved);
+      setLoyaltyMap(saved.loyaltyOverrides);
       setFeedback({
         type: 'success',
-        message: `Cliente classificado como ${nextType === 'RECURRING' ? '⭐ Cliente Recorrente' : '🌱 Novo Lead'}!`,
+        message: `Cliente classificado como ${nextType === 'RECURRING' ? '⭐ Cliente Recorrente' : '🌱 Novo Lead'} e salvo no workspace.`,
       });
-      return updated;
-    });
-  }, [workspaceId]);
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível salvar a classificação do cliente.',
+      });
+    } finally {
+      setActionInProgress(false);
+    }
+  }, [gateway, loyaltyMap, workspaceId]);
 
   const handleCreateOutboundDraft = async (text: string) => {
     if (!selectedJourneyId) return;
@@ -862,30 +806,6 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
-  const handleClearHistory = async () => {
-    if (!window.confirm("Deseja realmente limpar todo o histórico de conversas e leads deste workspace? Essa ação é permanente e deixará o painel limpo.")) {
-      return;
-    }
-    setActionInProgress(true);
-    try {
-      const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/whatsapp/clear-history`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showNotification("success", "Histórico de conversas e leads limpo com sucesso.");
-        onSelectedJourneyChange(undefined);
-        await refresh();
-      } else {
-        showNotification("error", data.error || "Erro ao limpar histórico.");
-      }
-    } catch (err) {
-      showNotification("error", err instanceof Error ? err.message : "Falha na conexão.");
-    } finally {
-      setActionInProgress(false);
-    }
-  };
-
   const handleClearCurrentJourney = async () => {
     if (!selectedJourneyId) return;
     if (!window.confirm("Deseja realmente reiniciar e limpar esta conversa específica?")) {
@@ -895,7 +815,10 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     try {
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/channels/whatsapp/clear-journey`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-confirm-destruction": "CONFIRM_DATA_DELETION",
+        },
         body: JSON.stringify({ journeyId: selectedJourneyId }),
       });
       const data = await res.json();
@@ -913,59 +836,50 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
-  const handleUpdateContactName = (newName: string) => {
-    if (cockpit.state === "ready") {
-      setCockpit({
-        state: "ready",
-        value: {
-          ...cockpit.value,
-          journey: {
-            ...cockpit.value.journey,
-            contact: {
-              ...cockpit.value.journey.contact,
-              name: newName,
-            },
-          },
-        },
-      });
+  const handleUpdateContactName = async (newName: string) => {
+    if (cockpit.state !== "ready" || !newName.trim()) return;
+    setActionInProgress(true);
+    try {
+      const saved = await gateway.updateContactName(workspaceId, cockpit.value.journey.contact.id, newName.trim());
+      await refresh(true);
+      showNotification("success", `Nome atualizado para "${saved.name || newName.trim()}" e salvo no banco.`);
+    } catch (error) {
+      showNotification("error", error instanceof Error ? error.message : "Não foi possível salvar o nome do contato.");
+    } finally {
+      setActionInProgress(false);
     }
-    if (journeys.state === "ready") {
-      setJourneys({
-        state: "ready",
-        value: journeys.value.map((j) =>
-          j.id === selectedJourneyId ? { ...j, contactName: newName } : j
-        ),
-      });
-    }
-    showNotification("success", `Nome atualizado para "${newName}".`);
   };
 
   const prioritiesList = priorities.state === "ready" ? priorities.value : [];
   const journeysList = journeys.state === "ready" ? journeys.value : [];
 
-  // Meta diária customizável pelo usuário por workspace (com persistência local)
-  const [dailyTargetRevenue, setDailyTargetRevenue] = React.useState<number>(() => {
-    try {
-      const saved = localStorage.getItem(`sos_sales_daily_target_revenue_${workspaceId}`);
-      if (saved) {
-        const parsed = parseFloat(saved);
-        if (!isNaN(parsed) && parsed > 0) return parsed;
-      }
-    } catch {}
-    return 2000;
-  });
+  const [dailyTargetRevenue, setDailyTargetRevenue] = React.useState<number>(0);
 
-  const handleEditDailyTarget = () => {
-    const currentVal = dailyTargetRevenue.toString();
+  React.useEffect(() => {
+    setDailyTargetRevenue((operationalSettings?.dailyTargetRevenueMinor ?? 0) / 100);
+  }, [operationalSettings?.dailyTargetRevenueMinor, workspaceId]);
+
+  const handleEditDailyTarget = async () => {
+    const currentVal = dailyTargetRevenue > 0 ? dailyTargetRevenue.toString() : "";
     const input = window.prompt("Definir nova Meta Diária de Vendas (R$):", currentVal);
     if (input !== null) {
       const parsed = parseFloat(input.replace(/[^\d.,]/g, '').replace(',', '.'));
-      if (!isNaN(parsed) && parsed > 0) {
-        setDailyTargetRevenue(parsed);
+      if (!isNaN(parsed) && parsed >= 0) {
+        setActionInProgress(true);
         try {
-          localStorage.setItem(`sos_sales_daily_target_revenue_${workspaceId}`, parsed.toString());
-        } catch {}
-        showNotification("success", `Meta diária atualizada para R$ ${parsed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}!`);
+          const saved = await gateway.updateWorkspaceOperationalSettings(workspaceId, {
+            dailyTargetRevenueMinor: Math.round(parsed * 100),
+          });
+          setOperationalSettings(saved);
+          setDailyTargetRevenue(saved.dailyTargetRevenueMinor / 100);
+          showNotification("success", parsed > 0
+            ? `Meta diária salva em R$ ${parsed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`
+            : "Meta diária removida.");
+        } catch (error) {
+          showNotification("error", error instanceof Error ? error.message : "Não foi possível salvar a meta diária.");
+        } finally {
+          setActionInProgress(false);
+        }
       }
     }
   };
@@ -974,17 +888,20 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     const journeys = journeysList;
     const closedJourneys = journeys.filter((j) => j.pipelineStage === 'WON' || (j as any).status === 'closed' || (j as any).status === 'ganho');
     const closedCount = closedJourneys.length;
-    const totalRevenue = closedJourneys.reduce((sum, j) => {
-      const val = (j as any).dealValue || (j as any).revenue || 0;
-      return sum + (typeof val === 'number' ? val : 0);
-    }, 0);
+    const revenueValues = closedJourneys
+      .map((j) => (j as ApiJourney & { totalRevenueMinor?: number }).totalRevenueMinor)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const totalRevenue = revenueValues.length > 0
+      ? revenueValues.reduce((sum, value) => sum + value, 0) / 100
+      : null;
     const targetRevenue = dailyTargetRevenue;
-    const progressPct = targetRevenue > 0 ? Math.min(100, Math.round((totalRevenue / targetRevenue) * 100)) : 0;
-    const missingRevenue = Math.max(0, targetRevenue - totalRevenue);
+    const progressPct = targetRevenue > 0 && totalRevenue !== null ? Math.min(100, Math.round((totalRevenue / targetRevenue) * 100)) : 0;
+    const missingRevenue = targetRevenue > 0 && totalRevenue !== null ? Math.max(0, targetRevenue - totalRevenue) : null;
 
     return {
       closedCount,
       totalRevenue,
+      revenueAvailable: totalRevenue !== null,
       targetRevenue,
       progressPct,
       missingRevenue,
@@ -999,16 +916,17 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       ? prioritiesList
       : queueTab === 'in_progress'
         ? journeysList.filter((j) => (j as any).status === 'in_progress' || j.pipelineStage === 'QUALIFIED' || j.pipelineStage === 'PROPOSAL' || (j as any).priorityReason)
-        : queueTab === 'recurring'
-          ? journeysList.filter((j) => detectCustomerLoyalty(j, loyaltyMap).type === 'RECURRING')
-          : queueTab === 'new'
-            ? journeysList.filter((j) => detectCustomerLoyalty(j, loyaltyMap).type === 'NEW')
-            : journeysList.length > 0
-              ? journeysList
-              : prioritiesList;
+        : journeysList.length > 0
+          ? journeysList
+          : prioritiesList;
 
   const queue = React.useMemo(() => {
     let result: Array<ApiPriority | ApiJourney> = rawQueue;
+
+    if (customerFilter !== 'all') {
+      const expectedType = customerFilter === 'recurring' ? 'RECURRING' : 'NEW';
+      result = result.filter((item) => detectCustomerLoyalty(item, loyaltyMap).type === expectedType);
+    }
 
     // Filtro por canal
     if (channelFilter === 'whatsapp') {
@@ -1036,11 +954,15 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       const text = ('lastMessageText' in item ? (item.lastMessageText || '') : (item.primaryServiceOrProduct || '')).toLowerCase();
       return name.includes(q) || phone.includes(q) || text.includes(q);
     });
-  }, [rawQueue, queueSearch, channelFilter]);
+  }, [rawQueue, queueSearch, channelFilter, customerFilter, loyaltyMap]);
 
   // Speedrun Mode: Global Keyboard Shortcuts for High-Volume Operators (Alt+J/K, Alt+Space, Alt+A, Alt+F, Alt+O)
   React.useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName) || target.isContentEditable)) {
+        return;
+      }
       const isAltKey = e.altKey;
 
       // 1. Alt + J or Alt + ArrowDown: Next Lead in Queue
@@ -1131,6 +1053,23 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           </button>
         </div>
       )}
+      {syncError && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-950 shadow-2xs shrink-0">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={15} />
+            <span>Sincronização interrompida: {syncError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refresh(false)}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-bold hover:bg-amber-100 disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
+            Tentar novamente
+          </button>
+        </div>
+      )}
       {/* Gamificação Comercial & Meta do Vendedor */}
       <div className="mb-2 flex items-center justify-between gap-3 px-3.5 py-1.5 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-xl shadow-xs border border-slate-700/80 shrink-0 text-xs flex-wrap">
         <div className="flex items-center gap-2.5 flex-wrap">
@@ -1141,14 +1080,20 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             title="Clique para editar a meta diária de vendas"
           >
             <span className="text-amber-400">🎯 Meta do Dia:</span>
-            <span className="font-mono text-white font-extrabold">{formatMoney(dailyGoalStats.targetRevenue * 100)}</span>
+            <span className="font-mono text-white font-extrabold">
+              {dailyGoalStats.targetRevenue > 0 ? formatMoney(dailyGoalStats.targetRevenue * 100) : "Não definida"}
+            </span>
             <Edit2 size={11} className="text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
           <span className="text-slate-500 hidden sm:inline">•</span>
           <div className="flex items-center gap-1.5">
             <span className="text-emerald-400 font-bold">✅ Faturado Hoje:</span>
-            <span className="font-mono font-extrabold text-emerald-300">{formatMoney(dailyGoalStats.totalRevenue * 100)}</span>
-            <span className="text-[10px] text-slate-300 font-medium">({dailyGoalStats.closedCount} vendas)</span>
+            <span className="font-mono font-extrabold text-emerald-300">
+              {dailyGoalStats.revenueAvailable ? formatMoney((dailyGoalStats.totalRevenue || 0) * 100) : "Ainda indisponível"}
+            </span>
+            <span className="text-[10px] text-slate-300 font-medium">
+              ({dailyGoalStats.closedCount} vendas com valor persistido)
+            </span>
           </div>
         </div>
 
@@ -1163,9 +1108,14 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             </div>
             <span className="font-mono text-[10.5px] font-bold text-amber-300">{dailyGoalStats.progressPct}%</span>
           </div>
-          <span className="text-[10.5px] font-extrabold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-lg flex items-center gap-1">
-            <span>⚡</span> Falta {formatMoney(dailyGoalStats.missingRevenue * 100)} para a meta!
-          </span>
+          {dailyGoalStats.targetRevenue > 0 && (
+            <span className="text-[10.5px] font-extrabold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <span>⚡</span>
+              {dailyGoalStats.revenueAvailable && dailyGoalStats.missingRevenue !== null
+                ? `Falta ${formatMoney(dailyGoalStats.missingRevenue * 100)} para a meta`
+                : "Receita ainda não disponível para calcular a meta"}
+            </span>
+          )}
         </div>
       </div>
 
@@ -1219,86 +1169,32 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               </button>
             </div>
 
-            {/* Tab switchers: Linha 2 (Fidelidade: ⭐ Recorrentes vs 🌱 Novos) */}
-            <div className="grid grid-cols-2 gap-1 bg-slate-200/50 p-0.5 rounded-xl text-[10px] font-bold">
-              <button
-                type="button"
-                onClick={() => setQueueTab('recurring')}
-                className={`py-0.5 px-1 rounded-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
-                  queueTab === 'recurring'
-                    ? 'bg-purple-100 text-purple-950 border border-purple-300 shadow-2xs font-extrabold'
-                    : 'text-purple-900 hover:text-purple-950 hover:bg-purple-50/50'
-                }`}
-                title="Filtrar apenas Clientes Recorrentes / VIP"
+            {/* Secondary filters stay available without competing with the primary queue. */}
+            <div className="grid grid-cols-2 gap-1.5">
+              <label className="sr-only" htmlFor="customer-filter">Perfil do contato</label>
+              <select
+                id="customer-filter"
+                value={customerFilter}
+                onChange={(event) => setCustomerFilter(event.target.value as typeof customerFilter)}
+                className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10.5px] font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#00a884]"
               >
-                <span>⭐ Recorrentes</span>
-                <span className="text-[9px] font-mono px-1 rounded-full bg-purple-200/70 text-purple-900 font-bold">
-                  {journeysList.filter((j) => detectCustomerLoyalty(j, loyaltyMap).type === 'RECURRING').length}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setQueueTab('new')}
-                className={`py-0.5 px-1 rounded-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
-                  queueTab === 'new'
-                    ? 'bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-2xs font-extrabold'
-                    : 'text-emerald-900 hover:text-emerald-950 hover:bg-emerald-50/50'
-                }`}
-                title="Filtrar apenas Novos Leads (1ª compra)"
-              >
-                <span>🌱 Novos Leads</span>
-                <span className="text-[9px] font-mono px-1 rounded-full bg-emerald-200/70 text-emerald-900 font-bold">
-                  {journeysList.filter((j) => detectCustomerLoyalty(j, loyaltyMap).type === 'NEW').length}
-                </span>
-              </button>
-            </div>
+                <option value="all">Todos os perfis</option>
+                <option value="recurring">Recorrentes</option>
+                <option value="new">Novos leads</option>
+              </select>
 
-            {/* Tab switchers: Linha 3 (Canais: Todos / WhatsApp / Instagram Direct / Comentários) */}
-            <div className="flex items-center gap-1 bg-slate-200/40 p-0.5 rounded-lg text-[9.5px] font-bold overflow-x-auto no-scrollbar">
-              <button
-                type="button"
-                onClick={() => setChannelFilter('all')}
-                className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer shrink-0 ${
-                  channelFilter === 'all'
-                    ? 'bg-white text-slate-900 shadow-3xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+              <label className="sr-only" htmlFor="channel-filter">Canal</label>
+              <select
+                id="channel-filter"
+                value={channelFilter}
+                onChange={(event) => setChannelFilter(event.target.value as typeof channelFilter)}
+                className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10.5px] font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#00a884]"
               >
-                🌐 Todos
-              </button>
-              <button
-                type="button"
-                onClick={() => setChannelFilter('whatsapp')}
-                className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer shrink-0 ${
-                  channelFilter === 'whatsapp'
-                    ? 'bg-emerald-600 text-white shadow-3xs font-extrabold'
-                    : 'text-emerald-800 hover:text-emerald-950'
-                }`}
-              >
-                💬 WhatsApp
-              </button>
-              <button
-                type="button"
-                onClick={() => setChannelFilter('instagram_direct')}
-                className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer shrink-0 ${
-                  channelFilter === 'instagram_direct'
-                    ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-3xs font-extrabold'
-                    : 'text-purple-800 hover:text-purple-950'
-                }`}
-              >
-                📸 Direct
-              </button>
-              <button
-                type="button"
-                onClick={() => setChannelFilter('instagram_comment')}
-                className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer shrink-0 ${
-                  channelFilter === 'instagram_comment'
-                    ? 'bg-indigo-600 text-white shadow-3xs font-extrabold'
-                    : 'text-indigo-800 hover:text-indigo-950'
-                }`}
-              >
-                💬 Comentários
-              </button>
+                <option value="all">Todos os canais</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="instagram_direct">Instagram Direct</option>
+                <option value="instagram_comment">Comentários</option>
+              </select>
             </div>
 
             {/* Search Input and Nova Conversa CTA */}
@@ -1364,12 +1260,13 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             <LiveJourneyBody
               view={view}
               workspaceId={workspaceId}
+              gateway={gateway}
+              commercialConfig={commercialConfig}
               loyaltyMap={loyaltyMap}
               onToggleLoyalty={handleToggleLoyalty}
               isDossierCollapsed={isDossierCollapsed}
               onToggleDossier={toggleDossierCollapse}
               onOpenDossierFocus={() => setDossierFocusModalOpen(true)}
-              onOpenExternalAgenda={() => setExternalAgendaDrawerOpen(true)}
               onAcceptHandoff={handleAcceptHandoff}
               onResolveHandoff={handleResolveHandoff}
               onOpenReturnAiModal={() => setReturnAiModalOpen(true)}
@@ -1378,7 +1275,6 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               onOpenOutcomeModal={() => setOutcomeModalOpen(true)}
               onOpenWabaButtonsModal={() => setWabaButtonsModalOpen(true)}
               onOpenWabaTemplateModal={() => setWabaTemplateModalOpen(true)}
-              onOpenSalesVaultModal={() => setSalesVaultModalOpen(true)}
               onCreateOutboundDraft={handleCreateOutboundDraft}
               onClearCurrentJourney={handleClearCurrentJourney}
               onUpdateContactName={handleUpdateContactName}
@@ -1395,13 +1291,12 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           onClose={() => setDossierFocusModalOpen(false)}
           view={view}
           workspaceId={workspaceId}
+          gateway={gateway}
           loyaltyMap={loyaltyMap}
           onToggleLoyalty={() => handleToggleLoyalty(view.journey.id, view.journey.contact.phone)}
           onStageChange={handleStageChange}
           onOpenOutcomeModal={() => setOutcomeModalOpen(true)}
           onOpenFollowUpModal={() => setFollowUpModalOpen(true)}
-          onOpenExternalAgenda={() => setExternalAgendaDrawerOpen(true)}
-          onOpenSalesVaultModal={() => setSalesVaultModalOpen(true)}
           onOpenWabaButtonsModal={() => setWabaButtonsModalOpen(true)}
           onOpenWabaTemplateModal={() => setWabaTemplateModalOpen(true)}
           onOpenFactModal={() => setFactModalOpen(true)}
@@ -1497,7 +1392,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
 
       {/* Start Conversation Modal */}
       <StartConversationModal
-        workspace={{ id: workspaceId, name: 'Workspace Ativo', slug: 'active' } as any}
+        workspace={{ id: workspaceId, name: commercialConfig.businessName || 'Workspace autenticado', slug: workspaceId } as any}
         isOpen={startConversationModalOpen}
         onClose={() => setStartConversationModalOpen(false)}
         onConversationStarted={(newJourney) => {
@@ -1513,10 +1408,11 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
 function LiveJourneyBody({
   view,
   workspaceId,
+  gateway,
+  commercialConfig,
   isDossierCollapsed = false,
   onToggleDossier,
   onOpenDossierFocus,
-  onOpenExternalAgenda,
   onAcceptHandoff,
   onResolveHandoff,
   onOpenReturnAiModal,
@@ -1525,7 +1421,6 @@ function LiveJourneyBody({
   onOpenOutcomeModal,
   onOpenWabaButtonsModal,
   onOpenWabaTemplateModal,
-  onOpenSalesVaultModal,
   onCreateOutboundDraft,
   onClearCurrentJourney,
   onUpdateContactName,
@@ -1535,12 +1430,13 @@ function LiveJourneyBody({
 }: {
   view: ApiCockpitView;
   workspaceId: string;
+  gateway: HttpSalesOsGateway;
+  commercialConfig: WorkspaceCommercialConfig;
   loyaltyMap?: Record<string, CustomerLoyaltyType>;
-  onToggleLoyalty?: (id: string, phone?: string) => void;
+  onToggleLoyalty?: (id: string, phone?: string) => void | Promise<void>;
   isDossierCollapsed?: boolean;
   onToggleDossier?: () => void;
   onOpenDossierFocus?: () => void;
-  onOpenExternalAgenda: () => void;
   onAcceptHandoff: (handoffCaseId: string) => void;
   onResolveHandoff: (handoffCaseId: string) => void;
   onOpenReturnAiModal: () => void;
@@ -1549,43 +1445,35 @@ function LiveJourneyBody({
   onOpenOutcomeModal: () => void;
   onOpenWabaButtonsModal: () => void;
   onOpenWabaTemplateModal: () => void;
-  onOpenSalesVaultModal: () => void;
   onCreateOutboundDraft: (text: string) => void;
   onClearCurrentJourney?: () => void;
-  onUpdateContactName?: (newName: string) => void;
+  onUpdateContactName?: (newName: string) => void | Promise<void>;
   actionInProgress: boolean;
 }) {
   const { journey, acquisitionContexts, messages, decisionState, recommendation, handoff, outcome, knownFacts } = view;
   const acquisition = acquisitionContexts[0] ?? null;
   const contactFirstName = (journey.contact.name || "Cliente").split(" ")[0];
-  const commercialConfig = React.useMemo(() => {
-    return getWorkspaceCommercialConfig(workspaceId);
-  }, [workspaceId]);
-
   const externalAgendaConfig = React.useMemo(() => getExternalAgendaConfig(workspaceId), [workspaceId]);
-  const agendaProviderLabel = externalAgendaConfig.providerLabel || commercialConfig.agendaProviderName || "Google Agenda / Externa";
+  const agendaProviderLabel = commercialConfig.agendaProviderName || externalAgendaConfig.providerLabel || "Agenda não configurada";
 
-  const externalAgendaSlots = React.useMemo(() => {
-    try {
-      const cfg = getExternalAgendaConfig(workspaceId);
-      if (cfg && cfg.availableSlotsToday && cfg.availableSlotsToday.length > 0) {
-        return cfg.availableSlotsToday.slice(0, 3).join(", ");
-      }
-    } catch {}
-    return "14:00, 15:30 ou 16:45";
-  }, [workspaceId]);
+  // Availability is intentionally unavailable until the API exposes a
+  // persisted provider-backed schedule contract. Local/demo slots must never
+  // leak into an operator draft in production.
+  const externalAgendaSlots = "";
 
   const [macroAppliedFeedback, setMacroAppliedFeedback] = React.useState<string | null>(null);
 
   const fastMacros = React.useMemo(() => {
     const defaultMacros = commercialConfig.customMacros || [];
-    return defaultMacros.map((macro) => ({
+    return defaultMacros
+      .filter((macro) => externalAgendaSlots || !macro.template.includes("{{horarios}}"))
+      .map((macro) => ({
       id: macro.id,
       label: macro.label,
       template: macro.template
         .replace(/\{\{nome\}\}/g, contactFirstName)
         .replace(/\{\{horarios\}\}/g, externalAgendaSlots),
-    }));
+      }));
   }, [commercialConfig, contactFirstName, externalAgendaSlots]);
 
   const handleApplyMacro = (id: string, template: string) => {
@@ -1599,7 +1487,15 @@ function LiveJourneyBody({
   const loyalty = React.useMemo(() => detectCustomerLoyalty(journey as any, loyaltyMap), [journey, loyaltyMap]);
   const [draftText, setDraftText] = React.useState("");
   const [isGeneratingCopilot, setIsGeneratingCopilot] = React.useState(false);
+  const [copilotError, setCopilotError] = React.useState<string | null>(null);
+  const [copilotPanelOpen, setCopilotPanelOpen] = React.useState(false);
+  const [moreActionsOpen, setMoreActionsOpen] = React.useState(false);
   const [isGeneratingResurrection, setIsGeneratingResurrection] = React.useState(false);
+  const [ghostingInfo, setGhostingInfo] = React.useState<{
+    recommendedMessage?: string;
+    hoursSilent?: number;
+  } | null>(null);
+  const [ghostingError, setGhostingError] = React.useState<string | null>(null);
 
   // Calculate time since last interaction for Level 4 Ghosting Resurrection Engine
   const lastMsg = messages && messages.length > 0 ? messages[messages.length - 1] : null;
@@ -1627,57 +1523,6 @@ function LiveJourneyBody({
     }
   };
 
-  // Level 5: Live Sentiment & Closing Probability Radar
-  const liveSentiment = React.useMemo(() => {
-    if (!messages || messages.length === 0) {
-      return { closingProbability: 20, sentimentLabel: "Início", sentimentTier: "COLD_INITIAL", tacticalRecommendation: "Qualifique o interesse do cliente." };
-    }
-    const customerMessages = messages.filter((m) => m.direction === "inbound");
-    const customerText = customerMessages.map((m) => (m.textContent || "").toLowerCase()).join(" ");
-    const lastCustomerMsg = customerMessages[customerMessages.length - 1];
-    const lastText = (lastCustomerMsg?.textContent || "").toLowerCase();
-
-    let probability = 35;
-    if (/pix|cartao|cartão|pagar|pago|chave|link|como pago|reserva|agenda|pode marcar|marca|quero sim|fechar|vou querer/.test(lastText)) {
-      probability += 45;
-    } else if (/horário|horario|sexta|sábado|sabado|hoje|amanhã|amanha|tarde|manhã|manha|18h|19h|17h|14h|15h/.test(lastText)) {
-      probability += 30;
-    } else if (/qual endereço|onde fica|localização|localizacao|rua|bairro/.test(customerText)) {
-      probability += 20;
-    }
-
-    if (/caro|salgado|desconto|abaixa|parcela|mais barato/.test(customerText)) {
-      probability -= 15;
-    }
-    if (/marido|esposo|mae|mãe|ver com|pensar|depois vejo|depois te chamo|qualquer coisa falo/.test(lastText)) {
-      probability -= 25;
-    }
-
-    if (customerMessages.length >= 3) probability += 10;
-    if (customerMessages.length >= 6) probability += 10;
-
-    const finalProb = Math.max(5, Math.min(98, probability));
-    let sentimentTier = "COLD_INITIAL";
-    let sentimentLabel = "Em Qualificação";
-    let tacticalRecommendation = "Ofereça 2 opções de horários para direcionar a decisão.";
-
-    if (finalProb >= 75) {
-      sentimentTier = "HOT_CLOSER";
-      sentimentLabel = "🔥 Super Quente";
-      tacticalRecommendation = "Momento de Ouro: Confirme o horário ou envie os dados de pagamento/Pix agora.";
-    } else if (finalProb >= 50) {
-      sentimentTier = "WARM_INTEREST";
-      sentimentLabel = "⚡ Interesse Ativo";
-      tacticalRecommendation = "Apresente um diferencial exclusivo para acelerar o fechamento.";
-    } else {
-      sentimentTier = "HESITANT_FRICTION";
-      sentimentLabel = "❄️ Em Análise";
-      tacticalRecommendation = "Tire dúvidas e envie fotos de resultados/depoimentos.";
-    }
-
-    return { closingProbability: finalProb, sentimentLabel, sentimentTier, tacticalRecommendation };
-  }, [messages]);
-
   const objectionBreakers = React.useMemo(() => {
     const name = contactFirstName;
     const pixKey = commercialConfig.pixKey?.trim();
@@ -1688,83 +1533,58 @@ function LiveJourneyBody({
         id: "caro",
         icon: "💸",
         label: "Tá caro",
-        text: `Oi ${name}, compreendo totalmente! Esse valor já contempla nosso atendimento premium com produtos de altíssima qualidade e garantia total. Posso reservar o seu horário hoje?`,
+      text: `Oi ${name}, compreendo. Posso esclarecer o que está incluído na opção cadastrada e confirmar o próximo passo?`,
       },
       {
         id: "pensar",
         icon: "🤔",
         label: "Vou pensar",
-        text: `Com certeza, ${name}! Nossas vagas para esta semana costumam fechar rápido. Quer que eu reserve esse horário por 30 minutinhos sem compromisso para você não perder?`,
+      text: `Com certeza, ${name}. Qual ponto você gostaria de confirmar antes de decidir?`,
       },
       {
         id: "marido",
         icon: "👫",
         label: "Falar com marido",
-        text: `Super entendo, ${name}! Quer que eu te mande um resuminho com os valores e horários disponíveis para você mostrar para ele agora?`,
+      text: `Super entendo, ${name}. Posso enviar um resumo apenas com as informações confirmadas deste atendimento. O que você quer mostrar para ele?`,
       },
       {
         id: "tempo",
         icon: "⏰",
         label: "Sem tempo",
-        text: `Tranquilo, ${name}! Conseguimos um horário express de 45 minutos no início da manhã ou no fim da tarde. Fica melhor para a sua rotina?`,
+        text: `Tranquilo, ${name}! Posso conferir a disponibilidade real assim que a agenda estiver conectada. Qual período costuma funcionar melhor para você?`,
       },
       ...(pixKey ? [{
         id: "pix",
         icon: "💰",
         label: "Enviar Pix",
-        text: `Perfeito, ${name}! Segue a nossa chave Pix oficial para confirmação do seu horário: ${pixKey}. Assim que enviar, me manda o comprovante aqui para eu lançar na grade! ✨`,
+        text: `Perfeito, ${name}. Segue a chave Pix cadastrada: ${pixKey}. Antes de pagar, confirme o valor e a finalidade desta cobrança com o atendimento.`,
       }] : []),
       ...(address ? [{
         id: "localizacao",
         icon: "📍",
         label: "Endereço",
-        text: `Ficamos localizados em: ${address}. Temos estacionamento no local. Quer que eu te envie o link direto no Google Maps? 🚗`,
+        text: `Nosso endereço cadastrado é: ${address}. Quer que eu envie o link para abrir no mapa?`,
       }] : []),
     ];
   }, [contactFirstName, commercialConfig]);
 
   // Quick Tools Popover State & Action Catalog
   const [quickToolsOpen, setQuickToolsOpen] = React.useState(false);
+  const channelProvider = (journey.channel?.provider || '').toLowerCase();
+  const isWabaChannel = channelProvider.includes('meta') || channelProvider.includes('waba');
   const quickToolsList = React.useMemo<QuickToolItem[]>(() => {
     return [
-      {
+      ...(commercialConfig.pixKey?.trim() ? [{
         id: 'pix',
         category: 'financeiro',
         icon: <CreditCard size={15} className="text-emerald-600" />,
         label: 'Chave Pix Oficial',
         description: 'Envia dados da conta e chave Pix para pagamento imediato',
         action: () => {
-          const companyBundle = (() => {
-            try {
-              const raw = localStorage.getItem('sos_sales_intelligence_bundles_v2');
-              if (raw) {
-                const map = JSON.parse(raw);
-                return map[workspaceId]?.companyProfile;
-              }
-            } catch {}
-            return null;
-          })();
-          const pixKey = companyBundle?.pixKey || companyBundle?.taxId;
-          const companyName = companyBundle?.tradeName || companyBundle?.name || 'nossa empresa';
-          if (pixKey) {
-            setDraftText(`Chave Pix: ${pixKey} (${companyName}) - Envie o comprovante aqui para confirmação imediata!`);
-          } else {
-            setDraftText(`Olá! Para prosseguirmos com seu pedido/agendamento, segue nossa conta para transferência Pix. Envie o comprovante aqui.`);
-          }
+          setDraftText(`Chave Pix cadastrada: ${commercialConfig.pixKey}${commercialConfig.pixReceiverName ? ` (${commercialConfig.pixReceiverName})` : ''}. Confirme o valor e a finalidade da cobrança antes do pagamento.`);
           setQuickToolsOpen(false);
         },
-      },
-      {
-        id: 'agenda',
-        category: 'agenda',
-        icon: <Calendar size={15} className="text-purple-600" />,
-        label: 'Vagas & Horários Livres',
-        description: 'Consulta grade de horários da Agenda Trinks',
-        action: () => {
-          onOpenExternalAgenda?.();
-          setQuickToolsOpen(false);
-        },
-      },
+      }] : []),
       {
         id: 'followup',
         category: 'agenda',
@@ -1776,9 +1596,9 @@ function LiveJourneyBody({
           setQuickToolsOpen(false);
         },
       },
-      {
+      ...(isWabaChannel ? [{
         id: 'waba_buttons',
-        category: 'waba',
+        category: 'waba' as const,
         icon: <Zap size={15} className="text-amber-600" />,
         label: 'Botões Interativos WABA',
         description: 'Dispara botões de resposta rápida no WhatsApp',
@@ -1789,7 +1609,7 @@ function LiveJourneyBody({
       },
       {
         id: 'waba_template',
-        category: 'waba',
+        category: 'waba' as const,
         icon: <FileText size={15} className="text-indigo-600" />,
         label: 'Reabrir Janela (Template HSM)',
         description: 'Envia modelo aprovado pela Meta para contatos inativos >24h',
@@ -1797,29 +1617,18 @@ function LiveJourneyBody({
           onOpenWabaTemplateModal?.();
           setQuickToolsOpen(false);
         },
-      },
-      {
-        id: 'vault',
-        category: 'midia',
-        icon: <Mic size={15} className="text-rose-600" />,
-        label: 'Recursos & Áudios Prontos',
-        description: 'Áudios gravados, fotos de antes/depois e tabelas',
-        action: () => {
-          onOpenSalesVaultModal?.();
-          setQuickToolsOpen(false);
-        },
-      },
-      {
+      }] : []),
+      ...(commercialConfig.businessAddress?.trim() ? [{
         id: 'location',
         category: 'localizacao',
         icon: <MapPin size={15} className="text-emerald-600" />,
         label: 'Enviar Localização & Endereço',
         description: 'Injeta mapa e ponto de referência no chat',
         action: () => {
-          setDraftText("📍 Nosso endereço: Av. Getúlio Vargas, 1000 - Centro, Chapecó - SC (Estacionamento conveniado no local).");
+          setDraftText(`📍 Nosso endereço: ${commercialConfig.businessAddress}`);
           setQuickToolsOpen(false);
         },
-      },
+      }] : []),
       ...objectionBreakers.map((obj) => ({
         id: `obj_${obj.id}`,
         category: 'objecoes' as const,
@@ -1831,26 +1640,40 @@ function LiveJourneyBody({
           setQuickToolsOpen(false);
         },
       })),
-    ];
-  }, [onOpenExternalAgenda, onOpenFollowUpModal, onOpenWabaButtonsModal, onOpenWabaTemplateModal, onOpenSalesVaultModal, objectionBreakers]);
+    ] as QuickToolItem[];
+  }, [commercialConfig, isWabaChannel, onOpenFollowUpModal, onOpenWabaButtonsModal, onOpenWabaTemplateModal, objectionBreakers]);
 
   // Audio Recording & Attachment States
   const [isRecording, setIsRecording] = React.useState(false);
   const [recordingSeconds, setRecordingSeconds] = React.useState(0);
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = React.useRef<Blob[]>([]);
   const recordingTimerRef = React.useRef<any>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [mediaError, setMediaError] = React.useState<string | null>(null);
+  const supportsInlineMedia = channelProvider.includes('waha');
 
   const startRecordingAudio = async () => {
+    if (!supportsInlineMedia) {
+      setMediaError('Áudio bloqueado: este canal não possui upload de mídia homologado no backend.');
+      return;
+    }
+    setMediaError(null);
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = recorder;
-        recorder.start();
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        throw new Error('Este navegador não disponibiliza gravação de áudio.');
       }
-    } catch {
-      // Microphone fallback simulated
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+    } catch (error) {
+      setMediaError(error instanceof Error ? error.message : 'Não foi possível acessar o microfone.');
+      return;
     }
     setIsRecording(true);
     setRecordingSeconds(0);
@@ -1864,16 +1687,31 @@ function LiveJourneyBody({
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    const recorder = mediaRecorderRef.current;
+    const sec = recordingSeconds;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = () => {
+        recorder.stream.getTracks().forEach((t) => t.stop());
+        if (cancel || sec <= 0) return;
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        if (!blob.size) {
+          setMediaError('A gravação não produziu áudio. Nenhum envio foi criado.');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+          if (dataUrl) onCreateOutboundDraft(`[Áudio] Mensagem de voz (${sec}s):::${dataUrl}`);
+        };
+        reader.readAsDataURL(blob);
+      };
       try {
-        mediaRecorderRef.current.stop();
-        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
-      } catch {}
-    }
-
-    if (!cancel && recordingSeconds > 0) {
-      const sec = recordingSeconds;
-      onCreateOutboundDraft(`[Áudio] Mensagem de voz gravada pelo atendente (${sec}s)`);
+        recorder.stop();
+      } catch (error) {
+        setMediaError(error instanceof Error ? error.message : 'Não foi possível finalizar a gravação.');
+      }
+    } else if (!cancel && sec > 0) {
+      setMediaError('A gravação não ficou disponível. Nenhum envio foi criado.');
     }
 
     setIsRecording(false);
@@ -1883,6 +1721,18 @@ function LiveJourneyBody({
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!supportsInlineMedia) {
+      setMediaError('Anexo bloqueado: este canal ainda exige upload público homologado no backend. Nenhum envio foi criado.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setMediaError('Anexo bloqueado: o limite para envio direto é 8 MB.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    setMediaError(null);
 
     const fileName = file.name;
     const isImage = file.type.startsWith('image/');
@@ -1916,13 +1766,9 @@ function LiveJourneyBody({
     return `${m}:${sec < 10 ? '0' : ''}${sec}`;
   };
 
-  const inferredDossier = React.useMemo(
-    () => analyzeConversationDossier(messages || [], journey.contact.name),
-    [messages, journey.contact.name]
-  );
-
   const handleGenerateCopilotSuggestion = async () => {
     setIsGeneratingCopilot(true);
+    setCopilotError(null);
     try {
       const lastCust = [...messages].reverse().find((m) => m.direction === "inbound");
       const customerText = lastCust?.textContent || "";
@@ -1931,23 +1777,24 @@ function LiveJourneyBody({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          journeyStage: journey.pipelineStage || inferredDossier.suggestedStage,
+          journeyStage: journey.pipelineStage || "LEAD",
           contactName: journey.contact.name || "Cliente",
           lastCustomerMessage: customerText,
-          businessName: "SOS Sales",
-          facts: (knownFacts && knownFacts.length > 0 ? knownFacts : inferredDossier.knownFacts)?.map((f) => `${f.key}: ${f.value}`) || [],
+          businessName: commercialConfig.businessName || "Workspace autenticado",
+          facts: knownFacts?.map((f) => `${f.key}: ${f.value}`) || [],
         }),
       });
       const data = await res.json();
-      if (data.suggestedMessage) {
-        setDraftText(data.suggestedMessage);
-      } else if (inferredDossier.suggestedDraftText) {
-        setDraftText(inferredDossier.suggestedDraftText);
+      if (!res.ok) {
+        throw new Error(data?.message || `A API de IA retornou ${res.status}.`);
       }
-    } catch {
-      if (inferredDossier.suggestedDraftText) {
-        setDraftText(inferredDossier.suggestedDraftText);
+      if (!data?.suggestedMessage || typeof data.suggestedMessage !== 'string') {
+        throw new Error('A IA não retornou uma sugestão utilizável para esta conversa.');
       }
+      setDraftText(data.suggestedMessage.trim());
+    } catch (error) {
+      setDraftText('');
+      setCopilotError(error instanceof Error ? error.message : 'Copilot indisponível no momento.');
     } finally {
       setIsGeneratingCopilot(false);
     }
@@ -1968,33 +1815,45 @@ function LiveJourneyBody({
     (f) => f.key === "ad.referral" || f.key === "meta_ctwa_ad" || f.source === "ad_payload"
   );
 
-  const ghostingInfo = React.useMemo(() => {
-    if (!messages || messages.length === 0) return null;
-    const lastMsg = messages[messages.length - 1];
-    if (!lastMsg || !lastMsg.sentAt) return null;
-
+  const inactivity = React.useMemo(() => {
+    const lastMsg = messages?.[messages.length - 1];
+    if (!lastMsg?.sentAt) return null;
     const diffHours = (Date.now() - new Date(lastMsg.sentAt).getTime()) / (1000 * 60 * 60);
-    const isOutbound = lastMsg.direction === "outbound";
+    if (!Number.isFinite(diffHours) || diffHours < 2) return null;
+    return {
+      hours: diffHours,
+      label: diffHours >= 24 ? `${Math.floor(diffHours / 24)}d` : `${Math.floor(diffHours)}h`,
+    };
+  }, [messages]);
 
-    if (diffHours >= 2) {
-      const formattedHours = diffHours >= 24 ? `${Math.floor(diffHours / 24)}d` : `${Math.floor(diffHours)}h`;
-      const suggestedReactivation = `Oi ${contactFirstName}, tudo bem? Passando para te avisar que liberamos um horário extra hoje às ${externalAgendaSlots.split(',')[0] || '16:00'}. Quer que eu segure sua vaga antes que preencha?`;
+  React.useEffect(() => {
+    setGhostingInfo(null);
+    setGhostingError(null);
+  }, [journey.id]);
 
-      return {
-        hoursAgoText: formattedHours,
-        suggestedText: suggestedReactivation,
-        isOutbound,
-      };
+  const handleGenerateGhosting = async () => {
+    setIsGeneratingResurrection(true);
+    setGhostingError(null);
+    try {
+      const result = await gateway.resurrectJourney(workspaceId, journey.id);
+      if (!result || typeof result.recommendedMessage !== "string" || !result.recommendedMessage.trim()) {
+        throw new Error("A análise de reativação não retornou uma mensagem utilizável.");
+      }
+      setGhostingInfo({
+        recommendedMessage: result.recommendedMessage.trim(),
+        hoursSilent: typeof result.hoursSilent === "number" ? result.hoursSilent : inactivity?.hours,
+      });
+    } catch (error) {
+      setGhostingInfo(null);
+      setGhostingError(error instanceof Error ? error.message : "Não foi possível analisar a reativação.");
+    } finally {
+      setIsGeneratingResurrection(false);
     }
-    return null;
-  }, [messages, contactFirstName, externalAgendaSlots]);
+  };
 
-  const handleUpdateContactName = (newName: string) => {
-    if (journey.contact) {
-      journey.contact.name = newName;
-    }
+  const handleUpdateContactName = async (newName: string) => {
     if (onUpdateContactName) {
-      onUpdateContactName(newName);
+      await onUpdateContactName(newName);
     }
   };
 
@@ -2074,7 +1933,7 @@ function LiveJourneyBody({
                   onClick={() => {
                     const promptVal = window.prompt("Editar nome do contato:", journey.contact.name || "");
                     if (promptVal !== null && promptVal.trim()) {
-                      handleUpdateContactName(promptVal.trim());
+                      void handleUpdateContactName(promptVal.trim());
                     }
                   }}
                   title="Editar nome do contato"
@@ -2101,7 +1960,7 @@ function LiveJourneyBody({
                 <span className="font-mono text-[11px]">{journey.contact.phone}</span>
                 <span className="text-slate-300">•</span>
                 <span className="text-[11px] font-semibold text-slate-700 truncate max-w-[150px]">
-                  {acquisition?.campaignName || inferredDossier.originLabel}
+                  {acquisition?.campaignName || "Origem não atribuída"}
                 </span>
               </div>
             </div>
@@ -2109,6 +1968,26 @@ function LiveJourneyBody({
 
           {/* Direita: Ações Essenciais */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {isHandoffActive && !handoff.acceptedAt && (
+              <button
+                type="button"
+                onClick={() => onAcceptHandoff(handoff.id)}
+                disabled={actionInProgress}
+                className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
+              >
+                <UserCheck size={13} /> Assumir
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onOpenFollowUpModal}
+              disabled={actionInProgress}
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
+            >
+              <Clock size={13} /> Follow-up
+            </button>
+
             {/* Etapa do Funil */}
             <select
               value={currentNormalized}
@@ -2123,39 +2002,79 @@ function LiveJourneyBody({
               ))}
             </select>
 
-            {/* Desfecho Comercial */}
+            {/* Conclusão comercial */}
             <button
               type="button"
               onClick={onOpenOutcomeModal}
               disabled={actionInProgress}
               className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-2xs"
             >
-              <DollarSign size={13} /> Desfecho
+              <CheckCircle2 size={13} /> Concluir
             </button>
 
-            {/* Dossiê & Modo Foco em Tela Cheia */}
-            <button
-              type="button"
-              onClick={onOpenDossierFocus || onToggleDossier}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 px-3 py-1 text-xs font-bold transition cursor-pointer shadow-2xs"
-              title="Abrir Dossiê & Modo Foco em Tela Cheia (ESC para fechar)"
-            >
-              <Sparkles size={13} className="text-indigo-600 animate-pulse" />
-              <span>Dossiê Completo</span>
-            </button>
-
-            {/* Limpar conversa */}
-            {onClearCurrentJourney && (
+            <div className="relative">
               <button
                 type="button"
-                onClick={onClearCurrentJourney}
-                disabled={actionInProgress}
-                className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer shadow-2xs"
-                title="Limpar histórico da conversa"
+                onClick={() => setMoreActionsOpen((open) => !open)}
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2 py-1 text-xs font-bold transition cursor-pointer"
+                aria-expanded={moreActionsOpen}
+                aria-label="Mais ações da conversa"
               >
-                <Trash2 size={13} />
+                <MoreHorizontal size={14} /> Mais
               </button>
-            )}
+              {moreActionsOpen && (
+                <div className="absolute right-0 top-full z-40 mt-1 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreActionsOpen(false);
+                      (onOpenDossierFocus || onToggleDossier)?.();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <FileText size={14} /> Ver dossiê
+                  </button>
+                  {isHandoffActive && handoff.acceptedAt && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMoreActionsOpen(false);
+                          onOpenReturnAiModal();
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        <Bot size={14} /> Devolver à IA
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMoreActionsOpen(false);
+                          onResolveHandoff(handoff.id);
+                        }}
+                        disabled={actionInProgress}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        <UserMinus size={14} /> Encerrar atendimento
+                      </button>
+                    </>
+                  )}
+                  {onClearCurrentJourney && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMoreActionsOpen(false);
+                        onClearCurrentJourney();
+                      }}
+                      disabled={actionInProgress}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                    >
+                      <Trash2 size={14} /> Limpar histórico
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -2176,28 +2095,50 @@ function LiveJourneyBody({
           onScroll={handleScroll}
           className="relative flex-1 min-h-0 rounded-2xl border border-slate-200/90 bg-[#efeae2] p-3 overflow-y-auto whatsapp-chat-wallpaper flex flex-col"
         >
-          {/* Anti-Ghosting Reativação Automática */}
-          {ghostingInfo && (
+          {/* Reativação: o tempo é calculado da conversa persistida; a cópia
+              só aparece depois de uma análise real do backend. */}
+          {inactivity && (
             <div className="mb-2.5 p-2.5 bg-amber-50/95 border border-amber-200 rounded-xl flex items-center justify-between gap-2 text-xs shadow-2xs animate-in fade-in shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-base shrink-0">👻</span>
                 <div className="min-w-0">
                   <p className="font-bold text-amber-950 text-[11px]">
-                    Cliente sem retorno há {ghostingInfo.hoursAgoText}
+                    Cliente sem retorno há {inactivity.label}
                   </p>
-                  <p className="text-[10.5px] text-amber-800 truncate">
-                    Gancho de Reativação: "{ghostingInfo.suggestedText}"
-                  </p>
+                  {ghostingInfo?.recommendedMessage ? (
+                    <p className="text-[10.5px] text-amber-800 truncate">
+                      Sugestão gerada pela IA para revisão: "{ghostingInfo.recommendedMessage}"
+                    </p>
+                  ) : ghostingError ? (
+                    <p className="text-[10.5px] text-rose-700 truncate">{ghostingError}</p>
+                  ) : (
+                    <p className="text-[10.5px] text-amber-800 truncate">
+                      Gere uma sugestão baseada no histórico real antes de inserir qualquer mensagem.
+                    </p>
+                  )}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setDraftText(ghostingInfo.suggestedText)}
-                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10.5px] font-extrabold shadow-2xs transition shrink-0 cursor-pointer"
-                title="Inserir mensagem de reativação no chat"
-              >
-                ⚡ Reaquecer Lead
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {ghostingInfo?.recommendedMessage && (
+                  <button
+                    type="button"
+                    onClick={() => setDraftText(ghostingInfo.recommendedMessage || "")}
+                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10.5px] font-extrabold shadow-2xs transition cursor-pointer"
+                    title="Inserir a sugestão confirmada pela API no rascunho"
+                  >
+                    Inserir rascunho
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleGenerateGhosting()}
+                  disabled={isGeneratingResurrection}
+                  className="px-2.5 py-1 border border-amber-400 bg-white hover:bg-amber-100 text-amber-900 rounded-lg text-[10.5px] font-extrabold shadow-2xs transition cursor-pointer disabled:opacity-60"
+                  title="Analisar a reativação usando o backend"
+                >
+                  {isGeneratingResurrection ? "Analisando…" : ghostingInfo ? "Reanalisar" : "Analisar com IA"}
+                </button>
+              </div>
             </div>
           )}
 
@@ -2224,7 +2165,7 @@ function LiveJourneyBody({
                       isOutbound={isOut}
                       senderName={isOut ? "Você" : (journey.contact.name || "Cliente")}
                       providerMessageId={(message as any).providerMessageId || null}
-                      session="default"
+                      session={(message as any).mediaPayload?.session || undefined}
                     />
                     <div className="mt-0.5 text-right text-[10px] text-slate-500 font-mono flex items-center justify-end gap-1">
                       <span>{formatDate(message.sentAt)}</span>
@@ -2253,35 +2194,58 @@ function LiveJourneyBody({
 
         {/* 3. COMPOSER ACIONÁVEL UNIFICADO (Tudo em 1 Lugar) */}
         <section className="rounded-2xl border border-slate-200 bg-white p-2 shadow-xs shrink-0 space-y-1.5">
-          {/* Linha Tática Soberana do Motor Cognitivo (Tese v2) */}
-          <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs">
+          {/* Copiloto sob demanda: poder invisível, simplicidade visível. */}
+          {copilotPanelOpen && <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="font-black text-emerald-950 text-[10.5px] uppercase tracking-wider">
                   💡 Menor Próximo Movimento:
                 </span>
-                {inferredDossier.offerHook && (
-                  <span className="hidden md:inline px-1.5 py-0.2 rounded-md bg-emerald-100 border border-emerald-300 text-emerald-800 text-[9.5px] font-bold">
-                    🎯 {inferredDossier.offerHook}
-                  </span>
-                )}
               </div>
               <span className="text-emerald-900 truncate text-[11px] font-medium italic">
-                "{recommendation?.suggestedDraftText || inferredDossier.suggestedDraftText || liveSentiment.tacticalRecommendation}"
+                "{recommendation?.suggestedDraftText || 'Nenhuma sugestão persistida para esta conversa.'}"
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
-                onClick={() => setDraftText(recommendation?.suggestedDraftText || inferredDossier.suggestedDraftText || liveSentiment.tacticalRecommendation)}
+                onClick={() => void handleGenerateCopilotSuggestion()}
+                disabled={isGeneratingCopilot || actionInProgress}
+                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
+                title="Solicitar uma sugestão ao Copilot autenticado"
+              >
+                {isGeneratingCopilot ? 'Gerando…' : 'Gerar com IA'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDraftText(recommendation?.suggestedDraftText || '')}
+                disabled={!recommendation?.suggestedDraftText || isGeneratingCopilot || actionInProgress}
                 className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
                 title="Inserir resposta no campo de mensagem"
               >
                 Usar Resposta
               </button>
+              <button
+                type="button"
+                onClick={() => setCopilotPanelOpen(false)}
+                className="p-1 text-emerald-800 hover:bg-emerald-100 rounded"
+                aria-label="Fechar sugestões da IA"
+              >
+                <X size={13} />
+              </button>
             </div>
-          </div>
+          </div>}
+          {copilotError && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] text-rose-800">
+              Copilot indisponível: {copilotError}
+            </div>
+          )}
+          {mediaError && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900">
+              {mediaError}
+            </div>
+          )}
 
           {/* Audio Recording Active Strip */}
           {isRecording ? (
@@ -2328,30 +2292,30 @@ function LiveJourneyBody({
                     ? "border-emerald-500 bg-emerald-50 text-emerald-800"
                     : "border-slate-200 bg-slate-100/80 hover:bg-slate-200 text-slate-700"
                 }`}
-                title="Abrir Caixa de Ações Rápidas (Pix, Horários, Recursos)"
+                title="Abrir ações rápidas disponíveis para esta conversa"
               >
                 <Zap size={15} className="text-amber-500" />
                 <span className="hidden sm:inline">Atalhos</span>
               </button>
 
-              {/* Botão de Objeções (🛡️) */}
+              {/* Copiloto sob demanda */}
               <button
                 type="button"
-                onClick={() => setQuickToolsOpen(true)}
-                className="p-2 rounded-xl border border-slate-200 bg-slate-100/80 hover:bg-emerald-50 hover:border-emerald-300 text-slate-700 hover:text-emerald-900 transition cursor-pointer shadow-2xs shrink-0 flex items-center gap-1 font-bold text-xs"
-                title="Quebra de Objeções Rápidas (Tá caro, Vou pensar, Falar com marido, etc.)"
+                onClick={() => setCopilotPanelOpen((open) => !open)}
+                className={`p-2 rounded-xl border transition cursor-pointer shadow-2xs shrink-0 flex items-center gap-1 font-bold text-xs ${copilotPanelOpen ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-100/80 hover:bg-emerald-50 text-slate-700"}`}
+                title="Abrir sugestão de resposta com IA"
               >
-                <span>🛡️</span>
-                <span className="hidden md:inline">Objeções</span>
+                <Sparkles size={15} />
+                <span className="hidden md:inline">IA</span>
               </button>
 
               {/* Anexo */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={actionInProgress}
-                className="p-2 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-100/80 hover:bg-slate-200 text-slate-600 transition shrink-0 cursor-pointer shadow-2xs"
-                title="Anexar Foto, Vídeo, Áudio ou PDF"
+                disabled={actionInProgress || !supportsInlineMedia}
+                className="p-2 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-100/80 hover:bg-slate-200 text-slate-600 transition shrink-0 cursor-pointer shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                title={supportsInlineMedia ? "Anexar Foto, Vídeo, Áudio ou PDF" : "Anexos indisponíveis para este canal até o upload homologado"}
               >
                 <Paperclip size={15} />
               </button>
@@ -2360,9 +2324,9 @@ function LiveJourneyBody({
               <button
                 type="button"
                 onClick={startRecordingAudio}
-                disabled={actionInProgress}
-                className="p-2 rounded-xl border border-slate-200 hover:border-rose-300 bg-slate-100/80 hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition shrink-0 cursor-pointer shadow-2xs"
-                title="Gravar mensagem de voz ao vivo"
+                disabled={actionInProgress || !supportsInlineMedia}
+                className="p-2 rounded-xl border border-slate-200 hover:border-rose-300 bg-slate-100/80 hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition shrink-0 cursor-pointer shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                title={supportsInlineMedia ? "Gravar mensagem de voz ao vivo" : "Áudio indisponível para este canal até o upload homologado"}
               >
                 <Mic size={15} />
               </button>
@@ -2375,9 +2339,9 @@ function LiveJourneyBody({
                 placeholder="Digite uma mensagem ou use um atalho..."
                 className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600 shadow-2xs"
                 onKeyDown={(e) => {
-                  if (e.key === "Tab" && !draftText.trim() && (recommendation?.suggestedDraftText || inferredDossier.suggestedDraftText)) {
+                  if (e.key === "Tab" && !draftText.trim() && recommendation?.suggestedDraftText) {
                     e.preventDefault();
-                    setDraftText(recommendation?.suggestedDraftText || inferredDossier.suggestedDraftText || "");
+                    setDraftText(recommendation.suggestedDraftText);
                     return;
                   }
                   if (e.key === "Enter" && draftText.trim()) {
@@ -2455,25 +2419,22 @@ function LiveDossier({
 }) {
   const { journey, knownFacts, decisionState, handoff, outcome, acquisitionContexts, messages } = view;
 
-  const inferred = React.useMemo(() => {
-    return analyzeConversationDossier(messages || [], journey.contact.name);
-  }, [messages, journey.contact.name]);
-
-  const displayService = journey.primaryServiceOrProduct || inferred.primaryServiceOrProduct;
+  const displayService = journey.primaryServiceOrProduct || 'Serviço não informado';
   const primaryAcquisition = acquisitionContexts?.[0];
-  const displayOriginLabel = primaryAcquisition ? 'Anúncio WhatsApp (Meta Ads)' : inferred.originLabel;
-  const displayCampaignName = primaryAcquisition?.campaignName || inferred.campaignName;
-  const displayOfferHook = primaryAcquisition?.offerHook || inferred.offerHook;
-  const displayEntryMessage = primaryAcquisition?.entryMessage || inferred.entryMessage;
+  const displayOriginLabel = primaryAcquisition ? 'Anúncio WhatsApp (Meta Ads)' : 'Origem não atribuída';
+  const displayCampaignName = primaryAcquisition?.campaignName || 'Sem campanha vinculada';
+  const displayOfferHook = primaryAcquisition?.offerHook;
+  const displayEntryMessage = primaryAcquisition?.entryMessage;
 
-  const displayFacts = knownFacts && knownFacts.length > 0 ? knownFacts : inferred.knownFacts;
-  const displayFriction = decisionState?.primaryFriction || inferred.primaryFriction;
-  const displayFrictionEvidence = decisionState?.frictionEvidence || inferred.frictionEvidence;
+  const displayFacts = knownFacts || [];
+  const displayFriction = decisionState?.primaryFriction;
+  const displayFrictionEvidence = decisionState?.frictionEvidence;
 
   // Local state for tactical operator notes
-  const [operatorNotes, setOperatorNotes] = React.useState<Array<{ id: string; tag: string; text: string; time: string }>>([
-    { id: '1', tag: 'Interesse', text: `Interesse identificado: ${displayService}`, time: 'Hoje' }
-  ]);
+  // Notes are operator-entered data. Never seed a conversation with a
+  // fabricated interest statement derived from the currently displayed
+  // service; an empty state is safer than presenting inference as fact.
+  const [operatorNotes, setOperatorNotes] = React.useState<Array<{ id: string; tag: string; text: string; time: string }>>([]);
   const [isAddingNote, setIsAddingNote] = React.useState(false);
   const [newNoteText, setNewNoteText] = React.useState('');
   const [newNoteTag, setNewNoteTag] = React.useState('Preferência');
@@ -2534,7 +2495,7 @@ function LiveDossier({
         <div className="flex items-center justify-between">
           <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 font-heading">Serviço Solicitado</p>
           <span className="rounded bg-blue-100 px-1.5 py-0.2 text-[9.5px] font-bold text-blue-800 uppercase">
-            {stageLabel(journey.pipelineStage || inferred.suggestedStage)}
+            {stageLabel(journey.pipelineStage)}
           </span>
         </div>
         <p className="mt-0.5 text-xs font-bold text-slate-900">

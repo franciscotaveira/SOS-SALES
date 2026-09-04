@@ -315,21 +315,21 @@ export const SupervisedComposer: React.FC<SupervisedComposerProps> = ({
               </button>
 
               <button
-                onClick={() => handleInsertMacro('Temos vaga disponível hoje por volta das 14h30 ou 16h00!')}
+                onClick={() => handleInsertMacro('Vou consultar a disponibilidade real e já retorno com os horários possíveis.')}
                 className="text-[10.5px] bg-[var(--sos-canvas)] hover:bg-[var(--sos-border)]/50 text-[var(--sos-muted)] px-2 py-0.5 rounded-md border border-[var(--sos-border)] shrink-0 transition-colors"
               >
                 Vaga hoje
               </button>
 
               <button
-                onClick={() => handleInsertMacro('Segue nossa chave Pix oficial para confirmação do seu horário:')}
+                onClick={() => handleInsertMacro('Posso enviar as instruções de pagamento cadastradas depois de confirmar o serviço e o valor.')}
                 className="text-[10.5px] bg-[var(--sos-canvas)] hover:bg-[var(--sos-border)]/50 text-[var(--sos-muted)] px-2 py-0.5 rounded-md border border-[var(--sos-border)] shrink-0 transition-colors"
               >
                 Chave Pix
               </button>
 
               <button
-                onClick={() => handleInsertMacro('Já deixei seu horário pré-reservado aqui por 15 minutos para garantir!')}
+                onClick={() => handleInsertMacro('Assim que você confirmar, verifico se é possível reservar este horário.')}
                 className="text-[10.5px] bg-[var(--sos-canvas)] hover:bg-[var(--sos-border)]/50 text-[var(--sos-muted)] px-2 py-0.5 rounded-md border border-[var(--sos-border)] shrink-0 transition-colors"
               >
                 Hold 15min

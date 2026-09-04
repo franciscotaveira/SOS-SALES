@@ -120,10 +120,10 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
   const [wabaChecking, setWabaChecking] = useState<boolean>(true);
 
   // Form State: Pix
-  const [pixTitle, setPixTitle] = useState('Confirmação de Agendamento');
-  const [pixAmount, setPixAmount] = useState('50.00');
-  const [pixKey, setPixKey] = useState('49988370054');
-  const [pixBodyText, setPixBodyText] = useState('Olá! Para garantir o seu horário na grade, realize o pagamento do sinal pelo botão abaixo:');
+  const [pixTitle, setPixTitle] = useState('');
+  const [pixAmount, setPixAmount] = useState('');
+  const [pixKey, setPixKey] = useState('');
+  const [pixBodyText, setPixBodyText] = useState('');
 
   // Form State: Location Request
   const [locationBodyText, setLocationBodyText] = useState(
@@ -132,14 +132,14 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
 
   // Form State: Product / Catalog
   const [productMode, setProductMode] = useState<'single' | 'multi'>('single');
-  const [catalogId, setCatalogId] = useState('haven_catalog_default');
-  const [productRetailerId, setProductRetailerId] = useState('escova_modelada_promo');
-  const [productBodyText, setProductBodyText] = useState('Confira os detalhes e fotos do nosso serviço exclusivo:');
+  const [catalogId, setCatalogId] = useState('');
+  const [productRetailerId, setProductRetailerId] = useState('');
+  const [productBodyText, setProductBodyText] = useState('');
 
   // Form State: WhatsApp Flow (Formulário Nativo)
-  const [flowId, setFlowId] = useState('agendamento_express_flow');
-  const [flowCta, setFlowCta] = useState('Agendar Horário');
-  const [flowBodyText, setFlowBodyText] = useState('Toque no botão abaixo para abrir o formulário interativo de agendamento e escolher profissional, data e horário:');
+  const [flowId, setFlowId] = useState('');
+  const [flowCta, setFlowCta] = useState('Abrir formulário');
+  const [flowBodyText, setFlowBodyText] = useState('Abra o formulário oficial para continuar.');
 
   // Form State: Buttons / List
   const [buttonBodyText, setButtonBodyText] = useState('Como deseja prosseguir com o seu atendimento hoje?');
@@ -148,19 +148,16 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
   const [btn3, setBtn3] = useState('3. Falar com Atendente');
 
   // Form State: Carousel HSM
-  const [carouselTemplate, setCarouselTemplate] = useState('catalogo_servicos_vip');
-  const [carouselCard1Text, setCarouselCard1Text] = useState('Corte & Escova VIP');
-  const [carouselCard1Img, setCarouselCard1Img] = useState('https://images.unsplash.com/photo-1560066984-138dadb4c035?w=600');
-  const [carouselCard2Text, setCarouselCard2Text] = useState('Tratamento & Hidratação');
-  const [carouselCard2Img, setCarouselCard2Img] = useState('https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=600');
+  const [carouselTemplate, setCarouselTemplate] = useState('');
+  const [carouselCard1Text, setCarouselCard1Text] = useState('');
+  const [carouselCard1Img, setCarouselCard1Img] = useState('');
+  const [carouselCard2Text, setCarouselCard2Text] = useState('');
+  const [carouselCard2Img, setCarouselCard2Img] = useState('');
 
   // Form State: Call CTA Button
-  const [callPhoneNumber, setCallPhoneNumber] = useState('+5549988370054');
+  const [callPhoneNumber, setCallPhoneNumber] = useState('');
   const [callButtonLabel, setCallButtonLabel] = useState('Ligar para Especialista');
   const [callBodyText, setCallBodyText] = useState('Prefere tirar dúvidas ao vivo por telefone? Toque no botão abaixo para ligar agora:');
-
-  // Flow interactive simulation demo state
-  const [demoFlowOpen, setDemoFlowOpen] = useState(false);
 
   // Probe WABA channel connection
   useEffect(() => {
@@ -175,7 +172,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
       })
       .then((data) => {
         if (!mounted) return;
-        if (data.configured && (data.verifiedPhone || data.wabaId)) {
+        if (data.configured && data.connected === true && (data.verifiedPhone || data.wabaId)) {
           setWabaConnected(true);
           setWabaPhone(data.verifiedPhone || '');
           setWabaName(data.verifiedName || 'Conta WABA Oficial');
@@ -327,7 +324,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
               sections: [
                 {
                   title: 'Destaques',
-                  productRetailerIds: [productRetailerId, 'corte_premium_01', 'manicure_01'],
+                  productRetailerIds: [productRetailerId],
                 },
               ],
             };
@@ -364,6 +361,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
     setIsSubmitting(true);
     setFeedback(null);
     try {
+      if (!flowId.trim()) throw new Error('Informe o Flow ID publicado no Meta Business Manager.');
       if (!onQueueWabaAction) throw new Error('Este fluxo precisa ser aberto dentro de uma conversa supervisionada.');
       await onQueueWabaAction({ messageKind: 'WABA_FLOW', flowId, flowCta, bodyText: flowBodyText });
 
@@ -516,8 +514,8 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
                     <Loader2 className="w-3 h-3 animate-spin" /> Verificando WABA...
                   </span>
                 ) : wabaConnected ? (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-emerald-600" /> WABA Conectado ({wabaPhone || wabaName})
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-100 text-sky-900 border border-sky-300 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-sky-600" /> WABA configurado ({wabaPhone || wabaName})
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
@@ -683,37 +681,9 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
                   </p>
                 </div>
 
-                <ActionPresetChips
-                  presets={[
-                    {
-                      label: 'Agendamento Express (Salão/Clínica)',
-                      icon: '📅',
-                      onClick: () => {
-                        setFlowId('agendamento_express_flow');
-                        setFlowCta('Agendar Horário');
-                        setFlowBodyText('Toque no botão abaixo para abrir o formulário interativo de agendamento e escolher profissional, data e horário:');
-                      },
-                    },
-                    {
-                      label: 'Orçamento & Qualificação B2B',
-                      icon: '💼',
-                      onClick: () => {
-                        setFlowId('orcamento_qualificacao_flow');
-                        setFlowCta('Pedir Orçamento');
-                        setFlowBodyText('Para enviarmos uma proposta personalizada para sua empresa, preencha as 3 perguntas rápidas no formulário:');
-                      },
-                    },
-                    {
-                      label: 'Pesquisa de Satisfação NPS',
-                      icon: '⭐',
-                      onClick: () => {
-                        setFlowId('pesquisa_nps_flow');
-                        setFlowCta('Avaliar Atendimento');
-                        setFlowBodyText('Sua opinião é fundamental para nós! Avalie em 1 minuto o atendimento que você recebeu hoje:');
-                      },
-                    },
-                  ]}
-                />
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-700">
+                  Informe o ID exato de um Flow publicado. O SOS Sales não cria nem presume formulários, serviços ou horários.
+                </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
@@ -801,40 +771,9 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
                   Gera um cartão nativo oficial da Meta com botão interativo <strong>"Pagar com Pix"</strong> e cópia de chave no padrão Banco Central.
                 </p>
 
-                <ActionPresetChips
-                  presets={[
-                    {
-                      label: 'Sinal de Reserva (R$ 50,00)',
-                      icon: '💰',
-                      onClick: () => {
-                        setPixTitle('Sinal de Reserva de Horário');
-                        setPixAmount('50.00');
-                        setPixKey('49988370054');
-                        setPixBodyText('Olá! Para garantir a reserva do seu horário exclusivo na grade de amanhã, realize o Pix do sinal pelo botão oficial abaixo:');
-                      },
-                    },
-                    {
-                      label: 'Procedimento Completo (R$ 150,00)',
-                      icon: '💇',
-                      onClick: () => {
-                        setPixTitle('Corte & Tratamento VIP');
-                        setPixAmount('150.00');
-                        setPixKey('financeiro@empresa.com.br');
-                        setPixBodyText('Segue a cobrança oficial com desconto promocional para fechamento do procedimento:');
-                      },
-                    },
-                    {
-                      label: 'Taxa de Inscrição / Matrícula (R$ 97,00)',
-                      icon: '🎓',
-                      onClick: () => {
-                        setPixTitle('Matrícula de Treinamento');
-                        setPixAmount('97.00');
-                        setPixKey('contato@empresa.com.br');
-                        setPixBodyText('Garanta sua vaga exclusiva no treinamento realizando a confirmação da taxa de matrícula:');
-                      },
-                    },
-                  ]}
-                />
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-900">
+                  Preencha somente dados de cobrança confirmados para este cliente. O SOS Sales não sugere valores, chaves ou condições financeiras.
+                </div>
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
                     <label className="font-bold text-slate-800 block mb-1">Título do Serviço / Item</label>
@@ -942,19 +881,19 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
                       label: 'Confirmação de Presença',
                       icon: '📅',
                       onClick: () => {
-                        setButtonBodyText('Passando para confirmar o seu agendamento de amanhã às 14h. Podemos confirmar?');
+                        setButtonBodyText('Você gostaria de confirmar, reagendar ou cancelar o compromisso já registrado no atendimento?');
                         setBtn1('1. Confirmar Presença');
                         setBtn2('2. Reagendar Horário');
                         setBtn3('3. Cancelar');
                       },
                     },
                     {
-                      label: 'Quebra de Objeção (Desconto)',
+                      label: 'Próximo Passo',
                       icon: '⚡',
                       onClick: () => {
-                        setButtonBodyText('Conseguimos uma condição especial para fechamento ainda hoje. Qual opção prefere?');
-                        setBtn1('1. Quero o Desconto');
-                        setBtn2('2. Pagar no Pix');
+                        setButtonBodyText('Como prefere continuar este atendimento?');
+                        setBtn1('1. Quero Continuar');
+                        setBtn2('2. Ver Condições');
                         setBtn3('3. Tirar Dúvidas');
                       },
                     },
@@ -1136,22 +1075,23 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
                 <ActionPresetChips
                   presets={[
                     {
-                      label: 'Serviço Destaque (Escova VIP)',
+                      label: 'Produto ou serviço cadastrado',
                       icon: '📦',
                       onClick: () => {
                         setProductMode('single');
-                        setCatalogId('haven_catalog_default');
-                        setProductRetailerId('escova_modelada_promo');
-                        setProductBodyText('Confira os detalhes, fotos e disponibilidade do nosso procedimento mais procurado:');
+                        setCatalogId('');
+                        setProductRetailerId('');
+                        setProductBodyText('');
                       },
                     },
                     {
-                      label: 'Catálogo de Procedimentos (MPM)',
+                      label: 'Catálogo com vários itens',
                       icon: '🛍️',
                       onClick: () => {
                         setProductMode('multi');
-                        setCatalogId('haven_catalog_default');
-                        setProductBodyText('Navegue pelo nosso catálogo com todas as opções de tratamentos e serviços disponíveis:');
+                        setCatalogId('');
+                        setProductRetailerId('');
+                        setProductBodyText('');
                       },
                     },
                   ]}
@@ -1460,16 +1400,12 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
                     <div className="space-y-2">
                       <p className="text-slate-800 text-[11.5px] leading-relaxed">{flowBodyText || 'Mensagem do Flow...'}</p>
                       <div className="pt-1.5 border-t border-slate-100">
-                        <button
-                          type="button"
-                          onClick={() => setDemoFlowOpen(true)}
-                          className="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
-                        >
+                        <div className="w-full py-2 bg-emerald-50 text-emerald-900 border border-emerald-300 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs">
                           <Layers className="w-3.5 h-3.5 text-emerald-700" />
-                          <span>{flowCta || 'Agendar Horário'}</span>
+                          <span>{flowCta || 'Abrir formulário'}</span>
                           <ChevronRight className="w-3.5 h-3.5 text-emerald-600 ml-auto" />
-                        </button>
-                        <p className="text-[9px] text-slate-400 text-center mt-1">Toque para testar o formulário nativo</p>
+                        </div>
+                        <p className="text-[9px] text-slate-400 text-center mt-1">Prévia visual; não consulta serviços ou agenda.</p>
                       </div>
                     </div>
                   )}
@@ -1587,57 +1523,6 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
         </div>
       </div>
 
-      {/* Demo Modal do WhatsApp Flow quando o usuário testa no simulador */}
-      {demoFlowOpen && (
-        <div className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-4 border border-slate-200 shadow-2xl space-y-3 animate-in fade-in">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-emerald-600" />
-                <h4 className="font-extrabold text-sm text-slate-900">Formulário de Agendamento (Flow)</h4>
-              </div>
-              <button onClick={() => setDemoFlowOpen(false)} className="text-slate-400 hover:text-slate-700">
-                <X size={16} />
-              </button>
-            </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Esta é a tela interativa que abre <strong>direto no aplicativo do WhatsApp</strong> do cliente ao tocar no botão:
-            </p>
-            <div className="space-y-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Selecione o Serviço:</label>
-                <select className="w-full p-2 border border-slate-200 rounded-lg bg-white font-medium">
-                  <option>Escova Modelada Premium (R$ 150)</option>
-                  <option>Corte & Visagismo (R$ 180)</option>
-                  <option>Tratamento Capilar Reconstrutor (R$ 220)</option>
-                </select>
-              </div>
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Data Preferida:</label>
-                <input type="date" defaultValue={new Date().toISOString().slice(0, 10)} className="w-full p-2 border border-slate-200 rounded-lg bg-white" />
-              </div>
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Horário:</label>
-                <select className="w-full p-2 border border-slate-200 rounded-lg bg-white font-medium">
-                  <option>14:00 (Disponível)</option>
-                  <option>15:30 (Disponível)</option>
-                  <option>17:00 (Disponível)</option>
-                </select>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setDemoFlowOpen(false);
-                setFeedback({ success: true, message: 'Simulação do Flow concluída com sucesso!' });
-              }}
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer"
-            >
-              Confirmar Agendamento no WhatsApp
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

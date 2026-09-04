@@ -104,7 +104,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
   // Sales AI Handoff & Semantic Tags State
   const [showHandoffBox, setShowHandoffBox] = React.useState(false);
   const [copiedSummary, setCopiedSummary] = React.useState(false);
-  const [activeTags, setActiveTags] = React.useState<string[]>(['🔥 Lead Quente']);
+  const [activeTags, setActiveTags] = React.useState<string[]>([]);
 
   const toggleTag = (tag: string) => {
     setActiveTags((prev) =>
@@ -115,38 +115,119 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
   // Bot 24/7 — freio duplo: enabled (explícito) + paused (humano assumiu)
   const [botEnabled, setBotEnabled] = React.useState(false);
   const [botPaused, setBotPaused]   = React.useState(false);
+  const [botActive, setBotActive] = React.useState(false);
+  const [responderOwner, setResponderOwner] = React.useState<'sos_sales' | 'meta_business_agent' | 'human'>('sos_sales');
+  const [responderMode, setResponderMode] = React.useState<'sos_sales' | 'meta_business_agent' | 'auto_fallback' | 'manual'>('sos_sales');
+  const [metaAgentReady, setMetaAgentReady] = React.useState(false);
+  const [metaAgentEnabled, setMetaAgentEnabled] = React.useState(false);
+  const [metaAgentEligibilityStatus, setMetaAgentEligibilityStatus] = React.useState<'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN'>('UNKNOWN');
+  const [metaAgentActivationStatus, setMetaAgentActivationStatus] = React.useState<'NOT_STARTED' | 'PENDING' | 'READY' | 'FAILED'>('NOT_STARTED');
   const [botToggling, setBotToggling] = React.useState(false);
   const [botError, setBotError] = React.useState<string | null>(null);
 
-  // botActive = true somente quando habilitado E não pausado
-  const botActive = botEnabled && !botPaused;
-
-  // Carrega estado real do servidor ao abrir o dossiê
-  React.useEffect(() => {
+  const loadBotStatus = React.useCallback(async () => {
     setBotError(null);
-    const wsId = journey.workspaceId || '22222222-2222-2222-2222-222222222222';
-    authenticatedFetch(`/api/v1/workspaces/${wsId}/journeys/${journey.id}/bot/status`)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`Falha ao carregar estado do bot: HTTP ${r.status}`);
-        return r.json() as Promise<{ botEnabled?: boolean; botPaused?: boolean }>;
-      })
-      .then((data) => {
-        if (typeof data.botEnabled === 'boolean') setBotEnabled(data.botEnabled);
-        if (typeof data.botPaused  === 'boolean') setBotPaused(data.botPaused);
-      })
-      .catch(() => {
-        setBotEnabled(false);
-        setBotPaused(false);
-        setBotError('Estado do bot indisponível');
-      });
+    const wsId = journey.workspaceId;
+    if (!wsId) {
+      setBotEnabled(false);
+      setBotPaused(false);
+      setBotActive(false);
+      setResponderOwner('human');
+      setResponderMode('manual');
+      setMetaAgentEnabled(false);
+      setMetaAgentEligibilityStatus('UNKNOWN');
+      setMetaAgentActivationStatus('NOT_STARTED');
+      setMetaAgentReady(false);
+      setBotError('Workspace da jornada não informado');
+      return;
+    }
+    try {
+      const response = await authenticatedFetch(`/api/v1/workspaces/${wsId}/journeys/${journey.id}/bot/status`);
+      if (!response.ok) throw new Error(`Falha ao carregar estado do bot: HTTP ${response.status}`);
+      const data = await response.json() as {
+        botEnabled?: boolean;
+        botPaused?: boolean;
+        botActive?: boolean;
+        responderOwner?: 'sos_sales' | 'meta_business_agent' | 'human';
+        responderMode?: 'sos_sales' | 'meta_business_agent' | 'auto_fallback' | 'manual';
+        metaAgentEnabled?: boolean;
+        metaAgentId?: string | null;
+        metaAgentEligibilityStatus?: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
+        metaAgentActivationStatus?: 'NOT_STARTED' | 'PENDING' | 'READY' | 'FAILED';
+      };
+      if (typeof data.botEnabled === 'boolean') setBotEnabled(data.botEnabled);
+      if (typeof data.botPaused  === 'boolean') setBotPaused(data.botPaused);
+      if (typeof data.botActive === 'boolean') setBotActive(data.botActive);
+      if (data.responderOwner) setResponderOwner(data.responderOwner);
+      if (data.responderMode) setResponderMode(data.responderMode);
+      const nextMetaEnabled = data.metaAgentEnabled === true;
+      const nextMetaStatus = data.metaAgentEligibilityStatus === 'ELIGIBLE' || data.metaAgentEligibilityStatus === 'INELIGIBLE'
+        ? data.metaAgentEligibilityStatus
+        : 'UNKNOWN';
+      setMetaAgentEnabled(nextMetaEnabled);
+      setMetaAgentEligibilityStatus(nextMetaStatus);
+      const nextActivationStatus = data.metaAgentActivationStatus === 'PENDING' || data.metaAgentActivationStatus === 'READY' || data.metaAgentActivationStatus === 'FAILED'
+        ? data.metaAgentActivationStatus
+        : 'NOT_STARTED';
+      setMetaAgentActivationStatus(nextActivationStatus);
+      setMetaAgentReady(nextMetaEnabled && Boolean(data.metaAgentId) && nextMetaStatus === 'ELIGIBLE' && nextActivationStatus === 'READY');
+    } catch {
+      setBotEnabled(false);
+      setBotPaused(false);
+      setBotActive(false);
+      setResponderOwner('human');
+      setResponderMode('manual');
+      setMetaAgentEnabled(false);
+      setMetaAgentEligibilityStatus('UNKNOWN');
+      setMetaAgentActivationStatus('NOT_STARTED');
+      setMetaAgentReady(false);
+      setBotError('Estado do bot indisponível');
+    }
   }, [journey.id, journey.workspaceId]);
 
-  // Toggle principal: se desabilitado → habilitar | se ativo → pausar | se pausado → retomar
+  const metaActivationUnknown = responderMode === 'auto_fallback'
+    && metaAgentEnabled
+    && (metaAgentEligibilityStatus === 'UNKNOWN' || metaAgentActivationStatus === 'PENDING' || metaAgentActivationStatus === 'FAILED')
+    && !botActive;
+
+  // Carrega estado real do servidor ao abrir o dossiê.
+  React.useEffect(() => {
+    void loadBotStatus();
+  }, [loadBotStatus]);
+
+  // O botão usa thread-control quando a Meta é a proprietária. Para o runtime
+  // próprio, mantém os endpoints de enable/pause/resume já persistidos.
   const handleToggleBot = React.useCallback(async () => {
     setBotToggling(true);
     setBotError(null);
-    const wsId = journey.workspaceId || '22222222-2222-2222-2222-222222222222';
+    const wsId = journey.workspaceId;
+    if (!wsId) {
+      setBotError('Workspace da jornada não informado');
+      setBotToggling(false);
+      return;
+    }
     try {
+      if (responderMode === 'manual') return;
+      if (responderOwner === 'meta_business_agent') {
+        const res = await authenticatedFetch(`/api/v1/workspaces/${wsId}/meta-business-agent/thread-control`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'take',
+            to: journey.leadPhone,
+            journeyId: journey.id,
+            metadata: 'SOS Sales assumiu via Dossiê',
+          }),
+        });
+        const data = await res.json().catch(() => null) as { responderOwner?: 'sos_sales' | 'meta_business_agent' | 'human'; error?: string; botActive?: boolean } | null;
+        if (!res.ok) throw new Error(data?.error || `Falha ao assumir a conversa: HTTP ${res.status}`);
+        setResponderOwner(data?.responderOwner || 'sos_sales');
+        if (typeof data?.botActive === 'boolean') setBotActive(data.botActive);
+        await loadBotStatus();
+        return;
+      }
+
+      if (responderOwner === 'human') return;
       let action: string;
       if (!botEnabled) {
         action = 'enable';   // 🔴 → 🟢
@@ -163,23 +244,49 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
         body: JSON.stringify({ reason: action === 'pause' ? 'Humano assumiu via Cockpit' : undefined }),
       });
       if (!res.ok) throw new Error(`Falha ao alterar estado do bot: HTTP ${res.status}`);
-      const data = await res.json() as { botEnabled?: boolean; botPaused?: boolean };
+      const data = await res.json() as { botEnabled?: boolean; botPaused?: boolean; botActive?: boolean; responderOwner?: 'sos_sales' | 'meta_business_agent' | 'human' };
       if (typeof data.botEnabled === 'boolean') setBotEnabled(data.botEnabled);
       if (typeof data.botPaused  === 'boolean') setBotPaused(data.botPaused);
+      if (typeof data.botActive === 'boolean') setBotActive(data.botActive);
+      if (data.responderOwner) setResponderOwner(data.responderOwner);
     } catch {
       setBotError('Não foi possível alterar o bot. Tente novamente.');
     } finally {
       setBotToggling(false);
     }
-  }, [botEnabled, botPaused, journey.id, journey.workspaceId]);
+  }, [botEnabled, botPaused, journey.id, journey.leadPhone, journey.workspaceId, loadBotStatus, responderMode, responderOwner]);
 
-  const handoffExecutiveSummary = `🎯 Objetivo: ${journey.urgencyReason || 'Agendamento e contratação de serviços'}\n📊 Status: Pré-qualificado(a), atendimento em andamento\n⚡ Próximo Passo: Confirmar horário e enviar Pix de reserva para garantir vaga`;
-
-  const handleCopyHandoff = () => {
-    navigator.clipboard.writeText(handoffExecutiveSummary);
-    setCopiedSummary(true);
-    setTimeout(() => setCopiedSummary(false), 2000);
-  };
+  const handleReleaseToMeta = React.useCallback(async () => {
+    setBotToggling(true);
+    setBotError(null);
+    const wsId = journey.workspaceId;
+    if (!wsId) {
+      setBotError('Workspace da jornada não informado');
+      setBotToggling(false);
+      return;
+    }
+    try {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${wsId}/meta-business-agent/thread-control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'release',
+          to: journey.leadPhone,
+          journeyId: journey.id,
+          metadata: 'Conversa devolvida à Meta via Dossiê',
+        }),
+      });
+      const data = await res.json().catch(() => null) as { responderOwner?: 'sos_sales' | 'meta_business_agent' | 'human'; error?: string } | null;
+      if (!res.ok) throw new Error(data?.error || `Falha ao devolver a conversa: HTTP ${res.status}`);
+      setResponderOwner(data?.responderOwner || 'meta_business_agent');
+      setBotActive(false);
+      await loadBotStatus();
+    } catch {
+      setBotError('Não foi possível devolver a conversa à Meta. Tente novamente.');
+    } finally {
+      setBotToggling(false);
+    }
+  }, [journey.id, journey.leadPhone, journey.workspaceId, loadBotStatus]);
 
   const toggleBlock = (blockKey: string) => {
     setExpandedBlocks((prev) => ({ ...prev, [blockKey]: !prev[blockKey] }));
@@ -195,47 +302,26 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
     });
   };
 
-  // Fallback blocks if journey.dossier is not fully populated
-  const objectiveFacts = dossier?.customerObjective || [
-    {
-      id: 'd-obj-default',
-      label: 'Objetivo Principal',
-      value: journey.urgencyReason || 'Agendamento / Compra de serviço',
-      confidence: 'CONFIRMED' as const,
-      evidence: [
-        {
-          id: 'ev-obj-def',
-          source: 'CUSTOMER_MESSAGE' as const,
-          label: 'Última mensagem do lead',
-          excerpt: journey.lastLeadMessage,
-          occurredAt: 'Recente',
-        },
-      ],
-      updatedAt: journey.lastActivityAt,
-    },
-  ];
+  // A sparse dossier is a legitimate production state. Do not manufacture a
+  // confirmed fact or system evidence just to fill a card.
+  const objectiveFacts = dossier?.customerObjective || [];
 
   const confirmedFactsList = dossier?.confirmedFacts || knownFacts.filter((f) => f.confidence === 'CONFIRMED');
   const activeFrictionList = dossier?.activeFriction || knownFacts.filter((f) => f.confidence === 'TO_CONFIRM' || f.confidence === 'PROBABLE');
   const lastCommitmentList = dossier?.lastCommitment || [];
-  const ownershipList = dossier?.ownershipAndDeadline || [
-    {
-      id: 'd-own-default',
-      label: 'Responsável e Prazo',
-      value: `${journey.assignedOperatorName || 'Fila Aberta (Pendente)'} · SLA ${journey.slaMinutesRemaining}m restantes`,
-      confidence: 'CONFIRMED' as const,
-      evidence: [
-        {
-          id: 'ev-own-def',
-          source: 'SYSTEM_INFERENCE' as const,
-          label: 'Monitor de SLA',
-          excerpt: `SLA Deadline: ${journey.slaDeadline}`,
-          occurredAt: 'Tempo Real',
-        },
-      ],
-      updatedAt: journey.lastActivityAt,
-    },
-  ];
+  const ownershipList = dossier?.ownershipAndDeadline || [];
+
+  const handoffExecutiveSummary = [
+    `🎯 Objetivo: ${journey.urgencyReason?.trim() || 'Não registrado'}`,
+    `📊 Status: ${journey.handoffStatus || 'Não registrado'}`,
+    `⚡ Próximo passo: ${lastCommitmentList[0]?.value || 'Não definido'}`,
+  ].join('\n');
+
+  const handleCopyHandoff = () => {
+    navigator.clipboard.writeText(handoffExecutiveSummary);
+    setCopiedSummary(true);
+    setTimeout(() => setCopiedSummary(false), 2000);
+  };
 
   const displayedConfirmed = showAllConfirmed ? confirmedFactsList : confirmedFactsList.slice(0, 5);
 
@@ -286,15 +372,23 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
         </div>
       </div>
 
-      {/* Bot 24/7 — NVIDIA NIM (3 estados: desabilitado / pausado / ativo) */}
+      {/* Responder automático — o estado vem do backend, não de um cálculo local. */}
       <div className={`shrink-0 px-3 py-2 flex items-center justify-between border-b ${
         botActive   ? 'bg-emerald-50/60 border-emerald-200/60'
+        : responderMode === 'manual' || metaActivationUnknown ? 'bg-amber-50/60 border-amber-200/60'
+        : responderOwner === 'meta_business_agent' ? 'bg-violet-50/60 border-violet-200/60'
         : botEnabled ? 'bg-amber-50/60 border-amber-200/60'
         : 'bg-slate-50/60 border-slate-200/60'
       }`}>
         <div className="flex items-center gap-2">
           {botActive ? (
             <BotIcon className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+          ) : responderMode === 'manual' ? (
+            <UserRound className="w-3.5 h-3.5 text-amber-600" />
+          ) : metaActivationUnknown ? (
+            <BotIcon className="w-3.5 h-3.5 text-amber-600" />
+          ) : responderOwner === 'meta_business_agent' ? (
+            <BotIcon className="w-3.5 h-3.5 text-violet-600" />
           ) : botEnabled ? (
             <UserRound className="w-3.5 h-3.5 text-amber-600" />
           ) : (
@@ -302,16 +396,22 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
           )}
           <div>
             <span className={`text-[11px] font-bold ${
-              botActive ? 'text-emerald-800' : botEnabled ? 'text-amber-800' : 'text-slate-500'
+              botActive ? 'text-emerald-800' : responderMode === 'manual' || metaActivationUnknown ? 'text-amber-800' : responderOwner === 'meta_business_agent' ? 'text-violet-800' : responderOwner === 'human' || botEnabled ? 'text-amber-800' : 'text-slate-500'
             }`}>
-              {botActive ? '🟢 Bot Ativo (NVIDIA NIM)'
+              {botActive ? '🟢 IA própria ativa (NVIDIA NIM)'
+                : responderMode === 'manual' || responderOwner === 'human' ? '🟡 Atendimento manual'
+                : metaActivationUnknown ? '🟡 Meta aguardando confirmação'
+                : responderOwner === 'meta_business_agent' ? '🟣 Meta Business Agent responde'
                 : botEnabled ? '🟡 Humano no Controle'
                 : '🔴 Bot Desabilitado'}
             </span>
             <span className={`block text-[10px] ${
-              botActive ? 'text-emerald-600' : botEnabled ? 'text-amber-600' : 'text-slate-400'
+              botActive ? 'text-emerald-600' : responderMode === 'manual' || metaActivationUnknown ? 'text-amber-600' : responderOwner === 'meta_business_agent' ? 'text-violet-600' : responderOwner === 'human' || botEnabled ? 'text-amber-600' : 'text-slate-400'
             }`}>
               {botActive ? 'Respondendo automaticamente 24/7'
+                : responderMode === 'manual' || responderOwner === 'human' ? 'Nenhum agente automático enviará mensagens'
+                : metaActivationUnknown ? 'Nenhuma IA responde até a elegibilidade ser confirmada'
+                : responderOwner === 'meta_business_agent' ? 'Resposta oficial da Meta; assuma somente se necessário'
                 : botEnabled ? 'Você assumiu — clique para retomar'
                 : 'Clique para habilitar o bot nesta conversa'}
             </span>
@@ -325,29 +425,54 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
         <button
           id={`bot-toggle-btn-${journey.id}`}
           onClick={handleToggleBot}
-          disabled={botToggling}
+          disabled={botToggling || responderOwner === 'human' || responderMode === 'manual'}
           className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 border ${
-            botActive
+            responderMode === 'manual' || metaActivationUnknown
               ? 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50'
+              : botActive
+              ? 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50'
+              : responderOwner === 'meta_business_agent'
+              ? 'bg-white text-violet-700 border-violet-300 hover:bg-violet-50'
               : botEnabled
               ? 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50'
               : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
           }`}
           title={
-            botActive ? 'Pausar bot e assumir atendimento'
+            responderMode === 'manual' || responderOwner === 'human' ? 'Atendimento manual ativo'
+            : metaActivationUnknown ? 'Meta ainda não foi confirmada; atualize a elegibilidade antes de responder'
+            : responderOwner === 'meta_business_agent' ? 'Assumir esta conversa no SOS Sales'
+            : botActive ? 'Pausar bot e assumir atendimento'
             : botEnabled ? 'Retomar atendimento automático'
             : 'Habilitar bot nesta conversa'
           }
         >
           {botToggling ? (
             <Loader2 className="w-3 h-3 animate-spin" />
+          ) : responderMode === 'manual' ? (
+            <UserRound className="w-3 h-3" />
+          ) : responderOwner === 'meta_business_agent' ? (
+            <UserRound className="w-3 h-3" />
           ) : botActive ? (
             <UserRound className="w-3 h-3" />
           ) : (
             <BotIcon className="w-3 h-3" />
           )}
-          {botActive ? 'Assumir' : botEnabled ? 'Retomar Bot' : 'Habilitar Bot'}
+          {responderMode === 'manual' || responderOwner === 'human' ? 'Modo manual' : metaActivationUnknown ? 'Aguardando Meta' : responderOwner === 'meta_business_agent' ? 'Assumir no SOS' : botActive ? 'Assumir' : botEnabled ? 'Retomar Bot' : 'Habilitar Bot'}
         </button>
+        {responderOwner === 'sos_sales'
+          && responderMode !== 'sos_sales'
+          && metaAgentReady
+          && (
+            <button
+              type="button"
+              onClick={() => void handleReleaseToMeta()}
+              disabled={botToggling}
+              className="px-2 py-1 rounded-lg text-[10px] font-bold text-violet-700 border border-violet-200 bg-white hover:bg-violet-50 disabled:opacity-50"
+              title="Devolver o controle para o Meta Business Agent"
+            >
+              Devolver à Meta
+            </button>
+          )}
       </div>
 
       {/* Scrollable Dossier Content - compact spacing */}
@@ -575,12 +700,10 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
 
           {expandedBlocks.objective && (
             <div className="p-2 space-y-1.5">
-              {objectiveFacts.map((fact) => (
-                <KnownFactItem
-                  key={fact.id}
-                  fact={fact}
-                  onViewEvidence={handleOpenFactEvidence}
-                />
+              {objectiveFacts.length === 0 ? (
+                <div className="text-center py-1.5 text-xs text-[var(--sos-muted)]">Objetivo ainda não registrado.</div>
+              ) : objectiveFacts.map((fact) => (
+                <KnownFactItem key={fact.id} fact={fact} onViewEvidence={handleOpenFactEvidence} />
               ))}
             </div>
           )}
@@ -760,12 +883,10 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
 
           {expandedBlocks.ownership && (
             <div className="p-2 space-y-1.5">
-              {ownershipList.map((fact) => (
-                <KnownFactItem
-                  key={fact.id}
-                  fact={fact}
-                  onViewEvidence={handleOpenFactEvidence}
-                />
+              {ownershipList.length === 0 ? (
+                <div className="text-center py-1.5 text-xs text-[var(--sos-muted)]">Responsável e prazo ainda não registrados.</div>
+              ) : ownershipList.map((fact) => (
+                <KnownFactItem key={fact.id} fact={fact} onViewEvidence={handleOpenFactEvidence} />
               ))}
             </div>
           )}

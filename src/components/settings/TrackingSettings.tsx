@@ -16,6 +16,7 @@ import {
   HelpCircle,
   Sparkles,
   RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 
 interface TrackingSettingsProps {
@@ -117,11 +118,12 @@ export function resolveWorkspaceTrackingDefaults(wsId: string, wsName?: string):
 }
 
 export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace }) => {
+  const isApiMode = salesOsRuntimeConfig.mode === 'api';
   const defaults = React.useMemo(
-    () => salesOsRuntimeConfig.mode === 'api'
+    () => isApiMode
       ? { pixelId: '', datasetId: '', googleCustomerId: '', googleConversionId: '', metaAccessToken: '', campaigns: [] }
       : resolveWorkspaceTrackingDefaults(workspace.id, workspace.name),
-    [workspace.id, workspace.name]
+    [isApiMode, workspace.id, workspace.name]
   );
 
   const storageKey = `sos_sales_tracking_v3_${workspace.id}`;
@@ -133,7 +135,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
 
   // Meta Login Auth States
   const [metaTab, setMetaTab] = useState<'login_auth' | 'manual'>('login_auth');
-  const [metaAppId, setMetaAppId] = useState('2294262161340902');
+  const [metaAppId, setMetaAppId] = useState('');
 
   const [fetchingDatasets, setFetchingDatasets] = useState(false);
   const [discoveredDatasets, setDiscoveredDatasets] = useState<Array<{
@@ -155,6 +157,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   // Live CAPI Event Testing State
   const [testingCapi, setTestingCapi] = useState(false);
   const [testEventCode, setTestEventCode] = useState('');
+  const [testPhone, setTestPhone] = useState('');
   const [testEventName, setTestEventName] = useState<'Lead' | 'Purchase'>('Lead');
   const [capiTestFeedback, setCapiTestFeedback] = useState<{ success?: boolean; message?: string; details?: any } | null>(null);
 
@@ -197,6 +200,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   };
 
   const [campaignMappings, setCampaignMappings] = useState<CampaignMappingItem[]>(() => {
+    if (salesOsRuntimeConfig.mode === 'api') return [];
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) return JSON.parse(saved);
@@ -314,11 +318,11 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   };
 
   // Select a discovered Dataset and Auto-Save
-  const selectAndBindDataset = async (ds: { id: string; name: string }, tokenToUse?: string) => {
+  const selectAndBindDataset = async (ds: { id: string; name: string; type?: 'dataset' | 'pixel' }, tokenToUse?: string) => {
     const token = tokenToUse || metaAccessToken;
     setSelectedDatasetId(ds.id);
-    setMetaDatasetId(ds.id);
-    setMetaPixelId(ds.id);
+    if (ds.type === 'pixel') setMetaPixelId(ds.id);
+    else setMetaDatasetId(ds.id);
 
     setSavingMeta(true);
     try {
@@ -326,8 +330,8 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          metaPixelId: ds.id,
-          metaDatasetId: ds.id,
+          metaPixelId: ds.type === 'pixel' ? ds.id : metaPixelId,
+          metaDatasetId: ds.type === 'dataset' ? ds.id : metaDatasetId,
           metaAccessToken: token,
           metaCapiEnabled: true,
           campaignMappings,
@@ -339,9 +343,20 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
           success: true,
           message: `✅ Conjunto de Dados "${ds.name}" (${ds.id}) vinculado e salvo com sucesso no SOS-SALES!`,
         });
+      } else {
+        setFeedback({
+          success: false,
+          message: data?.error || `Não foi possível vincular o conjunto de dados (HTTP ${res.status}).`,
+        });
       }
-    } catch {}
-    setSavingMeta(false);
+    } catch (error) {
+      setFeedback({
+        success: false,
+        message: error instanceof Error ? error.message : 'Não foi possível vincular o conjunto de dados.',
+      });
+    } finally {
+      setSavingMeta(false);
+    }
   };
 
 
@@ -400,7 +415,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   const [isAddingCampaign, setIsAddingCampaign] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState('');
   const [newUtmSource, setNewUtmSource] = useState('instagram');
-  const [newProduct, setNewProduct] = useState('Escova Express');
+  const [newProduct, setNewProduct] = useState('');
   const [newHook, setNewHook] = useState('');
 
   // Save Meta Tracking to Backend API & LocalStorage
@@ -472,8 +487,14 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
 
   // Live Test CAPI Event directly against Meta Graph API
   const handleTestCapiEvent = async () => {
-    const targetId = metaDatasetId || metaPixelId;
-    if (!targetId || !metaAccessToken) {
+    if (!testEventCode.trim()) {
+      setCapiTestFeedback({
+        success: false,
+        message: 'Informe o Test Event Code da Meta antes de disparar um evento de teste.',
+      });
+      return;
+    }
+    if ((!metaDatasetId && !metaPixelId) || !metaAccessToken) {
       setCapiTestFeedback({
         success: false,
         message: 'Preencha o Dataset/Pixel ID e o CAPI Access Token antes de disparar o teste.',
@@ -488,11 +509,12 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pixelId: targetId,
-          datasetId: targetId,
+          pixelId: metaPixelId.trim() || undefined,
+          datasetId: metaDatasetId.trim() || undefined,
           accessToken: metaAccessToken,
-          testEventCode: testEventCode.trim() || undefined,
+          testEventCode: testEventCode.trim(),
           eventName: testEventName,
+          phone: testPhone.trim(),
         }),
       });
       const data = await res.json();
@@ -583,8 +605,13 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4" /> Paridade TX CRM Ativa
+          <span className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
+            isApiMode
+              ? 'bg-slate-100 text-slate-700 border border-slate-200'
+              : 'bg-amber-50 text-amber-700 border border-amber-200'
+          }`}>
+            {isApiMode ? <RefreshCw className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+            {isApiMode ? 'Estado proveniente da API' : 'Modo demonstração local'}
           </span>
         </div>
       </div>
@@ -766,13 +793,13 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
               <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-slate-600 space-y-1">
                 <span className="font-bold text-blue-900 block text-xs">💡 Dica Meta Events Manager:</span>
                 <p>
-                  Na nova interface da Meta, a <b>Identificação do conjunto de dados (Dataset ID)</b> é o ID usado tanto para o Pixel quanto para a Conversions API.
+                  Use o <b>Dataset ID</b> exibido no Events Manager para a Conversions API. Pixel ID e Dataset ID são campos diferentes; não os misture sem confirmação da Meta.
                 </p>
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Identificação do Conjunto de Dados / Pixel ID
+                  Identificação do Conjunto de Dados (Dataset ID)
                 </label>
                 <input
                   type="text"
@@ -780,7 +807,6 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
                   value={metaDatasetId}
                   onChange={(e) => {
                     setMetaDatasetId(e.target.value);
-                    setMetaPixelId(e.target.value);
                   }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-[#00A884]"
                 />
@@ -824,7 +850,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
             <span className="font-bold text-slate-800 block text-xs flex items-center gap-1.5">
               <span>🧪</span> Testar Disparo CAPI ao Vivo na Meta
             </span>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
                 <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Tipo de Evento</label>
                 <select
@@ -837,7 +863,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Código de Teste da Meta (Opcional)</label>
+                <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Código de Teste da Meta (obrigatório)</label>
                 <input
                   type="text"
                   placeholder="Ex: TEST12345 (da aba Eventos de Teste)"
@@ -846,12 +872,22 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
                   className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
                 />
               </div>
+              <div>
+                <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Telefone do contato de teste</label>
+                <input
+                  type="tel"
+                  placeholder="Ex: +55 49 99999-9999"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
+                />
+              </div>
             </div>
 
             <button
               type="button"
               onClick={handleTestCapiEvent}
-              disabled={testingCapi || !metaAccessToken || !metaDatasetId}
+              disabled={testingCapi || !metaAccessToken || !metaDatasetId || !testEventCode.trim() || testPhone.replace(/\D/g, '').length < 8}
               className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
             >
               {testingCapi ? (
@@ -1061,90 +1097,16 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
         )}
       </div>
 
-      {/* Gerador de Links Click WA com UTMs em 1-Clique */}
-      <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 rounded-2xl p-6 border border-emerald-500/30 shadow-md text-white space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-emerald-800/40">
-          <div>
-            <h3 className="text-base font-bold text-emerald-400 flex items-center gap-2">
-              <Link2 className="w-5 h-5 text-emerald-400" />
-              Gerador de Links Click WA para Anúncios Meta Ads
-            </h3>
-            <p className="text-xs text-slate-300 mt-0.5">
-              Gere links diretos com gancho e tags UTM embutidas para colar nos criativos de Instagram e campanhas de anúncios.
-            </p>
-          </div>
-          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
-            Click WA · Atribuição 100%
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Número do WhatsApp:</label>
-            <input
-              type="text"
-              defaultValue="554933401014"
-              id="click-wa-phone"
-              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-emerald-300 font-mono text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Código do Criativo / Anúncio:</label>
-            <input
-              type="text"
-              defaultValue="CRTV_ESC_01"
-              id="click-wa-crtv"
-              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-200 font-mono text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Campanha:</label>
-            <select
-              id="click-wa-camp"
-              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-200 text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
-            >
-              <option value="escova_express_haven">Meta Ads — Escova Express R$59</option>
-              <option value="nanoblading_suzana">Instagram — Nanoblading Suzana</option>
-              <option value="promocao_geral">Campanha Geral / Bio</option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-slate-300 text-xs font-semibold mb-1">Mensagem Inicial do Cliente (com Tag de Rastreamento):</label>
-          <input
-            type="text"
-            id="click-wa-msg"
-            defaultValue="Olá! Vi a promoção da Escova Express por R$ 59 no Instagram e quero agendar hoje."
-            className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-slate-100 text-xs focus:ring-1 focus:ring-emerald-400 outline-none"
-          />
-        </div>
-
-        <div className="p-3.5 bg-black/40 border border-emerald-500/20 rounded-xl space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-400">🔗 Link Pronto para o Gerenciador de Anúncios da Meta:</span>
-            <button
-              type="button"
-              onClick={() => {
-                const phone = (document.getElementById('click-wa-phone') as HTMLInputElement)?.value || '554933401014';
-                const crtv = (document.getElementById('click-wa-crtv') as HTMLInputElement)?.value || 'CRTV_ESC_01';
-                const camp = (document.getElementById('click-wa-camp') as HTMLSelectElement)?.value || 'escova_express';
-                const msg = (document.getElementById('click-wa-msg') as HTMLInputElement)?.value || 'Olá!';
-                const fullMsg = `${msg} [ref: ${crtv}] utm_source=instagram&utm_campaign=${camp}`;
-                const generatedUrl = `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(fullMsg)}`;
-                navigator.clipboard.writeText(generatedUrl);
-                setFeedback({ success: true, message: 'Link Click WA copiado para a área de transferência!' });
-              }}
-              className="px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition cursor-pointer shadow-xs"
-            >
-              Copiar Link Click WA
-            </button>
-          </div>
-          <p className="text-[11px] font-mono text-emerald-200/80 break-all bg-slate-900/60 p-2 rounded-lg border border-slate-800">
-            https://wa.me/554933401014?text=Ol%C3%A1%21%20Vi%20a%20promo%C3%A7%C3%A3o%20da%20Escova%20Express%20por%20R%24%2059%20no%20Instagram%20e%20quero%20agendar%20hoje.%20%5Bref%3A%20CRTV_ESC_01%5D%20utm_source%3Dinstagram%26utm_campaign%3Descova_express_haven
+      {/* Link Click WA só volta quando houver criação e atribuição persistidas pela API. */}
+      {salesOsRuntimeConfig.mode === 'api' && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
+          <p className="flex items-center gap-2 text-sm font-bold"><ShieldCheck className="h-4 w-4" /> Link Click WA indisponível neste release</p>
+          <p className="mt-1 text-xs leading-5 text-amber-800">
+            O gerador anterior criava links locais e alegava atribuição sem registrar campanha, criativo ou origem no backend.
+            Ele permanece bloqueado até que a criação e a reconciliação sejam auditáveis pela API.
           </p>
         </div>
-      </div>
+      )}
 
 
       {/* Modal Add Campaign */}

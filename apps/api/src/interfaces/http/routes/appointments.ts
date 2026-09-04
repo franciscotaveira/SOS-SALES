@@ -1,12 +1,13 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AppointmentGateway } from '../../../application/ports/appointment-gateway.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface AppointmentRouteDependencies {
   appointmentGateway?: AppointmentGateway;
 }
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const workspaceParamsSchema = z.object({ workspaceId: uuid });
 const appointmentParamsSchema = z.object({ workspaceId: uuid, appointmentId: uuid });
 

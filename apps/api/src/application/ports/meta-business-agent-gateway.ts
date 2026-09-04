@@ -8,10 +8,36 @@ export type MetaBusinessAgentEligibilityStatus = 'ELIGIBLE' | 'INELIGIBLE' | 'UN
 export interface MetaBusinessAgentEligibility {
   status: MetaBusinessAgentEligibilityStatus;
   phoneNumberId?: string;
+  channelConnectionId?: string;
   checkedAt: string;
   reason?: 'CHANNEL_NOT_CONNECTED' | 'CREDENTIALS_UNAVAILABLE' | 'UPSTREAM_UNAVAILABLE' | 'UPSTREAM_REJECTED' | 'INVALID_RESPONSE';
 }
 
+export interface MetaBusinessAgentOnboarding {
+  agentId: string;
+}
+
+export interface MetaBusinessAgentTestResult {
+  messageId: string;
+  agentResponse: string;
+  conversationId: string;
+  timestamp?: number;
+  handoffReason?: string;
+  noResponseReason?: string;
+  quickReplies?: string[];
+  productVariantIds?: string[];
+}
+
+export interface MetaBusinessAgentThreadControlResult {
+  messagingProduct: 'whatsapp';
+}
+
 export interface MetaBusinessAgentGateway {
-  checkEligibility(workspaceId: string): Promise<MetaBusinessAgentEligibility>;
+  checkEligibility(workspaceId: string, channelConnectionId?: string): Promise<MetaBusinessAgentEligibility>;
+  startOnboarding?(workspaceId: string, catalogId?: string, channelConnectionId?: string): Promise<MetaBusinessAgentOnboarding>;
+  testAgent?(workspaceId: string, userMsg: string, conversationId?: string, channelConnectionId?: string): Promise<MetaBusinessAgentTestResult>;
+  controlThread?(
+    workspaceId: string,
+    input: { action: 'take' | 'release'; to: string; metadata?: string; channelConnectionId?: string },
+  ): Promise<MetaBusinessAgentThreadControlResult>;
 }

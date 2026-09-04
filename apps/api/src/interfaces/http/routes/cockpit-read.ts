@@ -1,12 +1,13 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { CockpitReadGateway } from '../../../application/ports/cockpit-read-gateway.js';
+import { canonicalUuid } from '../validation.js';
 
 export interface CockpitReadRouteDependencies {
   cockpitReadGateway?: CockpitReadGateway;
 }
 
-const uuid = z.string().uuid();
+const uuid = canonicalUuid;
 const boundedQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
   cursor: z.string().min(1).max(512).nullable().optional().transform((value) => value ?? null),

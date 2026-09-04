@@ -155,13 +155,13 @@ export const CampaignLinksTab: React.FC<CampaignLinksTabProps> = ({ workspace })
                   Click to WhatsApp (CTWA)
                 </span>
                 <span className="bg-[var(--sos-success)]/10 text-[var(--sos-success)] text-[9.5px] font-bold px-2 py-0.5 rounded-full border border-[var(--sos-success)]/30">
-                  Atribuição Automática
+                  Mensagem pré-preenchida
                 </span>
               </div>
               <h2 className="text-base font-bold">Gerador de Links de Campanha & QR Codes</h2>
               <p className="text-[9.5px] text-[var(--sos-muted)] max-w-2xl mt-0.5 leading-relaxed">
                 Crie links diretos para o WhatsApp oficial com mensagens pré-preenchidas por anúncio.
-                O SOS Sales identifica automaticamente a origem do lead quando a conversa é iniciada.
+                Este link abre o WhatsApp com texto pré-preenchido. A atribuição automática só é garantida quando a Meta envia o referral de um anúncio CTWA; UTMs digitadas aqui não são anexadas ao wa.me.
               </p>
             </div>
 
@@ -258,7 +258,7 @@ export const CampaignLinksTab: React.FC<CampaignLinksTabProps> = ({ workspace })
             <div className="p-3 bg-[var(--sos-border)]/30 border border-[var(--sos-border)] rounded-lg space-y-2.5">
               <div className="flex items-center gap-1 text-[9.5px] font-bold text-[var(--sos-ink)]">
                 <Tag size={12} className="text-[var(--sos-action)]" />
-                <span>Parâmetros de Atribuição (Meta Ads / UTM)</span>
+                <span>Referência da campanha (uso operacional)</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
@@ -295,6 +295,9 @@ export const CampaignLinksTab: React.FC<CampaignLinksTabProps> = ({ workspace })
                   />
                 </div>
               </div>
+              <p className="text-[9px] leading-relaxed text-[var(--sos-muted)]">
+                Estes campos ajudam a nomear o link e a mensagem, mas não criam uma atribuição persistida sozinhos. Para medir origem, use CTWA da Meta ou registre a campanha em Rastreamento após conectar o canal.
+              </p>
             </div>
           </div>
 

@@ -78,7 +78,7 @@ export const OFFICIAL_WABA_PRESETS: OfficialTemplatePreset[] = [
     name: 'oferta_relampago_vip_v1',
     category: 'MARKETING',
     header: 'Apenas Hoje',
-    body: 'Olá {{1}}! Liberamos 3 vagas promocionais com 20% de desconto para atendimentos agendados ainda hoje. Deseja garantir sua vaga?',
+    body: 'Olá {{1}}! Temos uma condição especial para atendimentos agendados hoje. Deseja conferir os horários e as condições vigentes?',
     buttonType: 'QUICK_REPLY',
     buttonText: 'Garantir com Desconto',
     badge: '🏷️ Oferta VIP (Modelo Sugerido)',
@@ -89,7 +89,7 @@ export const OFFICIAL_WABA_PRESETS: OfficialTemplatePreset[] = [
     name: 'pesquisa_satisfacao_nps_v2',
     category: 'MARKETING',
     header: 'Como foi sua Experiência?',
-    body: 'Olá {{1}}, tudo bem? Agradecemos sua visita hoje na Haven! Como você avalia o atendimento no seu procedimento de {{2}} realizado com a nossa equipe?',
+    body: 'Olá {{1}}, tudo bem? Agradecemos sua visita hoje. Como você avalia o atendimento no procedimento de {{2}} realizado pela nossa equipe?',
     buttonType: 'QUICK_REPLY',
     buttonText: 'Excelente Atendimento',
     badge: '⭐ Pesquisa NPS (Modelo Sugerido)',
@@ -264,7 +264,7 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
               </span>
             </div>
             <p className="text-[9.5px] text-[var(--sos-muted)] mt-0.5">
-              Crie modelos para reengajar clientes após a janela de 24h ou disparar confirmações automáticas com zero risco de bloqueio.
+              Crie modelos para reengajar clientes após a janela de 24h ou disparar confirmações automáticas. A aprovação e a entrega final dependem da Meta.
             </p>
           </div>
         </div>
@@ -307,7 +307,7 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
         <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs flex items-start gap-3 animate-in fade-in">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="font-bold">Canal WhatsApp Oficial (WABA) Desconectado</p>
+            <p className="font-bold">Configuração do canal WABA não confirmada</p>
             <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
               Para criar, sincronizar e aprovar modelos de mensagem (HSM) diretamente na Meta, conecte seu número oficial em <span className="font-bold">Configurações &gt; Canais</span>. As instâncias via WhatsApp Web (WAHA) não exigem aprovação de modelos HSM.
             </p>
@@ -316,12 +316,12 @@ export const WabaTemplatesTab: React.FC<WabaTemplatesTabProps> = ({ workspace })
       )}
 
       {wabaConnected === true && (
-        <div className="p-2.5 bg-emerald-50 border border-emerald-300/60 rounded-xl text-emerald-900 text-xs flex items-center justify-between animate-in fade-in">
+        <div className="p-2.5 bg-sky-50 border border-sky-300/60 rounded-xl text-sky-950 text-xs flex items-center justify-between animate-in fade-in">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="font-bold text-[11px]">Canal WABA Conectado: {wabaPhone || 'Meta Cloud API Ativa'}</span>
+            <ShieldCheck className="w-4 h-4 text-sky-600 shrink-0" />
+            <span className="font-bold text-[11px]">Configuração WABA registrada: {wabaPhone || 'Meta Cloud API'}</span>
           </div>
-          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-md">Templates sincronizados em tempo real</span>
+          <span className="text-[10px] bg-sky-100 text-sky-900 font-semibold px-2 py-0.5 rounded-md">Credenciais lidas pelo backend</span>
         </div>
       )}
 

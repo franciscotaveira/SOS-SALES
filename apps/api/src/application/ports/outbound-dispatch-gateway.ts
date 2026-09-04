@@ -95,5 +95,12 @@ export interface OutboundDispatchGateway {
   listClaimableDispatches(params: { limit: number }): Promise<Array<{ dispatchId: string; workspaceId: string }>>;
   claimDispatch(params: { dispatchId: string; workerId: string; leaseSeconds?: number }): Promise<ClaimedOutboundDispatch | null>;
   recordProviderAcceptance(params: { dispatchId: string; claimToken: string; workerId: string; providerMessageId: string }): Promise<OutboundDispatchMutationResult | null>;
-  recordProviderFailure(params: { dispatchId: string; claimToken: string; workerId: string; failureCode: string }): Promise<OutboundDispatchMutationResult | null>;
+  recordProviderFailure(params: {
+    dispatchId: string;
+    claimToken: string;
+    workerId: string;
+    failureCode: string;
+    /** Retry only provider failures explicitly classified as safe to retry. */
+    retryable?: boolean;
+  }): Promise<OutboundDispatchMutationResult | null>;
 }

@@ -15,7 +15,9 @@ import {
   Check,
   UploadCloud,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
+import { salesOsRuntimeConfig } from '../../config/runtime';
 import {
   SalesMediaResource,
   getSalesMediaForWorkspace,
@@ -35,7 +37,9 @@ export const SalesMediaVaultModal: React.FC<SalesMediaVaultModalProps> = ({
   onClose,
   onSendMediaResource,
 }) => {
+  const isLiveApi = salesOsRuntimeConfig.mode === 'api';
   const [resources, setResources] = React.useState<SalesMediaResource[]>(() => {
+    if (isLiveApi) return [];
     try {
       const saved = localStorage.getItem(`sos_sales_media_vault_${workspaceId}`);
       if (saved) return JSON.parse(saved);
@@ -52,16 +56,53 @@ export const SalesMediaVaultModal: React.FC<SalesMediaVaultModalProps> = ({
   const [newCategory, setNewCategory] = React.useState('Sobrancelhas & Estética Facial');
   const [newType, setNewType] = React.useState<'audio' | 'image' | 'pdf' | 'video'>('audio');
   const [newCaption, setNewCaption] = React.useState('');
+  const [mediaError, setMediaError] = React.useState<string | null>(null);
 
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   React.useEffect(() => {
+    if (isLiveApi) return;
     try {
       localStorage.setItem(`sos_sales_media_vault_${workspaceId}`, JSON.stringify(resources));
     } catch {}
-  }, [resources, workspaceId]);
+  }, [isLiveApi, resources, workspaceId]);
 
   if (!isOpen) return null;
+
+  if (isLiveApi) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl border border-amber-200 shadow-2xl w-full max-w-lg overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 flex items-center justify-center">
+                <AlertTriangle size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold">Vault de mídia indisponível</h3>
+                <p className="text-[11px] text-slate-300">Nenhum recurso local será usado em produção.</p>
+              </div>
+            </div>
+            <button type="button" onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800" aria-label="Fechar Vault">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="p-6 space-y-3 text-center">
+            <p className="text-sm font-semibold text-slate-900">Upload persistido ainda não está conectado ao backend.</p>
+            <p className="text-xs leading-relaxed text-slate-600">
+              Para liberar este recurso, é necessário armazenar o arquivo, validar o canal (WAHA ou WABA), registrar o envio e confirmar o resultado após recarregar a conversa.
+            </p>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-[11px] text-amber-900">
+              O botão de mídia permanece bloqueado para impedir envio de URLs ou arquivos de demonstração.
+            </div>
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800">
+              Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const togglePlayAudio = (resource: SalesMediaResource) => {
     if (playingId === resource.id) {
@@ -88,6 +129,10 @@ export const SalesMediaVaultModal: React.FC<SalesMediaVaultModalProps> = ({
   };
 
   const handleSend = (res: SalesMediaResource) => {
+    if (isLiveApi) {
+      setMediaError('O envio de mídia está bloqueado até o Vault persistido e o upload do provedor serem homologados.');
+      return;
+    }
     if (audioRef.current) {
       audioRef.current.pause();
       setPlayingId(null);
@@ -97,6 +142,10 @@ export const SalesMediaVaultModal: React.FC<SalesMediaVaultModalProps> = ({
   };
 
   const handleAddNewResource = () => {
+    if (isLiveApi) {
+      setMediaError('O cadastro de mídia exige um contrato de upload no backend. Nenhum recurso local foi criado.');
+      return;
+    }
     if (!newTitle.trim()) return;
 
     const created: SalesMediaResource = {

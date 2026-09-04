@@ -71,21 +71,26 @@ export async function metaPartnerRoutes(
   const privateReplyService = new PrivateReplyService();
 
   // Helper to extract page credentials from secure channel_connection_secrets
-  const getPageCredentials = async (workspaceId: string, channelId?: string) => {
+  const getPageCredentials = async (
+    workspaceId: string,
+    channelId?: string,
+    expectedProvider: 'messenger' | 'instagram_dm' = 'messenger',
+  ) => {
     let query = `
       SELECT cc.id, cc.public_config, cs.secret_payload
       FROM public.channel_connections cc
       LEFT JOIN public.channel_connection_secrets cs
         ON cs.channel_connection_id = cc.id AND cs.secret_kind = 'meta_bearer_token'
       WHERE cc.workspace_id = $1
+        AND cc.provider = $2
+        AND cc.status = 'CONNECTED'
     `;
-    const params: any[] = [workspaceId];
+    const params: any[] = [workspaceId, expectedProvider];
     if (channelId) {
-      query += ` AND cc.id = $2`;
+      query += ` AND cc.id = $3`;
       params.push(channelId);
-    } else {
-      query += ` AND cc.provider IN ('messenger', 'instagram_dm', 'meta_cloud') ORDER BY cc.created_at ASC`;
     }
+    query += ' ORDER BY cc.created_at ASC';
     const res = await dbPool.query(query, params);
     if (res.rows.length === 0) {
       throw new Error('Nenhum canal Meta/Messenger configurado no workspace');
@@ -153,15 +158,57 @@ export async function metaPartnerRoutes(
     const { enabled = true, customModel } = request.body || {};
 
     try {
-      const { pageAccessToken } = await getPageCredentials(workspaceId);
+      const { channelId, pageAccessToken } = await getPageCredentials(workspaceId);
       if (!pageAccessToken) {
         return reply.status(400).send({ error: 'Page Access Token não encontrado' });
       }
 
       const res = await messengerClient.enableNlp(pageAccessToken, enabled, customModel);
-      return reply.send({ success: res.success, message: `Meta Built-in NLP ${enabled ? 'ativado' : 'desativado'} com sucesso.` });
+      if (!res.success) {
+        return reply.status(502).send({ error: 'A Meta não confirmou a alteração do Built-in NLP.' });
+      }
+
+      await dbPool.query(
+        `UPDATE public.channel_connections
+         SET public_config = jsonb_set(
+           COALESCE(public_config, '{}'::jsonb),
+           '{nlpConfig}',
+           $1::jsonb,
+           true
+         ), updated_at = NOW()
+         WHERE id = $2 AND workspace_id = $3`,
+        [JSON.stringify({ enabled: Boolean(enabled), ...(customModel ? { customModel } : {}), updatedAt: new Date().toISOString() }), channelId, workspaceId],
+      );
+
+      return reply.send({ success: true, enabled: Boolean(enabled), message: `Meta Built-in NLP ${enabled ? 'ativado' : 'desativado'} com sucesso.` });
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // The Meta APIs do not expose a read endpoint for these page settings. Keep
+  // the last confirmed state in the channel's non-secret public configuration
+  // so the UI never presents a fabricated "active" status before loading.
+  app.get('/api/v1/workspaces/:workspaceId/channels/messenger/config', async (
+    request: FastifyRequest<{ Params: { workspaceId: string } }>,
+    reply: FastifyReply,
+  ) => {
+    const workspaceId = normalizeWorkspaceUuid(request.params.workspaceId);
+    if (!workspaceId) return reply.status(404).send({ error: 'Workspace não encontrado', statusCode: 404 });
+
+    try {
+      const { channelId, config } = await getPageCredentials(workspaceId);
+      const nlp = config?.nlpConfig && typeof config.nlpConfig === 'object' ? config.nlpConfig : null;
+      const privateReply = config?.privateReplyConfig && typeof config.privateReplyConfig === 'object'
+        ? config.privateReplyConfig
+        : null;
+      return reply.send({
+        channelConnectionId: channelId,
+        nlp,
+        privateReply,
+      });
+    } catch (err: any) {
+      return reply.status(404).send({ error: err.message || 'Canal Messenger não configurado.' });
     }
   });
 
@@ -221,7 +268,7 @@ export async function metaPartnerRoutes(
     }
 
     try {
-      const { igUserId, pageAccessToken } = await getPageCredentials(workspaceId);
+      const { igUserId, pageAccessToken } = await getPageCredentials(workspaceId, undefined, 'instagram_dm');
       if (!igUserId || !pageAccessToken) {
         return reply.status(400).send({ error: 'Instagram User ID ou Page Access Token não configurado' });
       }
@@ -252,7 +299,7 @@ export async function metaPartnerRoutes(
     const { channelConnectionId, enabled, keywords, replyTemplate } = request.body;
 
     try {
-      const { channelId } = await getPageCredentials(workspaceId, channelConnectionId);
+      const { channelId } = await getPageCredentials(workspaceId, channelConnectionId, 'messenger');
 
       await dbPool.query(
         `UPDATE public.channel_connections 
@@ -302,7 +349,7 @@ export async function metaPartnerRoutes(
     }
 
     try {
-      const { channelId } = await getPageCredentials(workspaceId, channelConnectionId);
+      const { channelId } = await getPageCredentials(workspaceId, channelConnectionId, 'messenger');
       const result = await privateReplyService.dispatchPrivateReply({
         workspaceId,
         channelConnectionId: channelId,
@@ -313,6 +360,12 @@ export async function metaPartnerRoutes(
       });
 
       if (!result.success) {
+        if (result.status === 'UNKNOWN') {
+          return reply.status(503).send(result);
+        }
+        if (result.alreadyReplied) {
+          return reply.status(409).send(result);
+        }
         return reply.status(400).send(result);
       }
       return reply.send(result);
