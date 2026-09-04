@@ -213,6 +213,16 @@ reinício, troca de segredo ou promoção foi executada nesta rodada.
   `20260901120000_agent_responder_ownership.sql` até
   `20260903050000_receptionist_outbound_reservations.sql`. O dry-run não alterou
   o banco.
+- **[KNOWN]** No snapshot de produção, a sessão WAHA `default` está `WORKING`,
+  enquanto `haven`, `sora` e `matriz` estão em `SCAN_QR_CODE`; o banco mantém o
+  canal WAHA da Haven como `DISCONNECTED` e o canal Meta Cloud da Haven como
+  `CONNECTED`.
+- **[KNOWN]** Nas últimas 24 horas a release `d382cb2` gravou 199 mensagens
+  inbound e 108 outbound do canal WAHA diretamente em `conversation_messages`,
+  mas há **zero** `inbound_channel_events` e **zero** `outbox_events` no mesmo
+  período. Isso confirma que o espelho legado está recebendo tráfego, mas o
+  caminho durável de workers/IA ainda não está sendo exercitado pela release
+  ativa.
 
 ### Decisão
 
