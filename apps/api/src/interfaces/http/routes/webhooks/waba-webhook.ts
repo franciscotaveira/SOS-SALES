@@ -457,6 +457,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
    */
   app.get('/api/v1/channels/waba/webhook', handleVerification);
   app.get('/webhooks/waba', handleVerification);
+  app.get('/api/meta/webhook', handleVerification);
 
   /** 
    * 2. POST Webhook Events (Messages, Statuses, Referrals, Interactive Clicks)
@@ -874,4 +875,5 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
 
   app.post('/api/v1/channels/waba/webhook', handleEvents);
   app.post('/webhooks/waba', handleEvents);
+  app.post('/api/meta/webhook', handleEvents);
 };

@@ -547,13 +547,19 @@ export async function whatsappChannelRoutes(
   // 6. Configure Meta Cloud API (WABA)
   app.post('/api/v1/workspaces/:workspaceId/channels/waba/configure', async (request: FastifyRequest<{
     Params: { workspaceId: string };
-    Body: { phoneNumberId: string; wabaId: string; accessToken: string; verifyToken?: string };
+    Body: { phoneNumberId: string; wabaId: string; accessToken?: string; verifyToken?: string };
   }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
-    const { phoneNumberId, wabaId, accessToken } = request.body || {};
+    let { phoneNumberId, wabaId, accessToken } = request.body || {};
+
+    if (!accessToken || accessToken === 'use_server_default') {
+      accessToken = process.env.META_SYSTEM_USER_TOKEN || '';
+    }
 
     if (!phoneNumberId || !wabaId || !accessToken) {
-      return reply.status(400).send({ error: 'Campos obrigatórios: phoneNumberId, wabaId, accessToken' });
+      return reply.status(400).send({
+        error: 'Campos obrigatórios: phoneNumberId, wabaId e accessToken (ou configure META_SYSTEM_USER_TOKEN no servidor)',
+      });
     }
 
     try {
@@ -715,6 +721,10 @@ export async function whatsappChannelRoutes(
       } catch (err: any) {
         return reply.status(400).send({ error: `Erro ao trocar código por token Meta: ${err.message}` });
       }
+    }
+
+    if (!accessToken || accessToken === 'use_server_default') {
+      accessToken = process.env.META_SYSTEM_USER_TOKEN || '';
     }
 
     if (!accessToken) {
@@ -960,7 +970,7 @@ export async function whatsappChannelRoutes(
       return {
         phoneNumberId: publicConfig?.phoneNumberId as string,
         wabaId: publicConfig?.wabaId as string,
-        accessToken: (secretPayload?.accessToken || '') as string,
+        accessToken: ((secretPayload?.accessToken || process.env.META_SYSTEM_USER_TOKEN || '') as string),
       };
     } finally {
       client.release();
@@ -970,11 +980,14 @@ export async function whatsappChannelRoutes(
   // 6.2. List WABA accounts associated with an access token (for account picker)
   app.post('/api/v1/workspaces/:workspaceId/channels/waba/list-accounts', async (request: FastifyRequest<{
     Params: { workspaceId: string };
-    Body: { accessToken: string };
+    Body: { accessToken?: string };
   }>, reply: FastifyReply) => {
-    const { accessToken } = request.body || {};
+    let { accessToken } = request.body || {};
+    if (!accessToken || accessToken === 'use_server_default') {
+      accessToken = process.env.META_SYSTEM_USER_TOKEN || '';
+    }
     if (!accessToken) {
-      return reply.status(400).send({ error: 'accessToken obrigatório' });
+      return reply.status(400).send({ error: 'accessToken obrigatório ou configure META_SYSTEM_USER_TOKEN no servidor.' });
     }
     const token = accessToken.trim();
     const accounts: Array<{ id: string; name: string; phoneNumbers?: Array<{ id: string; display_phone_number: string; verified_name: string }> }> = [];
@@ -1061,6 +1074,26 @@ export async function whatsappChannelRoutes(
         }
       } catch {}
 
+      // Strategy 3: Probe known default WABAs if accounts array is still empty (common for System User tokens)
+      if (accounts.length === 0) {
+        const candidateWabaIds = ['1749193841879179'];
+        for (const candidateId of candidateWabaIds) {
+          if (!seenWabaIds.has(candidateId)) {
+            try {
+              const probeRes = await fetch(
+                `https://graph.facebook.com/v20.0/${encodeURIComponent(candidateId)}?fields=id,name,phone_numbers{id,display_phone_number,verified_name}&access_token=${encodeURIComponent(token)}`
+              );
+              if (probeRes.ok) {
+                const probeData = (await probeRes.json()) as any;
+                seenWabaIds.add(candidateId);
+                const phoneNumbers = Array.isArray(probeData.phone_numbers?.data) ? probeData.phone_numbers.data : [];
+                accounts.push({ id: candidateId, name: probeData.name || `WABA ${candidateId}`, phoneNumbers });
+              }
+            } catch {}
+          }
+        }
+      }
+
       return { success: true, tokenValidated: true, accounts };
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });
@@ -1097,6 +1130,28 @@ export async function whatsappChannelRoutes(
 
   app.get('/api/v1/workspaces/:workspaceId/channels/waba/channel-info', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
     return handleWabaChannelInfo(request.params.workspaceId, reply);
+  });
+
+  // 6.10. WABA: Get server-side Meta App and System Configuration (Configuração Simplificada)
+  app.get('/api/v1/workspaces/:workspaceId/channels/waba/server-config', async (
+    _request: FastifyRequest<{ Params: { workspaceId: string } }>,
+    reply: FastifyReply
+  ) => {
+    const hasServerToken = Boolean(process.env.META_SYSTEM_USER_TOKEN);
+    const configuredAppId = process.env.META_ID_APP || '2294262161340902';
+
+    return reply.status(200).send({
+      success: true,
+      serverTokenAvailable: hasServerToken,
+      appId: configuredAppId,
+      appName: configuredAppId === '2294262161340902' ? 'CRM TX APP' : 'Meta Business App',
+      defaultWabaId: '1749193841879179',
+      defaultPhoneNumberId: '2498930403536552',
+      defaultDisplayPhone: '+55 49 8837-0054',
+      defaultVerifiedName: 'Haven Escovaria',
+      webhookUrl: 'https://crm.iaparavendas.tech/api/v1/channels/waba/webhook',
+      webhookLegacyUrl: 'https://crm.iaparavendas.tech/api/meta/webhook',
+    });
   });
 
   // Explicit backend contract for the Arsenal UI. Unsupported actions are
