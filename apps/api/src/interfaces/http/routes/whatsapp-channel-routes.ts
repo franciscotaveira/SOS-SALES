@@ -216,6 +216,17 @@ export async function whatsappChannelRoutes(
       let session = sessions.find((s) => s.name === sessionName);
 
       if (!session || session.status === 'STOPPED' || session.status === 'FAILED') {
+        if (session && session.status === 'FAILED') {
+          try {
+            await fetch(`${WAHA_BASE_URL}/api/sessions/${sessionName}/stop`, {
+              method: 'POST',
+              headers: { 'x-api-key': getWahaApiKey() },
+            });
+          } catch {
+            // ignore stop error
+          }
+        }
+
         const startRes = await fetch(`${WAHA_BASE_URL}/api/sessions/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': getWahaApiKey() },
