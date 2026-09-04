@@ -31,8 +31,8 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
   onSuccess,
   canManage = true,
 }) => {
-  const [appId, setAppId] = useState('');
-  const [configId, setConfigId] = useState('');
+  const [appId, setAppId] = useState('2294262161340902');
+  const [configId, setConfigId] = useState('2873058403080428');
   const [useHybridApp, setUseHybridApp] = useState(true);
   const [connectionMode, setConnectionMode] = useState<'embedded' | 'manual'>('embedded');
   const [manualWabaId, setManualWabaId] = useState('');
