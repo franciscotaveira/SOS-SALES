@@ -228,8 +228,10 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
         : 'Elegibilidade do agente: verificar';
 
   // Fetch QR Code
-  const fetchQrCode = async () => {
-    setQrLoading(true);
+  const fetchQrCode = async (isManual = false) => {
+    if (!qrData || isManual) {
+      setQrLoading(true);
+    }
     try {
       const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/qr`);
       const data = await res.json();
@@ -250,13 +252,36 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   };
 
   React.useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let statusInterval: NodeJS.Timeout;
+    let qrRefreshInterval: NodeJS.Timeout;
+
     if (qrModalOpen) {
-      fetchQrCode();
-      interval = setInterval(fetchQrCode, 3500);
+      fetchQrCode(true);
+
+      // Lightweight status poll: checks if user scanned without refreshing/blinking the QR image
+      statusInterval = setInterval(async () => {
+        try {
+          const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`);
+          const data = await res.json();
+          if (data.status === 'WORKING') {
+            setQrStatus('WORKING');
+            setActionFeedback('WhatsApp conectado com sucesso!');
+            fetchChannelStatus();
+            setTimeout(() => setQrModalOpen(false), 1500);
+          }
+        } catch {
+          // ignore status poll error
+        }
+      }, 3000);
+
+      // Re-fetch QR image only after 25s (natural WhatsApp Web QR expiry)
+      qrRefreshInterval = setInterval(() => {
+        fetchQrCode(false);
+      }, 25000);
     }
     return () => {
-      if (interval) clearInterval(interval);
+      if (statusInterval) clearInterval(statusInterval);
+      if (qrRefreshInterval) clearInterval(qrRefreshInterval);
     };
   }, [qrModalOpen, workspace.id]);
 
@@ -939,7 +964,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
               ) : qrData ? (
                 <div className="space-y-2 text-center">
                   <img src={qrData} alt="WhatsApp QR Code" className="w-56 h-56 object-contain rounded-xl shadow-xs mx-auto border border-slate-100" />
-                  <span className="text-[11px] text-slate-400 block">Atualização automática ativa a cada 3.5s</span>
+                  <span className="text-[11px] text-slate-500 font-medium block">QR Code estável (25s) · Conexão detectada automaticamente</span>
                 </div>
               ) : (
                 <div className="text-xs text-slate-500 flex flex-col items-center gap-2">
@@ -952,7 +977,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
             <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
-                onClick={fetchQrCode}
+                onClick={() => fetchQrCode(true)}
                 disabled={qrLoading}
                 className="px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
               >
