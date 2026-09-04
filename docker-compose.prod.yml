@@ -1,3 +1,5 @@
+name: sos-sales
+
 services:
   # ---------------------------------------------------------------------------
   # REVERSE PROXY & AUTOMATIC TLS (CADDY)
