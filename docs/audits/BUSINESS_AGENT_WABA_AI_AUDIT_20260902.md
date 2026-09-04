@@ -208,6 +208,11 @@ reinício, troca de segredo ou promoção foi executada nesta rodada.
   índices, assinaturas de funções nem as tabelas críticas. Ele aceitou o
   fallback quando o ledger interno não pôde ser lido; portanto não é evidência
   de que o contrato do release esteja aplicado.
+- **[KNOWN]** O `supabase db push --dry-run --skip-vault` autenticado no projeto
+  `yiiuebhyqixzluguxsqi` lista exatamente onze migrations pendentes, de
+  `20260901120000_agent_responder_ownership.sql` até
+  `20260903050000_receptionist_outbound_reservations.sql`. O dry-run não alterou
+  o banco.
 
 ### Decisão
 
