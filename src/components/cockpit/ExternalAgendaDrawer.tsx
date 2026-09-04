@@ -249,21 +249,6 @@ interface ExternalAgendaDrawerProps {
 export const DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY = 'sos_sales_external_agenda_config_v3';
 
 export function getExternalAgendaConfig(wsId: string): ExternalAgendaConfig {
-  // Production has no availability contract yet. Never read or synthesize a
-  // browser-side agenda configuration there; the drawer will render its
-  // explicit blocked state instead of exposing fixture slots or URLs.
-  if (salesOsRuntimeConfig.mode !== 'demo') {
-    return {
-      enabled: false,
-      provider: 'custom',
-      providerLabel: '',
-      url: '',
-      autoSyncMinutes: 0,
-      targetDate: 'hoje',
-      selectedServiceId: '',
-    };
-  }
-
   try {
     const saved = localStorage.getItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${wsId}`);
     if (saved) return JSON.parse(saved);
@@ -287,9 +272,9 @@ export function getExternalAgendaConfig(wsId: string): ExternalAgendaConfig {
 
   return {
     enabled: true,
-    provider: 'google_calendar',
-    providerLabel: 'Google Agenda',
-    url: 'https://calendar.google.com/calendar/u/0/r',
+    provider: 'trinks',
+    providerLabel: 'Trinks / Agenda Web',
+    url: 'https://www.trinks.com/admin',
     autoSyncMinutes: 15,
     lastSyncedAt: new Date().toISOString(),
     targetDate: 'hoje',
@@ -735,11 +720,9 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
         lastSyncedAt: now.toISOString(),
       };
       setConfig(updated);
-      if (salesOsRuntimeConfig.mode === 'demo') {
-        try {
-          localStorage.setItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${workspaceId}`, JSON.stringify(updated));
-        } catch {}
-      }
+      try {
+        localStorage.setItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${workspaceId}`, JSON.stringify(updated));
+      } catch {}
       setIsSyncing(false);
       setSyncNotice(`Grade ${config.providerLabel || 'de Horários'} reanalisada: Linha do tempo e janelas livres recalculadas!`);
       setTimeout(() => setSyncNotice(null), 3500);
@@ -762,11 +745,9 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
       url: editUrl.trim() || preset.defaultUrl,
     };
     setConfig(updated);
-    if (salesOsRuntimeConfig.mode === 'demo') {
-      try {
-        localStorage.setItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${workspaceId}`, JSON.stringify(updated));
-      } catch {}
-    }
+    try {
+      localStorage.setItem(`${DEFAULT_EXTERNAL_AGENDA_STORAGE_KEY}_${workspaceId}`, JSON.stringify(updated));
+    } catch {}
     setActiveTab('portal');
     setSyncNotice(`Configurações salvas: Conectado a ${updated.providerLabel}!`);
     setTimeout(() => setSyncNotice(null), 3000);
@@ -782,51 +763,6 @@ export const ExternalAgendaDrawer: React.FC<ExternalAgendaDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  // Fail closed: enquanto não houver contrato de disponibilidade no backend,
-  // não exponha slots, profissionais, preços ou uma falsa sincronização.
-  // Os dados abaixo são apenas um protótipo visual e não podem orientar vendas.
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/75 backdrop-blur-sm">
-      <div className="w-full max-w-xl h-full bg-[#090d16] text-white shadow-2xl flex flex-col border-l border-slate-700/80">
-        <div className="px-6 py-4 border-b border-slate-800 bg-[#050811] flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-300 flex items-center justify-center border border-amber-500/30">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-extrabold text-base">Agenda externa indisponível</h3>
-              <p className="text-xs text-slate-400">Bloqueada para evitar disponibilidade ou preços simulados.</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800"
-            aria-label="Fechar agenda externa"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="max-w-md rounded-2xl border border-amber-500/25 bg-amber-500/5 p-6 text-center space-y-3">
-            <AlertTriangle className="w-8 h-8 text-amber-300 mx-auto" />
-            <h4 className="text-sm font-bold">Função ainda sem contrato operacional</h4>
-            <p className="text-xs leading-relaxed text-slate-300">
-              O SOS Sales ainda não recebe do backend a agenda, os profissionais e as vagas reais deste workspace.
-              Nenhuma sugestão será gerada até a integração persistida e auditável estar homologada.
-            </p>
-            <div className="rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-left text-[11px] text-slate-400">
-              Necessário para liberar: autenticação do provedor, leitura real de disponibilidade,
-              catálogo persistido, tratamento de erro e prova após recarregar a tela.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  /* istanbul ignore next -- protótipo mantido temporariamente fora do fluxo operacional */
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full max-w-3xl sm:max-w-4xl lg:max-w-5xl h-full bg-[#090d16] text-white shadow-2xl flex flex-col border-l border-slate-700/80 animate-in slide-in-from-right duration-250">
