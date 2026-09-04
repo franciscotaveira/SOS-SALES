@@ -65,8 +65,7 @@ verify_release_schema() {
   docker run --rm \
     -v /opt/sos-sales:/opt/sos-sales \
     -w "${release}" \
-    -e NODE_TLS_REJECT_UNAUTHORIZED=0 \
-    -e DATABASE_SSL_REJECT_UNAUTHORIZED=false \
+    -e DATABASE_SSL_CA_FILE="${release}/certs/supabase-ca.crt" \
     node:20-alpine \
     node "${release}/scripts/verify-production-schema.mjs" \
       --env-file "${root}/.env.production" \

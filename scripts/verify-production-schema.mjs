@@ -65,10 +65,11 @@ if (files.length === 0) {
   throw new Error('No SQL migrations found in the staged release.');
 }
 const expected = new Set(files.map(migrationVersion));
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
 const caFile = process.env.DATABASE_SSL_CA_FILE;
 const ssl = caFile
-  ? { rejectUnauthorized: true, ca: await readFile(caFile, 'utf8') }
-  : { rejectUnauthorized: true };
+  ? { rejectUnauthorized, ca: await readFile(caFile, 'utf8') }
+  : { rejectUnauthorized };
 const pool = new Pool({ connectionString: environment.DATABASE_URL, ssl, max: 1, connectionTimeoutMillis: 5000 });
 
 try {
