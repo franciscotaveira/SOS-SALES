@@ -94,16 +94,18 @@ describe('Meta webhook provider ownership', () => {
         responder_mode: 'auto_fallback',
         meta_agent_id: 'agent-1',
         meta_agent_enabled: true,
+        meta_agent_channel_connection_id: 'connection-a',
         meta_agent_eligibility_status: 'ELIGIBLE',
         meta_agent_checked_at: new Date().toISOString(),
         meta_agent_activation_status: 'READY',
       }],
     }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
 
-    await expect(resolveWorkspaceResponderDefaults('workspace-a', query)).resolves.toEqual({
+    await expect(resolveWorkspaceResponderDefaults('workspace-a', 'connection-a', query)).resolves.toEqual({
       responderMode: 'auto_fallback',
       responderOwner: 'meta_business_agent',
       metaAgentId: 'agent-1',
+      metaAgentChannelConnectionId: 'connection-a',
       metaAgentEnabled: true,
       metaAgentEligibilityStatus: 'ELIGIBLE',
       metaAgentCheckedAt: expect.any(String),
@@ -118,6 +120,7 @@ describe('Meta webhook provider ownership', () => {
           responder_mode: 'auto_fallback',
           meta_agent_id: 'agent-1',
           meta_agent_enabled: true,
+          meta_agent_channel_connection_id: 'connection-a',
           meta_agent_eligibility_status: 'UNKNOWN',
         }],
       })

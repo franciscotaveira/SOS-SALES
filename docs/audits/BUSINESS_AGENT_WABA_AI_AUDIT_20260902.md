@@ -172,3 +172,57 @@ Esse resultado é um bloqueio de migration, não uma falha do código candidato.
 ## Conclusão operacional
 
 O candidato está **testável e mais seguro**, mas **não está liberado para produção ainda**. O código e a UI agora distinguem Meta oficial, SOS Sales e humano no backend e falham fechados quando a prova não existe. A liberação depende dos sete gates P0 acima e de um teste real no VPS; build verde ou `health=200` isolados não comprovam entrega WhatsApp.
+
+## Reauditoria do deploy `d382cb2` — 2026-09-04
+
+Esta seção registra a verificação independente do deploy informado pelo
+Antigravity. O VPS foi consultado somente em leitura; nenhuma migration,
+reinício, troca de segredo ou promoção foi executada nesta rodada.
+
+### Estado que foi comprovado
+
+- **[KNOWN]** `/opt/sos-sales/current` aponta para a release
+  `d382cb29981997cdd25987527b5b64c1a2132413`.
+- **[KNOWN]** `/health`, `/ready` e `/version` públicos respondem `200`; o
+  `/version` confirma o mesmo commit, árvore limpa e o digest do bundle da API.
+- **[KNOWN]** Os containers de produção estão ativos; o readiness reporta
+  database, Redis, worker de inbound WAHA, worker outbound e worker do
+  receptionist como saudáveis.
+- **[KNOWN]** O processo usa `RECEPTIONIST_ENABLED=true`, a URL da NVIDIA NIM,
+  o projeto Supabase correto e os segredos Meta/WAHA presentes (os valores não
+  foram expostos nesta auditoria).
+
+### Divergência que impede declarar o MVP completo
+
+- **[KNOWN]** A release executada contém apenas o contrato antigo de
+  `workspace_agent_config`: não há as colunas de perfil, ownership, ativação e
+  vínculo exato de canal Meta exigidas pelo runtime atual.
+- **[KNOWN]** Também não existem no banco de produção as tabelas
+  `meta_private_reply_dispatches` e `receptionist_outbound_reservations`, nem
+  as colunas de ownership/responder e publicação de bundles usadas pelo
+  candidato.
+- **[KNOWN]** O banco expõe somente as assinaturas antigas de funções SQL de
+  outbox/escalação. A função de consulta ao ledger de migrations retorna
+  `42501` para o papel de runtime.
+- **[KNOWN]** O “Schema Gate: 39 tabelas” do relatório não verificou colunas,
+  índices, assinaturas de funções nem as tabelas críticas. Ele aceitou o
+  fallback quando o ledger interno não pôde ser lido; portanto não é evidência
+  de que o contrato do release esteja aplicado.
+
+### Decisão
+
+O deploy `d382cb2` está **online**, mas a operação está **bloqueada para o
+MVP Meta/WABA/IA completo**. O candidato isolado desta auditoria já inclui:
+
+1. vínculo obrigatório entre agente Meta e conexão de canal (sem `NULL`
+   curinga);
+2. handoff fail-closed quando a pausa/handoff não pode ser persistida;
+3. pool de banco deployment-owned no Messenger/Instagram;
+4. endpoint WAHA durável no compose de produção; e
+5. gate estrutural que verifica tabelas, colunas, índices e funções, em vez de
+   somente contar tabelas.
+
+Essas correções ainda precisam ser compiladas em uma release limpa, aplicadas
+ao Supabase vinculado e promovidas após o gate estrutural. Só então um canário
+real (mensagem Meta e mensagem WAHA, com reload e deduplicação) poderá provar
+entrega ponta a ponta.

@@ -105,6 +105,8 @@ export function isMetaAgentEligibilityFresh(
 export interface MetaAgentReadinessInput {
   metaAgentEnabled: boolean;
   metaAgentId?: string | null;
+  /** Exact CRM channel bound to the Meta agent. A missing binding is never a wildcard. */
+  metaAgentChannelConnectionId?: string | null;
   metaAgentEligibilityStatus: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
   metaAgentCheckedAt?: string | Date | null;
   metaAgentActivationStatus?: 'NOT_STARTED' | 'PENDING' | 'READY' | 'FAILED';
@@ -113,6 +115,7 @@ export interface MetaAgentReadinessInput {
 export function isMetaAgentReady(input: MetaAgentReadinessInput): boolean {
   return input.metaAgentEnabled
     && Boolean(input.metaAgentId)
+    && Boolean(input.metaAgentChannelConnectionId)
     && input.metaAgentEligibilityStatus === 'ELIGIBLE'
     // A Meta agent owns a conversation only after the non-billing Meta test
     // completed successfully and the eligibility proof is still fresh.
@@ -135,6 +138,7 @@ export function shouldSosSalesRespond(input: {
   responderChangeReason?: string | null;
   metaAgentEnabled: boolean;
   metaAgentId?: string | null;
+  metaAgentChannelConnectionId?: string | null;
   metaAgentEligibilityStatus: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
   metaAgentCheckedAt?: string | Date | null;
   metaAgentActivationStatus?: 'NOT_STARTED' | 'PENDING' | 'READY' | 'FAILED';
@@ -531,7 +535,10 @@ export class ReceptionistAgent {
       let bundle: unknown = null;
       try {
         const intelligenceResult = await this.query(
-          `SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`,
+          `SELECT bundle FROM public.workspace_intelligence_bundles
+           WHERE workspace_id = $1 AND published_at IS NOT NULL
+           ORDER BY published_at DESC
+           LIMIT 1`,
           [workspaceId],
         );
         bundle = intelligenceResult.rows[0]?.bundle ?? null;
@@ -622,8 +629,9 @@ export class ReceptionistAgent {
         meta_agent_activation_status,
         published_at,
       } = result.rows[0];
-      const metaChannelMatches = !meta_agent_channel_connection_id
-        || meta_agent_channel_connection_id === channel_connection_id;
+      const metaChannelMatches = Boolean(meta_agent_channel_connection_id)
+        && Boolean(channel_connection_id)
+        && meta_agent_channel_connection_id === channel_connection_id;
       // A stale Meta owner must never be interpreted as ownership of a new
       // phone after a channel replacement.  Keep the worker fail-closed until
       // the operator performs a fresh Meta handover on the bound channel.
@@ -640,6 +648,7 @@ export class ReceptionistAgent {
           responderChangeReason: responder_change_reason,
           metaAgentEnabled: meta_agent_enabled === true && metaChannelMatches,
           metaAgentId: meta_agent_id,
+          metaAgentChannelConnectionId: metaChannelMatches ? meta_agent_channel_connection_id : null,
           metaAgentEligibilityStatus: meta_agent_eligibility_status || 'UNKNOWN',
           metaAgentCheckedAt: meta_agent_checked_at,
           metaAgentActivationStatus: meta_agent_activation_status || undefined,
@@ -767,6 +776,12 @@ export class ReceptionistAgent {
     } catch {
       return false;
     }
+  }
+
+  /** Handoff is a safety boundary: failed persistence must be retried, never acknowledged. */
+  private async ensureHumanHandoff(workspaceId: string, journeyId: string, reason: string): Promise<void> {
+    const paused = await this.pauseBotForJourney(workspaceId, journeyId, reason);
+    if (!paused) throw new Error('RECEPTIONIST_FAIL_CLOSED_HANDOFF_UNAVAILABLE');
   }
 
   private outboundFingerprint(
@@ -983,15 +998,15 @@ export class ReceptionistAgent {
     }
     const policy = getReceptionistActionPolicy(decision);
     if (policy.shouldEscalate) {
-      const paused = await this.pauseBotForJourney(input.workspaceId, input.journeyId, `Intent: ${decision.intent} — escalado pelo agente IA`);
+      await this.ensureHumanHandoff(input.workspaceId, input.journeyId, `Intent: ${decision.intent} — escalado pelo agente IA`);
       return {
         intent: decision.intent,
         reply: '',
-        escalated: paused,
+        escalated: true,
         bookingFlowSent: false,
         latencyMs,
         model: usedModel,
-        skipped: paused ? policy.skipped : 'escalation_state_update_failed',
+        skipped: policy.skipped,
       };
     }
 
@@ -1051,7 +1066,7 @@ export class ReceptionistAgent {
           };
         }
 
-        const paused = await this.pauseBotForJourney(
+        await this.ensureHumanHandoff(
           input.workspaceId,
           input.journeyId,
           `Ação ${transportLabel} já reservada sem confirmação — reconciliação humana obrigatória`,
@@ -1059,13 +1074,11 @@ export class ReceptionistAgent {
         return {
           intent: decision.intent,
           reply: '',
-          escalated: paused,
+          escalated: true,
           bookingFlowSent: false,
           latencyMs,
           model: usedModel,
-          skipped: paused
-            ? `${transportLabel}_outbound_reconciliation_required`
-            : `${transportLabel}_outbound_reconciliation_pause_failed`,
+          skipped: `${transportLabel}_outbound_reconciliation_required`,
         };
       }
 
@@ -1122,7 +1135,7 @@ export class ReceptionistAgent {
         // message even when the client did not receive the response. Retrying
         // the whole receptionist event could duplicate a customer message.
         // Pause and hand control to a human instead of retrying blindly.
-        const paused = await this.pauseBotForJourney(
+        await this.ensureHumanHandoff(
           input.workspaceId,
           input.journeyId,
           `Falha ou confirmação ambígua no envio ${transportLabel} — revisão humana obrigatória`
@@ -1130,13 +1143,11 @@ export class ReceptionistAgent {
         return {
           intent: decision.intent,
           reply: '',
-          escalated: paused,
+          escalated: true,
           bookingFlowSent: false,
           latencyMs,
           model: usedModel,
-          skipped: paused
-            ? `${transportLabel}_delivery_unconfirmed_handoff_required`
-            : `${transportLabel}_delivery_unconfirmed_pause_failed`,
+          skipped: `${transportLabel}_delivery_unconfirmed_handoff_required`,
         };
       }
     }
@@ -1161,7 +1172,7 @@ export class ReceptionistAgent {
           };
         }
 
-        const paused = await this.pauseBotForJourney(
+        await this.ensureHumanHandoff(
           input.workspaceId,
           input.journeyId,
           'WhatsApp Flow já reservado sem confirmação — reconciliação humana obrigatória',
@@ -1169,13 +1180,11 @@ export class ReceptionistAgent {
         return {
           intent: decision.intent,
           reply: replyText,
-          escalated: paused,
+          escalated: true,
           bookingFlowSent: false,
           latencyMs,
           model: usedModel,
-          skipped: paused
-            ? 'waba_flow_reconciliation_required'
-            : 'waba_flow_reconciliation_pause_failed',
+          skipped: 'waba_flow_reconciliation_required',
         };
       }
 
@@ -1222,7 +1231,7 @@ export class ReceptionistAgent {
         console.error('[ReceptionistAgent] Error sending Flow:', flowErr);
         // The text may already have been accepted. Do not replay it just to
         // retry the Flow; stop automation and expose the journey to a human.
-        const paused = await this.pauseBotForJourney(
+        await this.ensureHumanHandoff(
           input.workspaceId,
           input.journeyId,
           'Falha ou confirmação ambígua no envio do WhatsApp Flow — revisão humana obrigatória'
@@ -1230,13 +1239,11 @@ export class ReceptionistAgent {
         return {
           intent: decision.intent,
           reply: replyText,
-          escalated: paused,
+          escalated: true,
           bookingFlowSent: false,
           latencyMs,
           model: usedModel,
-          skipped: paused
-            ? 'waba_flow_unconfirmed_handoff_required'
-            : 'waba_flow_unconfirmed_pause_failed',
+          skipped: 'waba_flow_unconfirmed_handoff_required',
         };
       }
     }

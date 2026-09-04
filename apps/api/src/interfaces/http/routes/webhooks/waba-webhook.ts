@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Pool } from 'pg';
 import { dbPool } from '../../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../../application/services/attribution-service.js';
+import { PrivateReplyService } from '../../../../application/services/private-reply-service.js';
 import {
   getReceptionistAgent,
   isMetaAgentReady,
@@ -78,6 +79,7 @@ export interface WabaResponderDefaults {
   responderMode: ResponderMode;
   responderOwner: ResponderOwner;
   metaAgentId: string | null;
+  metaAgentChannelConnectionId: string | null;
   metaAgentEnabled: boolean;
   metaAgentEligibilityStatus: 'ELIGIBLE' | 'INELIGIBLE' | 'UNKNOWN';
   metaAgentCheckedAt: string | null;
@@ -137,11 +139,14 @@ export async function resolveWorkspaceResponderDefaults(
     || row?.meta_agent_activation_status === 'FAILED'
     ? row.meta_agent_activation_status
     : 'NOT_STARTED';
-  const metaChannelMatches = !channelConnectionId
-    || row?.meta_agent_channel_connection_id === channelConnectionId;
+  const metaAgentChannelConnectionId = optionalString(row?.meta_agent_channel_connection_id);
+  const metaChannelMatches = Boolean(channelConnectionId)
+    && Boolean(metaAgentChannelConnectionId)
+    && metaAgentChannelConnectionId === channelConnectionId;
   const metaReady = isMetaAgentReady({
     metaAgentEnabled: metaAgentEnabled && metaChannelMatches,
     metaAgentId,
+    metaAgentChannelConnectionId: metaChannelMatches ? metaAgentChannelConnectionId : null,
     metaAgentEligibilityStatus,
     metaAgentCheckedAt,
     metaAgentActivationStatus,
@@ -156,6 +161,7 @@ export async function resolveWorkspaceResponderDefaults(
     responderMode,
     responderOwner,
     metaAgentId,
+    metaAgentChannelConnectionId,
     metaAgentEnabled: metaAgentEnabled && metaChannelMatches,
     metaAgentEligibilityStatus,
     metaAgentCheckedAt,
@@ -433,6 +439,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
   const databasePool = options.databasePool ?? dbPool;
   const query = databasePool.query.bind(databasePool);
   const receptionistAgent = options.receptionistAgent ?? getReceptionistAgent();
+  const privateReplyService = new PrivateReplyService(databasePool);
   const handleVerification = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = request.query as Record<string, string>;
     const mode = query['hub.mode'];
@@ -476,7 +483,10 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
       const platform = payload.object === 'page' ? 'messenger' : 'instagram';
       for (const entry of payload.entry || []) {
         try {
-          await handleMessengerEntry(entry, platform, request.log);
+          await handleMessengerEntry(entry, platform, request.log, {
+            databasePool,
+            privateReplyService,
+          });
         } catch (err) {
           request.log.error({ err, platform, entryId: entry?.id }, 'Messenger/Instagram entry processing failed');
           throw err;
@@ -774,6 +784,7 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
                 responderChangeReason: journeyResponderChangeReason,
                 metaAgentEnabled: responderDefaults?.metaAgentEnabled === true,
                 metaAgentId: responderDefaults?.metaAgentId,
+                metaAgentChannelConnectionId: responderDefaults?.metaAgentChannelConnectionId,
                 metaAgentEligibilityStatus: responderDefaults?.metaAgentEligibilityStatus || 'UNKNOWN',
                 metaAgentCheckedAt: responderDefaults?.metaAgentCheckedAt,
                 metaAgentActivationStatus: responderDefaults?.metaAgentActivationStatus || undefined,

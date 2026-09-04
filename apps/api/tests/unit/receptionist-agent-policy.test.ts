@@ -278,7 +278,7 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
       phoneNumberId: 'phone-number-id',
     };
 
-    function runtimeQuery() {
+    function runtimeQuery(handoffId: string | null = 'handoff-id') {
       return vi.fn(async (sql: string) => {
         if (sql.includes('SELECT') && sql.includes('j.bot_enabled')) {
           return {
@@ -325,7 +325,9 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
           };
         }
         if (sql.includes('pause_receptionist_and_open_handoff')) {
-          return { rows: [{ handoff_id: 'handoff-id' }], rowCount: 1 };
+          return handoffId
+            ? { rows: [{ handoff_id: handoffId }], rowCount: 1 }
+            : { rows: [], rowCount: 0 };
         }
         if (sql.includes('INSERT INTO public.conversation_messages')) {
           return { rows: [], rowCount: 1 };
@@ -409,6 +411,27 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
         expect.stringContaining('INSERT INTO public.conversation_messages'),
         expect.anything()
       );
+    });
+
+    it('does not acknowledge an ambiguous delivery when the human handoff cannot be persisted', async () => {
+      vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
+      const query = runtimeQuery(null);
+      const nim = {
+        isConfigured: () => true,
+        generateChatCompletion: vi.fn().mockResolvedValue({
+          content: '{"intent":"greeting","escalate":false,"sendBookingFlow":false}\nOlá!',
+          model: 'test-model',
+          latencyMs: 8,
+        }),
+      };
+      const waba = {
+        sendText: vi.fn().mockRejectedValue(new Error('ambiguous timeout')),
+        sendFlow: vi.fn(),
+      };
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const agent = new ReceptionistAgent({ nim: nim as any, waba: waba as any, query });
+
+      await expect(agent.handleInbound(input)).rejects.toThrow('RECEPTIONIST_FAIL_CLOSED_HANDOFF_UNAVAILABLE');
     });
 
     it('routes an autonomous WAHA journey through its bound session, never through WABA', async () => {
@@ -609,6 +632,7 @@ describe('receptionist responder ownership policy', () => {
     responderOwner: 'sos_sales' as const,
     metaAgentEnabled: false,
     metaAgentId: null,
+    metaAgentChannelConnectionId: '40000000-0000-4000-8000-000000000004',
     metaAgentEligibilityStatus: 'UNKNOWN' as const,
   };
 
@@ -624,6 +648,7 @@ describe('receptionist responder ownership policy', () => {
       responderOwner: 'meta_business_agent',
       metaAgentEnabled: true,
       metaAgentId: 'agent-1',
+      metaAgentChannelConnectionId: '40000000-0000-4000-8000-000000000004',
       metaAgentEligibilityStatus: 'ELIGIBLE',
       metaAgentCheckedAt: freshMetaCheck,
       metaAgentActivationStatus: 'READY',
@@ -674,10 +699,22 @@ describe('receptionist responder ownership policy', () => {
       responderChangedAt: new Date().toISOString(),
       metaAgentEnabled: true,
       metaAgentId: 'agent-1',
+      metaAgentChannelConnectionId: '40000000-0000-4000-8000-000000000004',
       metaAgentEligibilityStatus: 'ELIGIBLE',
       metaAgentCheckedAt: freshMetaCheck,
       responderChangeReason: 'meta_thread_control_take',
     })).toBe(true);
+  });
+
+  it('rejects a ready Meta agent without an exact channel binding', async () => {
+    const { isMetaAgentReady } = await import('../../src/application/agents/receptionist-agent.js');
+    expect(isMetaAgentReady({
+      metaAgentEnabled: true,
+      metaAgentId: 'agent-1',
+      metaAgentEligibilityStatus: 'ELIGIBLE',
+      metaAgentCheckedAt: freshMetaCheck,
+      metaAgentActivationStatus: 'READY',
+    })).toBe(false);
   });
 
   it('does not switch a Meta-owned thread on an old eligibility result', async () => {

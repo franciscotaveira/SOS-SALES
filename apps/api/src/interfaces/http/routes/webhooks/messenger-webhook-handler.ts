@@ -22,9 +22,17 @@ import { AttributionService } from '../../../../application/services/attribution
 import { PrivateReplyService } from '../../../../application/services/private-reply-service.js';
 import { IdempotencyGate } from '../../../../infrastructure/cache/idempotency-gate.js';
 import type { FastifyBaseLogger } from 'fastify';
+import type { Pool } from 'pg';
 
 const idempotencyGate = IdempotencyGate.getInstance();
-const privateReplyService = new PrivateReplyService(dbPool);
+type MessengerDatabase = Pick<Pool, 'query' | 'connect'>;
+
+export interface MessengerWebhookDependencies {
+  /** Deployment-owned pool; the global pool is only a dev/test fallback. */
+  databasePool?: MessengerDatabase;
+  /** Reuses the same deployment-owned persistence boundary for Private Replies. */
+  privateReplyService?: PrivateReplyService;
+}
 
 export interface MessengerWebhookEntry {
   id: string; // Page ID or IG User ID
@@ -92,8 +100,12 @@ export type Platform = 'messenger' | 'instagram';
 export async function handleMessengerEntry(
   entry: MessengerWebhookEntry,
   platform: Platform,
-  log: FastifyBaseLogger
+  log: FastifyBaseLogger,
+  dependencies: MessengerWebhookDependencies = {},
 ): Promise<void> {
+  const databasePool = dependencies.databasePool ?? dbPool;
+  const privateReplyService = dependencies.privateReplyService ?? new PrivateReplyService(databasePool);
+  const query = databasePool.query.bind(databasePool);
   const pageOrIgId = entry.id;
   const events = entry.messaging || [];
 
@@ -121,20 +133,20 @@ export async function handleMessengerEntry(
 
     try {
       // Resolve workspace from channel connection by pageId/igUserId
-      const { workspaceId, channelConnectionId } = await resolveWorkspace(pageOrIgId, platform);
+      const { workspaceId, channelConnectionId } = await resolveWorkspace(pageOrIgId, platform, query);
       if (!workspaceId) {
         log.warn({ pageOrIgId, platform }, 'No workspace found for Messenger/IG webhook entry');
         continue;
       }
 
       // Upsert contact by PSID/IGSID
-      const contactId = await upsertContact(workspaceId, senderId, platform, timestamp);
+      const contactId = await upsertContact(workspaceId, senderId, platform, timestamp, query);
 
       // Find or create journey
-      const journeyId = await findOrCreateJourney(workspaceId, contactId, channelConnectionId, timestamp);
+      const journeyId = await findOrCreateJourney(workspaceId, contactId, channelConnectionId, timestamp, query);
 
       // Process referral attribution (from ads, m.me links, etc.)
-      await processReferral(workspaceId, journeyId, channelConnectionId, event, platform, log);
+      await processReferral(workspaceId, journeyId, channelConnectionId, event, platform, log, databasePool);
 
       // Extract and save message content
       const { textContent, mediaType, mediaPayload } = extractMessageContent(event, platform);
@@ -142,7 +154,7 @@ export async function handleMessengerEntry(
       // Save conversation message
       let conversationMessageId: string | undefined;
       if (textContent || mediaType) {
-        const savedMessage = await dbPool.query<{ id: string }>(
+        const savedMessage = await query<{ id: string }>(
           `INSERT INTO public.conversation_messages (
              id, workspace_id, channel_connection_id, journey_id, contact_id,
              direction, sender_type, provider_message_id, text_content, media_payload, sent_at
@@ -178,7 +190,7 @@ export async function handleMessengerEntry(
       // Persist NLP against the local UUID, not Meta's MID. The provider MID
       // remains in conversation_messages.provider_message_id for tracing.
       if (event.message?.nlp) {
-        await processNlpEntities(workspaceId, journeyId, conversationMessageId, event.message.nlp, log);
+        await processNlpEntities(workspaceId, journeyId, conversationMessageId, event.message.nlp, log, query);
       }
 
       // Process Handover Protocol events
@@ -208,7 +220,10 @@ export async function handleMessengerEntry(
   const changes = entry.changes || [];
   for (const change of changes) {
     if (change.field === 'feed' && change.value?.item === 'comment') {
-      await processCommentForPrivateReply(pageOrIgId, change.value, log);
+      await processCommentForPrivateReply(pageOrIgId, change.value, log, {
+        databasePool,
+        privateReplyService,
+      });
     }
   }
 }
@@ -258,13 +273,14 @@ async function upsertContact(
   workspaceId: string,
   senderId: string,
   platform: Platform,
-  timestamp: string
+  timestamp: string,
+  query: typeof dbPool.query = dbPool.query.bind(dbPool),
 ): Promise<string> {
   const idColumn = platform === 'messenger' ? 'messenger_psid' : 'instagram_igsid';
   const phonePlaceholder = `${platform}:${senderId}`; // Non-phone identifier
 
   // Try to find existing contact by PSID/IGSID
-  const existing = await dbPool.query(
+  const existing = await query(
     `SELECT id FROM public.contacts WHERE workspace_id = $1 AND ${idColumn} = $2 LIMIT 1`,
     [workspaceId, senderId]
   );
@@ -274,14 +290,14 @@ async function upsertContact(
   }
 
   // Check if contact exists by pseudo-phone (messenger:xxx or instagram:xxx)
-  const byPhone = await dbPool.query(
+  const byPhone = await query(
     `SELECT id FROM public.contacts WHERE workspace_id = $1 AND phone = $2 LIMIT 1`,
     [workspaceId, phonePlaceholder]
   );
 
   if (byPhone.rows.length > 0) {
     // Update with PSID/IGSID
-    await dbPool.query(
+    await query(
       `UPDATE public.contacts SET ${idColumn} = $1, updated_at = $2 WHERE id = $3`,
       [senderId, timestamp, byPhone.rows[0].id]
     );
@@ -289,7 +305,7 @@ async function upsertContact(
   }
 
   // Create new contact
-  const newContact = await dbPool.query(
+  const newContact = await query(
     `INSERT INTO public.contacts (id, workspace_id, phone, ${idColumn}, name, created_at, updated_at)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $5)
      ON CONFLICT (workspace_id, phone) DO UPDATE SET ${idColumn} = EXCLUDED.${idColumn}, updated_at = $5
@@ -306,9 +322,10 @@ async function findOrCreateJourney(
   workspaceId: string,
   contactId: string,
   channelConnectionId: string | null,
-  timestamp: string
+  timestamp: string,
+  query: typeof dbPool.query = dbPool.query.bind(dbPool),
 ): Promise<string> {
-  const existing = await dbPool.query(
+  const existing = await query(
     `SELECT id, channel_connection_id FROM public.commercial_journeys
      WHERE workspace_id = $1 AND contact_id = $2 AND status = 'OPEN'
        AND (channel_connection_id = $3 OR channel_connection_id IS NULL)
@@ -317,7 +334,7 @@ async function findOrCreateJourney(
   );
 
   if (existing.rows.length > 0) {
-    await dbPool.query(
+    await query(
       `UPDATE public.commercial_journeys
        SET channel_connection_id = COALESCE(channel_connection_id, $1), updated_at = $2
        WHERE id = $3`,
@@ -326,7 +343,7 @@ async function findOrCreateJourney(
     return existing.rows[0].id;
   }
 
-  const newJourney = await dbPool.query(
+  const newJourney = await query(
     `INSERT INTO public.commercial_journeys (
        id, workspace_id, contact_id, channel_connection_id, status, pipeline_stage,
        total_revenue_minor, currency, started_at, created_at, updated_at
@@ -349,13 +366,14 @@ async function processReferral(
   channelConnectionId: string | null,
   event: MessengerWebhookEvent,
   platform: Platform,
-  log: FastifyBaseLogger
+  log: FastifyBaseLogger,
+  databasePool: MessengerDatabase = dbPool,
 ): Promise<void> {
   const referral = event.referral || event.postback?.referral || event.message?.referral;
   if (!referral) return;
 
   try {
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       // Check if attribution already exists
       const existingAcq = await client.query(
@@ -502,7 +520,8 @@ async function processNlpEntities(
   journeyId: string,
   messageId: string | undefined,
   nlp: NonNullable<MessengerWebhookEvent['message']>['nlp'],
-  log: FastifyBaseLogger
+  log: FastifyBaseLogger,
+  query: typeof dbPool.query = dbPool.query.bind(dbPool),
 ): Promise<void> {
   if (!nlp) return;
 
@@ -552,7 +571,7 @@ async function processNlpEntities(
       values.push(workspaceId, journeyId, messageId || null, entity.type, JSON.stringify(entity.value), entity.confidence);
     }
 
-    await dbPool.query(
+    await query(
       `INSERT INTO public.nlp_extracted_entities (id, workspace_id, journey_id, message_id, entity_type, entity_value, confidence)
        VALUES ${placeholders.join(', ')}`,
       values
@@ -581,7 +600,7 @@ async function processNlpEntities(
       }
 
       if (factKey && factValue) {
-        await dbPool.query(
+        await query(
           `INSERT INTO public.known_facts (id, workspace_id, journey_id, key, value, confidence, confirmed_by_customer, source, observed_at)
            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, false, 'nlp_wit_ai', NOW())
            ON CONFLICT (workspace_id, journey_id, key) DO UPDATE SET value = EXCLUDED.value, confidence = EXCLUDED.confidence, observed_at = NOW()`,
@@ -599,8 +618,12 @@ async function processNlpEntities(
 async function processCommentForPrivateReply(
   pageId: string,
   commentValue: any,
-  log: FastifyBaseLogger
+  log: FastifyBaseLogger,
+  dependencies: MessengerWebhookDependencies = {},
 ): Promise<void> {
+  const databasePool = dependencies.databasePool ?? dbPool;
+  const privateReplyService = dependencies.privateReplyService ?? new PrivateReplyService(databasePool);
+  const query = databasePool.query.bind(databasePool);
   const commentId = commentValue?.comment_id;
   const message = commentValue?.message;
   const from = commentValue?.from;
@@ -619,11 +642,11 @@ async function processCommentForPrivateReply(
 
   try {
     // Find workspace by pageId
-    const { workspaceId, channelConnectionId } = await resolveWorkspace(pageId, 'messenger');
+    const { workspaceId, channelConnectionId } = await resolveWorkspace(pageId, 'messenger', query);
     if (!workspaceId || !channelConnectionId) return;
 
     // Check if Private Reply keywords are configured
-    const configRes = await dbPool.query(
+    const configRes = await query(
       `SELECT public_config FROM public.channel_connections WHERE id = $1`,
       [channelConnectionId]
     );
@@ -640,10 +663,10 @@ async function processCommentForPrivateReply(
 
     // Save comment as known_fact for context
     const senderId = from.id;
-    const contactId = await upsertContact(workspaceId, senderId, 'messenger', new Date().toISOString());
-    const journeyId = await findOrCreateJourney(workspaceId, contactId, channelConnectionId, new Date().toISOString());
+    const contactId = await upsertContact(workspaceId, senderId, 'messenger', new Date().toISOString(), query);
+    const journeyId = await findOrCreateJourney(workspaceId, contactId, channelConnectionId, new Date().toISOString(), query);
 
-    await dbPool.query(
+    await query(
       `INSERT INTO public.known_facts (id, workspace_id, journey_id, key, value, confidence, confirmed_by_customer, source, observed_at)
        VALUES (gen_random_uuid(), $1, $2, 'comment.trigger', $3, 1.0, true, 'facebook_comment', NOW())
        ON CONFLICT DO NOTHING`,

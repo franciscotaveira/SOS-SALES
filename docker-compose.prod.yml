@@ -115,8 +115,16 @@ services:
       - "3000"
     environment:
       - WAHA_API_KEY=${WAHA_API_KEY}
-      - WAHA_WEBHOOK_URL=http://api:4334/webhooks/waha
+      # The durable supplier endpoint validates the API key and persists the
+      # inbound event before workers process it. Keep the connection id/session
+      # resolution on the server instead of pointing WAHA at the strict HMAC
+      # route, which requires a per-connection URL that WAHA cannot infer.
+      - WHATSAPP_HOOK_URL=http://api:4334/api/v1/channels/waha/webhook
+      - WHATSAPP_HOOK_EVENTS=message,message.any,session.status
+      - WHATSAPP_HOOK_CUSTOM_HEADERS=x-api-key:${WAHA_API_KEY}
+      - WAHA_WEBHOOK_URL=http://api:4334/api/v1/channels/waha/webhook
       - WAHA_WEBHOOK_EVENTS=message,message.any,session.status
+      - WAHA_WEBHOOK_CUSTOM_HEADERS=x-api-key:${WAHA_API_KEY}
       - WAHA_WORKER_CONCURRENCY=5
       - WAHA_ZIP_LOGS=false
     volumes:

@@ -320,6 +320,7 @@ function isMetaAgentReady(config: WorkspaceAgentRuntimeConfig): boolean {
   return isMetaAgentReadyPolicy({
     metaAgentEnabled: config.metaAgentEnabled,
     metaAgentId: config.metaAgentId,
+    metaAgentChannelConnectionId: config.metaAgentChannelConnectionId,
     metaAgentEligibilityStatus: config.metaAgentEligibilityStatus,
     metaAgentCheckedAt: config.metaAgentCheckedAt,
     metaAgentActivationStatus: config.metaAgentActivationStatus,
@@ -341,9 +342,9 @@ function isJourneyRuntimeEffective(
   responderChangeReason?: string | null,
   journeyChannelConnectionId?: string | null,
 ): boolean {
-  const metaChannelMatches = !config.metaAgentChannelConnectionId
-    || !journeyChannelConnectionId
-    || config.metaAgentChannelConnectionId === journeyChannelConnectionId;
+  const metaChannelMatches = Boolean(config.metaAgentChannelConnectionId)
+    && Boolean(journeyChannelConnectionId)
+    && config.metaAgentChannelConnectionId === journeyChannelConnectionId;
   if (responderOwner === 'meta_business_agent' && !metaChannelMatches) return false;
   return isRuntimeAvailable(config) && shouldSosSalesRespond({
     responderMode: config.responderMode as ResponderMode,
@@ -352,6 +353,7 @@ function isJourneyRuntimeEffective(
     responderChangeReason,
     metaAgentEnabled: config.metaAgentEnabled && metaChannelMatches,
     metaAgentId: config.metaAgentId,
+    metaAgentChannelConnectionId: metaChannelMatches ? config.metaAgentChannelConnectionId : null,
     metaAgentEligibilityStatus: config.metaAgentEligibilityStatus,
     metaAgentActivationStatus: config.metaAgentActivationStatus,
   });
