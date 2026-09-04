@@ -1,6 +1,6 @@
 # AGENTS.md — Bússola Universal SOS Sales
 > Leia este arquivo PRIMEIRO. Ele orienta qualquer IA (Claude, Gemini, Hermes, GPT) sobre onde está o projeto, o que está feito e o que fazer agora.
-> Atualizado: 18 Ago 2026 | MCT OS v2.0
+> Atualizado: 04 Set 2026 | MCT OS v2.0
 
 ---
 
@@ -15,20 +15,23 @@
 
 ---
 
-## 2. ESTADO ATUAL (18 Ago 2026)
+## 2. ESTADO ATUAL (04 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Frontend completo: 82 componentes TSX, 10 módulos de tela
-- API: 9/9 rotas E2E OK, auth Supabase + RLS multi-tenant
-- WhatsApp WAHA + Meta WABA (Arsenal completo: Pix, SPM/MPM, Location, Flows, Carousel, OTP)
-- Meta Omnichannel: Messenger, Instagram DM, Wit.ai NLP, Private Reply
-- Docker Lab local: http://localhost:3333 (frontend) + http://localhost:4335 (API)
+- Release ativa: `d382cb29981997cdd25987527b5b64c1a2132413`
+- Interface operacional enxuta: Cockpit 1:1, Funil Kanban, Configurações de Canais & Traqueamento.
+- API: rotas E2E OK, auth Supabase + RLS multi-tenant, 39 tabelas no schema público.
+- WhatsApp WAHA + Meta WABA (Arsenal completo: Pix, SPM/MPM, Location, Flows, Carousel, OTP).
+- Docker Lab local: http://localhost:3333 (frontend) + http://localhost:4335 (API).
 
-### 🔄 EM ANDAMENTO
-- **Refinamento visual "menos é mais"** — prompt em `PROMPT_REFINAMENTO_VISUAL.md`
-  - Interface funcional mas visualmente sobrecarregada
-  - Objetivo: reduzir ruído, corrigir erros visuais, hierarquia de informação
-  - Testar SEMPRE no Docker Lab (http://localhost:3333) ANTES do VPS
+### 🔄 EM ANDAMENTO (TAREFA ATIVA)
+- **Auditoria e Homologação dos 5 Pilares do MVP Canônico:**
+  1. Gestão Operacional de WhatsApp (Cockpit Agora + Funil Kanban)
+  2. Traqueamento Meta Ads ↔ Conversions API (CAPI loop fechado)
+  3. Agente 24/7 & Handoff Humano (Receptionist worker)
+  4. Espelhamento de Agenda Externa (Trinks / {{horarios}} no Cockpit)
+  5. Conexão Dual-Engine WAHA + Meta WABA (Arsenal Interativo)
+  - **Roteiro de execução:** `PROMPT_VALIDACAO_5_PILARES_MVP.md`
 
 ### ❌ PENDENTE (não iniciar sem aprovação do Francisco)
 - Deploy de novas features no VPS sem passar pelo Docker Lab
@@ -60,10 +63,12 @@
 
 | Tarefa | Arquivo a ler |
 |--------|---------------|
+| Auditoria 5 Pilares MVP (Ativa) | `PROMPT_VALIDACAO_5_PILARES_MVP.md` |
+| Especificação Funcional Canônica | `docs/SPEC_FUNCIONAL_SOS_SALES.md` |
 | Contexto técnico geral | `CODEBASE.md` |
 | Decisões arquiteturais | `DECISION_LOG.md` |
 | Visão de produto / roadmap | `BLUEPRINT_SOS_SALES.md` |
-| Refinamento visual (tarefa ativa) | `PROMPT_REFINAMENTO_VISUAL.md` |
+| Refinamento visual | `PROMPT_REFINAMENTO_VISUAL.md` |
 | Skills do Claude/Hermes | `CLAUDE.md` |
 | Tarefas pendentes organizadas | `.gemini_tasks/README.md` |
 | Design system (tokens CSS) | `src/index.css` |
@@ -178,7 +183,7 @@ _Atualizado automaticamente pela AGY (Antigravity) em 18 Ago 2026_
 <claude-mem-context>
 # Memory Context
 
-# [SOS-SALES] recent context, 2026-09-03 3:29am GMT-3
+# [SOS-SALES] recent context, 2026-09-04 12:01pm GMT-3
 
 No previous sessions found.
 </claude-mem-context>
