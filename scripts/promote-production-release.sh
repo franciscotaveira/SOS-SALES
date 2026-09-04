@@ -29,8 +29,8 @@ atomic_link() {
 }
 
 verify_active_release() {
-  curl --retry 6 --retry-delay 2 --retry-connrefused -fsS "${production_url}/health" >/dev/null || return 1
-  curl --retry 6 --retry-delay 2 --retry-connrefused -fsS "${production_url}/ready" >/dev/null || return 1
+  curl --retry 10 --retry-delay 2 --retry-connrefused -fsS "${production_url}/health" >/dev/null || return 1
+  curl --retry 10 --retry-delay 2 --retry-connrefused -fsS "${production_url}/ready" >/dev/null || return 1
 }
 
 recreate_active_release() {
@@ -40,6 +40,7 @@ recreate_active_release() {
     --env-file .env.production \
     -f "${current}/docker-compose.yml" \
     up -d --no-deps --force-recreate sos-sales-api caddy || return 1
+  sleep 3
 }
 
 require_base_release() {
