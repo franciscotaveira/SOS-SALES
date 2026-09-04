@@ -54,7 +54,7 @@ const tables = {
   ],
   inbound_channel_events: [
     'id', 'workspace_id', 'channel_connection_id', 'provider', 'event_type',
-    'raw_payload', 'idempotency_key',
+    'raw_payload', 'provider_event_id',
   ],
   outbox_events: [
     'id', 'workspace_id', 'event_name', 'aggregate_type', 'aggregate_id',
@@ -197,7 +197,10 @@ try {
   const functionNames = Object.keys(functions);
   const functionResult = await pool.query(
     `SELECT p.proname AS name,
-            pg_get_function_identity_arguments(p.oid) AS identity_arguments
+            COALESCE((
+              SELECT string_agg(pg_catalog.format_type(arg_type, NULL), ', ' ORDER BY ordinality)
+                FROM unnest(p.proargtypes) WITH ORDINALITY AS args(arg_type, ordinality)
+            ), '') AS identity_arguments
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public' AND p.proname = ANY($1::text[])`,
