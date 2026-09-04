@@ -43,7 +43,7 @@ export interface SettingsSubTabItem {
   badge?: string;
 }
 
-const SETTINGS_TABS: SettingsSubTabItem[] = [
+const ALL_SETTINGS_TABS: SettingsSubTabItem[] = [
   // Conta
   { id: 'team', label: 'Equipe & Usuários', group: 'Conta', icon: Users, badge: 'Multi-Tenant' },
   { id: 'company', label: 'Dados da Empresa', group: 'Conta', icon: Building2 },
@@ -65,8 +65,13 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
   activeSubTab: externalActiveSubTab,
   onChangeSubTab: externalOnChangeSubTab,
 }) => {
+  const isApiMode = salesOsRuntimeConfig.mode === 'api';
+  const settingsTabs = isApiMode
+    ? ALL_SETTINGS_TABS.filter((t) => ['channels', 'tracking', 'danger_zone'].includes(t.id))
+    : ALL_SETTINGS_TABS;
+
   const [engineConfig, setEngineConfig] = React.useState(mockEngineConfig);
-  const [internalSubTab, setInternalSubTab] = React.useState<string>('team');
+  const [internalSubTab, setInternalSubTab] = React.useState<string>(isApiMode ? 'channels' : 'team');
 
   const [companyProfile, setCompanyProfile] = React.useState(() => {
     const bundle = resolveWorkspaceIntelligenceBundle(workspace.id, workspace.name);
@@ -92,7 +97,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
     !workspace.name?.toLowerCase().includes('haven') &&
     !workspace.name?.toLowerCase().includes('sora');
 
-  const unsupportedInApiMode = salesOsRuntimeConfig.mode === 'api'
+  const unsupportedInApiMode = isApiMode
     && ['team', 'company', 'commercial_rules', 'engines', 'api_webhooks', 'feature_flags'].includes(activeSubTab);
 
   const handleClearLocalCache = () => {
@@ -126,13 +131,13 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500">
-            Gerenciamento centralizado de conta, canais, integrações de marketing e governança técnica.
+            Gerencie canais de WhatsApp, integrações de tráfego e configurações da plataforma.
           </p>
         </div>
 
         {/* Structured Tabs Switcher */}
         <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto max-w-full">
-          {SETTINGS_TABS.map((tab) => {
+          {settingsTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeSubTab === tab.id;
             return (
