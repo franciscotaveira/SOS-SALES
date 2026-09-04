@@ -4,7 +4,6 @@ import { Redis } from 'ioredis';
 import {
   SupabaseJwtAuthenticator,
   PostgresWorkspaceDirectory,
-  PostgresWorkspaceMembershipGateway,
   PostgresCockpitReadGateway,
   PostgresHandoffOperationsGateway,
   PostgresJourneyOperationsGateway,
@@ -21,7 +20,6 @@ import {
   WahaLidIdentityResolver,
   WahaWebhookAdapter,
   PostgresWorkspaceProvisioningGateway,
-  PostgresWorkspaceOperationalGateway,
   PostgresWabaChannelInfoGateway,
   PostgresMetaBusinessAgentGateway,
   buildReadinessStatuses,
@@ -86,7 +84,6 @@ export async function createProductionRuntime() {
   });
 
   const workspaceDirectory = new PostgresWorkspaceDirectory(pool);
-  const workspaceMembershipGateway = new PostgresWorkspaceMembershipGateway(pool);
   const cockpitReadGateway = new PostgresCockpitReadGateway(pool);
   const handoffOperationsGateway = new PostgresHandoffOperationsGateway(pool);
   const journeyOperationsGateway = new PostgresJourneyOperationsGateway(pool);
@@ -96,15 +93,13 @@ export async function createProductionRuntime() {
   const knownFactOperationsGateway = new PostgresKnownFactOperationsGateway(pool);
   const appointmentGateway = new PostgresAppointmentGateway(pool);
   const notesGateway = new PostgresNotesGateway(pool);
-  const workspaceOperationalGateway = new PostgresWorkspaceOperationalGateway(pool);
   const workspaceProvisioningGateway = new PostgresWorkspaceProvisioningGateway(pool);
   const wabaChannelInfoGateway = new PostgresWabaChannelInfoGateway(pool);
   const metaBusinessAgentGateway = new PostgresMetaBusinessAgentGateway(pool);
   const ingestionGateway = new PostgresInboundIngestionGateway(pool);
   const outboxGateway = new PostgresOutboxProcessingGateway(pool);
-  // Production provider: resolve only explicit channel/global secrets. The
-  // development-only environment adapter is intentionally not constructed in
-  // this process because it is disabled when NODE_ENV=production.
+
+  // Production provider: resolve only explicit channel/global secrets.
   const globalWebhookSecret = process.env.WAHA_WEBHOOK_SECRET?.trim();
   const secretProvider = {
     getWebhookSecret: async (channelConnectionId) => {
@@ -131,7 +126,6 @@ export async function createProductionRuntime() {
     lidIdentityResolver,
     authenticator,
     workspaceDirectory,
-    workspaceMembershipGateway,
     cockpitReadGateway,
     handoffOperationsGateway,
     journeyOperationsGateway,
@@ -141,7 +135,6 @@ export async function createProductionRuntime() {
     knownFactOperationsGateway,
     appointmentGateway,
     notesGateway,
-    workspaceOperationalGateway,
     workspaceProvisioningGateway,
     wabaChannelInfoGateway,
     metaBusinessAgentGateway,
