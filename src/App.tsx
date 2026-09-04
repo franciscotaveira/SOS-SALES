@@ -441,32 +441,36 @@ function AppContent({
       )}
       </React.Suspense>
 
-        {/* Botão Flutuante Atlas IA: Assistente Circular */}
-        <div className="fixed bottom-6 right-6 z-50">
-          <button
-            onClick={() => setIsAssistantOpen(true)}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-[#020617] text-white shadow-2xl shadow-slate-950/80 hover:scale-110 active:scale-95 transition-all duration-200 border-2 border-emerald-500 group cursor-pointer relative"
-            title="Atlas Copilot IA - Assistente de Configuração"
-            aria-label="Abrir Atlas Copilot IA"
-          >
-            <Bot className="h-6 w-6 text-emerald-400 group-hover:text-white transition-colors" />
-            <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 animate-pulse" />
-          </button>
-        </div>
+      {/* Botão Flutuante Atlas IA: Assistente Circular (apenas em desenvolvimento/demo) */}
+      {!isAuthenticatedApiMode && (
+        <>
+          <div className="fixed bottom-6 right-6 z-50">
+            <button
+              onClick={() => setIsAssistantOpen(true)}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-[#020617] text-white shadow-2xl shadow-slate-950/80 hover:scale-110 active:scale-95 transition-all duration-200 border-2 border-emerald-500 group cursor-pointer relative"
+              title="Atlas Copilot IA - Assistente de Configuração"
+              aria-label="Abrir Atlas Copilot IA"
+            >
+              <Bot className="h-6 w-6 text-emerald-400 group-hover:text-white transition-colors" />
+              <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 animate-pulse" />
+            </button>
+          </div>
 
-        {/* Modal Conversacional de Onboarding */}
-        <OnboardingSetupAssistantModal
-          currentWorkspace={currentWorkspace}
-          isOpen={isAssistantOpen}
-          onClose={() => setIsAssistantOpen(false)}
-      onNavigateToTab={(tab) => {
-            setActiveTab(tab);
-            setIsAssistantOpen(false);
-          }}
-        />
-      </AppShell>
-    );
-  }
+          {/* Modal Conversacional de Onboarding */}
+          <OnboardingSetupAssistantModal
+            currentWorkspace={currentWorkspace}
+            isOpen={isAssistantOpen}
+            onClose={() => setIsAssistantOpen(false)}
+            onNavigateToTab={(tab) => {
+              setActiveTab(tab);
+              setIsAssistantOpen(false);
+            }}
+          />
+        </>
+      )}
+    </AppShell>
+  );
+}
 
 function OperationalApp({
   userEmail,
