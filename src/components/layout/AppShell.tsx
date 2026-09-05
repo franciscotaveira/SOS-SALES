@@ -174,11 +174,11 @@ export const AppShell: React.FC<AppShellProps> = ({
   const isProductionMvp = salesOsRuntimeConfig.mode === 'api';
   const showGroups = !isProductionMvp && isFeatureEnabled('agency_groups');
   const showTrafficProof = isFeatureEnabled('traffic_proof');
-  const showQaSimulator = isFeatureEnabled('qa_simulator') || isAdmin;
 
   // RBAC permissions based on role
   const isOwner = role === 'owner';
   const isAdmin = role === 'admin' || role === 'owner';
+  const showQaSimulator = isFeatureEnabled('qa_simulator') || isAdmin;
 
   // Live channel status via real-time endpoints. Static workspace health is
   // never used as proof of a production connection.

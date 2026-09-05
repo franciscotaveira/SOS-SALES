@@ -883,3 +883,19 @@
   - `src/components/layout/AppShell.tsx`
 - **Operational gate:** Validar o endpoint no Docker Lab, promover frontend/API pelo fluxo de release limpo e executar um canário autenticado com uma assinatura Cakto vinculada antes de mudar `BILLING_ENFORCEMENT_MODE`.
 - **Date:** 2026-09-05
+
+---
+
+## Task 37: Modelo NIM do simulador deve ser atual e sem vazamento de raciocínio
+- **Decision:** Fixar os tiers FAST/NEMOTRON no endpoint atual `nvidia/nemotron-3.5-lightning-30b-a3b` e enviar `chat_template_kwargs.enable_thinking=false` nos caminhos comerciais. O raciocínio só pode ser ativado explicitamente por um consumidor interno.
+- **Rationale:**
+  1. O modelo anterior `nvidia/llama-3.3-nemotron-super-49b-v1` respondeu `410 Gone` no endpoint da conta; o simulador não podia depender de um modelo encerrado.
+  2. O endpoint atual retorna o raciocínio no campo de conteúdo quando o modo de thinking fica implícito, o que poderia exibir cadeia interna ao operador ou ao cliente.
+  3. O simulador passou a receber os engines por injeção nos testes, evitando chamadas reais e custo de provider durante a suíte.
+- **Scope:**
+  - `apps/api/src/infrastructure/ai/nvidia-nim-engine.ts`
+  - `apps/api/src/interfaces/http/routes/agent-routes.ts`
+  - `apps/api/tests/unit/nvidia-nim-engine.test.ts`
+  - `apps/api/tests/unit/agent-simulator-routes.test.ts`
+- **Operational gate:** Homologar uma mensagem real no Docker Lab com a chave de provider configurada e observar resposta final, latência e fallback antes de qualquer ativação automática em produção.
+- **Date:** 2026-09-05

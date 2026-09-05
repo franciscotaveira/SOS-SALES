@@ -21,6 +21,8 @@ export interface NvidiaOptions {
   topP?: number;
   maxTokens?: number;
   compactHistory?: boolean;
+  /** Enables chain-of-thought output only for a caller that can safely consume it. */
+  enableThinking?: boolean;
 }
 
 export interface NvidiaChatCompletionResult {
@@ -36,9 +38,9 @@ export interface NvidiaChatCompletionResult {
 }
 
 export const NVIDIA_MODEL_TIERS = {
-  FAST: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+  FAST: 'nvidia/nemotron-3.5-lightning-30b-a3b',
   REASONING: 'deepseek-ai/deepseek-r1',
-  NEMOTRON: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+  NEMOTRON: 'nvidia/nemotron-3.5-lightning-30b-a3b',
   VISION: 'meta/llama-3.2-11b-vision-instruct',
 };
 
@@ -145,6 +147,14 @@ export class NvidiaNimEngine {
         };
         if (options?.topP !== undefined) {
           bodyPayload.top_p = options.topP;
+        }
+        // Nemotron 3.5 returns its reasoning trace in the assistant content by
+        // default. Customer-facing CRM paths must receive only the final text;
+        // reasoning remains an explicit opt-in for internal experiments.
+        if (options?.enableThinking !== undefined || modelToTry === NVIDIA_MODEL_TIERS.NEMOTRON) {
+          bodyPayload.chat_template_kwargs = {
+            enable_thinking: options?.enableThinking === true,
+          };
         }
 
         const controller = new AbortController();

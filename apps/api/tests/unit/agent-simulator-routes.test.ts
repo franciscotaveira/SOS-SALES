@@ -46,6 +46,22 @@ function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>) {
     authenticator: { verifyAccessToken: vi.fn().mockResolvedValue({ userId: '30000000-0000-4000-8000-000000000003' }) },
     workspaceDirectory: { listForActor: vi.fn().mockResolvedValue([{ id: workspaceId, name: 'Workspace', slug: 'workspace', role: 'operator' }]) },
     query,
+    nvidiaEngine: {
+      generateChatCompletion: vi.fn().mockResolvedValue({
+        content: 'Resposta final do simulador.',
+        text: 'Resposta final do simulador.',
+        model: 'nvidia-test-model',
+        latencyMs: 8,
+      }),
+    },
+    openRouterEngine: {
+      generateChatCompletion: vi.fn().mockResolvedValue({
+        content: 'Resposta final do fallback.',
+        model: 'openrouter-test-model',
+        latencyMs: 12,
+        tierUsed: 'fast',
+      }),
+    },
   });
 
   return { app, query };

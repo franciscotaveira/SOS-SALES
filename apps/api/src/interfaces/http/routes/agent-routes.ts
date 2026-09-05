@@ -22,7 +22,7 @@ import {
   type ResponderMode,
   type ResponderOwner,
 } from '../../../application/agents/receptionist-agent.js';
-import { NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
+import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.js';
 import { analyzeConversationDossier, MessageLike } from '../../../application/services/cognitive-analyzer.js';
 
@@ -367,10 +367,15 @@ export interface AgentRoutesOptions {
   workspaceDirectory?: WorkspaceDirectory;
   /** Deployment-owned pool query; avoids the development singleton in production. */
   query?: DatabaseQuery;
+  /** Injectable providers keep simulator tests deterministic and offline. */
+  nvidiaEngine?: Pick<NvidiaNimEngine, 'generateChatCompletion'>;
+  openRouterEngine?: Pick<OpenRouterEngine, 'generateChatCompletion'>;
 }
 
 export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: FastifyInstance, options = {}) => {
   const query = options.query ?? defaultDatabaseQuery;
+  const nvidiaEngine = options.nvidiaEngine || new NvidiaNimEngine();
+  const openRouterEngine = options.openRouterEngine || new OpenRouterEngine();
   // Enforce JWT on all agent bot routes
   app.addHook('onRequest', async (request, reply) => {
     if (!options?.authenticator) {
@@ -1291,26 +1296,22 @@ MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
       // 7. INFERÊNCIA VIA MOTOR SOBERANO (NVIDIA NIM com Fallback OpenRouter)
       const startTime = Date.now();
       let generatedReply = '';
-      let modelUsed = 'nvidia/llama-3.3-nemotron-super-49b-v1';
+      let modelUsed = NVIDIA_MODEL_TIERS.FAST;
 
       try {
-        const nim = new NvidiaNimEngine();
-        const nimResult = await nim.generateChatCompletion(llmMessages, {
-          model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+        const nimResult = await nvidiaEngine.generateChatCompletion(llmMessages, {
+          model: NVIDIA_MODEL_TIERS.FAST,
           temperature: 0.3,
           maxTokens: 400,
         });
         generatedReply = nimResult.content || nimResult.text || '';
-        modelUsed = nimResult.model || 'nvidia/llama-3.3-nemotron-super-49b-v1';
+        modelUsed = nimResult.model || NVIDIA_MODEL_TIERS.FAST;
       } catch (nimErr) {
         request.log.warn({ err: nimErr }, 'NVIDIA NIM indisponível no simulador, acionando OpenRouter fallback');
         try {
-          const openRouter = new OpenRouterEngine();
-          const orResult = await openRouter.generateChatCompletion(llmMessages, {
-            model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
-          });
+          const orResult = await openRouterEngine.generateChatCompletion(llmMessages);
           generatedReply = orResult.content || '';
-          modelUsed = orResult.model || 'openrouter/llama-3.1-70b';
+          modelUsed = orResult.model || 'openrouter-default';
         } catch (orErr) {
           generatedReply = dossier.smallestNextMove?.draftText || `Olá! O nosso Plano Anual Empresa Amiga está em condição promocional por 12x de R$ 97,00. Quer garantir sua ativação hoje?`;
           modelUsed = 'sos-rule-engine-fallback';
@@ -1379,7 +1380,6 @@ MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
       );
 
       // 2. REGENERA A RESPOSTA COM A NOVA INSTRUÇÃO EMBARCADA
-      const nim = new NvidiaNimEngine();
       const systemPrompt = `Você é Sofia, especialista comercial do SOS Vendas.
 O gestor acabou de calibrar uma regra obrigatória que você DEVE seguir:
 "${instruction}"
@@ -1393,8 +1393,8 @@ Responda à última mensagem do cliente aplicando rigorosamente esta nova diretr
 
       let calibratedReply = '';
       try {
-        const nimResult = await nim.generateChatCompletion(messages, {
-          model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+        const nimResult = await nvidiaEngine.generateChatCompletion(messages, {
+          model: NVIDIA_MODEL_TIERS.FAST,
           temperature: 0.2,
         });
         calibratedReply = nimResult.content || nimResult.text || '';
