@@ -4,12 +4,12 @@
 
 ## Cartão da oferta
 
-- **Comprador:** dono de negócio, vendedor ou responsável por conteúdo. Os materiais entregam peças e rotinas; não incluem audiência, tráfego ou promessa de vendas..
+- **Comprador:** dono de negócio, vendedor ou responsável por conteúdo. Os materiais entregam peças e rotinas; não incluem audiência, tráfego ou promessa de vendas.
 - **Formato:** Notion + PDF.
 - **Preço:** hipótese a testar; definir somente após validar compra e esforço de suporte.
 - **Resultado comprado:** Mapa preenchível ligando promessa, chamada, intenção esperada e primeira resposta.
 - **Origem no catálogo:** grupo 3, ID 17.
-- **Sobreposição:** Hipótese acrescentada ao catálogo; criar e validar do zero.
+- **Sobreposição:** Comparar com EKO e Conversas Prontas antes de publicar.
 
 ## Promessa de uma frase
 

@@ -4,7 +4,7 @@
 
 ## Cartão da oferta
 
-- **Comprador:** dono de negócio, vendedor ou responsável por conteúdo. Os materiais entregam peças e rotinas; não incluem audiência, tráfego ou promessa de vendas..
+- **Comprador:** dono de negócio, vendedor ou responsável por conteúdo. Os materiais entregam peças e rotinas; não incluem audiência, tráfego ou promessa de vendas.
 - **Formato:** Notion + PDF.
 - **Preço:** hipótese a testar; definir somente após validar compra e esforço de suporte.
 - **Resultado comprado:** Apresentação de parceria, roteiro de contato individual pertinente e quadro de acompanhamento.

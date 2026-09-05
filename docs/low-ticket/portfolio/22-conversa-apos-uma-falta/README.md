@@ -4,7 +4,7 @@
 
 ## Cartão da oferta
 
-- **Comprador:** negócio de serviços com horários marcados. O conteúdo é operacional, sem aconselhamento clínico ou setorial regulado..
+- **Comprador:** negócio de serviços com horários marcados. O conteúdo é operacional, sem aconselhamento clínico ou setorial regulado.
 - **Formato:** Notion + PDF.
 - **Preço:** hipótese a testar; definir somente após validar compra e esforço de suporte.
 - **Resultado comprado:** Mensagens para compreender o ocorrido e oferecer reagendamento quando fizer sentido.

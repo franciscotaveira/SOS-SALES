@@ -4,7 +4,7 @@
 
 ## Cartão da oferta
 
-- **Comprador:** prestador de serviço, pequeno comércio ou profissional independente. Formato possível: modelos editáveis com exemplo preenchido e instrução curta..
+- **Comprador:** prestador de serviço, pequeno comércio ou profissional independente. Formato possível: modelos editáveis com exemplo preenchido e instrução curta.
 - **Formato:** PDF + Notion.
 - **Preço:** hipótese a testar; definir somente após validar compra e esforço de suporte.
 - **Resultado comprado:** Comparativo editável de versões essencial, intermediária e completa, com diferenças reais.

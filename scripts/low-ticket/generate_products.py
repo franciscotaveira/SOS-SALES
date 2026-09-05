@@ -190,7 +190,7 @@ def parse_catalog() -> list[dict[str, str]]:
     records: list[dict[str, str]] = []
     for raw in CATALOG_PATH.read_text(encoding="utf-8").splitlines():
         if raw.startswith("## "):
-            family = raw[3:].strip()
+            family = re.sub(r"^\d+\.\s*", "", raw[3:].strip())
             continue
         match = re.match(r"\|\s*(\d{2})\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|$", raw)
         if not match or family not in FAMILY_META:

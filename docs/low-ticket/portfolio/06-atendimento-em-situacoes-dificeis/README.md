@@ -4,7 +4,7 @@
 
 ## Cartão da oferta
 
-- **Comprador:** vendedor, autônomo ou dono que atende pessoalmente pelo WhatsApp. Formato possível: biblioteca pesquisável e versão em documento, com campos editáveis, contexto de uso e regra de encerramento..
+- **Comprador:** vendedor, autônomo ou dono que atende pessoalmente pelo WhatsApp. Formato possível: biblioteca pesquisável e versão em documento, com campos editáveis, contexto de uso e regra de encerramento.
 - **Formato:** Notion + PDF.
 - **Preço:** hipótese a testar; definir somente após validar compra e esforço de suporte.
 - **Resultado comprado:** Respostas para atraso, indisponibilidade, erro e reclamação, com encaminhamento ao responsável.

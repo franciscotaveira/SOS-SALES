@@ -4,7 +4,7 @@
 
 ## Para que serve
 
-Este kit foi desenhado para vendedor, autônomo ou dono que atende pessoalmente pelo WhatsApp. Formato possível: biblioteca pesquisável e versão em documento, com campos editáveis, contexto de uso e regra de encerramento.. Ele ajuda a produzir: **Retomadas por motivo e contexto conhecido, com critérios para escolher quem contatar e quando parar**. O kit não instala ferramentas nem opera contas do comprador.
+Este kit foi desenhado para vendedor, autônomo ou dono que atende pessoalmente pelo WhatsApp. Formato possível: biblioteca pesquisável e versão em documento, com campos editáveis, contexto de uso e regra de encerramento. Ele ajuda a produzir: **Retomadas por motivo e contexto conhecido, com critérios para escolher quem contatar e quando parar**. O kit não instala ferramentas nem opera contas do comprador.
 
 ## Antes de começar
 
@@ -35,7 +35,7 @@ Este kit foi desenhado para vendedor, autônomo ou dono que atende pessoalmente 
 
 ## Exemplo fictício
 
-Exemplo fictício — Situação: “Empresa Aurora”; Contexto conhecido: “cliente pediu uma próxima ação clara”; Resultado: “registrar, executar uma vez e revisar”.
+Exemplo fictício — Situação: “orçamento enviado”; Contexto conhecido: “cliente pediu prazo”; Objetivo desta mensagem: “confirmar se há dúvida”; Próxima ação: “cliente responder ou encerrar”;
 
 ## Revisão antes de usar
 

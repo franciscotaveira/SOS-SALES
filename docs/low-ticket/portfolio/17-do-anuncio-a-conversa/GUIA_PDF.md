@@ -4,7 +4,7 @@
 
 ## Para que serve
 
-Este kit foi desenhado para dono de negócio, vendedor ou responsável por conteúdo. Os materiais entregam peças e rotinas; não incluem audiência, tráfego ou promessa de vendas.. Ele ajuda a produzir: **Mapa preenchível ligando promessa, chamada, intenção esperada e primeira resposta**. O kit não instala ferramentas nem opera contas do comprador.
+Este kit foi desenhado para dono de negócio, vendedor ou responsável por conteúdo. Os materiais entregam peças e rotinas; não incluem audiência, tráfego ou promessa de vendas. Ele ajuda a produzir: **Mapa preenchível ligando promessa, chamada, intenção esperada e primeira resposta**. O kit não instala ferramentas nem opera contas do comprador.
 
 ## Antes de começar
 
@@ -36,7 +36,7 @@ Este kit foi desenhado para dono de negócio, vendedor ou responsável por conte
 
 ## Exemplo fictício
 
-Exemplo fictício — Oferta relacionada: “Empresa Aurora”; Dúvida ou dor observada: “cliente pediu uma próxima ação clara”; Resultado: “registrar, executar uma vez e revisar”.
+Exemplo fictício — Oferta relacionada: “serviço principal”; Dúvida observada: “quanto custa e quando começa?”; Ângulo: “explicação”; CTA: “pedir diagnóstico”;
 
 ## Revisão antes de usar
 

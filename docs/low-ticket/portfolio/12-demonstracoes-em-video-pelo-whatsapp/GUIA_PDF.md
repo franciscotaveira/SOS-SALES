@@ -4,7 +4,7 @@
 
 ## Para que serve
 
-Este kit foi desenhado para prestador de serviço, pequeno comércio ou profissional independente. Formato possível: modelos editáveis com exemplo preenchido e instrução curta.. Ele ajuda a produzir: **Roteiros de gravação para produto, serviço e explicação de orçamento, com lista de cenas**. O kit não instala ferramentas nem opera contas do comprador.
+Este kit foi desenhado para prestador de serviço, pequeno comércio ou profissional independente. Formato possível: modelos editáveis com exemplo preenchido e instrução curta. Ele ajuda a produzir: **Roteiros de gravação para produto, serviço e explicação de orçamento, com lista de cenas**. O kit não instala ferramentas nem opera contas do comprador.
 
 ## Antes de começar
 
@@ -36,7 +36,7 @@ Este kit foi desenhado para prestador de serviço, pequeno comércio ou profissi
 
 ## Exemplo fictício
 
-Exemplo fictício — Oferta: “Empresa Aurora”; Cliente / segmento: “cliente pediu uma próxima ação clara”; Resultado: “registrar, executar uma vez e revisar”.
+Exemplo fictício — Oferta: “implantação de atendimento”; Cliente / segmento: “empresa Aurora”; Entregáveis: “configuração, teste e treinamento”; Não incluído: “gestão diária”;
 
 ## Revisão antes de usar
 

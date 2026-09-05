@@ -4,7 +4,7 @@
 
 ## Para que serve
 
-Este kit foi desenhado para negócio com compradores existentes. Qualquer contato deve considerar a relação, a pertinência e a preferência do destinatário.. Ele ajuda a produzir: **Calendário de vencimentos e mensagens que esclarecem continuidade, condições e decisão**. O kit não instala ferramentas nem opera contas do comprador.
+Este kit foi desenhado para negócio com compradores existentes. Qualquer contato deve considerar a relação, a pertinência e a preferência do destinatário. Ele ajuda a produzir: **Calendário de vencimentos e mensagens que esclarecem continuidade, condições e decisão**. O kit não instala ferramentas nem opera contas do comprador.
 
 ## Antes de começar
 
@@ -36,7 +36,7 @@ Este kit foi desenhado para negócio com compradores existentes. Qualquer contat
 
 ## Exemplo fictício
 
-Exemplo fictício — Cliente: “Empresa Aurora”; Última compra / atendimento: “cliente pediu uma próxima ação clara”; Resultado: “registrar, executar uma vez e revisar”.
+Exemplo fictício — Cliente: “Cliente Aurora”; Última compra: “01/08”; Ocasião de contato: “uso inicial”; Elegibilidade: “revisar”; Próxima ação: “perguntar se precisa de ajuda”;
 
 ## Revisão antes de usar
 

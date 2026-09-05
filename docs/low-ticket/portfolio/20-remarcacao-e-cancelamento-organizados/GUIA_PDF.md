@@ -4,7 +4,7 @@
 
 ## Para que serve
 
-Este kit foi desenhado para negócio de serviços com horários marcados. O conteúdo é operacional, sem aconselhamento clínico ou setorial regulado.. Ele ajuda a produzir: **Fluxos de conversa para escolher outra data, registrar motivo e esclarecer a política existente**. O kit não instala ferramentas nem opera contas do comprador.
+Este kit foi desenhado para negócio de serviços com horários marcados. O conteúdo é operacional, sem aconselhamento clínico ou setorial regulado. Ele ajuda a produzir: **Fluxos de conversa para escolher outra data, registrar motivo e esclarecer a política existente**. O kit não instala ferramentas nem opera contas do comprador.
 
 ## Antes de começar
 
@@ -36,7 +36,7 @@ Este kit foi desenhado para negócio de serviços com horários marcados. O cont
 
 ## Exemplo fictício
 
-Exemplo fictício — Pessoa / oportunidade: “Empresa Aurora”; Serviço: “cliente pediu uma próxima ação clara”; Resultado: “registrar, executar uma vez e revisar”.
+Exemplo fictício — Pessoa / oportunidade: “Cliente Aurora”; Serviço: “sessão inicial”; Data e horário confirmados: “10/09, 14h”; Ação esperada: “confirmar presença”;
 
 ## Revisão antes de usar
 

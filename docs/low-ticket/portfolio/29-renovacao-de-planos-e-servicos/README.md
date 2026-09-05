@@ -4,7 +4,7 @@
 
 ## Cartão da oferta
 
-- **Comprador:** negócio com compradores existentes. Qualquer contato deve considerar a relação, a pertinência e a preferência do destinatário..
+- **Comprador:** negócio com compradores existentes. Qualquer contato deve considerar a relação, a pertinência e a preferência do destinatário.
 - **Formato:** Notion + PDF.
 - **Preço:** hipótese a testar; definir somente após validar compra e esforço de suporte.
 - **Resultado comprado:** Calendário de vencimentos e mensagens que esclarecem continuidade, condições e decisão.
