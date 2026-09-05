@@ -35,8 +35,10 @@
 - Experiência mobile nativa: Bottom Navigation Bar com safe-area insets, Cockpit master-detail (Lista ↔ Chat 1:1), Funil Kanban com seletor de etapas por pills e Dossiê IA acessível via modal/bottom sheet.
 - Sistema de cores padronizado (`--sos-action: #00A884`, `--sos-operational: #2563EB`, `--sos-ai: #7C3AED`, `--sos-warning: #D97706`, `--sos-danger: #DC2626`, `--sos-dark: #0B132B`).
 - Ícones Lucide alinhados: `Mais` (Menu), `Dossiê` (Sparkles), `Assumir` (UserCheck), `Concluir` (CheckCircle2), `Agora` (Flame), `Conversas` (MessageSquare), `Funil` (Columns3).
-- Interface operacional enxuta: Cockpit 1:1, Funil Kanban, Configurações de Canais & Traqueamento.
-- Espelhamento de Agenda Web (Trinks / Portal do Salão) destravado no Cockpit (`Alt + A`).
+- Tutorial Assistido & Onboarding Guiado (`AssistedTutorialModal`):
+  - 6 etapas canônicas: Visão Geral do Cockpit, Conexão WhatsApp, Vendedor 24/7 (IA & Receptionist), Espelhamento de Agenda, Funil Kanban & CAPI (Meta Ads) e Checklist de Ativação (Go-Live).
+  - Modo duplo: Modal imersivo + Floating Dock inferior (mini-guia para realizar as configurações na tela real com instruções ao lado).
+  - Acesso contínuo sob demanda: Botão `🎓 Guia de Início` no TopBar e no rodapé do menu lateral, com persistência em `localStorage`.
 - API: rotas E2E OK, auth Supabase + RLS multi-tenant, 44 tabelas no schema público.
 - WhatsApp WAHA + Meta WABA (Arsenal completo: Pix, SPM/MPM, Location, Flows, Carousel, OTP).
 - Docker Lab local: http://localhost:3333 (frontend) + http://localhost:4335 (API).
@@ -199,7 +201,7 @@ _Atualizado automaticamente pela AGY (Antigravity) em 18 Ago 2026_
 <claude-mem-context>
 # Memory Context
 
-# [SOS-SALES] recent context, 2026-09-05 2:52am GMT-3
+# [SOS-SALES] recent context, 2026-09-05 5:14am GMT-3
 
 No previous sessions found.
 </claude-mem-context>

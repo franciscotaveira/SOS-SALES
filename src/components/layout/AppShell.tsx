@@ -81,6 +81,7 @@ interface AppShellProps {
   onChangeConversationsMode?: (mode: 'list' | 'kanban' | 'wallboard') => void;
   userEmail?: string;
   onSignOut?: () => void;
+  onOpenTutorial?: () => void;
   children: React.ReactNode;
 }
 
@@ -106,6 +107,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   onChangeConversationsMode,
   userEmail,
   onSignOut,
+  onOpenTutorial,
   children,
 }) => {
   const { isFeatureEnabled } = useFeatureFlags();
@@ -1030,8 +1032,19 @@ export const AppShell: React.FC<AppShellProps> = ({
               )}
             </div>
 
-            {/* 5. Footer Actions: Help & Logout — Icons Only, Right Aligned */}
+            {/* 5. Footer Actions: Tutorial, Help & Logout */}
             <div className="flex items-center justify-end gap-1 pt-1 border-t border-slate-800/80">
+              {onOpenTutorial && (
+                <button
+                  onClick={onOpenTutorial}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-[#00A884] hover:bg-slate-800/60 transition-colors cursor-pointer"
+                  title="Guia de Início (Tutorial)"
+                  aria-label="Guia de Início"
+                >
+                  <Sparkles className="w-3.5 h-3.5 shrink-0 text-[#00A884]" />
+                </button>
+              )}
+
               <button
                 onClick={() => setHelpModalOpen(true)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-colors cursor-pointer"
@@ -1140,8 +1153,20 @@ export const AppShell: React.FC<AppShellProps> = ({
             </button>
           </div>
 
-          {/* Right: Mobile Search Button + Notifications Popover */}
-          <div className="flex items-center gap-1 shrink-0">
+          {/* Right: Tutorial Button + Mobile Search Button + Notifications Popover */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onOpenTutorial && (
+              <button
+                onClick={onOpenTutorial}
+                className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl bg-[#001f18] hover:bg-[#00382b] text-[#00A884] border border-[#00A884]/40 transition-all flex items-center gap-1.5 text-xs font-bold shadow-2xs cursor-pointer active:scale-95 shrink-0"
+                title="Guia Assistido de Início e Configurações"
+                aria-label="Abrir Guia Assistido"
+              >
+                <Sparkles className="w-3.5 h-3.5 animate-pulse text-[#00A884]" />
+                <span className="hidden sm:inline">Guia de Início</span>
+              </button>
+            )}
+
             {/* Mobile Search Button */}
             <button
               onClick={() => setSearchModalOpen(true)}

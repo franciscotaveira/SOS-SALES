@@ -35,6 +35,7 @@ import { SalesAiPlaybookView } from './components/intelligence/SalesAiPlaybookVi
 import { QaSimulatorView } from './components/intelligence/QaSimulatorView';
 import { WorkspaceInitModal } from './components/workspace/WorkspaceInitModal';
 import { OnboardingSetupAssistantModal } from './components/assistant/OnboardingSetupAssistantModal';
+import { AssistedTutorialModal } from './components/assistant/AssistedTutorialModal';
 import { Bot, Sparkles } from 'lucide-react';
 
 interface TabErrorBoundaryProps {
@@ -166,6 +167,14 @@ function AppContent({
     isProductionMvp ? 'traffic_proof' : 'analytics',
   );
   const [isAssistantOpen, setIsAssistantOpen] = React.useState(false);
+  const [isTutorialOpen, setIsTutorialOpen] = React.useState<boolean>(() => {
+    try {
+      const completed = localStorage.getItem('sos_tutorial_completed');
+      return completed !== 'true';
+    } catch {
+      return false;
+    }
+  });
 
   // Role-based security fallback: prevent unauthorized roles from viewing restricted tabs
   React.useEffect(() => {
@@ -249,6 +258,7 @@ function AppContent({
       onChangeConversationsMode={setConversationsMode}
       userEmail={userEmail}
       onSignOut={onSignOut}
+      onOpenTutorial={() => setIsTutorialOpen(true)}
     >
       <OfflineBanner isOffline={isOffline} onReconnect={() => setIsOffline(false)} />
 
@@ -516,11 +526,34 @@ function AppContent({
           currentWorkspace={currentWorkspace}
           isOpen={isAssistantOpen}
           onClose={() => setIsAssistantOpen(false)}
-      onNavigateToTab={(tab) => {
+          onNavigateToTab={(tab) => {
             setActiveTab(tab);
             setIsAssistantOpen(false);
           }}
         />}
+
+        {/* Guia Assistido de Configuração e Vendas (Onboarding Walkthrough) */}
+        <AssistedTutorialModal
+          currentWorkspace={currentWorkspace}
+          isOpen={isTutorialOpen}
+          onClose={() => setIsTutorialOpen(false)}
+          onNavigateToTab={(tab, subTab) => {
+            if (tab === 'kanban') {
+              setActiveTab('conversas');
+              setConversationsMode('kanban');
+            } else {
+              setActiveTab(tab);
+            }
+            if (subTab) {
+              if (tab === 'configuracoes') setSettingsSubTab(subTab);
+              if (tab === 'resultados') setResultsSubTab(subTab);
+              if (tab === 'grupos') setGroupSubTab(subTab);
+              if (tab === 'playbook') setIntelligenceSubTab(subTab);
+            }
+          }}
+          isChannelOnline={currentWorkspace.whatsappConnected}
+          isOfficialChannelConfigured={Boolean(currentWorkspace.metaPhoneNumberId)}
+        />
       </AppShell>
     );
   }
