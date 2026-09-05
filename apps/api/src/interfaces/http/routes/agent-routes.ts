@@ -26,6 +26,7 @@ import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../../infrastructure/ai/
 import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.js';
 import { analyzeConversationDossier, MessageLike } from '../../../application/services/cognitive-analyzer.js';
 import { SOS_SALES_DEFAULT_CATALOG_TEXT, SOS_SALES_DEFAULT_PRICE_SUMMARY } from '../../../application/services/commercial-offers.js';
+import { HumanizerKernel, HUMANIZER_PROMPT_DIRECTIVES } from '../../../infrastructure/ai/humanizer-kernel.js';
 
 interface BotParams {
   workspaceId: string;
@@ -1348,7 +1349,9 @@ MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
    - Responda em tom natural de WhatsApp, parágrafos concisos e objetivos (máximo 3 frases).
 3. MENOR PRÓXIMO PASSO (Microcompromisso):
    - Conduza a conversa propondo este próximo passo: "${dossier.smallestNextMove?.actionTitle || 'Avançar para decisão'}".
-   - Exemplo de condução: "${dossier.smallestNextMove?.draftText || 'Qual opção faz mais sentido para você?'}"`;
+   - Exemplo de condução: "${dossier.smallestNextMove?.draftText || 'Qual opção faz mais sentido para você?'}"
+
+${HUMANIZER_PROMPT_DIRECTIVES}`;
 
       // 6. PREPARAÇÃO DAS MENSAGENS PARA O LLM
       const llmMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -1392,6 +1395,9 @@ MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
           modelUsed = 'sos-rule-engine-fallback';
         }
       }
+
+      // Aplicação do Banco Oculto de Humanização determinístico no pós-processamento
+      generatedReply = HumanizerKernel.humanizeReply(generatedReply);
 
       const latencyMs = Date.now() - startTime;
 
@@ -1484,7 +1490,7 @@ Responda à última mensagem do cliente aplicando rigorosamente esta nova diretr
           model: NVIDIA_MODEL_TIERS.FAST,
           temperature: 0.2,
         });
-        calibratedReply = nimResult.content || nimResult.text || '';
+        calibratedReply = HumanizerKernel.humanizeReply(nimResult.content || nimResult.text || '');
       } catch (err) {
         calibratedReply = `Entendido! Atualizei a regra: "${instruction}".`;
       }

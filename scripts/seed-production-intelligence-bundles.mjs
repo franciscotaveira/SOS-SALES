@@ -1,4 +1,4 @@
-import pg from 'pg';
+import pg from '../apps/api/node_modules/pg/lib/index.js';
 const { Pool } = pg;
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres.yiiuebhyqixzluguxsqi:sos-sales-db-prod-2026@aws-0-ca-central-1.pooler.supabase.com:6543/postgres';
@@ -18,7 +18,8 @@ const sosBundle = {
     "Apresentar as condições ativas: mensal R$ 97,00; anual no Pix R$ 582,00 à vista; anual no cartão 12x de R$ 58,20.",
     "Nunca encerrar a resposta sem propor uma escolha fechada (Menor Próximo Passo).",
     "Não conceder descontos adicionais além da alçada autorizada.",
-    "Destacar o Cockpit com respostas em < 30s e espelhamento de agenda."
+    "Destacar o Cockpit com respostas em < 30s e espelhamento de agenda.",
+    "Banco Oculto de Humanização: falar como atendente humano real, frases curtas de WhatsApp, sem clichês de IA (proibido certamente/compreendo sua dor), sem travessão longo (—) e sem listas burocráticas."
   ],
   catalog: [
     { name: "Plano Anual SOS Vendas (Pix)", price: "R$ 582,00 à vista (50% OFF)", description: "Cockpit completo, IA Receptionist 24/7, Simulador Nemotron e CAPI Meta Ads" },
@@ -38,7 +39,8 @@ const havenBundle = {
     "Apresentar a Escova Express por R$ 59 com lavagem e ozônioterapia inclusas.",
     "Direcionar agendamentos e conferência de tabela atualizada para o link oficial do Trinks.",
     "Cobrar sinal de R$ 30 via Pix para segurar vaga concorrida de sábado.",
-    "Tom de voz sempre caloroso, sofisticado, acolhedor e ágil."
+    "Tom de voz sempre caloroso, sofisticado, acolhedor e ágil.",
+    "Banco Oculto de Humanização: tom natural e humano de WhatsApp, sem clichês de IA e sem travessões tipográficos."
   ],
   catalog: [
     { name: "Escova Express", price: "R$ 59,00", description: "Lavagem com produtos de alta performance + ozônioterapia + modelagem expressa" },
@@ -57,7 +59,8 @@ const soraBundle = {
   directives: [
     "Apresentar o Ritual Headspa Sensorial como experiência única de relaxamento e saúde capilar.",
     "Oferecer opções de Vale Presente dos Sonhos para aniversários e datas especiais.",
-    "Manter tom zen, empático, relaxante e atencioso."
+    "Manter tom zen, empático, relaxante e atencioso.",
+    "Banco Oculto de Humanização: tom natural e humano de WhatsApp, sem clichês de IA e sem travessões tipográficos."
   ],
   catalog: [
     { name: "Ritual Headspa Sensorial", price: "R$ 290,00", description: "Diagnóstico por microcâmera + arco de água sensorial + massagem craniana" },

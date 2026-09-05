@@ -16,6 +16,7 @@ import { WabaClient } from '../../infrastructure/channels/meta/waba-client.js';
 import { WahaOutboundAdapter } from '../../infrastructure/channels/waha/waha-outbound-adapter.js';
 import { dbPool } from '../../infrastructure/database/pool.js';
 import { buildSystemPrompt, WorkspaceConfig } from '../../infrastructure/ai/receptionist-system-prompt.js';
+import { HumanizerKernel } from '../../infrastructure/ai/humanizer-kernel.js';
 
 export type ReceptionistIntent =
   | 'greeting'
@@ -211,7 +212,7 @@ export function parseReceptionistDecision(rawResponse: string): ReceptionistDeci
     if (typeof decision.escalate !== 'boolean' || typeof decision.sendBookingFlow !== 'boolean') return null;
 
     const intent = decision.intent as ReceptionistIntent;
-    const reply = lines.join('\n').trim();
+    const reply = HumanizerKernel.humanizeReply(lines.join('\n'));
     if (reply.length > MAX_AUTONOMOUS_REPLY_LENGTH) return null;
     if (!reply && intent !== 'human_request') return null;
     if (intent === 'human_request' && decision.escalate !== true) return null;

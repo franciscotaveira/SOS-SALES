@@ -3,8 +3,9 @@
  *
  * Prompts soberanos parametrizáveis por workspace.
  * Otimizados para o modelo FAST configurado no motor NVIDIA NIM
- * via NVIDIA NIM (https://integrate.api.nvidia.com/v1)
  */
+
+import { HUMANIZER_PROMPT_DIRECTIVES } from './humanizer-kernel.js';
 
 export interface WorkspaceConfig {
   name: string;
@@ -285,6 +286,8 @@ ${knowledgeInstruction}
    - Pedido explícito de humano, reclamação grave e risco técnico/químico exigem escalate: true.
 ${customGuardrails}
 ${customEscalations}
+
+${HUMANIZER_PROMPT_DIRECTIVES}
 
 FORMATO DA RESPOSTA:
 Linha 1: {"intent":"...","escalate":...,"sendBookingFlow":...}

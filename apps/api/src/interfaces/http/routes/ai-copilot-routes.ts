@@ -5,6 +5,7 @@ import { MultimodalVisionAnalyzer } from '../../../infrastructure/ai/multimodal-
 import { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
 import { verifyOperatorAuth, unauthorized } from '../helpers/auth-guard.js';
 import { isProductionRuntime } from '../../../infrastructure/security/runtime-safety.js';
+import { HumanizerKernel, HUMANIZER_PROMPT_DIRECTIVES } from '../../../infrastructure/ai/humanizer-kernel.js';
 
 export interface AiCopilotRoutesOptions {
   nvidiaEngine?: NvidiaNimEngine;
@@ -295,6 +296,8 @@ Estágio atual do funil: ${body.journeyStage || 'LEAD'}
 Nome do cliente: ${body.contactName || 'Cliente'}
 ${groundingInstruction}
 
+${HUMANIZER_PROMPT_DIRECTIVES}
+
 Retorne JSON estritamente estruturado:
 {
   "suggestedMessage": "Texto exato da mensagem humana, calorosa, elegante e direta para o WhatsApp.",
@@ -343,6 +346,10 @@ Retorne JSON estritamente estruturado:
             recommendedAction: 'Avançar Conversa',
             rationale: 'Sugestão contextual gerada pela IA.',
           };
+        }
+
+        if (typeof parsed?.suggestedMessage === 'string') {
+          parsed.suggestedMessage = HumanizerKernel.humanizeReply(parsed.suggestedMessage);
         }
 
         return reply.code(200).send({
