@@ -3,7 +3,7 @@ window.EKO_OFFER = {
   title: 'Kit de Configuração Comercial para IA no WhatsApp',
   price: 'R$ 47',
   // Ative somente com uma URL de checkout Cakto publicada e validada.
-  checkoutUrl: '',
+  checkoutUrl: 'https://pay.cakto.com.br/7dsp9dk_1077540',
   // Exiba apenas informações confirmadas sobre entrega, acesso e suporte.
   accessText: '',
   interestUrl: '',

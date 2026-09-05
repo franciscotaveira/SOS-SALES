@@ -13,6 +13,10 @@
   function configureLink(button, url, label) {
     if (url) {
       button.href = url;
+      if (/^https?:\/\//i.test(url)) {
+        button.target = '_blank';
+        button.rel = 'noreferrer';
+      }
       button.removeAttribute('aria-disabled');
       button.removeAttribute('data-unavailable');
       return;
