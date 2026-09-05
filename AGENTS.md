@@ -18,7 +18,14 @@
 ## 2. ESTADO ATUAL (04 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `7c49a2cd4cdf1ba73c97e04476d4c93872fc2f9c` (SOS Vendas Color Palette Alignment & Unified Icon Semantics)
+- Release ativa: `feff4d9bf21745a492329240361772bf676be64f` (SOS Vendas All-Agent Standardization to NVIDIA NIM Engine)
+- Todos os agentes e módulos de IA padronizados no motor soberano **NVIDIA NIM** (`NvidiaNimEngine`):
+  - **Receptionist 24/7:** `meta/llama-3.1-70b-instruct` / `nvidia/llama-3.3-nemotron-super-49b-v1`
+  - **Copilot Comercial & Dossiê do Lead:** `meta/llama-3.1-70b-instruct`
+  - **Visão & OCR Multimodal:** `meta/llama-3.2-11b-vision-instruct`
+  - **Reanimação de Vácuo / Ghosting:** `meta/llama-3.1-70b-instruct`
+  - **Evolução de Playbook:** `meta/llama-3.1-70b-instruct` / `deepseek-ai/deepseek-r1`
+  - **Retenção & LTV Pós-Venda:** `meta/llama-3.1-70b-instruct`
 - Experiência mobile nativa: Bottom Navigation Bar com safe-area insets, Cockpit master-detail (Lista ↔ Chat 1:1), Funil Kanban com seletor de etapas por pills e Dossiê IA acessível via modal/bottom sheet.
 - Sistema de cores padronizado (`--sos-action: #00A884`, `--sos-operational: #2563EB`, `--sos-ai: #7C3AED`, `--sos-warning: #D97706`, `--sos-danger: #DC2626`, `--sos-dark: #0B132B`).
 - Ícones Lucide alinhados: `Mais` (Menu), `Dossiê` (Sparkles), `Assumir` (UserCheck), `Concluir` (CheckCircle2), `Agora` (Flame), `Conversas` (MessageSquare), `Funil` (Columns3).
