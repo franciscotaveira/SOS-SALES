@@ -1,6 +1,6 @@
 # Portfólio Low-Ticket — arquitetura inicial
 
-> Estado: proposta de validação. Não publicar, precificar definitivamente ou anunciar sem a aprovação de Francisco.
+> Estado: proposta de validação. Não publicar, precificar definitivamente ou anunciar sem a aprovação de Francisco. A versão atual do EKO é uma oferta única de R$ 47: não anexar order bump, upsell, desconto, escassez ou prova social não comprovada.
 
 ## Tese
 
@@ -21,11 +21,10 @@ O ativo intelectual comum é o método próprio de Continuidade Cognitiva: prese
 
 | Ordem | Produto | Preço-teste | Resultado comprado | Entrega | Papel na esteira |
 | --- | --- | ---: | --- | --- | --- |
-| 0 | Diagnóstico gratuito: “Sua IA está pronta para atender?” | Gratuito | Identificar o gargalo dominante: base, conversa, teste ou operação | Scorecard de 12 perguntas + resultado por e-mail/WhatsApp | Qualificação e escolha de caminho; não é produto pago |
-| 1 | EKO | R$ 47 | Organizar o que a IA precisa saber sem inventar regras, preços ou promessas | 6 materiais editáveis já definidos | Produto-base e primeira compra |
-| 2 | Prova de Conversa — Kit de Testes para Agente no WhatsApp | R$ 67 | Descobrir antes do cliente se o agente erra preço, ignora contexto, deixa de transferir ou conduz mal a conversa | 24 cenários, planilha de evidências, critérios de aprovação/reprovação e roteiro de reteste | Pós-EKO; abre a necessidade de otimização/auditoria |
-| 3 | Microcurso “IA que Continua a Venda” | R$ 97 | Colocar um primeiro fluxo comercial de IA em uso, com limite humano e teste real | 4 aulas curtas, demonstrações e plano de 7 dias | Educação aplicada; aquece para SOS Sales ou implementação |
-| 4 | Raio-X de Prontidão Comercial | R$ 197–297 | Receber uma leitura humana sobre riscos e próxima prioridade antes do go-live | formulário, análise limitada, devolutiva gravada de até 15 min e plano de ação | Serviço-produto; não é auditoria completa |
+| 0 | EKO | R$ 47 | Organizar o que a IA precisa saber sem inventar regras, preços ou promessas | 6 materiais editáveis já definidos | Oferta única atual; preservar sua proposta e limites |
+| 1 | Prova de Conversa — Kit de Testes para Agente no WhatsApp | R$ 67 (hipótese) | Descobrir antes do cliente se o agente erra preço, ignora contexto, deixa de transferir ou conduz mal a conversa | 24 cenários, planilha de evidências, critérios de aprovação/reprovação e roteiro de reteste | Produto independente futuro; nunca bump/upsell automático do EKO |
+| 2 | Microcurso “IA que Continua a Venda” | R$ 97 (hipótese) | Colocar um primeiro fluxo comercial de IA em uso, com limite humano e teste real | 4 aulas curtas, demonstrações e plano de 7 dias | Produto educacional independente; só criar após validar demanda |
+| 3 | Raio-X de Prontidão Comercial | R$ 197–297 (hipótese) | Receber uma leitura humana sobre riscos e próxima prioridade antes do go-live | formulário, análise limitada, devolutiva gravada de até 15 min e plano de ação | Serviço-produto futuro; não é auditoria completa |
 
 ## Especificação de cada oferta
 
@@ -35,7 +34,7 @@ O ativo intelectual comum é o método próprio de Continuidade Cognitiva: prese
 
 **Não incluir:** instalação, integrações, gestão de Meta/WhatsApp, promessa de venda ou configuração feita pela equipe. Esses limites já estão corretamente expressos na landing.
 
-**Gatilho de upgrade:** ao terminar o checklist, a pessoa se pergunta: “como sei se meu agente responde corretamente?” Direcionar para Prova de Conversa.
+**Decisão atual:** não adicionar gatilho de upgrade, order bump ou upsell ao checkout. O EKO deve permanecer uma oferta única e completa na sua faixa de preço.
 
 ### 2. Prova de Conversa — Kit de Testes para Agente no WhatsApp
 
@@ -66,7 +65,7 @@ O ativo intelectual comum é o método próprio de Continuidade Cognitiva: prese
 
 **Bônus enxuto:** mapa de Continuidade Cognitiva em uma página. Não repetir os seis documentos do EKO.
 
-**Gatilho de upgrade:** a pessoa que precisa operar várias conversas, SLA, fila, contexto e follow-up é encaminhada para SOS Sales; quem já tem agente, para o Raio-X.
+**Fronteira comercial:** se for lançado, será uma oferta independente — não um complemento obrigatório ao EKO. A pessoa que precisa operar várias conversas, SLA, fila, contexto e follow-up deve conhecer SOS Sales, não receber mais um kit.
 
 ### 4. Raio-X de Prontidão Comercial
 
@@ -91,20 +90,14 @@ O ativo intelectual comum é o método próprio de Continuidade Cognitiva: prese
 ## Esteira comercial
 
 ```text
-Conteúdo: “sua IA sabe quando não responder?”
-  → Diagnóstico gratuito
-  → EKO (organizar a verdade operacional)
-  → Prova de Conversa (testar o comportamento)
-  → Microcurso ou Raio-X, conforme maturidade
-  → SOS Sales (operar conversas e continuidade)
-  → Otimização / Assurance aplicado (serviço de maior escopo)
+EKO (oferta única, R$ 47)
+
+Produtos futuros independentes — após validação e inventário da Cakto:
+Prova de Conversa | Microcurso | Raio-X
+
+Necessidade de operação diária de leads:
+SOS Sales, não um novo low-ticket
 ```
-
-Regra de roteamento:
-
-- **Ainda não tem IA ou está começando:** EKO → Microcurso.
-- **Já tem IA, mas desconfia do comportamento:** EKO, se a base estiver fraca; caso contrário Prova de Conversa → Raio-X.
-- **Tem volume de leads e operação de WhatsApp:** demonstrar SOS Sales, não vender mais um kit.
 
 ## Como usar a Cakto sem redundância
 
@@ -115,10 +108,10 @@ Regra de roteamento:
 
 ## Ordem de validação recomendada
 
-1. Manter EKO como única oferta já ativa e medir checkout, conclusão e pedidos de ajuda.
-2. Produzir o MVP de Prova de Conversa primeiro: é o produto mais adjacente, mais rápido de montar e o que melhor revela demanda por auditoria/otimização.
-3. Vender o microcurso apenas depois de gravar quatro aulas e validar que o diagnóstico gratuito gera procura por orientação — não gravar uma formação longa.
-4. Abrir cinco vagas de Raio-X somente após ter os cenários, formulário de consentimento e modelo de devolutiva.
+1. Manter EKO como única oferta ativa e medir checkout, conclusão e pedidos de ajuda.
+2. Inventariar os produtos e entregas já publicados/configurados na Cakto antes de criar qualquer SKU novo.
+3. Escolher somente um produto futuro independente — Prova de Conversa é o candidato mais adjacente — e validar a demanda sem alterar o checkout do EKO.
+4. Só então avaliar microcurso ou Raio-X; não criar catálogo amplo antes de evidência de compra e conclusão.
 
 ## Métricas de decisão
 
