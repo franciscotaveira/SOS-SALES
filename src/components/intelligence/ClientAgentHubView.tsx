@@ -9,6 +9,7 @@ import { AgentKnowledgeBaseSection } from './AgentKnowledgeBaseSection';
 import { ContinuousLearningSection } from './ContinuousLearningSection';
 import { HistoricalDiagnosisSection } from './HistoricalDiagnosisSection';
 import { QaSimulatorView } from './QaSimulatorView';
+import { AiAssuranceAuditView } from './AiAssuranceAuditView';
 import {
   Building2,
   ShoppingBag,
@@ -20,6 +21,7 @@ import {
   Layers,
   CheckCircle2,
   Sparkles,
+  ShieldCheck,
   Users,
   ChevronDown,
   Save,
@@ -46,6 +48,7 @@ export type IntelligenceTab =
   | 'knowledge'
   | 'catalog'
   | 'simulator'
+  | 'assurance'
   | 'learning'
   | 'agent';
 
@@ -94,7 +97,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
     }
   }, [externalActiveSubTab]);
 
-  const productionTabs = new Set<IntelligenceTab>(['profile', 'knowledge', 'catalog', 'simulator', 'diagnosis']);
+  const productionTabs = new Set<IntelligenceTab>(['profile', 'knowledge', 'catalog', 'simulator', 'assurance', 'diagnosis']);
   const requestedTab = externalActiveSubTab ?? internalTab;
   const activeTab: IntelligenceTab = salesOsRuntimeConfig.mode === 'api' && !productionTabs.has(requestedTab)
     ? 'knowledge'
@@ -404,6 +407,22 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
 
         <button
           type="button"
+          onClick={() => handleTabChange('assurance')}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'assurance'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-surface)]'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
+          <span>Auditoria AI Assurance</span>
+          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-400/20 text-emerald-300 font-bold border border-emerald-400/30">
+            Selo de Certificação
+          </span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => handleTabChange('catalog')}
           className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'catalog'
@@ -540,6 +559,10 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
 
       {activeTab === 'simulator' && (
         <QaSimulatorView currentWorkspace={currentWorkspace} bundle={currentBundle} />
+      )}
+
+      {activeTab === 'assurance' && (
+        <AiAssuranceAuditView currentWorkspace={currentWorkspace} bundle={currentBundle} />
       )}
 
       {activeTab === 'thesis' && <SalesAiThesisConfig workspaceId={currentWorkspace.id} />}
