@@ -539,7 +539,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
       )}
 
       {activeTab === 'simulator' && (
-        <QaSimulatorView currentWorkspace={currentWorkspace} />
+        <QaSimulatorView currentWorkspace={currentWorkspace} bundle={currentBundle} />
       )}
 
       {activeTab === 'thesis' && <SalesAiThesisConfig workspaceId={currentWorkspace.id} />}

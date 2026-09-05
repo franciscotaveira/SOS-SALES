@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Zap,
   Play,
@@ -42,12 +42,14 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Workspace } from '../../types/cockpit';
+import { ClientIntelligenceBundle } from '../../types/intelligence';
 import { GlobalAiAutonomyMode } from '../../services/aiAutonomyManager';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
 import { InferredDossier, analyzeConversationDossier } from '../../utils/cognitiveAnalyzer';
 
 interface QaSimulatorViewProps {
   currentWorkspace?: Workspace;
+  bundle?: ClientIntelligenceBundle;
   onSimulateIncomingLeadMessage?: () => void;
   onSimulateNetworkErrorToggle?: () => void;
   isNetworkErrorForced?: boolean;
@@ -56,7 +58,7 @@ interface QaSimulatorViewProps {
 
 interface TestScenario {
   id: string;
-  category: 'haven' | 'sos' | 'stress';
+  category: string;
   title: string;
   badge: string;
   description: string;
@@ -82,127 +84,318 @@ interface ChatMessage {
   isCalibrated?: boolean;
 }
 
-const PRELOADED_SCENARIOS: TestScenario[] = [
-  // HAVEN SCENARIOS
-  {
-    id: 'haven-ctwa-escova',
-    category: 'haven',
-    title: '1. Anúncio CTWA (Escova R$ 59)',
-    badge: 'Meta Ads CTWA',
-    description: 'Lead clica no anúncio de Escova Express e pergunta se inclui lavagem e tem vaga hoje.',
-    customerPrompt: 'Olá! Vi o anúncio da escova por R$ 59 no Instagram. Esse valor já inclui a lavagem? Tem horário para hoje às 14h?',
-    expectedAgent: 'Bia · Concierge Haven 24/7',
-    expectedPricing: 'R$ 59,00 (Promocional)',
-    simulatedResponse: 'Olá! Que alegria receber você na Haven! 🌸 Sim, a nossa Escova Express por R$ 59 inclui a lavagem completa com produtos de alta performance e ozônioterapia para deixar seu cabelo super brilhoso e protegido! ✨\n\nPara hoje, temos encaixes excelentes! Você prefere o período da tarde ou quer garantir diretamente pelo nosso link do Trinks? https://www.trinks.com/haven-escovaria-e-esmalteria',
-    empathyScore: 98,
-    accuracyScore: 100,
-    guardrailStatus: 'passed',
-    explanation: 'Confirmou o valor exato da promoção do Meta Ads, destacou a ozônioterapia inclusa e ofertou o link oficial do Trinks.',
-  },
-  {
-    id: 'haven-multimodal-nail',
-    category: 'haven',
-    title: '2. Foto de Unha em Gel (Multimodal)',
-    badge: 'Visão Computacional',
-    description: 'Cliente manda foto de referência de esmaltação em gel e pergunta valor e tempo.',
-    customerPrompt: '[📷 Foto anexada: Unha formato amendoado com esmaltação em gel nude e francesinha fina] Oi Bia! Quero fazer igual essa da foto no sábado. Quanto fica e quanto tempo demora?',
-    hasMedia: true,
-    expectedAgent: 'Bia · Concierge Haven 24/7',
-    expectedPricing: 'R$ 150,00 (Esmaltação em Gel Premium)',
-    simulatedResponse: 'Uau, que escolha elegante e sofisticada! ✨ Analisei a sua foto de referência: é uma Esmaltação em Gel Premium com acabamento em francesinha fina. \n\n💎 Valor: R$ 150,00 (dura até 21 dias impecável sem lascar)\n⏱️ Duração: cerca de 1 hora\n\nPara o sábado as vagas são concorridas! Deseja segurar seu horário pelo Trinks (https://www.trinks.com/haven-escovaria-e-esmalteria) ou prefere que eu faça o pré-agendamento com o sinal de R$ 30 no Pix?',
-    empathyScore: 99,
-    accuracyScore: 100,
-    guardrailStatus: 'passed',
-    explanation: 'Fez a leitura visual precisa da foto, identificou o serviço da tabela 2026 e protegeu a agenda de sábado com sinal Pix.',
-  },
-  {
-    id: 'sos-sales-plano-anual',
-    category: 'sos',
-    title: '3. Anúncio Meta Ads (Plano Anual 50% OFF)',
-    badge: 'Continuidade Cognitiva',
-    description: 'Lead clica no anúncio do Instagram do SOS Vendas e pergunta o valor da anuidade.',
-    customerPrompt: 'Vi o anúncio de vocês no Insta. Quanto custa o plano anual com desconto?',
-    expectedAgent: 'Sofia · Consultora SOS Vendas',
-    expectedPricing: 'R$ 582,00 à vista no Pix (50% OFF)',
-    simulatedResponse: 'Olá! O Plano Anual no Pix está em condição especial de lançamento por R$ 582,00 à vista (50% OFF). No cartão, a opção anual fica em 12x de R$ 58,20 (40% OFF), já com Cockpit e IA inclusos. Quer que eu te envie o checkout da opção que faz mais sentido?',
-    empathyScore: 97,
-    accuracyScore: 100,
-    guardrailStatus: 'passed',
-    explanation: 'Aplicou a Regra Anti-Regressão estrita: não perguntou como pode ajudar, informou o preço parcelado de imediato e ofertou escolha binária.',
-  },
-  {
-    id: 'sos-sales-contrato-fidelidade',
-    category: 'sos',
-    title: '4. Objeção de Contrato & Fidelidade',
-    badge: 'Menor Próximo Passo',
-    description: 'Cliente pergunta se tem fidelidade contratual e como funciona o cancelamento.',
-    customerPrompt: 'Se eu contratar o SOS Vendas tem carência ou fidelidade mínima de 12 meses?',
-    expectedAgent: 'Sofia · Consultora SOS Vendas',
-    expectedPricing: 'R$ 97/mês sem fidelidade / condições da oferta',
-    simulatedResponse: 'Zero burocracia por aqui! O Plano Mensal custa R$ 97,00/mês e não tem fidelidade — você cancela conforme as condições contratadas.\n\nSe preferir o anual, são R$ 582,00 à vista no Pix (50% OFF) ou 12x de R$ 58,20 no cartão (40% OFF). Posso te enviar o checkout da opção que faz mais sentido?',
-    empathyScore: 99,
-    accuracyScore: 100,
-    guardrailStatus: 'passed',
-    explanation: 'Desarmou a objeção de risco com clareza cristalina e direcionou para o microcompromisso da escolha do plano.',
-  },
-];
+export function resolveWorkspaceSimulatorContext(
+  currentWorkspace?: Workspace,
+  bundle?: ClientIntelligenceBundle
+) {
+  const wsId = currentWorkspace?.id || '11111111-1111-1111-1111-111111111111';
+  const wsName = bundle?.companyProfile?.tradeName || currentWorkspace?.name || 'SOS Vendas';
+  const normId = wsId.toLowerCase();
+  const normName = (wsName + ' ' + (currentWorkspace?.name || '')).toLowerCase();
+
+  const isHaven = normId === '22222222-2222-2222-2222-222222222222' || normId === 'ws-haven-beauty' || normName.includes('haven') || normName.includes('escovaria');
+  const isSora = normId === '33333333-3333-3333-3333-333333333333' || normId === 'ws-sora-spa' || normName.includes('sora') || normName.includes('headspa');
+  const isSos = normId === '11111111-1111-1111-1111-111111111111' || normId === 'ws-sos-sales-official' || normName.includes('sos') || normName.includes('sistema operacional');
+
+  let type: 'sos' | 'haven' | 'sora' | 'client' = 'client';
+  if (isSos) type = 'sos';
+  else if (isHaven) type = 'haven';
+  else if (isSora) type = 'sora';
+
+  const businessName = wsName;
+  const agentName = bundle?.agentConfig?.name
+    || (isHaven ? 'Camila · Concierge Haven 24/7'
+        : isSora ? 'Sora Concierge 24/7'
+        : isSos ? 'Sofia · Consultora SOS Vendas'
+        : `${businessName} · Atendente Virtual`);
+
+  const agentInitial = (agentName.replace(/[^a-zA-Z]/g, '')[0] || 'S').toUpperCase();
+
+  const businessType = bundle?.companyProfile?.segment
+    || currentWorkspace?.businessType
+    || (isHaven ? 'Escovaria e Salão de Beleza Premium'
+        : isSora ? 'Headspa Japonês & Spa Sensorial'
+        : isSos ? 'Software Comercial (SaaS) & Inteligência de Vendas no WhatsApp'
+        : 'Atendimento & Vendas Consultivas');
+
+  let chatPlaceholder = 'Ex: Qual o valor do plano anual? ou /regra Não conceder desconto extra';
+  let defaultPrompt = 'Vi o anúncio de vocês no Insta. Quanto custa o plano anual com desconto?';
+  let defaultReply = 'Olá! O Plano Anual no Pix está com 50% de desconto, ficando em R$ 582,00 à vista (ou 12x de R$ 58,20 no cartão), já com Cockpit e IA inclusos. Quer que eu te envie o checkout seguro da opção que faz mais sentido?';
+  let defaultDirectives = [
+    'Apresentar as condições ativas: mensal R$ 97,00; anual no Pix R$ 582,00 à vista; anual no cartão 12x de R$ 58,20.',
+    'Nunca encerrar a resposta sem propor uma escolha fechada (Menor Próximo Passo).',
+    'Não conceder descontos adicionais além da alçada autorizada.',
+    'Destacar o Cockpit em < 30s e espelhamento de agenda.',
+  ];
+  let defaultTone = 'comercial_fechador';
+  let defaultDocs = [
+    {
+      id: 'doc-1',
+      name: 'SOS_Sales_Tabela_Planos_Precos.pdf',
+      fileSize: '420 KB',
+      status: 'INDEXED',
+      chunks: 8,
+      summary: 'Preços dos planos mensal e anual com alçadas de desconto.',
+    },
+    {
+      id: 'doc-2',
+      name: 'Playbook_Quebra_Objecoes_Garantia.md',
+      fileSize: '185 KB',
+      status: 'INDEXED',
+      chunks: 5,
+      summary: 'Script de desarmamento de objeções, condições comerciais e cancelamento.',
+    },
+  ];
+
+  let scenarios: TestScenario[] = [];
+
+  if (type === 'haven') {
+    chatPlaceholder = 'Ex: Quanto custa corte com escova? ou /preco Corte R$ 120';
+    defaultPrompt = 'Oi, vi o anúncio da escova por R$ 59 no Insta. Tem horário hoje?';
+    defaultReply = 'Olá! Seja muito bem-vinda à Haven! 🌸 Sim, a nossa Escova Express por R$ 59 inclui ozônioterapia. Temos horários livres hoje às 14h ou 17h. Qual fica melhor para você?';
+    defaultDirectives = [
+      'Apresentar a Escova Express por R$ 59 com lavagem e ozônioterapia inclusas.',
+      'Direcionar agendamentos e conferência de tabela atualizada para o link oficial do Trinks: https://www.trinks.com/haven-escovaria.',
+      'Cobrar sinal de R$ 30 via Pix para segurar vaga concorrida de sábado.',
+      'Tom de voz sempre caloroso, sofisticado, acolhedor e ágil.',
+    ];
+    defaultTone = 'elegante_acolhedor';
+    defaultDocs = [
+      {
+        id: 'doc-1',
+        name: 'Haven_Cardapio_Servicos_2026.pdf',
+        fileSize: '420 KB',
+        status: 'INDEXED',
+        chunks: 8,
+        summary: 'Tabela completa de serviços de escovaria e esmalteria com valores vigentes.',
+      },
+      {
+        id: 'doc-2',
+        name: 'Manual_Agendamentos_Trinks_Haven.md',
+        fileSize: '185 KB',
+        status: 'INDEXED',
+        chunks: 5,
+        summary: 'Diretrizes de encaixe na agenda Trinks e confirmação via WhatsApp.',
+      },
+    ];
+    scenarios = [
+      {
+        id: 'haven-ctwa-escova',
+        category: 'haven',
+        title: '1. Anúncio CTWA (Escova R$ 59)',
+        badge: 'Meta Ads CTWA',
+        description: 'Lead clica no anúncio de Escova Express e pergunta se inclui lavagem e tem vaga hoje.',
+        customerPrompt: 'Olá! Vi o anúncio da escova por R$ 59 no Instagram. Esse valor já inclui a lavagem? Tem horário para hoje às 14h?',
+        expectedAgent: 'Camila · Concierge Haven 24/7',
+        expectedPricing: 'R$ 59,00 (Promocional)',
+        simulatedResponse: 'Olá! Que alegria receber você na Haven! 🌸 Sim, a nossa Escova Express por R$ 59 inclui a lavagem completa com produtos de alta performance e ozônioterapia para deixar seu cabelo super brilhoso e protegido! ✨\n\nPara hoje, temos encaixes excelentes! Você prefere o período da tarde ou quer garantir diretamente pelo nosso link do Trinks? https://www.trinks.com/haven-escovaria',
+        empathyScore: 98,
+        accuracyScore: 100,
+        guardrailStatus: 'passed',
+        explanation: 'Confirmou o valor exato da promoção do Meta Ads, destacou a ozônioterapia inclusa e ofertou o link oficial do Trinks.',
+      },
+      {
+        id: 'haven-multimodal-nail',
+        category: 'haven',
+        title: '2. Foto de Unha em Gel (Multimodal)',
+        badge: 'Visão Computacional',
+        description: 'Cliente manda foto de referência de esmaltação em gel e pergunta valor e tempo.',
+        customerPrompt: '[📷 Foto anexada: Unha formato amendoado com esmaltação em gel nude e francesinha fina] Oi Camila! Quero fazer igual essa da foto no sábado. Quanto fica e quanto tempo demora?',
+        hasMedia: true,
+        expectedAgent: 'Camila · Concierge Haven 24/7',
+        expectedPricing: 'R$ 150,00 (Esmaltação em Gel Premium)',
+        simulatedResponse: 'Uau, que escolha elegante e sofisticada! ✨ Analisei a sua foto de referência: é uma Esmaltação em Gel Premium com acabamento em francesinha fina.\n\n💎 Valor: R$ 150,00 (dura até 21 dias impecável sem lascar)\n⏱️ Duração: cerca de 1 hora\n\nPara o sábado as vagas são concorridas! Deseja segurar seu horário pelo Trinks (https://www.trinks.com/haven-escovaria) ou prefere que eu faça o pré-agendamento com o sinal de R$ 30 no Pix?',
+        empathyScore: 99,
+        accuracyScore: 100,
+        guardrailStatus: 'passed',
+        explanation: 'Fez a leitura visual precisa da foto, identificou o serviço da tabela 2026 e protegeu a agenda de sábado com sinal Pix.',
+      },
+    ];
+  } else if (type === 'sora') {
+    chatPlaceholder = 'Ex: Como funciona o Headspa? ou /preco Headspa R$ 290';
+    defaultPrompt = 'Olá! Como funciona a sessão de Headspa sensorial?';
+    defaultReply = 'Olá! Seja bem-vindo ao Sora Ritual Spa. Nosso Headspa sensorial combina diagnóstico capilar por microcâmera, aromaterapia e massagem craniana revigorante. Deseja conhecer nossa grade de horários?';
+    defaultDirectives = [
+      'Apresentar o Ritual Headspa Sensorial como experiência única de relaxamento e saúde capilar.',
+      'Oferecer opções de Vale Presente dos Sonhos para aniversários e datas especiais.',
+      'Manter tom zen, empático, relaxante e atencioso.',
+    ];
+    defaultTone = 'elegante_acolhedor';
+    defaultDocs = [
+      {
+        id: 'doc-1',
+        name: 'Sora_Menu_Experiencias_Sensoriais.pdf',
+        fileSize: '350 KB',
+        status: 'INDEXED',
+        chunks: 6,
+        summary: 'Cardápio de experiências terapêuticas, rituais japoneses e vales presente.',
+      },
+    ];
+    scenarios = [
+      {
+        id: 'sora-headspa-sensorial',
+        category: 'sora',
+        title: '1. Dúvida sobre Headspa Sensorial',
+        badge: 'Experiência Terapêutica',
+        description: 'Cliente pergunta como funciona o ritual com arco de água.',
+        customerPrompt: 'Oi! Vi um vídeo no Reels de vocês com um arco de água na cabeça. Como funciona essa massagem e quanto custa?',
+        expectedAgent: 'Sora Concierge 24/7',
+        expectedPricing: 'R$ 290,00 (Ritual Headspa)',
+        simulatedResponse: 'Olá! Seja bem-vindo(a) ao Sora Ritual Spa! 🌿 Esse é o nosso Ritual Headspa Japonês: começamos com diagnóstico por microcâmera, seguido de aromaterapia, massagem craniana profunda e o banho sensorial com arco de água tépida para relaxamento total. A sessão dura 75 minutos e custa R$ 290. Temos vagas para este sábado, gostaria de reservar?',
+        empathyScore: 99,
+        accuracyScore: 100,
+        guardrailStatus: 'passed',
+        explanation: 'Descreveu a experiência sensorial, informou o preço exato e ofereceu reserva imediata.',
+      },
+    ];
+  } else if (type === 'sos') {
+    scenarios = [
+      {
+        id: 'sos-sales-plano-anual',
+        category: 'sos',
+        title: '1. Anúncio Meta Ads (Plano Anual 50% OFF)',
+        badge: 'Continuidade Cognitiva',
+        description: 'Lead clica no anúncio do Instagram do SOS Vendas e pergunta o valor da anuidade.',
+        customerPrompt: 'Vi o anúncio de vocês no Insta. Quanto custa o plano anual com desconto?',
+        expectedAgent: 'Sofia · Consultora SOS Vendas',
+        expectedPricing: 'R$ 582,00 à vista no Pix (50% OFF)',
+        simulatedResponse: 'Olá! O Plano Anual no Pix está em condição especial de lançamento por R$ 582,00 à vista (50% OFF). No cartão, a opção anual fica em 12x de R$ 58,20 (40% OFF), já com Cockpit e IA inclusos. Quer que eu te envie o checkout da opção que faz mais sentido?',
+        empathyScore: 97,
+        accuracyScore: 100,
+        guardrailStatus: 'passed',
+        explanation: 'Aplicou a Regra Anti-Regressão estrita: não perguntou como pode ajudar, informou o preço parcelado de imediato e ofertou escolha binária.',
+      },
+      {
+        id: 'sos-sales-contrato-fidelidade',
+        category: 'sos',
+        title: '2. Objeção de Contrato & Fidelidade',
+        badge: 'Menor Próximo Passo',
+        description: 'Cliente pergunta se tem fidelidade contratual e como funciona o cancelamento.',
+        customerPrompt: 'Se eu contratar o SOS Vendas tem carência ou fidelidade mínima de 12 meses?',
+        expectedAgent: 'Sofia · Consultora SOS Vendas',
+        expectedPricing: 'R$ 97/mês sem fidelidade / condições da oferta',
+        simulatedResponse: 'Zero burocracia por aqui! O Plano Mensal custa R$ 97,00/mês e não tem fidelidade — você cancela conforme as condições contratadas.\n\nSe preferir o anual, são R$ 582,00 à vista no Pix (50% OFF) ou 12x de R$ 58,20 no cartão (40% OFF). Posso te enviar o checkout da opção que faz mais sentido?',
+        empathyScore: 99,
+        accuracyScore: 100,
+        guardrailStatus: 'passed',
+        explanation: 'Desarmou a objeção de risco com clareza cristalina e direcionou para o microcompromisso da escolha do plano.',
+      },
+    ];
+  } else {
+    // Cliente Customizado (qualquer empresa cliente cadastrada)
+    chatPlaceholder = `Ex: Qual o valor dos serviços da ${businessName}? ou /regra Não conceder desconto`;
+    defaultPrompt = `Olá! Vi o anúncio da ${businessName} e gostaria de saber mais informações sobre os valores e agendamento.`;
+    defaultReply = `Olá! Seja muito bem-vindo(a) à ${businessName}. É um prazer atender você! Temos condições especiais ativas e horários disponíveis. Gostaria de conhecer nossas opções?`;
+    defaultDirectives = bundle?.agentConfig?.safetyGuardrails && bundle.agentConfig.safetyGuardrails.length > 0
+      ? bundle.agentConfig.safetyGuardrails
+      : [
+          `Apresentar com clareza as soluções e serviços da ${businessName}.`,
+          'Nunca encerrar a resposta sem propor uma escolha fechada (Menor Próximo Passo).',
+          'Atendimento consultivo, acolhedor e direto ao ponto.',
+        ];
+    defaultTone = bundle?.agentConfig?.toneOfVoice || 'comercial_fechador';
+    defaultDocs = bundle?.documents && bundle.documents.length > 0
+      ? bundle.documents.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          fileSize: d.fileSize || '150 KB',
+          status: d.status || 'INDEXED',
+          chunks: d.extractedChunksCount || 4,
+          summary: d.summary || '',
+        }))
+      : [
+          {
+            id: 'doc-1',
+            name: `Manual_Atendimento_${businessName.replace(/\s+/g, '_')}.pdf`,
+            fileSize: '210 KB',
+            status: 'INDEXED',
+            chunks: 4,
+            summary: `Diretrizes operacionais e catálogo de atendimento da ${businessName}.`,
+          },
+        ];
+    scenarios = [
+      {
+        id: `client-pricing-${normId.slice(0, 8)}`,
+        category: 'client',
+        title: `1. Consulta de Preço (${businessName})`,
+        badge: 'Qualificação & Preço',
+        description: `Lead pergunta sobre os valores dos serviços da ${businessName}.`,
+        customerPrompt: `Olá! Vi os serviços da ${businessName} e queria saber os preços e condições de pagamento.`,
+        expectedAgent: agentName,
+        expectedPricing: 'Valores da tabela oficial cadastrada',
+        simulatedResponse: `Olá! Seja bem-vindo(a) à ${businessName}. Temos condições exclusivas com opções à vista ou parceladas. Quer que eu te envie o detalhamento da opção ideal para o seu objetivo?`,
+        empathyScore: 98,
+        accuracyScore: 100,
+        guardrailStatus: 'passed',
+        explanation: 'Atendimento direto, posicionamento correto da empresa e condução para o próximo passo.',
+      },
+      {
+        id: `client-handoff-${normId.slice(0, 8)}`,
+        category: 'client',
+        title: `2. Solicitação de Atendimento Humano`,
+        badge: 'Handoff Seguro',
+        description: 'Cliente quer falar com um atendente da equipe.',
+        customerPrompt: 'Preciso tirar uma dúvida específica com alguém da equipe agora.',
+        expectedAgent: agentName,
+        expectedPricing: 'N/A',
+        simulatedResponse: `Com certeza! Já estou notificando nossa equipe aqui na ${businessName} com o histórico do seu atendimento para que um consultor assuma agora mesmo. Só um momento!`,
+        empathyScore: 99,
+        accuracyScore: 100,
+        guardrailStatus: 'passed',
+        explanation: 'Acionou o handoff humano imediatamente sem atrito e preservou o dossiê.',
+      },
+    ];
+  }
+
+  return {
+    type,
+    businessName,
+    agentName,
+    agentInitial,
+    businessType,
+    chatPlaceholder,
+    defaultPrompt,
+    defaultReply,
+    defaultDirectives,
+    defaultTone,
+    defaultDocs,
+    scenarios,
+  };
+}
 
 export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
   currentWorkspace,
+  bundle,
   onSimulateIncomingLeadMessage,
   onSimulateNetworkErrorToggle,
   isNetworkErrorForced = false,
   onNavigateToTab,
 }) => {
-  const isHavenActive = currentWorkspace?.id === 'ws-haven-beauty' || currentWorkspace?.name?.toLowerCase().includes('haven');
+  const ctx = useMemo(
+    () => resolveWorkspaceSimulatorContext(currentWorkspace, bundle),
+    [currentWorkspace?.id, currentWorkspace?.name, bundle]
+  );
   
   const [activeTab, setActiveTab] = useState<'trainer' | 'scenarios'>('trainer');
-  const [activeCategory, setActiveCategory] = useState<'all' | 'haven' | 'sos'>(
-    isHavenActive ? 'haven' : 'all'
-  );
+  const [activeCategory, setActiveCategory] = useState<string>('all');
 
   // Sub-aba do Painel Direito (Padrão Meta Business AI Studio)
   const [rightPanelTab, setRightPanelTab] = useState<'config' | 'dossier' | 'files' | 'logs'>('config');
 
   // Estados de Configuração Direta e Base de Conhecimento
-  const [directives, setDirectives] = useState<string[]>([
-    isHavenActive
-      ? 'Apresentar a Escova Express por R$ 59 com lavagem e ozônioterapia inclusas.'
-      : 'Apresentar as condições ativas: mensal R$ 97,00; anual no Pix R$ 582,00 à vista; anual no cartão 12x de R$ 58,20.',
-    'Nunca encerrar a resposta sem propor uma escolha fechada (Menor Próximo Passo).',
-    'Não conceder descontos adicionais além da alçada autorizada.',
-  ]);
+  const [directives, setDirectives] = useState<string[]>(ctx.defaultDirectives);
   const [newDirectiveInput, setNewDirectiveInput] = useState('');
-  const [currentTone, setCurrentTone] = useState<string>(isHavenActive ? 'elegante_acolhedor' : 'comercial_fechador');
+  const [currentTone, setCurrentTone] = useState<string>(ctx.defaultTone);
   const [workingHours, setWorkingHours] = useState<string>('Segunda a Sexta: 08h às 19h | Sábado: 08h às 14h');
   const [pixKey, setPixKey] = useState<string>('contato@iaparavendas.tech');
-  const [indexedDocs, setIndexedDocs] = useState<Array<{ id: string; name: string; fileSize: string; status: string; chunks: number; summary: string }>>([
-    {
-      id: 'doc-1',
-      name: isHavenActive ? 'Haven_Cardapio_Servicos_2026.pdf' : 'SOS_Sales_Tabela_Planos_Precos.pdf',
-      fileSize: '420 KB',
-      status: 'INDEXED',
-      chunks: 8,
-      summary: isHavenActive ? 'Tabela completa de serviços de escovaria e esmalteria com valores vigentes.' : 'Preços dos planos mensal e anual com alçadas de desconto.',
-    },
-    {
-      id: 'doc-2',
-      name: isHavenActive ? 'Manual_Agendamentos_Trinks_Haven.md' : 'Playbook_Quebra_Objecoes_Garantia.md',
-      fileSize: '185 KB',
-      status: 'INDEXED',
-      chunks: 5,
-      summary: isHavenActive ? 'Diretrizes de encaixe na agenda Trinks e confirmação via WhatsApp.' : 'Script de desarmamento de objeções, condições comerciais e cancelamento.',
-    },
-  ]);
+  const [indexedDocs, setIndexedDocs] = useState<Array<{ id: string; name: string; fileSize: string; status: string; chunks: number; summary: string }>>(ctx.defaultDocs);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configFeedback, setConfigFeedback] = useState<string | null>(null);
 
   const [autonomyMode, setAutonomyMode] = useState<GlobalAiAutonomyMode>('copilot_supervised');
-  const [selectedScenarioId, setSelectedScenarioId] = useState<string>(
-    isHavenActive ? 'haven-ctwa-escova' : 'sos-sales-plano-anual'
-  );
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string>(ctx.scenarios[0]?.id || '');
   const [isTesting, setIsTesting] = useState(false);
-  const [activeResult, setActiveResult] = useState<TestScenario | null>(PRELOADED_SCENARIOS[isHavenActive ? 0 : 2]);
+  const [activeResult, setActiveResult] = useState<TestScenario | null>(ctx.scenarios[0] || null);
 
   // Live Free-form Chat Sandbox & In-Chat Trainer
   const [customInput, setCustomInput] = useState('');
@@ -212,8 +405,31 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [selectedModelTier, setSelectedModelTier] = useState<'fast' | 'reasoning'>('reasoning');
 
-  // Carregar dados de inteligência do workspace ao montar
-  React.useEffect(() => {
+  // Sincronizar contexto sempre que o workspace mudar
+  useEffect(() => {
+    setDirectives(ctx.defaultDirectives);
+    setCurrentTone(ctx.defaultTone);
+    setIndexedDocs(ctx.defaultDocs);
+    setSelectedScenarioId(ctx.scenarios[0]?.id || '');
+    setActiveResult(ctx.scenarios[0] || null);
+    setCustomChatHistory([
+      {
+        role: 'customer',
+        text: ctx.defaultPrompt,
+        time: '07:15',
+      },
+      {
+        role: 'assistant',
+        text: ctx.defaultReply,
+        time: '07:15',
+        latencyMs: 240,
+        model: 'nvidia/nemotron-3-super-120b-a12b',
+      },
+    ]);
+  }, [ctx.businessName, ctx.type]);
+
+  // Carregar dados de inteligência do workspace ao montar ou mudar
+  useEffect(() => {
     const wsId = currentWorkspace?.id || '11111111-1111-1111-1111-111111111111';
     let isMounted = true;
 
@@ -241,8 +457,8 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
             summary: d.summary || '',
           })));
         }
-      } catch (err) {
-        // Fallback gracioso mantendo os fixtures já pré-carregados
+      } catch {
+        // Fallback gracioso mantendo os valores contextuais já resolvidos
       }
     }
 
@@ -253,26 +469,22 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
   // Live Cognitive Dossier (Mente da IA)
   const [currentDossier, setCurrentDossier] = useState<InferredDossier | null>(() => {
     return analyzeConversationDossier([
-      { direction: 'INBOUND', text: 'Vi o anúncio de vocês no Insta. Quanto custa o plano anual com desconto?', senderType: 'CUSTOMER' },
-    ], 'Francisco Rios');
+      { direction: 'INBOUND', text: ctx.defaultPrompt, senderType: 'CUSTOMER' },
+    ], 'Lead Comercial');
   });
 
   const [customChatHistory, setCustomChatHistory] = useState<ChatMessage[]>([
     {
       role: 'customer',
-      text: isHavenActive
-        ? 'Oi, vi o anúncio da escova por R$ 59 no Insta. Tem horário hoje?'
-        : 'Vi o anúncio de vocês no Insta. Quanto custa o plano anual com desconto?',
+      text: ctx.defaultPrompt,
       time: '07:15',
     },
     {
       role: 'assistant',
-      text: isHavenActive
-        ? 'Olá! Seja muito bem-vinda à Haven! 🌸 Sim, a Escova Express por R$ 59 inclui ozônioterapia. Temos horários livres hoje às 14h ou 17h. Qual fica melhor?'
-        : 'Olá! O Plano Anual no Pix está com 50% de desconto, ficando em R$ 582,00 à vista. No cartão, são 12x de R$ 58,20. Quer que eu te envie o checkout?',
+      text: ctx.defaultReply,
       time: '07:15',
       latencyMs: 240,
-      model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      model: 'nvidia/nemotron-3-super-120b-a12b',
     },
   ]);
 
@@ -287,9 +499,9 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
     },
   ]);
 
-  const filteredScenarios = PRELOADED_SCENARIOS.filter((s) => {
+  const filteredScenarios = ctx.scenarios.filter((s) => {
     if (activeCategory === 'all') return true;
-    return s.category === activeCategory;
+    return s.category === activeCategory || activeCategory === ctx.type;
   });
 
   const handleSelectScenario = (scenario: TestScenario) => {
@@ -687,14 +899,14 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-inner">
-                    {isHavenActive ? 'B' : 'S'}
+                    {ctx.agentInitial}
                   </div>
                   <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-slate-900" />
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-xs sm:text-sm text-white">
-                      {isHavenActive ? 'Bia · Concierge Haven' : 'Sofia · Especialista Comercial'}
+                      {ctx.agentName}
                     </span>
                     <span className="text-[10px] px-1.5 py-0.2 bg-emerald-950 text-emerald-400 border border-emerald-700/50 rounded-full">
                       24/7 Ativa
@@ -1011,11 +1223,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
                 type="text"
                 value={customInput}
                 onChange={(e) => setCustomInput(e.target.value)}
-                placeholder={
-                  isHavenActive
-                    ? 'Ex: Quanto custa corte com escova? ou /preco Corte R$ 120'
-                    : 'Ex: Qual o valor do plano anual? ou /regra Não conceder desconto extra'
-                }
+                placeholder={ctx.chatPlaceholder}
                 className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
               />
               <button
@@ -1386,33 +1594,21 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
         </div>
       )}
 
-      {/* VIEW: CENÁRIOS DE HOMOLOGAÇÃO (Haven & SOS Vendas) */}
+      {/* VIEW: CENÁRIOS DE HOMOLOGAÇÃO ({ctx.businessName}) */}
       {activeTab === 'scenarios' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           {/* Coluna Esquerda: Lista de Cenários (5 cols) */}
           <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-bold text-xs text-slate-900 uppercase tracking-wider">
-                Cenários Canônicos Pré-Carregados
+                Cenários do Negócio: {ctx.businessName}
               </h3>
               <div className="flex gap-1">
                 <button
                   onClick={() => setActiveCategory('all')}
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded ${activeCategory === 'all' ? 'bg-slate-900 text-white' : 'text-slate-500'}`}
+                  className={`px-2 py-0.5 text-[10px] font-bold rounded cursor-pointer ${activeCategory === 'all' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
                 >
-                  Todos
-                </button>
-                <button
-                  onClick={() => setActiveCategory('sos')}
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded ${activeCategory === 'sos' ? 'bg-slate-900 text-white' : 'text-slate-500'}`}
-                >
-                  SOS Vendas
-                </button>
-                <button
-                  onClick={() => setActiveCategory('haven')}
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded ${activeCategory === 'haven' ? 'bg-slate-900 text-white' : 'text-slate-500'}`}
-                >
-                  Haven
+                  Todos ({ctx.scenarios.length})
                 </button>
               </div>
             </div>

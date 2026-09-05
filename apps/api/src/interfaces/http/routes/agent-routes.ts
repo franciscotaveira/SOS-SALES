@@ -1269,47 +1269,80 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const dossier = analyzeConversationDossier(messagesForAnalysis, contactName);
 
       // 4. CARREGA CONFIGURAÇÕES REAIS DO WORKSPACE
-      const [agentConfigRes, opSettingsRes, intelligenceRes] = await Promise.all([
+      const [agentConfigRes, opSettingsRes, intelligenceRes, workspaceRes] = await Promise.all([
         query(`SELECT agent_name, business_type, phone, city, working_hours, behavior_config FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
         query(`SELECT pix_key, business_hours, macros, target_revenue_cents FROM public.workspace_operational_settings WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
         query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
+        query(`SELECT name, slug FROM public.workspaces WHERE id = $1 LIMIT 1`, [workspaceId]),
       ]);
 
       const agentRow = agentConfigRes.rows[0] || {};
       const opRow = opSettingsRes.rows[0] || {};
       const bundle = intelligenceRes.rows[0]?.bundle || {};
+      const wsRow = workspaceRes.rows[0] || {};
 
-      const agentName = agentRow.agent_name || 'Sofia';
-      const businessType = agentRow.business_type || 'Software Comercial & CRM WhatsApp';
+      const wsName = bundle.tradeName || wsRow.name || 'SOS Vendas';
+      const normWs = (wsName + ' ' + workspaceId).toLowerCase();
+
+      const isHaven = normWs.includes('haven') || normWs.includes('escovaria') || workspaceId === '22222222-2222-2222-2222-222222222222';
+      const isSora = normWs.includes('sora') || workspaceId === '33333333-3333-3333-3333-333333333333';
+      const isSos = normWs.includes('sos') || workspaceId === '11111111-1111-1111-1111-111111111111';
+
+      const agentName = agentRow.agent_name && agentRow.agent_name !== 'Assistente'
+        ? agentRow.agent_name
+        : (isHaven ? 'Camila · Concierge Haven' : isSora ? 'Sora Concierge' : isSos ? 'Sofia · Consultora SOS Vendas' : `${wsName} · Atendente Virtual`);
+
+      const businessType = agentRow.business_type && agentRow.business_type.trim()
+        ? agentRow.business_type
+        : (isHaven ? 'Escovaria e Salão de Beleza Premium' : isSora ? 'Headspa Japonês & Massagem Craniana' : isSos ? 'Software Comercial (SaaS) & Inteligência de Vendas no WhatsApp' : 'Prestação de Serviços');
+
       const city = agentRow.city || 'Chapecó, SC';
-      const workingHours = agentRow.working_hours || opRow.business_hours || 'Segunda a Sexta: 08h às 20h';
-      const pixKey = opRow.pix_key || 'contato@iaparavendas.tech';
-      const directives = Array.isArray(bundle.directives) ? bundle.directives : [];
+      const workingHours = agentRow.working_hours || opRow.business_hours || (isHaven ? 'Segunda a Sábado: 09h às 19h' : 'Segunda a Sexta: 08h às 20h | Sábado: 09h às 18h');
+      const pixKey = opRow.pix_key || (isHaven ? 'pix@havenescovaria.com.br' : 'contato@iaparavendas.tech');
+      const directives = Array.isArray(bundle.directives) && bundle.directives.length > 0
+        ? bundle.directives
+        : (isHaven
+            ? ['Apresentar a Escova Express por R$ 59 com lavagem e ozônioterapia inclusas.', 'Agendamentos oficiais via link do Trinks: https://www.trinks.com/haven-escovaria', 'Cobrar sinal Pix de R$ 30 para sábado.']
+            : isSos
+              ? ['Apresentar plano mensal R$ 97/mês e anual por R$ 582 à vista no Pix (50% OFF) ou 12x de R$ 58,20.', 'Conduzir para escolha de plano (Menor Próximo Passo).', 'Destacar o Cockpit em < 30s e espelhamento de agenda.']
+              : ['Atendimento consultivo, acolhedor e direto ao ponto.', 'Propor sempre um próximo passo claro para o cliente.']
+          );
+
       const catalog = Array.isArray(bundle.catalog) ? bundle.catalog : [];
 
-      // Monta catálogo textual
       let catalogText = '';
       if (catalog.length > 0) {
         catalogText = catalog.map((item: any) => `- ${item.name || item.title}: ${item.price || item.value || 'Sob consulta'} (${item.description || ''})`).join('\n');
-      } else {
+      } else if (isHaven) {
+        catalogText = `- Escova Express: R$ 59,00 (Lavagem com produtos de alta performance + ozônioterapia + modelagem expressa)
+- Esmaltação em Gel Premium: R$ 150,00 (Dura até 21 dias sem lascar)
+- Spa dos Pés Relaxante: R$ 80,00 (Esfoliação, hidratação profunda e massagem)
+- Terapia Capilar: R$ 190,00 (Tratamento intensivo para fios danificados)`;
+      } else if (isSora) {
+        catalogText = `- Ritual Headspa Sensorial: R$ 290,00 (Diagnóstico por microcâmera + arco de água + massagem craniana)
+- Experiência Sora a Dois: R$ 580,00 (Headspa duplo com espumante)
+- Vale Presente dos Sonhos: R$ 290,00 (Caixa de cetim com vale presente)`;
+      } else if (isSos) {
         catalogText = SOS_SALES_DEFAULT_CATALOG_TEXT;
+      } else {
+        catalogText = `- Atendimento e Serviços ${wsName}: Condições e valores sob consulta com a equipe.`;
       }
 
       // 5. ENGENHARIA DE SYSTEM PROMPT COGNITIVO (Framework Francisco Rios)
-      const systemPrompt = `Você é ${agentName}, a especialista comercial de alta performance e conversão da empresa "${businessType}" localizada em ${city}.
+      const systemPrompt = `Você é ${agentName}, a especialista comercial e de atendimento de alta performance da empresa "${wsName}" (${businessType}) localizada em ${city}.
 Horário de atendimento oficial: ${workingHours}.
 Chave Pix oficial da empresa: ${pixKey}.
 
-CATÁLOGO OFICIAL DE PRODUTOS/SERVIÇOS:
+CATÁLOGO OFICIAL DE PRODUTOS/SERVIÇOS DE ${wsName.toUpperCase()}:
 ${catalogText}
 
 DIRETRIZES & REGRAS COMERCIAIS ATIVAS (Ensinadas pelo Gestor):
-${directives.length > 0 ? directives.map((d: string) => `• ${d}`).join('\n') : '• Atendimento consultivo, direto e sem burocracia.'}
+${directives.map((d: string) => `• ${d}`).join('\n')}
 
 MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
 1. CONTINUIDADE COGNITIVA (Anti-Regressão):
    - ${dossier.antiRegressionRule || 'Nunca pergunte o que o cliente já demonstrou ou decidiu.'}
-   - Se o cliente perguntou preço ou plano, entregue o valor imediatamente e de forma transparente.
+   - Se o cliente perguntou preço ou produto, entregue o valor imediatamente e com total transparência.
    - Jamais reinicie o diálogo com perguntas genéricas vazias do tipo "Olá, como posso ajudar hoje?".
 2. MOMENTUM DE COMPRA:
    - Responda em tom natural de WhatsApp, parágrafos concisos e objetivos (máximo 3 frases).
