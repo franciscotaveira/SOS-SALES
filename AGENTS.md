@@ -18,7 +18,8 @@
 ## 2. ESTADO ATUAL (04 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `0901427f1d38b148e59db7940905967a59c3c673` (SOS Vendas Rebranding & Modern Visual Identity)
+- Release ativa: `5d010661400c1e44d4f8b20b3a445d6ffb99f90e` (SOS Vendas Mobile App Experience & Native Touch UX)
+- Experiência mobile nativa: Bottom Navigation Bar com safe-area insets, Cockpit master-detail (Lista ↔ Chat 1:1), Funil Kanban com seletor de etapas por pills e Dossiê IA acessível via modal/bottom sheet.
 - Interface operacional enxuta: Cockpit 1:1, Funil Kanban, Configurações de Canais & Traqueamento.
 - Espelhamento de Agenda Web (Trinks / Portal do Salão) destravado no Cockpit (`Alt + A`).
 - API: rotas E2E OK, auth Supabase + RLS multi-tenant, 44 tabelas no schema público.
