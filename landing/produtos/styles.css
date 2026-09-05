@@ -57,6 +57,8 @@ a:focus-visible, button:focus-visible { outline: 3px solid #159c78; outline-offs
 .product-card { min-width: 0; display: flex; flex-direction: column; padding: 29px 27px 26px; background: var(--white); border: 1px solid var(--line); }
 .product-card-featured { color: #eff7f4; background: var(--dark); border-color: var(--dark); box-shadow: 8px 8px 0 var(--green-bright); }
 .product-card-service { background: #edf4f0; }
+.product-card-image { width: 100%; aspect-ratio: 16 / 7; object-fit: cover; margin: 21px 0 2px; border: 1px solid var(--line); filter: saturate(.9); }
+.product-card-featured .product-card-image { border-color: #2c4053; }
 .product-topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .product-index { color: var(--green); font: 500 10px var(--mono); letter-spacing: .9px; }
 .product-card-featured .product-index { color: #68d5ad; }
@@ -99,6 +101,50 @@ a:focus-visible, button:focus-visible { outline: 3px solid #159c78; outline-offs
 .product-note { min-height: 35px; margin: 16px 0 0; color: #74847e; font-size: 10px; line-height: 1.5; }
 .product-card-featured .product-note { color: #9eafac; }
 
+.catalog-low-ticket-section { padding: 108px 0 118px; background: #fff; border-top: 1px solid var(--line); }
+.low-ticket-families { display: grid; gap: 76px; margin-top: 57px; }
+.catalog-family { min-width: 0; }
+.catalog-family-header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; padding-bottom: 17px; border-bottom: 1px solid var(--line); }
+.catalog-family-heading h3 { max-width: 680px; margin: 0; color: var(--ink); font: 800 clamp(1.55rem, 3vw, 2.35rem)/1.05 var(--display); letter-spacing: -.06em; }
+.catalog-family-heading .eyebrow { margin-bottom: 11px; }
+.catalog-family-image { width: 96px; height: 64px; object-fit: cover; border: 1px solid var(--line); }
+.low-ticket-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.low-ticket-card { min-width: 0; display: flex; flex-direction: column; min-height: 260px; padding: 20px 20px 18px; background: var(--paper); border: 1px solid var(--line); transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.low-ticket-card:hover { transform: translateY(-3px); border-color: #9fc8b8; box-shadow: 5px 6px 0 rgba(10, 138, 101, .12); }
+.low-ticket-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.low-ticket-card-id { color: var(--green); font: 500 10px var(--mono); letter-spacing: .08em; }
+.low-ticket-card-price { color: var(--ink); font: 800 15px var(--display); }
+.low-ticket-card h4 { min-height: 43px; margin: 23px 0 9px; color: var(--ink); font: 800 16px/1.15 var(--display); letter-spacing: -.045em; }
+.low-ticket-card-description { margin: 0; color: #526760; font-size: 11px; line-height: 1.5; }
+.low-ticket-card-buyer { margin: 13px 0 0; color: #7a8b85; font-size: 10px; line-height: 1.45; }
+.low-ticket-card-actions { margin-top: auto; padding-top: 17px; }
+.low-ticket-card-cta { min-height: 40px; width: 100%; padding: 10px 12px; display: inline-flex; align-items: center; justify-content: space-between; background: var(--dark); color: #eff7f4; font: 800 10px var(--display); border-radius: 4px; transition: background .18s ease, transform .18s ease; }
+.low-ticket-card-cta:hover { background: var(--green); transform: translateY(-1px); }
+
+.detail-hero { padding: 78px 0 96px; color: var(--white); background: var(--dark); }
+.detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .72fr); align-items: center; gap: 70px; }
+.detail-copy h1 { max-width: 720px; margin: 0; color: #f6faf8; font: 800 clamp(2.4rem, 5.3vw, 4.6rem)/1 var(--display); letter-spacing: -.07em; }
+.detail-lead { max-width: 640px; margin: 26px 0 13px; color: #b9cac6; font-size: 17px; line-height: 1.65; }
+.detail-buyer { max-width: 580px; margin: 0; color: #9eb4ad; font-size: 12px; }
+.detail-buyer strong { color: #d8f7e8; }
+.detail-price { display: flex; align-items: baseline; gap: 10px; margin: 31px 0 24px; }
+.detail-price strong { color: var(--green-bright); font: 800 2.8rem/1 var(--display); letter-spacing: -.08em; }
+.detail-price span { color: #a8bbb5; font-size: 10px; }
+.detail-note { margin: 13px 0 0; color: #8fa49e; font-size: 10px; }
+.detail-visual { margin: 0; border: 1px solid #304458; box-shadow: 11px 12px 0 rgba(183, 246, 107, .16); }
+.detail-visual img { width: 100%; display: block; aspect-ratio: 1; object-fit: cover; }
+.detail-section { padding: 92px 0 100px; background: var(--paper); }
+.detail-content { max-width: 860px; }
+.detail-content h2 { max-width: 700px; margin: 0; color: var(--ink); font: 800 clamp(2rem, 4vw, 3.1rem)/1.05 var(--display); letter-spacing: -.06em; }
+.detail-content > p:not(.eyebrow) { max-width: 720px; margin: 20px 0 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
+.detail-delivery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 47px; }
+.detail-delivery-grid > div { min-height: 145px; padding: 19px; border: 1px solid var(--line); background: #fff; }
+.detail-delivery-grid span { color: var(--green); font: 500 10px var(--mono); }
+.detail-delivery-grid strong { display: block; margin-top: 22px; color: var(--ink); font: 800 15px var(--display); }
+.detail-delivery-grid p { margin: 7px 0 0; color: #6a7a74; font-size: 11px; line-height: 1.5; }
+.detail-section-soft { background: #dcece5; }
+.detail-section-soft .catalog-text-link { display: inline-flex; margin-top: 29px; color: var(--green); font-weight: 800; }
+
 .choice-section { padding: 96px 0 105px; background: #dcece5; }
 .section-heading-narrow { max-width: 620px; }
 .choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-top: 45px; }
@@ -135,6 +181,7 @@ a:focus-visible, button:focus-visible { outline: 3px solid #159c78; outline-offs
   .product-card-featured { grid-column: 1 / -1; }
   .choice-grid { grid-template-columns: 1fr; }
   .choice-item { min-height: 125px; }
+  .low-ticket-grid { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 680px) {
@@ -155,6 +202,7 @@ a:focus-visible, button:focus-visible { outline: 3px solid #159c78; outline-offs
   .product-card h3 { min-height: 0; }
   .product-subtitle { min-height: 0; }
   .product-card { padding: 25px 20px 22px; }
+  .product-card-image { aspect-ratio: 16 / 8; margin-top: 18px; }
   .product-card-featured { box-shadow: 6px 7px 0 var(--green-bright); }
   .product-actions { grid-template-columns: 1fr; }
   .choice-section { padding: 73px 0 78px; }
@@ -163,6 +211,18 @@ a:focus-visible, button:focus-visible { outline: 3px solid #159c78; outline-offs
   .catalog-footer-inner { grid-template-columns: 1fr; gap: 18px; }
   .catalog-footer nav { justify-content: flex-start; flex-wrap: wrap; }
   .catalog-footer small { grid-column: auto; }
+  .catalog-low-ticket-section { padding: 76px 0 82px; }
+  .low-ticket-families { gap: 56px; margin-top: 39px; }
+  .catalog-family-header { align-items: flex-start; }
+  .catalog-family-image { width: 78px; height: 54px; }
+  .low-ticket-grid { grid-template-columns: 1fr; }
+  .low-ticket-card { min-height: 230px; }
+  .detail-hero { padding: 62px 0 75px; }
+  .detail-grid { grid-template-columns: 1fr; gap: 43px; }
+  .detail-lead { font-size: 15px; }
+  .detail-visual { width: min(100%, 500px); }
+  .detail-section { padding: 72px 0 80px; }
+  .detail-delivery-grid { grid-template-columns: 1fr; margin-top: 31px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -35,6 +35,16 @@ from reportlab.platypus import (
 )
 
 
+def _spreadsheet_dependencies():
+    """Load the bundled spreadsheet runtime only when a product needs it."""
+    from openpyxl import Workbook
+    from openpyxl.formatting.rule import ColorScaleRule
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    return Workbook, ColorScaleRule, Alignment, Border, Font, PatternFill, Side, DataValidation
+
+
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG_PATH = ROOT / "docs" / "CATALOGO_POSSIBILIDADES_LOW_TICKET_2026-09-05.md"
 OUT = ROOT / "products" / "low-ticket"
@@ -517,6 +527,216 @@ def professional_material(record: dict[str, str]) -> list[str]:
     return lines
 
 
+TOOL_FILE_NAMES = {
+    "15": "planilha-perguntas-conteudo.xlsx",
+    "18": "quadro-parcerias.xlsx",
+    "19": "fluxo-confirmacao.xlsx",
+    "20": "fluxo-remarcacao.xlsx",
+    "21": "lista-espera.xlsx",
+    "25": "rotina-pos-venda.xlsx",
+    "27": "controle-indicacoes.xlsx",
+    "28": "matriz-recompra.xlsx",
+    "29": "calendario-renovacao.xlsx",
+    "30": "reativacao-clientes.xlsx",
+    "31": "follow-up.xlsx",
+    "32": "venda-rastreavel.xlsx",
+    "33": "calculadora-desconto.xlsx",
+    "34": "calculadora-combos.xlsx",
+    "35": "planejador-capacidade-metas.xlsx",
+    "36": "painel-comercial-semanal.xlsx",
+    "44": "calculadora-setup-mensalidade.xlsx",
+}
+
+
+def build_tool_file(record: dict[str, str], path: Path) -> str | None:
+    """Create a small, editable workbook for products whose promise is a tool.
+
+    The first sheet is always an instruction sheet and example rows are clearly
+    labelled. Formulas are intentionally transparent so the buyer can audit
+    the assumptions instead of receiving a black-box calculator.
+    """
+    filename = TOOL_FILE_NAMES.get(record["id"])
+    if not filename:
+        return None
+    Workbook, ColorScaleRule, Alignment, Border, Font, PatternFill, Side, DataValidation = _spreadsheet_dependencies()
+
+    wb = Workbook()
+    readme = wb.active
+    readme.title = "LEIA-ME"
+    dark = "0B0F17"
+    green = "0A8A65"
+    lime = "B7F66B"
+    paper = "F5F8F6"
+    line = "C8D9D5"
+    heading_fill = PatternFill("solid", fgColor=dark)
+    input_fill = PatternFill("solid", fgColor="FFF3C4")
+    thin = Side(style="thin", color=line)
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def title_sheet(ws, title, subtitle):
+        ws.sheet_view.showGridLines = False
+        ws["A1"] = title
+        ws["A1"].font = Font(bold=True, size=16, color="FFFFFF")
+        ws["A1"].fill = heading_fill
+        ws.merge_cells("A1:H1")
+        ws["A2"] = subtitle
+        ws["A2"].alignment = Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells("A2:H2")
+        ws.row_dimensions[2].height = 34
+        ws.freeze_panes = "A4"
+
+    def headers(ws, row, labels):
+        for col, label in enumerate(labels, 1):
+            cell = ws.cell(row=row, column=col, value=label)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = heading_fill
+            cell.border = border
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    def table_range(ws, min_row, max_row, max_col):
+        for row in ws.iter_rows(min_row=min_row, max_row=max_row, min_col=1, max_col=max_col):
+            for cell in row:
+                cell.border = border
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    readme["A1"] = record["title"]
+    readme["A1"].font = Font(bold=True, size=18, color="FFFFFF")
+    readme["A1"].fill = heading_fill
+    readme.merge_cells("A1:F1")
+    readme["A3"] = "Comece aqui"
+    readme["A3"].font = Font(bold=True, size=12, color=green)
+    readme["A4"] = "1. Leia a aba de instruções do modelo."
+    readme["A5"] = "2. Apague ou preserve apenas a linha marcada como EXEMPLO, conforme sua necessidade."
+    readme["A6"] = "3. Substitua os campos amarelos por dados reais e confirmados."
+    readme["A7"] = "4. Registre a data da última revisão e a pessoa responsável."
+    readme["A9"] = "Limites"
+    readme["A9"].font = Font(bold=True, size=12, color=green)
+    readme["A10"] = "Esta ferramenta organiza evidência e premissas. Ela não garante margem, agenda, conversão, disponibilidade ou resultado."
+    readme["A10"].alignment = Alignment(wrap_text=True, vertical="top")
+    readme.merge_cells("A10:F11")
+    readme["A13"] = "Campos de entrada estão em amarelo; fórmulas ficam visíveis para auditoria."
+    readme["A13"].font = Font(italic=True, color="5F706C")
+    for col, width in {"A": 28, "B": 20, "C": 20, "D": 20, "E": 20, "F": 20}.items():
+        readme.column_dimensions[col].width = width
+    readme.sheet_view.showGridLines = False
+
+    pid = record["id"]
+    if pid in {"31", "32", "18", "19", "20", "21", "25", "27", "28", "29", "30"}:
+        ws = wb.create_sheet("Registros")
+        if pid == "31":
+            labels = ["ID", "Nome", "Contexto", "Responsável", "Próxima ação", "Prazo", "Status", "Motivo de parada"]
+            example = ["EXEMPLO", "Pessoa exemplo", "Pediu orçamento de [OFERTA]", "[RESPONSÁVEL]", "Confirmar escopo", "2026-09-12", "Em andamento", ""]
+            subtitle = "Use uma linha por oportunidade. Uma próxima ação sem prazo não é uma próxima ação operável."
+        elif pid == "32":
+            labels = ["Data", "Origem", "Campanha", "Oportunidade", "Status", "Venda", "Valor", "Motivo de perda"]
+            example = ["2026-09-05", "WhatsApp", "EXEMPLO", "Oferta exemplo", "Ganha", "SIM", 97, ""]
+            subtitle = "Preserve origem desconhecida quando não houver evidência; não atribua venda por suposição."
+        elif pid == "18":
+            labels = ["Parceiro", "Contexto da indicação", "Contato", "Oferta de colaboração", "Responsável", "Próximo passo", "Data", "Status"]
+            example = ["Parceiro exemplo", "Atende o mesmo público", "[CONTATO]", "Troca de indicação", "[RESPONSÁVEL]", "Enviar apresentação", "2026-09-12", "Em conversa"]
+            subtitle = "Registre o contexto para que a indicação seja pertinente e autorizada."
+        elif pid in {"19", "20", "21"}:
+            labels = ["Nome", "Contato", "Preferência/data", "Condição confirmada", "Responsável", "Próxima ação", "Status", "Observação"]
+            example = ["Pessoa exemplo", "[CONTATO]", "[DATA/HORÁRIO]", "[FONTE]", "[RESPONSÁVEL]", "Confirmar", "Pendente", "EXEMPLO — substituir"]
+            subtitle = "Nunca transforme preferência em disponibilidade. Confirme a condição na fonte indicada."
+        else:
+            labels = ["Nome", "Contato", "Ocasião", "Última interação", "Próxima ação", "Responsável", "Status", "Motivo de parada"]
+            example = ["Pessoa exemplo", "[CONTATO]", "[MOMENTO REAL]", "2026-09-05", "Enviar mensagem pertinente", "[RESPONSÁVEL]", "Pendente", ""]
+            subtitle = "Use contexto e pertinência para decidir se um novo contato faz sentido."
+        title_sheet(ws, record["title"], subtitle)
+        headers(ws, 3, labels)
+        for col, value in enumerate(example, 1):
+            ws.cell(4, col, value=value).fill = input_fill
+        for row in range(5, 34):
+            for col in range(1, len(labels) + 1):
+                ws.cell(row, col).fill = input_fill
+        table_range(ws, 3, 33, len(labels))
+        ws.auto_filter.ref = f"A3:{chr(64 + len(labels))}33"
+        for col in range(1, len(labels) + 1):
+            ws.column_dimensions[chr(64 + col)].width = 19
+        if pid == "31":
+            dv = DataValidation(type="list", formula1='"Pendente,Em andamento,Concluído,Encerrado"', allow_blank=True)
+            ws.add_data_validation(dv)
+            dv.add("G4:G33")
+        elif pid == "32":
+            dv = DataValidation(type="list", formula1='"SIM,NÃO"', allow_blank=True)
+            ws.add_data_validation(dv)
+            dv.add("F4:F33")
+            ws["G4"].number_format = 'R$ #,##0.00'
+            for row in range(5, 34):
+                ws.cell(row, 7).number_format = 'R$ #,##0.00'
+    elif pid in {"33", "34", "35", "36", "44"}:
+        ws = wb.create_sheet("Calculadora")
+        if pid == "33":
+            title_sheet(ws, record["title"], "Preencha os valores amarelos; o resultado mostra o efeito do desconto informado.")
+            labels = [("Preço cheio", 100), ("Custo variável", 35), ("Desconto (%)", 10)]
+            headers(ws, 3, ["Entrada", "Valor"])
+            for row, (label, value) in enumerate(labels, 4):
+                ws.cell(row, 1, label); ws.cell(row, 2, value); ws.cell(row, 2).fill = input_fill
+            headers(ws, 9, ["Saída", "Fórmula", "Resultado"])
+            outputs = [("Preço final", "Preço cheio × (1 − desconto)", "=B4*(1-B6/100)"), ("Contribuição", "Preço final − custo variável", "=C10-B5"), ("Margem sobre preço", "Contribuição ÷ preço final", "=IFERROR(C11/C10,0)")]
+            for row, (label, formula, value) in enumerate(outputs, 10):
+                ws.cell(row, 1, label); ws.cell(row, 2, formula); ws.cell(row, 3, value)
+            ws["B4"].number_format = ws["B5"].number_format = ws["C10"].number_format = ws["C11"].number_format = 'R$ #,##0.00'
+            ws["B6"].number_format = '0.0'
+            ws["C12"].number_format = '0.0%'
+            for row in range(10, 13): table_range(ws, row, row, 3)
+        elif pid == "34":
+            title_sheet(ws, record["title"], "Compare itens avulsos e pacote com quantidade, preço, custo e contribuição estimada.")
+            headers(ws, 3, ["Item", "Quantidade", "Preço unitário", "Custo unitário", "Receita", "Custo", "Contribuição"])
+            sample = [["Item exemplo", 1, 60, 20], ["Segundo item", 1, 40, 12]]
+            for row, values in enumerate(sample, 4):
+                for col, value in enumerate(values, 1): ws.cell(row, col, value=value).fill = input_fill
+                ws.cell(row, 5, f"=B{row}*C{row}"); ws.cell(row, 6, f"=B{row}*D{row}"); ws.cell(row, 7, f"=E{row}-F{row}")
+            for row in range(6, 14):
+                for col in range(1, 5): ws.cell(row, col).fill = input_fill
+                ws.cell(row, 5, f"=B{row}*C{row}"); ws.cell(row, 6, f"=B{row}*D{row}"); ws.cell(row, 7, f"=E{row}-F{row}")
+            headers(ws, 16, ["Resumo", "Valor"])
+            ws["A17"] = "Receita total"; ws["B17"] = "=SUM(E4:E13)"
+            ws["A18"] = "Contribuição total"; ws["B18"] = "=SUM(G4:G13)"
+            for cell in ("B17", "B18"): ws[cell].number_format = 'R$ #,##0.00'
+            table_range(ws, 3, 13, 7); table_range(ws, 16, 18, 2)
+        elif pid == "35":
+            title_sheet(ws, record["title"], "Simule capacidade e metas com premissas que o usuário consegue conferir.")
+            headers(ws, 3, ["Premissa", "Valor"])
+            entries = [("Pessoas", 1), ("Horas úteis/dia", 6), ("Dias úteis/mês", 20), ("Atendimentos/hora", 3), ("Valor médio", 150), ("Conversão (%)", 20)]
+            for row, (label, value) in enumerate(entries, 4):
+                ws.cell(row, 1, label); ws.cell(row, 2, value); ws.cell(row, 2).fill = input_fill
+            headers(ws, 12, ["Indicador", "Fórmula", "Resultado"])
+            outputs = [("Capacidade mensal", "pessoas × horas × dias × atendimentos/hora", "=B4*B5*B6*B7"), ("Receita potencial", "capacidade × valor médio × conversão", "=C13*B8*B9/100"), ("Vendas estimadas", "capacidade × conversão", "=C13*B9/100")]
+            for row, (label, formula, value) in enumerate(outputs, 13): ws.cell(row,1,label); ws.cell(row,2,formula); ws.cell(row,3,value)
+            ws["B8"].number_format = ws["C14"].number_format = 'R$ #,##0.00'; ws["B9"].number_format = '0.0'
+            table_range(ws, 3, 9, 2); table_range(ws, 12, 15, 3)
+        elif pid == "36":
+            title_sheet(ws, record["title"], "Atualize os números da mesma semana e escolha poucas decisões executáveis.")
+            headers(ws, 3, ["Indicador", "Semana atual", "Semana anterior", "Observação"])
+            for row, label in enumerate(["Oportunidades", "Vendas", "Perdas", "Valor vendido", "Próximas ações", "Decisões"], 4):
+                ws.cell(row, 1, label); ws.cell(row, 2).fill = input_fill; ws.cell(row, 3).fill = input_fill; ws.cell(row, 4).fill = input_fill
+            ws["A12"] = "Conversão observada"; ws["B12"] = "=IFERROR(B5/B4,0)"; ws["C12"] = "=IFERROR(C5/C4,0)"
+            ws["B12"].number_format = ws["C12"].number_format = '0.0%'
+            table_range(ws, 3, 12, 4)
+        else:
+            title_sheet(ws, record["title"], "Compare setup, recorrência, consumo e suporte antes de apresentar uma proposta.")
+            headers(ws, 3, ["Premissa", "Valor"])
+            entries = [("Setup desejado", 1500), ("Mensalidade desejada", 400), ("Consumo estimado/mês", 120), ("Suporte estimado/mês", 100), ("Contingência (%)", 10)]
+            for row, (label, value) in enumerate(entries, 4):
+                ws.cell(row, 1, label); ws.cell(row, 2, value); ws.cell(row, 2).fill = input_fill
+            headers(ws, 11, ["Indicador", "Fórmula", "Resultado"])
+            outputs = [("Custo mensal estimado", "consumo + suporte", "=B6+B7"), ("Receita mensal após custos", "mensalidade − custo mensal", "=B5-C12"), ("Setup líquido de contingência", "setup × (1 − contingência)", "=B4*(1-B8/100)")]
+            for row, (label, formula, value) in enumerate(outputs, 12): ws.cell(row,1,label); ws.cell(row,2,formula); ws.cell(row,3,value)
+            for cell in ("B4", "B5", "B6", "B7", "C12", "C13", "C14"): ws[cell].number_format = 'R$ #,##0.00'
+            ws["B8"].number_format = '0.0'
+            table_range(ws, 3, 8, 2); table_range(ws, 11, 14, 3)
+        for col in range(1, 9): ws.column_dimensions[chr(64 + col)].width = 21
+        ws.conditional_formatting.add("C10:C12", ColorScaleRule(start_type="min", start_color="F8D7DA", mid_type="percentile", mid_value=50, mid_color="FFF3C4", end_type="max", end_color="B7F66B"))
+
+    wb.calculation.fullCalcOnLoad = True
+    wb.calculation.forceFullCalc = True
+    output_path = path / filename
+    wb.save(output_path)
+    return filename
+
+
 def family_body(record: dict[str, str]) -> list[str]:
     key = record["familyKey"]
     if key == "scripts-whatsapp":
@@ -610,14 +830,19 @@ def sales_page_markdown(record: dict[str, str]) -> str:
 
 
 def readme_markdown(record: dict[str, str]) -> str:
-    return "\n".join(
-        [
+    tool_file = record.get("toolFile")
+    lines = [
             f"# Pacote — {record['title']}",
             "",
             "Arquivos do pacote:",
             "- `material.pdf`: versão pronta para entrega.",
             "- `material.md`: fonte editável.",
             "- `pagina-venda.md`: copy de checkout e divulgação.",
+    ]
+    if tool_file:
+        lines.append(f"- `{tool_file}`: arquivo editável com abas de instrução, exemplo e uso.")
+    lines.extend(
+        [
             "- A imagem da família do produto aparece na vitrine e na página de venda.",
             "",
             f"Preço-teste sugerido: R$ {record['price']},00.",
@@ -626,6 +851,7 @@ def readme_markdown(record: dict[str, str]) -> str:
             "",
         ]
     )
+    return "\n".join(lines)
 
 
 def markdown_to_story(markdown: str):
@@ -749,6 +975,89 @@ def write_catalog_js(records: list[dict[str, str]]) -> None:
     (WEB / "catalog-data.js").write_text(js, encoding="utf-8")
 
 
+def write_operations_docs(records: list[dict[str, str]]) -> None:
+    """Write the human-facing pricing and release index used by the operator.
+
+    Prices are deliberately labelled as tests: the document gives Francisco a
+    launch hypothesis without pretending that fees, refund rate or conversion
+    have already been validated in Cakto.
+    """
+    by_family: dict[str, list[dict[str, str]]] = {}
+    for record in records:
+        by_family.setdefault(record["familyLabel"], []).append(record)
+
+    pricing_lines = [
+        "# Precificação e plano de publicação — Low-ticket SOS Vendas",
+        "",
+        f"> Atualizado em {date.today().isoformat()} · 48 produtos preparados para validação na Cakto.",
+        "",
+        "## Regra de preço",
+        "Os valores abaixo são preço-teste de pagamento único. Eles compram um artefato aplicável — não implantação, suporte ilimitado, tráfego, consumo de API ou garantia de resultado. Antes de publicar, conferir taxa da Cakto, política de reembolso, e-mail de suporte e o que será efetivamente entregue.",
+        "",
+        "## Mapa dos produtos",
+        "| ID | Produto | Família | Preço-teste | Para quem |",
+        "|---:|---|---|---:|---|",
+    ]
+    for record in records:
+        pricing_lines.append(
+            f"| {record['id']} | {record['title']} | {record['familyLabel']} | R$ {record['price']},00 | {record['buyer']} |"
+        )
+
+    pricing_lines.extend(["", "## Pacotes por trabalho", "Os pacotes abaixo são hipóteses para aumentar ticket sem misturar personas. Publicar depois de validar os itens avulsos.", ""])
+    bundles = [
+        ("WhatsApp Essencial", "01–06", records[0:6], 97),
+        ("Apresentação que vende", "07–12", records[6:12], 147),
+        ("Conteúdo que inicia conversas", "13–18", records[12:18], 167),
+        ("Agenda sem retrabalho", "19–24", records[18:24], 127),
+        ("Relacionamento que continua", "25–30", records[24:30], 167),
+        ("Ferramentas de decisão comercial", "31–36", records[30:36], 197),
+        ("Time com padrão", "37–42", records[36:42], 197),
+        ("Implantação de IA profissional", "43–48", records[42:48], 247),
+    ]
+    pricing_lines.extend(["| Pacote | Itens | Soma avulsa | Preço-teste do pacote |", "|---|---:|---:|---:|"])
+    for name, ids, items, bundle_price in bundles:
+        standalone = sum(item["price"] for item in items)
+        pricing_lines.append(f"| {name} | {ids} | R$ {standalone},00 | R$ {bundle_price},00 |")
+
+    pricing_lines.extend(
+        [
+            "",
+            "## Ordem de validação",
+            "1. Conferir os oito primeiros produtos de cada família e garantir que a entrega da Cakto corresponde ao ZIP.",
+            "2. Publicar os 48 avulsos com checkout próprio quando a sessão/API estiver disponível.",
+            "3. Medir cliques, compras, reembolsos e pedidos de suporte por família por 14 dias.",
+            "4. Só então ativar os oito pacotes e ajustar preço pela evidência.",
+            "",
+            "## Estado de publicação",
+            "A vitrine está ativa com páginas individuais e CTA seguro. O manifesto `cakto-import.json` mantém `checkoutUrl: null` até a criação e conferência da oferta autenticada; não usar URL inventada.",
+            "",
+        ]
+    )
+    (OUT / "PRECIFICACAO.md").write_text("\n".join(pricing_lines), encoding="utf-8")
+
+    root_lines = [
+        "# Low-ticket SOS Vendas",
+        "",
+        "Coleção de 48 produtos digitais de aplicação única para WhatsApp, operação comercial e implantação profissional de IA.",
+        "",
+        "## O que está neste diretório",
+        "- `pXX-*/`: pacote individual com `material.pdf`, fonte editável, página de venda e README.",
+        "- `releases/`: ZIP pronto para anexar ou entregar.",
+        "- `cakto-import.json`: manifesto de importação com preço, imagem, página e estado do checkout.",
+        "- `PRECIFICACAO.md`: mapa de preços-teste e hipóteses de pacote.",
+        "",
+        "## Regenerar",
+        "```bash",
+        "python3 scripts/low-ticket/generate_products.py",
+        "```",
+        "",
+        "## Publicação segura",
+        "A vitrine pública já lista os 48 itens. A publicação na Cakto exige sessão autenticada e conferência do conteúdo entregue; por isso os checkouts permanecem nulos no manifesto até a etapa de importação.",
+        "",
+    ]
+    (OUT / "README.md").write_text("\n".join(root_lines), encoding="utf-8")
+
+
 def write_detail_page(record: dict[str, str]) -> None:
     page_dir = WEB / "itens" / record["slug"]
     page_dir.mkdir(parents=True, exist_ok=True)
@@ -762,14 +1071,14 @@ def write_detail_page(record: dict[str, str]) -> None:
   <title>{escape(record['title'])} — SOS Vendas</title>
   <meta name="description" content="{escape(record['promise'].capitalize())}." />
   <link rel="canonical" href="https://iaparavendas.tech/produtos/itens/{record['slug']}/" />
-  <link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="../../../assets/favicon.svg" />
   <link rel="stylesheet" href="../../styles.css?v=20260905-1500" />
   <meta property="og:image" content="https://iaparavendas.tech/produtos/{image_url[6:]}" />
 </head>
 <body class="product-detail-page">
   <header class="catalog-header">
-    <a class="brand" href="../../" aria-label="SOS Vendas, vitrine"><img src="../../assets/logo.svg" alt="SOS Vendas" /></a>
-    <nav aria-label="Navegação do produto"><a href="../../">Todos os produtos</a><a href="../../eko/">EKO</a></nav>
+    <a class="brand" href="../../" aria-label="SOS Vendas, vitrine"><img src="../../../assets/logo.svg" alt="SOS Vendas" /></a>
+    <nav aria-label="Navegação do produto"><a href="../../">Todos os produtos</a><a href="../../../eko/">EKO</a></nav>
     <a class="catalog-header-cta" href="../../#catalogo-low-ticket">Ver catálogo <span aria-hidden="true">↓</span></a>
   </header>
   <main>
@@ -808,8 +1117,8 @@ def write_detail_page(record: dict[str, str]) -> None:
       </div>
     </section>
   </main>
-  <footer class="catalog-footer"><div class="catalog-wrap catalog-footer-inner"><a class="brand" href="../../"><img src="../../assets/logo.svg" alt="SOS Vendas" /></a><p>Produtos e serviços para continuidade comercial no WhatsApp.</p><small>© 2026 MCT LTDA · Chapecó, SC</small></div></footer>
-  <script src="../../app.js?v=20260905-1500"></script>
+  <footer class="catalog-footer"><div class="catalog-wrap catalog-footer-inner"><a class="brand" href="../../"><img src="../../../assets/logo.svg" alt="SOS Vendas" /></a><p>Produtos e serviços para continuidade comercial no WhatsApp.</p><small>© 2026 MCT LTDA · Chapecó, SC</small></div></footer>
+  <script src="../../../app.js?v=20260905-1500"></script>
 </body>
 </html>
 """
@@ -825,6 +1134,9 @@ def main() -> None:
         product_dir.mkdir(parents=True, exist_ok=True)
         material = material_markdown(record)
         sales_page = sales_page_markdown(record)
+        tool_file = build_tool_file(record, product_dir)
+        if tool_file:
+            record["toolFile"] = tool_file
         readme = readme_markdown(record)
         (product_dir / "material.md").write_text(material, encoding="utf-8")
         (product_dir / "pagina-venda.md").write_text(sales_page, encoding="utf-8")
@@ -836,7 +1148,10 @@ def main() -> None:
             image_dst.unlink()
         archive_path = RELEASES / f"{record['slug']}.zip"
         with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for filename in ("README.md", "material.md", "material.pdf", "pagina-venda.md"):
+            package_files = ("README.md", "material.md", "material.pdf", "pagina-venda.md")
+            if tool_file:
+                package_files += (tool_file,)
+            for filename in package_files:
                 archive.write(product_dir / filename, arcname=filename)
         record["release"] = str(archive_path.relative_to(ROOT))
         record["salesPage"] = f"https://iaparavendas.tech/produtos/itens/{record['slug']}/"
@@ -845,6 +1160,7 @@ def main() -> None:
         record["publicationStatus"] = "prepared_pending_cakto_access"
         write_detail_page(record)
     write_catalog_js(records)
+    write_operations_docs(records)
     manifest = {
         "generatedAt": date.today().isoformat(),
         "source": "docs/CATALOGO_POSSIBILIDADES_LOW_TICKET_2026-09-05.md",

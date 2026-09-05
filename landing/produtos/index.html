@@ -53,11 +53,11 @@
   <header class="catalog-header">
     <a class="brand" href="../" aria-label="SOS Vendas, início"><img src="../assets/logo.svg" alt="SOS Vendas" /></a>
     <nav aria-label="Navegação da vitrine">
-      <a href="#catalogo">Produtos</a>
+      <a href="#catalogo-low-ticket">Produtos</a>
       <a href="#escolha">Como escolher</a>
       <a href="../eko/">EKO</a>
     </nav>
-    <a class="catalog-header-cta" href="#catalogo">Escolher solução <span aria-hidden="true">↓</span></a>
+    <a class="catalog-header-cta" href="#catalogo-low-ticket">Escolher solução <span aria-hidden="true">↓</span></a>
   </header>
 
   <main>
@@ -66,9 +66,9 @@
         <div>
           <p class="eyebrow"><i aria-hidden="true"></i>Vitrine SOS Vendas</p>
           <h1 id="catalog-title">Uma próxima etapa clara para cada necessidade comercial.</h1>
-          <p class="catalog-lead">Produtos e serviços para sair do improviso: organizar a base da IA, operar as conversas ou melhorar um agente que já existe.</p>
+          <p class="catalog-lead">Produtos e serviços para sair do improviso: organizar a base da IA, operar as conversas ou melhorar um agente que já existe. A coleção reúne 48 materiais práticos para uma próxima ação clara.</p>
           <div class="catalog-actions">
-            <a class="catalog-button" href="#catalogo">Ver soluções <span aria-hidden="true">→</span></a>
+            <a class="catalog-button" href="#catalogo-low-ticket">Ver soluções <span aria-hidden="true">→</span></a>
             <a class="catalog-text-link" href="../">Entender o SOS Vendas <span aria-hidden="true">↗</span></a>
           </div>
         </div>
@@ -93,6 +93,7 @@
         <div class="product-grid">
           <article class="product-card product-card-featured">
             <div class="product-topline"><span class="product-index">01</span><span class="product-tag">Operação diária</span></div>
+            <img class="product-card-image" src="assets/06-ferramentas-comerciais.png" alt="Ferramentas comerciais em um laptop e uma planilha" width="1254" height="1254" />
             <h3>SOS Vendas</h3>
             <p class="product-subtitle">Sistema operacional comercial para vender pelo WhatsApp com contexto e supervisão.</p>
             <ul class="product-list">
@@ -112,6 +113,7 @@
 
           <article class="product-card">
             <div class="product-topline"><span class="product-index">02</span><span class="product-tag">Configuração</span></div>
+            <img class="product-card-image" src="assets/08-implantacao-ia.png" alt="Materiais de implantação de IA em uma mesa de trabalho" width="1254" height="1254" />
             <h3>EKO</h3>
             <p class="product-subtitle">Kit de Configuração Comercial para IA no WhatsApp.</p>
             <p class="product-copy">Organize serviços, preços, regras, contexto, limites e comportamento antes de colocar uma IA para atender.</p>
@@ -131,6 +133,7 @@
 
           <article id="otimizacao" class="product-card product-card-service">
             <div class="product-topline"><span class="product-index">03</span><span class="product-tag">Serviço aplicado</span></div>
+            <img class="product-card-image" src="assets/07-treinamento.png" alt="Materiais de treinamento e revisão de conversas" width="1254" height="1254" />
             <h3>Otimização Comercial de Agentes</h3>
             <p class="product-subtitle">Para quem já tem um agente, mas ele ainda perde contexto ou conduz mal a conversa.</p>
             <ul class="product-list">
@@ -144,6 +147,17 @@
             <p class="product-note">Não está vinculado a uma plataforma específica e não promete comportamento perfeito.</p>
           </article>
         </div>
+      </div>
+    </section>
+
+    <section id="catalogo-low-ticket" class="catalog-low-ticket-section" aria-labelledby="low-ticket-heading">
+      <div class="catalog-wrap">
+        <div class="section-heading">
+          <p class="eyebrow">Coleção de materiais</p>
+          <h2 id="low-ticket-heading">Uma tarefa concreta para cada momento comercial.</h2>
+          <p>São 48 materiais de aplicação única, distribuídos em oito famílias. Cada página explica a entrega, mostra o uso e deixa o próximo passo evidente.</p>
+        </div>
+        <div id="low-ticket-families" class="low-ticket-families" aria-live="polite"></div>
       </div>
     </section>
 
@@ -177,6 +191,8 @@
     </div>
   </footer>
 
+  <script src="catalog-data.js?v=20260905-1500"></script>
+  <script src="catalog-render.js?v=20260905-1500"></script>
   <script src="../app.js?v=20260905-1200"></script>
 </body>
 </html>
