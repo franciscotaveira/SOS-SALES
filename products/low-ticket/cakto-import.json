@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-09-05",
   "source": "docs/CATALOGO_POSSIBILIDADES_LOW_TICKET_2026-09-05.md",
-  "note": "Checkout URLs remain null until each product is verified and created in Cakto.",
+  "note": "Checkout URLs are populated only from products/low-ticket/cakto-checkouts.json after visual verification in Cakto.",
   "products": [
     {
       "id": "01",
@@ -21,8 +21,10 @@
       "release": "products/low-ticket/releases/p01-do-qual-o-valor-ao-proximo-passo.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p01-do-qual-o-valor-ao-proximo-passo/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/01-scripts-whatsapp.png",
-      "checkoutUrl": null,
-      "publicationStatus": "prepared_pending_cakto_access"
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p01-do-qual-o-valor-ao-proximo-passo.zip",
+      "caktoProductId": "aca98217-eeb3-4af6-98eb-3c0ca5cb07e7",
+      "checkoutUrl": "https://pay.cakto.com.br/3c3tm2c_1087592",
+      "publicationStatus": "published_cakto_email_delivery"
     },
     {
       "id": "02",
@@ -42,6 +44,8 @@
       "release": "products/low-ticket/releases/p02-enviei-o-orcamento-e-agora.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p02-enviei-o-orcamento-e-agora/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/01-scripts-whatsapp.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p02-enviei-o-orcamento-e-agora.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -63,6 +67,8 @@
       "release": "products/low-ticket/releases/p03-respostas-para-objecoes.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p03-respostas-para-objecoes/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/01-scripts-whatsapp.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p03-respostas-para-objecoes.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -84,6 +90,8 @@
       "release": "products/low-ticket/releases/p04-conversas-que-ficaram-paradas.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p04-conversas-que-ficaram-paradas/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/01-scripts-whatsapp.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p04-conversas-que-ficaram-paradas.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -105,6 +113,8 @@
       "release": "products/low-ticket/releases/p05-do-quero-comprar-ao-pedido-confirmado.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p05-do-quero-comprar-ao-pedido-confirmado/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/01-scripts-whatsapp.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p05-do-quero-comprar-ao-pedido-confirmado.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -126,6 +136,8 @@
       "release": "products/low-ticket/releases/p06-atendimento-em-situacoes-dificeis.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p06-atendimento-em-situacoes-dificeis/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/01-scripts-whatsapp.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p06-atendimento-em-situacoes-dificeis.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -147,6 +159,8 @@
       "release": "products/low-ticket/releases/p07-catalogo-de-bolso-para-whatsapp.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p07-catalogo-de-bolso-para-whatsapp/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/02-apresentacao-comercial.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p07-catalogo-de-bolso-para-whatsapp.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -168,6 +182,8 @@
       "release": "products/low-ticket/releases/p08-orcamento-claro-em-uma-pagina.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p08-orcamento-claro-em-uma-pagina/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/02-apresentacao-comercial.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p08-orcamento-claro-em-uma-pagina.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -189,6 +205,8 @@
       "release": "products/low-ticket/releases/p09-apresentacao-de-tres-opcoes.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p09-apresentacao-de-tres-opcoes/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/02-apresentacao-comercial.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p09-apresentacao-de-tres-opcoes.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -210,6 +228,8 @@
       "release": "products/low-ticket/releases/p10-portfolio-com-prova-do-trabalho.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p10-portfolio-com-prova-do-trabalho/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/02-apresentacao-comercial.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p10-portfolio-com-prova-do-trabalho.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -231,6 +251,8 @@
       "release": "products/low-ticket/releases/p11-roteiros-de-audios-comerciais.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p11-roteiros-de-audios-comerciais/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/02-apresentacao-comercial.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p11-roteiros-de-audios-comerciais.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -252,6 +274,8 @@
       "release": "products/low-ticket/releases/p12-demonstracoes-em-video-pelo-whatsapp.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p12-demonstracoes-em-video-pelo-whatsapp/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/02-apresentacao-comercial.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p12-demonstracoes-em-video-pelo-whatsapp.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -273,6 +297,8 @@
       "release": "products/low-ticket/releases/p13-status-do-whatsapp-com-intencao-comercial.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p13-status-do-whatsapp-com-intencao-comercial/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/03-conteudo-campanhas.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p13-status-do-whatsapp-com-intencao-comercial.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -294,6 +320,8 @@
       "release": "products/low-ticket/releases/p14-campanha-de-uma-oferta.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p14-campanha-de-uma-oferta/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/03-conteudo-campanhas.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p14-campanha-de-uma-oferta.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -316,6 +344,8 @@
       "release": "products/low-ticket/releases/p15-conteudo-a-partir-das-duvidas-dos-clientes.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p15-conteudo-a-partir-das-duvidas-dos-clientes/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/03-conteudo-campanhas.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p15-conteudo-a-partir-das-duvidas-dos-clientes.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -337,6 +367,8 @@
       "release": "products/low-ticket/releases/p16-uma-oferta-varios-criativos.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p16-uma-oferta-varios-criativos/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/03-conteudo-campanhas.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p16-uma-oferta-varios-criativos.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -358,6 +390,8 @@
       "release": "products/low-ticket/releases/p17-do-anuncio-a-conversa.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p17-do-anuncio-a-conversa/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/03-conteudo-campanhas.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p17-do-anuncio-a-conversa.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -380,6 +414,8 @@
       "release": "products/low-ticket/releases/p18-parcerias-locais-e-indicacoes-profissionais.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p18-parcerias-locais-e-indicacoes-profissionais/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/03-conteudo-campanhas.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p18-parcerias-locais-e-indicacoes-profissionais.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -402,6 +438,8 @@
       "release": "products/low-ticket/releases/p19-confirmacao-de-agendamentos.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p19-confirmacao-de-agendamentos/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/04-agenda-servicos.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p19-confirmacao-de-agendamentos.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -424,6 +462,8 @@
       "release": "products/low-ticket/releases/p20-remarcacao-e-cancelamento-organizados.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p20-remarcacao-e-cancelamento-organizados/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/04-agenda-servicos.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p20-remarcacao-e-cancelamento-organizados.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -446,6 +486,8 @@
       "release": "products/low-ticket/releases/p21-lista-de-espera-para-horarios-disponiveis.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p21-lista-de-espera-para-horarios-disponiveis/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/04-agenda-servicos.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p21-lista-de-espera-para-horarios-disponiveis.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -467,6 +509,8 @@
       "release": "products/low-ticket/releases/p22-conversa-apos-uma-falta.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p22-conversa-apos-uma-falta/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/04-agenda-servicos.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p22-conversa-apos-uma-falta.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -488,6 +532,8 @@
       "release": "products/low-ticket/releases/p23-da-consulta-inicial-a-proposta-de-servico.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p23-da-consulta-inicial-a-proposta-de-servico/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/04-agenda-servicos.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p23-da-consulta-inicial-a-proposta-de-servico.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -509,6 +555,8 @@
       "release": "products/low-ticket/releases/p24-primeira-visita-bem-orientada.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p24-primeira-visita-bem-orientada/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/04-agenda-servicos.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p24-primeira-visita-bem-orientada.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -531,6 +579,8 @@
       "release": "products/low-ticket/releases/p25-acompanhamento-depois-da-compra.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p25-acompanhamento-depois-da-compra/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/05-pos-venda.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p25-acompanhamento-depois-da-compra.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -552,6 +602,8 @@
       "release": "products/low-ticket/releases/p26-pedido-de-avaliacao-e-depoimento.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p26-pedido-de-avaliacao-e-depoimento/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/05-pos-venda.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p26-pedido-de-avaliacao-e-depoimento.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -574,6 +626,8 @@
       "release": "products/low-ticket/releases/p27-indicacao-com-contexto.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p27-indicacao-com-contexto/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/05-pos-venda.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p27-indicacao-com-contexto.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -596,6 +650,8 @@
       "release": "products/low-ticket/releases/p28-recompra-no-momento-adequado.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p28-recompra-no-momento-adequado/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/05-pos-venda.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p28-recompra-no-momento-adequado.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -618,6 +674,8 @@
       "release": "products/low-ticket/releases/p29-renovacao-de-planos-e-servicos.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p29-renovacao-de-planos-e-servicos/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/05-pos-venda.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p29-renovacao-de-planos-e-servicos.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -640,6 +698,8 @@
       "release": "products/low-ticket/releases/p30-retorno-de-clientes-inativos.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p30-retorno-de-clientes-inativos/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/05-pos-venda.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p30-retorno-de-clientes-inativos.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -662,6 +722,8 @@
       "release": "products/low-ticket/releases/p31-follow-up-com-proximo-passo.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p31-follow-up-com-proximo-passo/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/06-ferramentas-comerciais.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p31-follow-up-com-proximo-passo.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -684,6 +746,8 @@
       "release": "products/low-ticket/releases/p32-venda-rastreavel-no-whatsapp.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p32-venda-rastreavel-no-whatsapp/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/06-ferramentas-comerciais.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p32-venda-rastreavel-no-whatsapp.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -706,6 +770,8 @@
       "release": "products/low-ticket/releases/p33-calculadora-de-desconto.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p33-calculadora-de-desconto/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/06-ferramentas-comerciais.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p33-calculadora-de-desconto.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -728,6 +794,8 @@
       "release": "products/low-ticket/releases/p34-calculadora-de-combos.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p34-calculadora-de-combos/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/06-ferramentas-comerciais.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p34-calculadora-de-combos.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -750,6 +818,8 @@
       "release": "products/low-ticket/releases/p35-planejador-de-capacidade-e-metas.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p35-planejador-de-capacidade-e-metas/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/06-ferramentas-comerciais.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p35-planejador-de-capacidade-e-metas.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -772,6 +842,8 @@
       "release": "products/low-ticket/releases/p36-painel-comercial-da-semana.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p36-painel-comercial-da-semana/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/06-ferramentas-comerciais.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p36-painel-comercial-da-semana.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -793,6 +865,8 @@
       "release": "products/low-ticket/releases/p37-primeira-semana-do-vendedor.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p37-primeira-semana-do-vendedor/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/07-treinamento.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p37-primeira-semana-do-vendedor.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -814,6 +888,8 @@
       "release": "products/low-ticket/releases/p38-simulacoes-de-conversas-comerciais.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p38-simulacoes-de-conversas-comerciais/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/07-treinamento.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p38-simulacoes-de-conversas-comerciais.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -835,6 +911,8 @@
       "release": "products/low-ticket/releases/p39-revisao-de-conversas-pelo-gestor.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p39-revisao-de-conversas-pelo-gestor/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/07-treinamento.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p39-revisao-de-conversas-pelo-gestor.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -856,6 +934,8 @@
       "release": "products/low-ticket/releases/p40-passagem-de-atendimento-sem-repetir-perguntas.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p40-passagem-de-atendimento-sem-repetir-perguntas/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/07-treinamento.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p40-passagem-de-atendimento-sem-repetir-perguntas.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -877,6 +957,8 @@
       "release": "products/low-ticket/releases/p41-manual-de-atendimento-da-empresa.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p41-manual-de-atendimento-da-empresa/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/07-treinamento.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p41-manual-de-atendimento-da-empresa.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -898,6 +980,8 @@
       "release": "products/low-ticket/releases/p42-organizacao-do-whatsapp-business.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p42-organizacao-do-whatsapp-business/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/07-treinamento.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p42-organizacao-do-whatsapp-business.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -919,6 +1003,8 @@
       "release": "products/low-ticket/releases/p43-proposta-de-automacao-com-escopo-fechado.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p43-proposta-de-automacao-com-escopo-fechado/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/08-implantacao-ia.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p43-proposta-de-automacao-com-escopo-fechado.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -941,6 +1027,8 @@
       "release": "products/low-ticket/releases/p44-calculadora-de-setup-e-mensalidade.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p44-calculadora-de-setup-e-mensalidade/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/08-implantacao-ia.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p44-calculadora-de-setup-e-mensalidade.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -962,6 +1050,8 @@
       "release": "products/low-ticket/releases/p45-briefing-de-projeto-de-ia.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p45-briefing-de-projeto-de-ia/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/08-implantacao-ia.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p45-briefing-de-projeto-de-ia.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -983,6 +1073,8 @@
       "release": "products/low-ticket/releases/p46-onboarding-de-implantacao.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p46-onboarding-de-implantacao/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/08-implantacao-ia.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p46-onboarding-de-implantacao.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -1004,6 +1096,8 @@
       "release": "products/low-ticket/releases/p47-demonstracao-que-explica-o-projeto.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p47-demonstracao-que-explica-o-projeto/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/08-implantacao-ia.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p47-demonstracao-que-explica-o-projeto.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     },
@@ -1025,6 +1119,8 @@
       "release": "products/low-ticket/releases/p48-entrega-e-manutencao-de-agentes.zip",
       "salesPage": "https://iaparavendas.tech/produtos/itens/p48-entrega-e-manutencao-de-agentes/",
       "imageUrl": "https://iaparavendas.tech/produtos/assets/08-implantacao-ia.png",
+      "downloadUrl": "https://iaparavendas.tech/produtos/downloads/p48-entrega-e-manutencao-de-agentes.zip",
+      "caktoProductId": null,
       "checkoutUrl": null,
       "publicationStatus": "prepared_pending_cakto_access"
     }

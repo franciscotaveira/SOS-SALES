@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import unicodedata
 import zipfile
 from datetime import date
@@ -51,6 +52,8 @@ OUT = ROOT / "products" / "low-ticket"
 WEB = ROOT / "landing" / "produtos"
 WEB_ASSETS = WEB / "assets"
 RELEASES = OUT / "releases"
+DOWNLOADS = WEB / "downloads"
+CAKTO_CHECKOUTS_PATH = OUT / "cakto-checkouts.json"
 
 FAMILY_META = {
     "Mensagens para copiar, adaptar e enviar": {
@@ -968,7 +971,7 @@ def write_catalog_js(records: list[dict[str, str]]) -> None:
                 "buyer": record["buyer"],
                 "image": f"assets/{record['image']}",
                 "detailUrl": f"itens/{record['slug']}/",
-                "checkoutUrl": None,
+                "checkoutUrl": record.get("checkoutUrl"),
             }
         )
     js = "window.SOS_LOW_TICKET_PRODUCTS = " + json.dumps(payload, ensure_ascii=False, indent=2) + ";\n"
@@ -1043,7 +1046,9 @@ def write_operations_docs(records: list[dict[str, str]]) -> None:
         "## O que está neste diretório",
         "- `pXX-*/`: pacote individual com `material.pdf`, fonte editável, página de venda e README.",
         "- `releases/`: ZIP pronto para anexar ou entregar.",
-        "- `cakto-import.json`: manifesto de importação com preço, imagem, página e estado do checkout.",
+        "- `cakto-import.json`: manifesto de importação com preço, imagem, página, entrega e estado do checkout.",
+        "- `cakto-checkouts.json`: fatos confirmados no painel Cakto que sobrevivem à regeneração da vitrine.",
+        "- `landing/produtos/downloads/`: ZIPs usados como entrega por e-mail da Cakto até a migração para uma área de membros.",
         "- `PRECIFICACAO.md`: mapa de preços-teste e hipóteses de pacote.",
         "",
         "## Regenerar",
@@ -1052,7 +1057,7 @@ def write_operations_docs(records: list[dict[str, str]]) -> None:
         "```",
         "",
         "## Publicação segura",
-        "A vitrine pública já lista os 48 itens. A publicação na Cakto exige sessão autenticada e conferência do conteúdo entregue; por isso os checkouts permanecem nulos no manifesto até a etapa de importação.",
+        "A vitrine pública já lista os 48 itens. A publicação na Cakto exige sessão autenticada e conferência do conteúdo entregue; por isso os checkouts permanecem nulos no manifesto até a etapa de importação. Os links em `downloads/` são provisórios e compartilháveis; migrar para Cakto Members antes de escalar anúncios.",
         "",
     ]
     (OUT / "README.md").write_text("\n".join(root_lines), encoding="utf-8")
@@ -1062,6 +1067,10 @@ def write_detail_page(record: dict[str, str]) -> None:
     page_dir = WEB / "itens" / record["slug"]
     page_dir.mkdir(parents=True, exist_ok=True)
     image_url = f"../../assets/{record['image']}"
+    checkout_url = record.get("checkoutUrl")
+    cta_href = checkout_url or f"https://wa.me/5549988447562?text=Ol%C3%A1!%20Quero%20receber%20o%20checkout%20de%20{record['title'].replace(' ', '%20')}."
+    cta_label = "Comprar agora" if checkout_url else "Quero receber o material"
+    cta_note = "Checkout ativo na Cakto." if checkout_url else "O checkout será ativado após a conferência final da oferta."
     body = f"""<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -1090,8 +1099,8 @@ def write_detail_page(record: dict[str, str]) -> None:
           <p class="detail-lead">{escape(record['promise'].capitalize())}.</p>
           <p class="detail-buyer"><strong>Para:</strong> {escape(record['buyer'])}.</p>
           <div class="detail-price"><strong>R$ {record['price']}</strong><span>pagamento único · preço-teste</span></div>
-          <a class="catalog-button" data-product-checkout href="https://wa.me/5549988447562?text=Olá!%20Quero%20receber%20o%20checkout%20de%20{record['title'].replace(' ', '%20')}." target="_blank" rel="noreferrer">Quero receber o material <span aria-hidden="true">↗</span></a>
-          <p class="detail-note">O checkout será ativado após a conferência final da oferta.</p>
+          <a class="catalog-button" data-product-checkout href="{escape(cta_href)}" target="_blank" rel="noreferrer">{cta_label} <span aria-hidden="true">↗</span></a>
+          <p class="detail-note">{cta_note}</p>
         </div>
         <figure class="detail-visual"><img src="{image_url}" alt="Imagem editorial da família {escape(record['familyLabel'])}" width="1254" height="1254" /></figure>
       </div>
@@ -1125,8 +1134,19 @@ def write_detail_page(record: dict[str, str]) -> None:
     (page_dir / "index.html").write_text(body, encoding="utf-8")
 
 
+def load_cakto_checkouts() -> dict[str, dict[str, str]]:
+    """Load only operator-recorded Cakto facts; never invent checkout URLs."""
+    if not CAKTO_CHECKOUTS_PATH.exists():
+        return {}
+    payload = json.loads(CAKTO_CHECKOUTS_PATH.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Expected an object in {CAKTO_CHECKOUTS_PATH}")
+    return {str(key).zfill(2): value for key, value in payload.items() if isinstance(value, dict)}
+
+
 def main() -> None:
     records = parse_catalog()
+    cakto_checkouts = load_cakto_checkouts()
     OUT.mkdir(parents=True, exist_ok=True)
     RELEASES.mkdir(parents=True, exist_ok=True)
     for record in records:
@@ -1156,15 +1176,20 @@ def main() -> None:
         record["release"] = str(archive_path.relative_to(ROOT))
         record["salesPage"] = f"https://iaparavendas.tech/produtos/itens/{record['slug']}/"
         record["imageUrl"] = f"https://iaparavendas.tech/produtos/assets/{record['image']}"
-        record["checkoutUrl"] = None
-        record["publicationStatus"] = "prepared_pending_cakto_access"
+        record["downloadUrl"] = f"https://iaparavendas.tech/produtos/downloads/{record['slug']}.zip"
+        cakto_fact = cakto_checkouts.get(record["id"], {})
+        record["caktoProductId"] = cakto_fact.get("productId")
+        record["checkoutUrl"] = cakto_fact.get("checkoutUrl")
+        record["publicationStatus"] = cakto_fact.get("publicationStatus", "prepared_pending_cakto_access")
+        DOWNLOADS.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(archive_path, DOWNLOADS / archive_path.name)
         write_detail_page(record)
     write_catalog_js(records)
     write_operations_docs(records)
     manifest = {
         "generatedAt": date.today().isoformat(),
         "source": "docs/CATALOGO_POSSIBILIDADES_LOW_TICKET_2026-09-05.md",
-        "note": "Checkout URLs remain null until each product is verified and created in Cakto.",
+        "note": "Checkout URLs are populated only from products/low-ticket/cakto-checkouts.json after visual verification in Cakto.",
         "products": records,
     }
     (OUT / "cakto-import.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

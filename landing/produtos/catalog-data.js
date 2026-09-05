@@ -9,7 +9,7 @@ window.SOS_LOW_TICKET_PRODUCTS = [
     "buyer": "vendedor, autônomo ou dono que atende pelo WhatsApp",
     "image": "assets/01-scripts-whatsapp.png",
     "detailUrl": "itens/p01-do-qual-o-valor-ao-proximo-passo/",
-    "checkoutUrl": null
+    "checkoutUrl": "https://pay.cakto.com.br/3c3tm2c_1087592"
   },
   {
     "id": "02",
