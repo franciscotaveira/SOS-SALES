@@ -3,6 +3,7 @@
  * Analisa leads em silêncio comercial (>3h) e sintetiza micro-quebras de objeção.
  */
 
+import { NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../infrastructure/ai/openrouter-engine.js';
 import { dbPool } from '../../infrastructure/database/pool.js';
 import { analyzeConversationDossier } from './cognitive-analyzer.js';
@@ -25,10 +26,10 @@ export function safeGhostingFallbackMessage(contactName: string | null | undefin
 }
 
 export class GhostingResurrectionEngine {
-  private readonly aiEngine: OpenRouterEngine;
+  private readonly aiEngine: NvidiaNimEngine | OpenRouterEngine;
 
-  constructor(aiEngine?: OpenRouterEngine) {
-    this.aiEngine = aiEngine || new OpenRouterEngine();
+  constructor(aiEngine?: NvidiaNimEngine | OpenRouterEngine) {
+    this.aiEngine = aiEngine || new NvidiaNimEngine();
   }
 
   /**

@@ -3,6 +3,7 @@
  * Calcula ciclos biológicos e temporais de recompra para maximizar o LTV do cliente.
  */
 
+import { NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../infrastructure/ai/openrouter-engine.js';
 import { dbPool } from '../../infrastructure/database/pool.js';
 
@@ -29,10 +30,10 @@ export function buildSafeRetentionMessage(
 }
 
 export class LtvRetentionEngine {
-  private readonly aiEngine: OpenRouterEngine;
+  private readonly aiEngine: NvidiaNimEngine | OpenRouterEngine;
 
-  constructor(aiEngine?: OpenRouterEngine) {
-    this.aiEngine = aiEngine || new OpenRouterEngine();
+  constructor(aiEngine?: NvidiaNimEngine | OpenRouterEngine) {
+    this.aiEngine = aiEngine || new NvidiaNimEngine();
   }
 
   private getOptimalCycleDays(serviceName: string): number {

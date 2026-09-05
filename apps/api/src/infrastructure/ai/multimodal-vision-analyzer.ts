@@ -109,12 +109,18 @@ export class MultimodalVisionAnalyzer {
 
   constructor(
     apiKey?: string,
-    baseUrl = 'https://openrouter.ai/api/v1',
-    visionModel = 'meta-llama/llama-3.2-11b-vision-instruct:free'
+    baseUrl = process.env.NVIDIA_NIM_BASE_URL || 'https://integrate.api.nvidia.com/v1',
+    visionModel = 'meta/llama-3.2-11b-vision-instruct'
   ) {
-    this.apiKey = apiKey || process.env.OPENROUTER_API_KEY || '';
-    this.baseUrl = baseUrl;
-    this.visionModel = visionModel;
+    this.apiKey = apiKey || process.env.NVIDIA_API_KEY || process.env.OPENROUTER_API_KEY || '';
+    // Auto-adjust if an OpenRouter key is explicitly provided
+    if (this.apiKey.startsWith('sk-or-') && baseUrl.includes('nvidia.com')) {
+      this.baseUrl = 'https://openrouter.ai/api/v1';
+      this.visionModel = 'meta-llama/llama-3.2-11b-vision-instruct';
+    } else {
+      this.baseUrl = baseUrl;
+      this.visionModel = visionModel;
+    }
   }
 
   /**
@@ -125,7 +131,7 @@ export class MultimodalVisionAnalyzer {
     contextPrompt?: string
   ): Promise<MultimodalAnalysisResult> {
     if (!this.apiKey) {
-      throw new Error('OPENROUTER_API_KEY necessária para análise de imagens.');
+      throw new Error('NVIDIA_API_KEY (ou OPENROUTER_API_KEY) necessária para análise de imagens.');
     }
 
     const formattedImageUrl = imageUrlOrBase64.startsWith('http') || imageUrlOrBase64.startsWith('data:')

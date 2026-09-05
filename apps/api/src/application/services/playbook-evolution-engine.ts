@@ -3,6 +3,7 @@
  * Destila os melhores argumentos de vendas fechadas e os transforma em patrimônio da equipe.
  */
 
+import { NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../infrastructure/ai/openrouter-engine.js';
 import { dbPool } from '../../infrastructure/database/pool.js';
 import { MessageLike } from './cognitive-analyzer.js';
@@ -15,10 +16,10 @@ export interface BattlecardExtraction {
 }
 
 export class PlaybookEvolutionEngine {
-  private readonly aiEngine: OpenRouterEngine;
+  private readonly aiEngine: NvidiaNimEngine | OpenRouterEngine;
 
-  constructor(aiEngine?: OpenRouterEngine) {
-    this.aiEngine = aiEngine || new OpenRouterEngine();
+  constructor(aiEngine?: NvidiaNimEngine | OpenRouterEngine) {
+    this.aiEngine = aiEngine || new NvidiaNimEngine();
   }
 
   /**
