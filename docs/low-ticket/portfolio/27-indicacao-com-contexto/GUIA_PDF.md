@@ -1,0 +1,66 @@
+# Indicação com contexto
+
+**Guia de aplicação — rascunho para validação**
+
+## Para que serve
+
+Este kit foi desenhado para negócio com compradores existentes. Qualquer contato deve considerar a relação, a pertinência e a preferência do destinatário.. Ele ajuda a produzir: **Roteiros e controle de indicações, com condições claras quando houver benefício**. O kit não instala ferramentas nem opera contas do comprador.
+
+## Antes de começar
+
+- escolha uma situação real, mas remova nomes, telefones e qualquer dado que não seja necessário;
+- reúna somente as informações que a empresa consegue confirmar;
+- defina quem aprova preço, prazo, disponibilidade ou comunicação;
+- abra o template no Notion ou use a ficha em PDF.
+
+## Roteiro de uso
+
+1. Defina a ocasião do contato e quem não deve ser abordado.
+2. Confirme se a mensagem é pertinente à relação e à preferência registrada.
+3. Ofereça uma ação simples e registre a resposta.
+4. Pare no opt-out, na ausência de pertinência ou no limite definido.
+5. Meça resultado e margem antes de repetir a ação.
+
+## Ficha mínima
+
+| Campo | Tipo / orientação |
+|---|---|
+| Cliente | text |
+| Última compra / atendimento | date/text |
+| Ocasião de contato | select: recebimento, uso, avaliação, indicação, recompra, renovação |
+| Elegibilidade | select: sim, não, revisar |
+| Preferência / consentimento | text |
+| Próxima ação | text |
+| Resultado / margem | text |
+| Saída | select: respondeu, concluiu, opt-out, encerrar |
+
+## Exemplo fictício
+
+Exemplo fictício — Cliente: “Empresa Aurora”; Última compra / atendimento: “cliente pediu uma próxima ação clara”; Resultado: “registrar, executar uma vez e revisar”.
+
+## Revisão antes de usar
+
+- [ ] O resultado desta ficha pode ser verificado por outra pessoa?
+- [ ] As informações estão atualizadas e têm uma fonte conhecida?
+- [ ] O próximo passo tem responsável e prazo?
+- [ ] Existe uma condição explícita para parar, encerrar ou transferir?
+- [ ] Dados pessoais e promessas sem prova foram removidos?
+- [ ] O conteúdo não repete uma entrega já incluída no EKO ou em outro produto ativo?
+
+## Guardrails
+
+Respeitar consentimento, opt-out, políticas do canal e a legislação aplicável. O kit não substitui revisão jurídica.
+
+Se houver risco operacional, erro de preço, conflito de escopo ou pedido fora da alçada, interrompa a execução e faça handoff humano.
+
+## Como saber se funcionou
+
+A primeira execução deve deixar um artefato preenchido, uma evidência observável e uma próxima decisão. “Ficou bonito” não é critério de conclusão. Registre o que foi usado, o que ficou pendente e quanto suporte foi necessário.
+
+## Próxima oferta possível
+
+Se a pessoa precisa de várias pessoas, histórico, SLA, tarefas recorrentes, automação ou acompanhamento diário, este kit deixa de ser suficiente. O próximo passo deve ser uma solução operacional maior, não mais um PDF com campos.
+
+## Nota de versão
+
+Produto ainda não publicado. Preço, nome, página de venda, políticas e qualquer integração precisam de validação separada.

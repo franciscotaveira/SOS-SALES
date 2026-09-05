@@ -18,6 +18,10 @@ CRM operacional de alta performance para vendas no WhatsApp, projetado sob a fil
 
 ## 📚 Documentação & Especificações do Sistema
 
+### Esteira de produtos low-ticket
+
+Os kits locais de PDF, Notion e planilha ficam em [`docs/low-ticket/README.md`](docs/low-ticket/README.md). São rascunhos de validação e não representam produtos publicados na Cakto. Consulte também o [inventário e a governança](docs/low-ticket/INVENTARIO_E_GOVERNANCA.md) antes de cadastrar qualquer SKU.
+
 O SOS Sales possui documentação funcional e técnica detalhada para cada um de seus 8 módulos operacionais:
 
 | Módulo | Especificação Funcional |
