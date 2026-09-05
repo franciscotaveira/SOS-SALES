@@ -9,6 +9,8 @@ Gerado em 05/09/2026. São **48 rascunhos de validação**, não produtos public
 - Todos os exemplos são fictícios. Substitua-os somente após revisar privacidade e autorização.
 - Preço, promessa e volume de procura continuam sujeitos a validação.
 
+Para a triagem de risco de implementação e reembolso, consulte [Auditoria de risco de implementação e reembolso](./AUDITORIA_RISCO_IMPLEMENTACAO_REEMBOLSO_2026-09-05.md).
+
 ## Mapa por grupo
 
 ### 1. Mensagens para copiar, adaptar e enviar
@@ -84,6 +86,8 @@ Gerado em 05/09/2026. São **48 rascunhos de validação**, não produtos public
 - [48 — Entrega e manutenção de agentes](./portfolio/48-entrega-e-manutencao-de-agentes/README.md) · PDF + Notion · marca N
 
 ## Pacotes sugeridos
+
+Para a arquitetura de preço, ordem de oferta, order bump, upsell e regras de não redundância, consulte [Arquitetura de bundles, upsell e order bump](./ARQUITETURA_BUNDLES_UPSELL_ORDER_BUMP_2026-09-05.md).
 
 - **Atendimento e relacionamento:** 01–06, 19–30, 31–36.
 - **Conteúdo e aquisição:** 13–18.

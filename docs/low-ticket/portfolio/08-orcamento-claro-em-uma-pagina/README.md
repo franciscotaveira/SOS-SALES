@@ -1,5 +1,9 @@
 # Orçamento claro em uma página
 
+## Versão 2 — Proposta pronta com IA
+
+O kit expandido para piloto está em [v2/LEIA-ME.md](./v2/LEIA-ME.md): [guia PDF](./v2/KIT.pdf), [guia HTML](./v2/KIT.html), [modelo Word](./v2/MODELO.docx) e [validação pendente](./v2/VALIDACAO.md). Inclui sete prompts e três casos completos. O material abaixo documenta a versão anterior, preservada para referência. Publicação e teste com compradores ainda pendentes.
+
 > **Rascunho de validação** · gerado em 05/09/2026
 
 ## Cartão da oferta

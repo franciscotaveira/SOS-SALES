@@ -1,5 +1,7 @@
 # Bundles e esteiras
 
+Para a matriz operacional de entrada, order bump, upsell, bundle, preço-teste e regras de não redundância, use [Arquitetura de bundles, upsell e order bump](./ARQUITETURA_BUNDLES_UPSELL_ORDER_BUMP_2026-09-05.md).
+
 ## Princípio
 
 Um bundle reúne tarefas que o mesmo comprador executa no mesmo momento. Não é uma coleção de arquivos sem ordem.
