@@ -131,7 +131,7 @@ export class OpenRouterEngine {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
             'HTTP-Referer': 'https://iaparavendas.tech',
-            'X-Title': 'SOS Sales Comercial OS',
+            'X-Title': 'SOS Vendas Comercial OS',
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({

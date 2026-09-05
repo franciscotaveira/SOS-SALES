@@ -134,6 +134,11 @@ export interface WhatsappChannelRouteDependencies {
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
+  wabaCredentialsResolver?: (workspaceId: string) => Promise<{
+    phoneNumberId?: string;
+    wabaId?: string;
+    accessToken?: string;
+  } | null>;
   /**
    * Supervised durable outbound lifecycle. Legacy cockpit routes enqueue here
    * instead of choosing a provider and sending synchronously.
@@ -988,6 +993,9 @@ export async function whatsappChannelRoutes(
 
   // Helper to fetch WABA credentials for a workspace securely from channel_connection_secrets
   async function getWabaCreds(workspaceId: string) {
+    if (dependencies.wabaCredentialsResolver) {
+      return dependencies.wabaCredentialsResolver(workspaceId);
+    }
     const normWsId = normalizeWorkspaceUuid(workspaceId);
     const client = await dbPool.connect();
     try {
@@ -2285,7 +2293,7 @@ export async function whatsappChannelRoutes(
             ph: [phoneHash],
           },
           custom_data: {
-            content_name: `SOS Sales CAPI test (${selectedEvent})`,
+            content_name: `SOS Vendas CAPI test (${selectedEvent})`,
             content_category: 'whatsapp_crm_tracking',
           },
         },

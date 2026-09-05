@@ -20,7 +20,7 @@ class GlobalErrorBoundary extends Component<GlobalErrorBoundaryProps, GlobalErro
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Critical Runtime Error in SOS Sales:', error, errorInfo);
+    console.error('Critical Runtime Error in SOS Vendas:', error, errorInfo);
   }
 
   render() {
@@ -63,7 +63,7 @@ class GlobalErrorBoundary extends Component<GlobalErrorBoundaryProps, GlobalErro
               SOS
             </div>
             <h1 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 8px 0', color: '#F8FAFC' }}>
-              SOS Sales Recuperado com Sucesso
+              SOS Vendas Recuperado com Sucesso
             </h1>
             <p style={{ fontSize: '13px', color: '#94A3B8', margin: '0 0 20px 0', lineHeight: 1.5 }}>
               Detectamos uma oscilação temporária na interface. Clique abaixo para restabelecer o cockpit.

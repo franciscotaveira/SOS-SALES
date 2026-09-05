@@ -37,7 +37,7 @@ export class SalesOsTransportError extends Error {
 
 export class SalesOsOperationUnavailableError extends Error {
   constructor(operation: string) {
-    super(`${operation} ainda não está disponível na API autenticada do SOS Sales.`);
+    super(`${operation} ainda não está disponível na API autenticada do SOS Vendas.`);
     this.name = 'SalesOsOperationUnavailableError';
   }
 }
@@ -1493,7 +1493,7 @@ export class HttpSalesOsGateway implements SalesOsGateway {
       slug: workspace.slug,
       operatorRole: workspace.role,
       businessType: 'general_services',
-      tagline: 'Dados autenticados do SOS Sales',
+      tagline: 'Dados autenticados do SOS Vendas',
       activeOperatorCount: 0,
       channels: [],
     }));
@@ -1622,7 +1622,7 @@ export class HttpSalesOsGateway implements SalesOsGateway {
   ): Promise<T> {
     const token = await this.accessTokenProvider();
     if (!token) {
-      throw new SalesOsTransportError('A sessão autenticada ainda não foi conectada ao transporte do SOS Sales.', 401);
+      throw new SalesOsTransportError('A sessão autenticada ainda não foi conectada ao transporte do SOS Vendas.', 401);
     }
 
     const headers: Record<string, string> = {
@@ -1642,11 +1642,11 @@ export class HttpSalesOsGateway implements SalesOsGateway {
         cache: (options.method ?? 'GET') === 'GET' ? 'no-store' : undefined,
       });
     } catch {
-      throw new SalesOsTransportError('Não foi possível alcançar a API do SOS Sales.');
+      throw new SalesOsTransportError('Não foi possível alcançar a API do SOS Vendas.');
     }
 
     if (!response.ok) {
-      let message = `A API do SOS Sales retornou ${response.status}.`;
+      let message = `A API do SOS Vendas retornou ${response.status}.`;
       try {
         const errorJson = await response.json() as { message?: string };
         if (errorJson?.message) message = errorJson.message;
@@ -1659,7 +1659,7 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     try {
       return await response.json() as T;
     } catch {
-      throw new SalesOsTransportError('A API do SOS Sales retornou uma resposta inválida.');
+      throw new SalesOsTransportError('A API do SOS Vendas retornou uma resposta inválida.');
     }
   }
 }

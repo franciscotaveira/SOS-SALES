@@ -99,21 +99,21 @@ export const defaultSalesMediaVault: SalesMediaResource[] = [
   },
 
   // ==========================================================================
-  // SOS SALES OFICIAL
+  // SOS VENDAS OFICIAL
   // ==========================================================================
   {
     id: 'vault-sos-audio-francisco',
     workspaceId: 'ws-sos-sales-official',
     type: 'audio',
     title: 'Áudio Francisco · Apresentação Copilot & Fila com SLA',
-    authorOrSpeaker: 'Francisco Rios (Fundador SOS Sales)',
+    authorOrSpeaker: 'Francisco Rios (Fundador SOS Vendas)',
     category: 'Apresentação Comercial',
-    description: 'Áudio direto ao ponto demonstrando como o SOS Sales recupera vendas de WhatsApp em menos de 30 segundos.',
+    description: 'Áudio direto ao ponto demonstrando como o SOS Vendas recupera vendas de WhatsApp em menos de 30 segundos.',
     url: 'https://assets.mixkit.co/active_storage/sfx/2874/2874-preview.mp3',
     durationSeconds: 52,
     fileSizeFormatted: '820 KB',
     recommendedStages: ['QUALIFICADO', 'PROPOSTA'],
-    recommendedTriggerKeywords: ['como funciona', 'sos sales', 'copilot', 'audio', 'demonstracao'],
+    recommendedTriggerKeywords: ['como funciona', 'sos vendas', 'copilot', 'audio', 'demonstracao'],
     captionText: '🎙️ *Áudio do Francisco (Fundador):* "Oi! Gravei este áudio rápido explicando como a nossa engenharia de continuidade cognitiva estanca o prejuízo de leads perdidos no WhatsApp."',
     uploadedAt: '2026-08-16T08:00:00Z',
   },
@@ -121,7 +121,7 @@ export const defaultSalesMediaVault: SalesMediaResource[] = [
     id: 'vault-sos-pdf-proposta',
     workspaceId: 'ws-sos-sales-official',
     type: 'pdf',
-    title: 'Proposta Comercial SOS Sales · Programa Empresa Amiga',
+    title: 'Proposta Comercial SOS Vendas · Programa Empresa Amiga',
     authorOrSpeaker: 'MCT Tecnologia',
     category: 'Proposta & Planos',
     description: 'Documento PDF com os detalhes do Plano Anual com 50% OFF (12x R$ 97) e garantia incondicional de 7 dias.',
@@ -129,7 +129,7 @@ export const defaultSalesMediaVault: SalesMediaResource[] = [
     fileSizeFormatted: '1.2 MB',
     recommendedStages: ['PROPOSTA', 'NEGOCIACAO'],
     recommendedTriggerKeywords: ['proposta', 'plano', 'valor', 'contrato', 'pdf'],
-    captionText: '📄 *Proposta Oficial SOS Sales:* Segue o descritivo completo com o subsídio de 50% do Programa Empresa Amiga.',
+    captionText: '📄 *Proposta Oficial SOS Vendas:* Segue o descritivo completo com o subsídio de 50% do Programa Empresa Amiga.',
     uploadedAt: '2026-08-16T08:30:00Z',
   },
 

@@ -82,7 +82,7 @@ const apiBundleHash = computeFileSha256(apiBundlePath);
 const releaseTag = activeEnv === 'production' ? `v${pkg.version || '2.0.0'}-prod` : `v${pkg.version || '2.0.0'}-${activeEnv}`;
 
 const manifest = {
-  product: 'SOS Sales',
+  product: 'SOS Vendas',
   edition: 'Enterprise Multi-Tenant WhatsApp CRM',
   version: pkg.version || '2.0.0',
   release: releaseTag,

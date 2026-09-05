@@ -127,17 +127,17 @@ const PRELOADED_SCENARIOS: TestScenario[] = [
     guardrailStatus: 'passed',
     explanation: 'Calculou a soma exata dos serviços (R$ 114) e instruiu o envio do sinal Pix de R$ 30 com clareza.',
   },
-  // SOS SALES SCENARIOS
+  // SOS VENDAS SCENARIOS
   {
     id: 'sos-ctwa-desconto',
     category: 'sos',
-    title: '6. SOS Sales: Incentivo 50% OFF (12x R$ 97)',
+    title: '6. SOS Vendas: Incentivo 50% OFF (12x R$ 97)',
     badge: 'B2B CTWA',
     description: 'Empresário pergunta sobre a promoção de 50% no Plano Anual.',
-    customerPrompt: 'Vi o anúncio do SOS Sales com 50% de desconto. Como funciona esse valor de 12x R$ 97 e o que vem incluso?',
+    customerPrompt: 'Vi o anúncio do SOS Vendas com 50% de desconto. Como funciona esse valor de 12x R$ 97 e o que vem incluso?',
     expectedAgent: 'Atlas · Consultor Comercial',
     expectedPricing: '12x R$ 97 (Plano Anual)',
-    simulatedResponse: 'Olá! Excelente momento para falar do SOS Sales. 🚀 O Programa de Incentivo PME libera 50% de subsídio no Plano Anual, saindo de R$ 2.328 por apenas 12x de R$ 97 sem juros.\n\nVocê recebe:\n✅ Cockpit Comercial com respostas em 1 clique (< 300ms)\n✅ Integração com WhatsApp Oficial e WAHA\n✅ Atribuição real de ROI Meta Ads CAPI (Traffic Proof)\n✅ Fila com SLA anti-vácuo e até 5 operadores\n\nQuantos atendentes ou números de WhatsApp você tem hoje na sua empresa?',
+    simulatedResponse: 'Olá! Excelente momento para falar do SOS Vendas. 🚀 O Programa de Incentivo PME libera 50% de subsídio no Plano Anual, saindo de R$ 2.328 por apenas 12x de R$ 97 sem juros.\n\nVocê recebe:\n✅ Cockpit Comercial com respostas em 1 clique (< 300ms)\n✅ Integração com WhatsApp Oficial e WAHA\n✅ Atribuição real de ROI Meta Ads CAPI (Traffic Proof)\n✅ Fila com SLA anti-vácuo e até 5 operadores\n\nQuantos atendentes ou números de WhatsApp você tem hoje na sua empresa?',
     empathyScore: 96,
     accuracyScore: 100,
     guardrailStatus: 'passed',
@@ -177,14 +177,14 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
       role: 'customer',
       text: isHavenActive
         ? 'Oi, queria saber se tem vaga para escova hoje à tarde!'
-        : 'Olá, gostaria de entender como funciona o SOS Sales na prática.',
+        : 'Olá, gostaria de entender como funciona o SOS Vendas na prática.',
       time: '08:45',
     },
     {
       role: 'assistant',
       text: isHavenActive
         ? 'Olá! Seja muito bem-vinda à Haven! 🌸 Temos sim vagas para a tarde de hoje. Nossa Escova Express (Lisa R$ 59 / Modelada R$ 69) inclui ozônioterapia. Você prefere qual horário?'
-        : 'Olá! O SOS Sales é o sistema operacional de vendas no WhatsApp que elimina o vácuo no atendimento com sugestões em 1 clique e rastreia o faturamento exato dos seus anúncios Meta.',
+        : 'Olá! O SOS Vendas é o sistema operacional de vendas no WhatsApp que elimina o vácuo no atendimento com sugestões em 1 clique e rastreia o faturamento exato dos seus anúncios Meta.',
       time: '08:45',
     },
   ]);
@@ -256,9 +256,9 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
         }
       } else {
         if (lower.includes('preco') || lower.includes('preço') || lower.includes('plano') || lower.includes('quanto')) {
-          botResponse = 'Temos o Plano Anual SOS Sales com 50% de desconto por apenas 12x de R$ 97, ou o Plano Mensal Flexível por R$ 197/mês. Ambos com Cockpit 1-Clique e Traffic Proof Meta CAPI!';
+          botResponse = 'Temos o Plano Anual SOS Vendas com 50% de desconto por apenas 12x de R$ 97, ou o Plano Mensal Flexível por R$ 197/mês. Ambos com Cockpit 1-Clique e Traffic Proof Meta CAPI!';
         } else {
-          botResponse = 'Olá! O SOS Sales é o sistema comercial de alta performance para WhatsApp. Quantos leads ou atendentes sua operação tem hoje?';
+          botResponse = 'Olá! O SOS Vendas é o sistema comercial de alta performance para WhatsApp. Quantos leads ou atendentes sua operação tem hoje?';
         }
       }
 
@@ -375,7 +375,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  ⚡ SOS Sales
+                  ⚡ SOS Vendas
                 </button>
                 <button
                   onClick={() => setActiveCategory('all')}

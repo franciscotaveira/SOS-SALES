@@ -54,7 +54,7 @@ export function getSupabaseClient(): SupabaseClient | null {
   return singleton;
 }
 
-/** Reusable bearer provider for every authenticated SOS Sales HTTP adapter. */
+/** Reusable bearer provider for every authenticated SOS Vendas HTTP adapter. */
 export async function getSupabaseAccessToken(): Promise<string | null> {
   const client = getSupabaseClient();
   if (!client) return null;

@@ -156,7 +156,7 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
           <div className="rounded-xl bg-violet-600 p-2.5 text-white"><Bot size={18} /></div>
           <div>
             <h3 className="text-sm font-bold text-slate-900">Meta Business Agent</h3>
-            <p className="mt-0.5 max-w-2xl text-xs text-slate-600">Use o agente nativo da Meta como primeira camada. O SOS Sales assume automaticamente quando a Meta for comprovadamente inelegível; indisponibilidade ou erro ficam pausados para revisão, sem respostas duplicadas.</p>
+            <p className="mt-0.5 max-w-2xl text-xs text-slate-600">Use o agente nativo da Meta como primeira camada. O SOS Vendas assume automaticamente quando a Meta for comprovadamente inelegível; indisponibilidade ou erro ficam pausados para revisão, sem respostas duplicadas.</p>
           </div>
         </div>
         <button type="button" onClick={() => void loadEligibility()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-violet-800 disabled:opacity-60"><RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Atualizar elegibilidade</button>
@@ -189,18 +189,18 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
           {eligibility.checkedAt && <p className="mt-1 text-[10px] text-slate-400">Última verificação: {new Date(eligibility.checkedAt).toLocaleString('pt-BR')}</p>}
         </div>
         <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Número Meta</span><p className="mt-1 truncate font-mono text-xs text-slate-700">{eligibility.phoneNumberId || 'Não informado'}</p><p className="mt-1 text-[10px] text-slate-400">Canal: {eligibility.channelConnectionId || agentConfig?.metaAgentChannelConnectionId || 'não vinculado'}</p><p className="mt-1 text-[10px] text-slate-400">Agente: {agentConfig?.metaAgentId || 'ainda não ativado'}</p><p className={`mt-1 text-[10px] font-bold ${agentConfig?.metaAgentActivationStatus === 'READY' ? 'text-emerald-700' : agentConfig?.metaAgentActivationStatus === 'FAILED' ? 'text-rose-700' : 'text-amber-700'}`}>Ativação: {agentConfig?.metaAgentActivationStatus === 'READY' ? 'confirmada' : agentConfig?.metaAgentActivationStatus === 'PENDING' ? 'em preparação' : agentConfig?.metaAgentActivationStatus === 'FAILED' ? 'falhou — repetir teste' : 'não iniciada'}</p></div>
-        <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Fallback</span><p className="mt-1 text-xs font-bold text-slate-700">IA SOS Sales + humano</p></div>
+        <div className="rounded-xl border border-violet-100 bg-white p-3"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Fallback</span><p className="mt-1 text-xs font-bold text-slate-700">IA SOS Vendas + humano</p></div>
       </div>
 
       <div className="mt-4 rounded-xl border border-violet-100 bg-white p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><div className="text-xs font-bold text-slate-900">Quem responde as conversas?</div><p className="mt-1 text-[11px] text-slate-500">Uma conversa só pode ter um responsável automático. Esta decisão é gravada no backend e evita Meta e SOS Sales responderem juntos.</p></div>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-600">Atual: {agentConfig?.responderMode === 'meta_business_agent' ? 'Meta' : agentConfig?.responderMode === 'auto_fallback' ? 'Meta + fallback SOS' : agentConfig?.responderMode === 'manual' ? 'Equipe' : 'SOS Sales'}</span>
+          <div><div className="text-xs font-bold text-slate-900">Quem responde as conversas?</div><p className="mt-1 text-[11px] text-slate-500">Uma conversa só pode ter um responsável automático. Esta decisão é gravada no backend e evita Meta e SOS Vendas responderem juntos.</p></div>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-600">Atual: {agentConfig?.responderMode === 'meta_business_agent' ? 'Meta' : agentConfig?.responderMode === 'auto_fallback' ? 'Meta + fallback SOS' : agentConfig?.responderMode === 'manual' ? 'Equipe' : 'SOS Vendas'}</span>
         </div>
         <select disabled={!canManage || savingMode || !agentConfig} value={agentConfig?.responderMode || 'sos_sales'} onChange={(event) => void saveResponderMode(event.target.value as ResponderMode)} className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-violet-500 disabled:cursor-not-allowed disabled:bg-slate-50">
-          <option value="auto_fallback">Meta Business Agent + fallback SOS Sales</option>
+          <option value="auto_fallback">Meta Business Agent + fallback SOS Vendas</option>
           <option value="meta_business_agent" disabled={!metaReadyForMode}>Somente Meta Business Agent{metaReadyForMode ? '' : ' (aguarda ativação)'}</option>
-          <option value="sos_sales">Somente IA própria SOS Sales</option>
+          <option value="sos_sales">Somente IA própria SOS Vendas</option>
           <option value="manual">Somente equipe (sem resposta automática)</option>
         </select>
         {!canManage && <p className="mt-2 text-[10px] text-slate-500">Somente o proprietário do workspace pode alterar o responsável automático.</p>}
@@ -233,7 +233,7 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
           ) : eligibility.phoneNumberId ? (
             <>A Meta não confirmou a elegibilidade agora. Verifique o token e o estado do número <strong>WhatsApp Oficial (Meta Cloud API)</strong> antes de tentar novamente.</>
           ) : (
-            <>Conecte primeiro um número <strong>WhatsApp Oficial (Meta Cloud API)</strong> em Configurações da Meta Cloud. A IA própria do SOS Sales continua sendo o fallback enquanto esta conexão não estiver disponível.</>
+            <>Conecte primeiro um número <strong>WhatsApp Oficial (Meta Cloud API)</strong> em Configurações da Meta Cloud. A IA própria do SOS Vendas continua sendo o fallback enquanto esta conexão não estiver disponível.</>
           )}
         </div>
       )}
@@ -258,7 +258,7 @@ export const MetaBusinessAgentSettingsView: React.FC<MetaBusinessAgentSettingsVi
         </form>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900"><ShieldAlert size={15} className="shrink-0" /><span>Conhecimento, FAQs, arquivos, skills e voz da marca continuam sendo administrados no Meta Business Manager até os endpoints oficiais de publicação serem homologados no SOS Sales.</span><a href="https://business.facebook.com/" target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 font-bold underline"><ExternalLink size={12} /> Abrir Meta Business</a></div>
+      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900"><ShieldAlert size={15} className="shrink-0" /><span>Conhecimento, FAQs, arquivos, skills e voz da marca continuam sendo administrados no Meta Business Manager até os endpoints oficiais de publicação serem homologados no SOS Vendas.</span><a href="https://business.facebook.com/" target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 font-bold underline"><ExternalLink size={12} /> Abrir Meta Business</a></div>
     </section>
   );
 };

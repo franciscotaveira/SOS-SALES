@@ -267,7 +267,7 @@ export const mockEngineConfig: EngineConfig = {
     qualityRating: 'GREEN',
     messagingLimit: '10k',
     templateCount: 18,
-    verifiedName: 'Agência Digital & SOS Sales Cloud',
+    verifiedName: 'Agência Digital & SOS Vendas Cloud',
   },
   waha: {
     enabled: true,

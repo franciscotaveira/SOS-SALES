@@ -682,7 +682,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
                 </div>
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-700">
-                  Informe o ID exato de um Flow publicado. O SOS Sales não cria nem presume formulários, serviços ou horários.
+                  Informe o ID exato de um Flow publicado. O SOS Vendas não cria nem presume formulários, serviços ou horários.
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
@@ -772,7 +772,7 @@ export const WabaActionsModal: React.FC<WabaActionsModalProps> = ({
                 </p>
 
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-900">
-                  Preencha somente dados de cobrança confirmados para este cliente. O SOS Sales não sugere valores, chaves ou condições financeiras.
+                  Preencha somente dados de cobrança confirmados para este cliente. O SOS Vendas não sugere valores, chaves ou condições financeiras.
                 </div>
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>

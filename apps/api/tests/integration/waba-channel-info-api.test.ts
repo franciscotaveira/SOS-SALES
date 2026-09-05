@@ -120,7 +120,14 @@ describe('WABA channel info runtime gateway', () => {
       phoneNumberId: 'phone-id',
       wabaId: 'waba-id',
     });
-    const app = buildApp(dependencies({ wabaChannelInfoGateway: { findConnectedByWorkspaceId } }));
+    const app = buildApp(dependencies({
+      wabaChannelInfoGateway: { findConnectedByWorkspaceId },
+      wabaCredentialsResolver: vi.fn().mockResolvedValue({
+        phoneNumberId: 'phone-id',
+        wabaId: 'waba-id',
+        accessToken: 'server-side-token',
+      }),
+    }));
 
     const response = await app.inject({
       method: 'GET',
@@ -157,7 +164,7 @@ describe('WABA channel info runtime gateway', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ data: expect.objectContaining({ status: 'UNKNOWN', reason: 'UPSTREAM_UNAVAILABLE' }) });
-    expect(checkEligibility).toHaveBeenCalledWith(workspaceId);
+    expect(checkEligibility).toHaveBeenCalledWith(workspaceId, undefined);
     await app.close();
   });
 
@@ -194,7 +201,7 @@ describe('WABA channel info runtime gateway', () => {
     )));
     const app = buildApp(dependencies({
       workspaceDirectory: {
-        listForActor: async () => [{ id: workspaceId, name: 'Haven', slug: 'haven', role: 'operator' as const }],
+        listForActor: async () => [{ id: workspaceId, name: 'Haven', slug: 'haven', role: 'owner' as const }],
       },
     }));
 

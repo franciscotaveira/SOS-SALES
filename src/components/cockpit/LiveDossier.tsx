@@ -216,7 +216,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
             action: 'take',
             to: journey.leadPhone,
             journeyId: journey.id,
-            metadata: 'SOS Sales assumiu via Dossiê',
+            metadata: 'SOS Vendas assumiu via Dossiê',
           }),
         });
         const data = await res.json().catch(() => null) as { responderOwner?: 'sos_sales' | 'meta_business_agent' | 'human'; error?: string; botActive?: boolean } | null;
@@ -440,7 +440,7 @@ export const LiveDossier: React.FC<LiveDossierProps> = ({
           title={
             responderMode === 'manual' || responderOwner === 'human' ? 'Atendimento manual ativo'
             : metaActivationUnknown ? 'Meta ainda não foi confirmada; atualize a elegibilidade antes de responder'
-            : responderOwner === 'meta_business_agent' ? 'Assumir esta conversa no SOS Sales'
+            : responderOwner === 'meta_business_agent' ? 'Assumir esta conversa no SOS Vendas'
             : botActive ? 'Pausar bot e assumir atendimento'
             : botEnabled ? 'Retomar atendimento automático'
             : 'Habilitar bot nesta conversa'

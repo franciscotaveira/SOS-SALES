@@ -12,7 +12,7 @@ describe('cockpit production safety policy', () => {
     expect(source).not.toContain('amanhã às 14h');
     expect(source).not.toContain('condição especial para fechamento ainda hoje');
     expect(source).not.toContain('agendamento_express_flow');
-    expect(source).toContain('O SOS Sales não sugere valores, chaves ou condições financeiras');
+    expect(source).toContain('O SOS Vendas não sugere valores, chaves ou condições financeiras');
   });
 
   it('does not inject local demo availability into production macros', () => {

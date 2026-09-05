@@ -246,7 +246,7 @@ export const EmbeddedSignupModal: React.FC<EmbeddedSignupModalProps> = ({
     } catch (error) {
       setIsConnecting(false);
       setConnectionStatus('error');
-      setErrorMessage(error instanceof Error ? error.message : 'Falha na comunicação com o backend SOS Sales.');
+      setErrorMessage(error instanceof Error ? error.message : 'Falha na comunicação com o backend SOS Vendas.');
     }
   };
 

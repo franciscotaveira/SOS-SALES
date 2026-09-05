@@ -95,7 +95,10 @@ describe('TX Commercial Core — Phase 6: Critical Commercial Journeys QA', () =
     });
     expect(ingest.isDuplicate).toBe(false);
 
-    expect(await worker.processSingleBatch()).toBe(1);
+    // The worker claims a global batch, so earlier integration files may leave
+    // unrelated events ready in the same isolated test database. The contract
+    // here is that this event is processed, not that the global batch has size 1.
+    expect(await worker.processSingleBatch()).toBeGreaterThanOrEqual(1);
 
     // Verify contact
     const contactRes = await query<{ id: string; phone: string }>(

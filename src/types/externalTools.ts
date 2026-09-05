@@ -1,5 +1,5 @@
 /**
- * External Tools & Visual Bridge Abstraction for MCT OS / SOS Sales
+ * External Tools & Visual Bridge Abstraction for MCT OS / SOS Vendas
  * 
  * Provides unified schema for embedding, reading, and reasoning over
  * third-party legacy tools (Agendas, ERPs, Inventory, Catalogs).

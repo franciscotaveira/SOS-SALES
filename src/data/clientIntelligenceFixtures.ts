@@ -10,13 +10,13 @@ import {
 } from '../types/intelligence';
 
 // ============================================================================
-// WORKSPACE 1: SOS SALES OFICIAL (SaaS & VENDAS WHATSAPP)
+// WORKSPACE 1: SOS VENDAS OFICIAL (SaaS & VENDAS WHATSAPP)
 // ============================================================================
-export const mockSosSalesIntelligence: ClientIntelligenceBundle = {
+export const mockSalesOsIntelligence: ClientIntelligenceBundle = {
   workspaceId: 'ws-sos-sales-official',
-  companyProfile: {
-    legalName: 'MCT TECNOLOGIA E VENDAS LTDA',
-    tradeName: 'SOS Sales · Sistema Operacional de Vendas',
+  profile: {
+    legalName: 'SOS VENDAS TECNOLOGIA LTDA',
+    tradeName: 'SOS Vendas · Sistema Operacional de Vendas',
     taxId: '54.128.930/0001-44',
     segment: 'Software Comercial (SaaS) & Inteligência de Vendas no WhatsApp',
     tagline: 'Vendas no WhatsApp com respostas em < 30s, supervisão humana e prova real de faturamento.',
@@ -48,7 +48,7 @@ export const mockSosSalesIntelligence: ClientIntelligenceBundle = {
       dom: { open: '09:00', close: '14:00', isOpen: true },
     },
     wabaOfficialInfo: {
-      verifiedName: 'SOS Sales Oficial',
+      verifiedName: 'SOS Vendas Oficial',
       metaBusinessId: 'bm_meta_sos_sales_2026',
       phoneId: 'phone_id_49988447562',
       phoneNumber: '+55 49 98844-7562',
@@ -72,10 +72,10 @@ export const mockSosSalesIntelligence: ClientIntelligenceBundle = {
   agentConfig: {
     id: 'agent-sos-sales-01',
     workspaceId: 'ws-sos-sales-official',
-    name: 'Sofia · Especialista Comercial SOS Sales',
+    name: 'Sofia · Especialista Comercial SOS Vendas',
     avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-    persona:
-      'Você é a Sofia, consultora comercial do SOS Sales. Seu objetivo é ajudar empresários e gestores a entenderem como o SOS Sales estanca o prejuízo de clientes perdidos no vácuo do WhatsApp, demonstrando a velocidade das respostas em 1 clique e o subsídio de 50% do Programa Empresa Amiga (12x R$ 97).',
+    systemPrompt:
+      'Você é a Sofia, consultora comercial do SOS Vendas. Seu objetivo é ajudar empresários e gestores a entenderem como o SOS Vendas estanca o prejuízo de clientes perdidos no vácuo do WhatsApp, demonstrando a velocidade das respostas em 1 clique e o subsídio de 50% do Programa Empresa Amiga (12x R$ 97).',
     toneOfVoice: 'consultivo_premium',
     autonomyMode: 'copilot_supervised',
     creativityTemperature: 0.2,
@@ -101,66 +101,23 @@ export const mockSosSalesIntelligence: ClientIntelligenceBundle = {
   catalog: [
     {
       id: 'prod-sos-anual',
-      sku: 'SOS-ANUAL-PME',
-      name: 'Plano Anual SOS Sales (Incentivo 50% OFF)',
-      category: 'Planos & Assinaturas',
+      name: 'Plano Anual SOS Vendas (Incentivo 50% OFF)',
+      category: 'software_subscription',
+      price: 1164.0,
+      recurrence: '12x de R$ 97/mês (Total R$ 1.164)',
+      description: 'Acesso completo ao SOS Vendas para 1 número comercial + 5 operadores + Motor de Inteligência Comercial e Recuperação Automática de Vendas.',
+      conversionTriggerPitch: 'O Plano Anual com incentivo do Programa Empresa Amiga sai de R$ 197 por apenas 12x de R$ 97. Recuperando 1 venda por mês o sistema já se paga com sobra!',
+      activePromotions: '50% de desconto vitalício enquanto a assinatura estiver ativa',
+      stockStatus: 'available',
+    },
+    {
+      id: 'srv-sos-monthly',
+      name: 'Plano Mensal Flexível SOS Vendas',
       description: 'Acesso completo ao Cockpit Comercial, fila com SLA, Copilot 1-Clique, Traffic Proof Meta CAPI e até 5 operadores.',
       basePrice: 1164.0,
       minPromoPrice: 1164.0,
       durationOrExecutionTime: '12 meses de acesso',
       imageUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&auto=format&fit=crop&q=80',
-      inStock: true,
-      wabaProductLink: 'https://abacatepay.com/pay/bill_xjzmANQLLC3G2tsnRbBbR5Nr',
-      metaCatalogId: 'meta_sku_sos_anual',
-      tags: ['Plano Anual', '50% OFF', 'AbacatePay', 'Cockpit', 'Incentivo PME'],
-      frequentlyAsked: [
-        {
-          question: 'Posso parcelar no cartão?',
-          answer: 'Sim, em até 12x de R$ 97 sem juros.',
-        },
-      ],
-    },
-    {
-      id: 'prod-sos-mensal',
-      sku: 'SOS-MENSAL-FLEX',
-      name: 'Plano Mensal Flexível SOS Sales',
-      category: 'Planos & Assinaturas',
-      description: 'Cockpit Comercial para 1 número de WhatsApp e até 2 operadores sem compromisso de fidelidade.',
-      basePrice: 197.0,
-      minPromoPrice: 197.0,
-      durationOrExecutionTime: 'Mensal recorrente',
-      imageUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&auto=format&fit=crop&q=80',
-      inStock: true,
-      wabaProductLink: 'https://abacatepay.com/pay/bill_XWhT42hMarkAuxmNAcqynfZ0',
-      metaCatalogId: 'meta_sku_sos_mensal',
-      tags: ['Plano Mensal', 'Flexível', 'Sem Fidelidade'],
-      frequentlyAsked: [
-        {
-          question: 'Tem taxa de cancelamento?',
-          answer: 'Não, você pode cancelar a qualquer momento diretamente no painel.',
-        },
-      ],
-    },
-    {
-      id: 'prod-sos-escala-vip',
-      sku: 'SOS-ESCALA-VIP',
-      name: 'Plano Escala VIP + Mentoria de Continuidade Cognitiva',
-      category: 'Corporativo & Mentoria',
-      description: 'Múltiplos números, operadores ilimitados, servidor dedicado e Mentoria Estratégica com os fundadores.',
-      basePrice: 1497.0,
-      minPromoPrice: 1497.0,
-      durationOrExecutionTime: 'Mensal com acompanhamento',
-      imageUrl: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&auto=format&fit=crop&q=80',
-      inStock: true,
-      wabaProductLink: 'https://wa.me/5549988447562?text=Gostaria%20de%20falar%20sobre%20o%20Plano%20Escala%20VIP',
-      metaCatalogId: 'meta_sku_sos_vip',
-      tags: ['Escala VIP', 'Mentoria', 'Continuidade Cognitiva', 'Corporativo'],
-      frequentlyAsked: [
-        {
-          question: 'Como funciona a mentoria?',
-          answer: 'Reuniões semanais e engenharia direta no seu funil de WhatsApp.',
-        },
-      ],
     },
   ],
   documents: [
@@ -199,10 +156,11 @@ export const mockSosSalesIntelligence: ClientIntelligenceBundle = {
       workspaceId: 'ws-sos-sales-official',
       type: 'operator_correction',
       date: '2026-08-15T14:00:00Z',
-      leadContext: 'Empresário perguntou se precisava de computador caro para usar o SOS Sales.',
+      leadContext: 'Empresário perguntou se precisava de computador caro para usar o SOS Vendas.',
+      customerTrigger: 'Preciso comprar um computador novo ou instalar programa pesado pra rodar?',
       originalAiProposal: 'O sistema roda em servidores locais.',
-      humanCorrection: 'O SOS Sales roda 100% na nuvem. Basta qualquer computador ou celular com navegador web.',
-      learnedFact: 'O SOS Sales é 100% web na nuvem e não requer hardware ou instalação pesada.',
+      humanCorrection: 'O SOS Vendas roda 100% na nuvem. Basta qualquer computador ou celular com navegador web.',
+      learnedFact: 'O SOS Vendas é 100% web na nuvem e não requer hardware ou instalação pesada.',
       confidenceScore: 0.99,
       status: 'curated_approved',
       impactMetric: 'Eliminou 100% das dúvidas técnicas na contratação',
@@ -223,7 +181,7 @@ export const mockSosSalesIntelligence: ClientIntelligenceBundle = {
     },
     {
       id: 'src-sos-02',
-      name: 'Catálogo de Produtos SOS Sales',
+      name: 'Catálogo de Produtos SOS Vendas',
       type: 'waba_catalog',
       count: '3 Planos Oficiais',
       status: 'synced',

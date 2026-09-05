@@ -390,7 +390,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
               fileType: input.fileType,
               fileSize: String(document.file_size || input.fileSize),
               uploadedAt: String(document.created_at || new Date().toISOString()),
-              uploadedBy: 'Backend SOS Sales',
+              uploadedBy: 'Backend SOS Vendas',
               category: input.category,
               status: document.status === 'ready' ? 'indexed' : 'pending',
               extractedChunksCount: Number(document.chunks_count || 1),

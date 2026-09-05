@@ -67,7 +67,7 @@ app.ready().then(async () => {
     return String(obj);
   }
 
-  const yaml = `# SOS Sales API — OpenAPI 3.0.3\n# Auto-gerado por scripts/generate-openapi.ts em ${new Date().toISOString()}\n# NÃO EDITAR MANUALMENTE — regenere com: npm run generate:openapi\n${toYaml(spec).trim()}\n`;
+  const yaml = `# SOS Vendas API — OpenAPI 3.0.3\n# Auto-gerado por scripts/generate-openapi.ts em ${new Date().toISOString()}\n# NÃO EDITAR MANUALMENTE — regenere com: npm run generate:openapi\n${toYaml(spec).trim()}\n`;
 
   writeFileSync('./openapi.json', json, 'utf8');
   writeFileSync('./openapi.yaml', yaml, 'utf8');

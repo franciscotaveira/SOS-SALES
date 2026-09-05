@@ -295,7 +295,7 @@ export async function metaBusinessAgentRoutes(
           journeyId,
           responderOwner,
           message: responderOwner === 'sos_sales'
-            ? 'Controle tomado pelo SOS Sales para esta conversa.'
+            ? 'Controle tomado pelo SOS Vendas para esta conversa.'
             : 'Controle liberado para o Meta Business Agent nesta conversa.',
         });
       }

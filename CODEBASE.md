@@ -1,4 +1,4 @@
-# SOS-SALES — Codebase & Architecture Guide (MCT OS v2.0)
+# SOS VENDAS — Codebase & Architecture Guide (MCT OS v2.0)
 
 > **Ambiente de Produção**: `https://crm.iaparavendas.tech`  
 > **VPS IP**: `179.197.72.221` (Ubuntu 24.04, Docker, Caddy, API, WAHA, Redis)  

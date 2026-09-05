@@ -78,7 +78,7 @@ export const MetaAiBenchmarkSection: React.FC = () => {
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
         <div className="p-4 bg-slate-50 border-b border-slate-200">
           <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-heading">
-            Matriz Comparativa: Meta AI Pura vs. Agente SOS Sales OS
+            Matriz Comparativa: Meta AI Pura vs. Agente SOS Vendas OS
           </h3>
         </div>
 

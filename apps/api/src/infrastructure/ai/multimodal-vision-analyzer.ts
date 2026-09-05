@@ -132,7 +132,7 @@ export class MultimodalVisionAnalyzer {
       ? imageUrlOrBase64
       : `data:image/jpeg;base64,${imageUrlOrBase64}`;
 
-    const systemPrompt = `Você é o módulo de Visão e Inteligência Comercial do SOS Sales.
+    const systemPrompt = `Você é o módulo de Visão e Inteligência Comercial do SOS Vendas.
 Sua missão é analisar imagens recebidas pelo WhatsApp para empresas (ex: salões de beleza, clínicas, spas como Sora Headspa e Haven, e comércio em geral).
 
 Você deve identificar o tipo da imagem entre:
@@ -174,7 +174,7 @@ Nunca defina isPaymentValid como true: uma imagem não confirma liquidação. Nu
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'HTTP-Referer': 'https://iaparavendas.tech',
-        'X-Title': 'SOS Sales Multimodal Vision',
+        'X-Title': 'SOS Vendas Multimodal Vision',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

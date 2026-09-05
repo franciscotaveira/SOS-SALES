@@ -97,7 +97,7 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
               </span>
             ) : (
               <span className="text-[8.5px] bg-[var(--sos-border)]/30 text-[var(--sos-muted)] font-bold px-1.5 py-0.5 rounded-full border border-[var(--sos-border)]">
-                Cadastro no SOS Sales
+                Cadastro no SOS Vendas
               </span>
             )}
           </div>

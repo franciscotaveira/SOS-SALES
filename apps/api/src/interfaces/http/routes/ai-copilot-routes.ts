@@ -89,7 +89,7 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
           properties: {
             apiKey: { type: 'string' },
             model: { type: 'string', default: 'nvidia/nemotron-3-nano-30b-a3b:free' },
-            prompt: { type: 'string', default: 'Olá! Responda como a Sofia do SOS Sales em 2 linhas.' },
+            prompt: { type: 'string', default: 'Olá! Responda como a Sofia do SOS Vendas em 2 linhas.' },
           },
         },
       },
@@ -125,11 +125,11 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
             {
               role: 'system',
               content:
-                'Você é a Sofia, consultora comercial de alta conversão do SOS Sales. Você é empática, rápida e persuasiva.',
+                'Você é a Sofia, consultora comercial de alta conversão do SOS Vendas. Você é empática, rápida e persuasiva.',
             },
             {
               role: 'user',
-              content: body.prompt || 'O cliente perguntou: Por que o SOS Sales é melhor do que atender no WhatsApp normal?',
+              content: body.prompt || 'O cliente perguntou: Por que o SOS Vendas é melhor do que atender no WhatsApp normal?',
             },
           ],
           requestedModel ? { model: requestedModel } : undefined,
@@ -167,7 +167,7 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
           properties: {
             apiKey: { type: 'string' },
             model: { type: 'string', default: 'meta/llama-3.1-70b-instruct' },
-            prompt: { type: 'string', default: 'Olá! Responda como especialista comercial do SOS Sales em 2 linhas.' },
+            prompt: { type: 'string', default: 'Olá! Responda como especialista comercial do SOS Vendas em 2 linhas.' },
           },
         },
       },
@@ -198,11 +198,11 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
             {
               role: 'system',
               content:
-                'Você é a Sofia, consultora comercial de alta conversão do SOS Sales. Você é objetiva, persuasiva e cordial.',
+                'Você é a Sofia, consultora comercial de alta conversão do SOS Vendas. Você é objetiva, persuasiva e cordial.',
             },
             {
               role: 'user',
-              content: body.prompt || 'O cliente perguntou: Como o SOS Sales funciona para clínica odontológica?',
+              content: body.prompt || 'O cliente perguntou: Como o SOS Vendas funciona para clínica odontológica?',
             },
           ],
           requestedModel ? { model: requestedModel } : undefined,
@@ -242,7 +242,7 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
             contactName: { type: 'string', default: 'Cliente' },
             lastCustomerMessage: { type: 'string', default: '' },
             businessType: { type: 'string', default: 'serviços' },
-            businessName: { type: 'string', default: 'SOS Sales' },
+            businessName: { type: 'string', default: 'SOS Vendas' },
             facts: { type: 'array', items: { type: 'string' } },
           },
         },
@@ -267,7 +267,7 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
 É PROIBIDO inventar ou estimar preço, desconto, chave Pix, valor de sinal, disponibilidade, endereço, duração, política ou condição comercial.
 Quando a pergunta depender de um desses dados, diga objetivamente que a informação ainda não está confirmada e proponha consultar uma pessoa responsável.`;
 
-      const systemPrompt = `Você é o Motor de Inteligência Comercial Soberano do SOS Sales para a empresa "${body.businessName || 'Empresa'}" (${body.businessType || 'Comércio'}).
+      const systemPrompt = `Você é o Motor de Inteligência Comercial Soberano do SOS Vendas para a empresa "${body.businessName || 'Empresa'}" (${body.businessType || 'Comércio'}).
 Você opera estritamente sob o Método de Vendas Conversacionais de Francisco Rios (Hermes Kernel).
 
 METODOLOGIA OBRIGATÓRIA (O SEGREDO DA ALTA CONVERSÃO):
@@ -303,7 +303,7 @@ Retorne JSON estritamente estruturado:
 }`;
 
       try {
-        // The operator copilot is part of the SOS Sales runtime, so it must
+        // The operator copilot is part of the SOS Vendas runtime, so it must
         // use the same explicitly configured NVIDIA provider as the
         // receptionist. OpenRouter remains available only through its
         // explicit diagnostics route and is never a hidden production

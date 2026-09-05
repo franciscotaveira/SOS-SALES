@@ -3,7 +3,7 @@ import { Journey, Workspace, Channel, Message, LiveDossierData, ContinuityStep }
 export const mockWorkspaces: Workspace[] = [
   {
     id: 'ws-sos-sales-official',
-    name: 'SOS Sales · Sistema Operacional de Vendas',
+    name: 'SOS Vendas · Sistema Operacional de Vendas',
     slug: 'sos-sales-oficial',
     businessType: 'general_services',
     tagline: 'Vendas no WhatsApp com respostas em < 30s, supervisão humana e prova real de faturamento.',

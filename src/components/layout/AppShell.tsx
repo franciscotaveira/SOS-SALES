@@ -523,12 +523,15 @@ export const AppShell: React.FC<AppShellProps> = ({
           ) : (
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-[#001f18] border border-[#00a884]/40 flex items-center justify-center shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-[#001f18] border border-[#00a884]/40 flex items-center justify-center shrink-0 shadow-sm shadow-[#00a884]/20">
                   <Flame className="w-4 h-4 text-[#00A884]" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-white font-black text-xs tracking-wider leading-none font-heading truncate">SOS Sales</div>
-                  <div className="text-[#00A884] text-xs font-medium tracking-wider leading-none mt-0.5 uppercase">Operacional</div>
+                  <div className="text-white font-black text-xs tracking-wider leading-none font-heading truncate">SOS Vendas</div>
+                  <div className="text-[#00A884] text-[10px] font-bold tracking-wider leading-none mt-1 uppercase flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00A884] animate-pulse"></span>
+                    Operacional
+                  </div>
                 </div>
               </div>
               {!isMobile && (

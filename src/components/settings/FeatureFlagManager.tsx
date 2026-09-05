@@ -150,7 +150,7 @@ export const FeatureFlagManager: React.FC<FeatureFlagManagerProps> = ({ workspac
           <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
             Fila de Prioridades (<strong className="font-semibold">Agora</strong>), Linha de Continuidade, Dossiê Vivo,
             Recomendação Supervisionada, Compositor com Dupla Evidência, Follow-up, Outcome Comercial e{' '}
-            <strong className="font-semibold">Proof of Traffic</strong> são os pilares fundamentais do SOS Sales e nunca são desativados.
+            <strong className="font-semibold">Proof of Traffic</strong> são os pilares fundamentais do SOS Vendas e nunca são desativados.
           </p>
         </div>
       </div>

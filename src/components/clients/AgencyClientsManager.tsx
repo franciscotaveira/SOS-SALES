@@ -186,7 +186,7 @@ export const AgencyClientsManager: React.FC<AgencyClientsManagerProps> = ({
                 Gestão de Clientes & Sub-contas
               </h1>
               <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#00a884]/20 text-[#00a884] border border-[#00a884]/40 flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" /> Matriz SOS Sales Sovereign
+                <ShieldCheck className="w-3.5 h-3.5" /> Matriz SOS Vendas Sovereign
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">

@@ -132,14 +132,14 @@ export function resolveWorkspaceApiDefaults(wsId: string, wsName?: string): {
     };
   }
 
-  // 3. SOS Sales - Matriz Principal / Master Company (Sovereign Core)
+  // 3. SOS Vendas - Matriz Principal / Master Company (Sovereign Core)
   return {
     isMasterAccount: true,
-    accountTypeLabel: 'Conta Principal Matriz (SOS Sales Master)',
+    accountTypeLabel: 'Conta Principal Matriz (SOS Vendas Master)',
     apiKeys: [
       {
         id: 'key-sos-01',
-        name: 'SOS Sales · AbacatePay & Master Data Pipeline',
+        name: 'SOS Vendas · AbacatePay & Master Data Pipeline',
         tokenPrefix: 'sos_live_mct_24x...',
         fullToken: 'sos_live_mct_24xf8912e741c900bb341e9981a',
         scopes: ['read:conversations', 'write:deals', 'read:metrics', 'export:analytics', 'admin:all'],
@@ -352,7 +352,7 @@ export const ApiWebhooksManager: React.FC<ApiWebhooksManagerProps> = ({ workspac
             </h2>
           </div>
           <p className="text-xs text-slate-400">
-            Conecte o SOS Sales com ERPs, CRMs externos, automações e extraia conversas, contatos e métricas em tempo real.
+            Conecte o SOS Vendas com ERPs, CRMs externos, automações e extraia conversas, contatos e métricas em tempo real.
           </p>
         </div>
 
@@ -385,7 +385,7 @@ export const ApiWebhooksManager: React.FC<ApiWebhooksManagerProps> = ({ workspac
           <ShieldCheck className={`w-5 h-5 shrink-0 ${defaults.isMasterAccount ? 'text-purple-600' : 'text-emerald-600'}`} />
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-xs">{workspace.name || 'SOS Sales'}</span>
+              <span className="font-bold text-xs">{workspace.name || 'SOS Vendas'}</span>
               <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
                 defaults.isMasterAccount
                   ? 'bg-purple-200 text-purple-900 border border-purple-300'
@@ -396,8 +396,8 @@ export const ApiWebhooksManager: React.FC<ApiWebhooksManagerProps> = ({ workspac
             </div>
             <p className="text-[11px] text-slate-600 mt-0.5">
               {defaults.isMasterAccount
-                ? 'Esta é a conta Matriz Principal do SOS Sales. Suas chaves e webhooks operam as integrações da sua empresa que vende o serviço.'
-                : 'Esta é uma sub-conta isolada de cliente. Nenhuma chave, webhook ou dado desta conta influencia a conta Matriz do SOS Sales.'}
+                ? 'Esta é a conta Matriz Principal do SOS Vendas. Suas chaves e webhooks operam as integrações da sua empresa que vende o serviço.'
+                : 'Esta é uma sub-conta isolada de cliente. Nenhuma chave, webhook ou dado desta conta influencia a conta Matriz do SOS Vendas.'}
             </p>
           </div>
         </div>

@@ -118,7 +118,7 @@ export function resolveWorkspaceTeamDefaults(wsId: string, wsName?: string): Tea
     ];
   }
 
-  // 3. SOS Sales - Matriz Principal / Sovereign Master
+  // 3. SOS Vendas - Matriz Principal / Sovereign Master
   return [
     {
       id: 'usr-sos-01',

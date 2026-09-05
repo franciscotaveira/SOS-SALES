@@ -103,7 +103,7 @@ export const HistoricalDiagnosisSection: React.FC<HistoricalDiagnosisSectionProp
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600 flex items-start gap-2">
         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-        <p>O SOS Sales não exibe histórico inventado nem injeta conclusões automaticamente no prompt. Regras só entram na base de conhecimento após cadastro explícito e persistência no backend.</p>
+        <p>O SOS Vendas não exibe histórico inventado nem injeta conclusões automaticamente no prompt. Regras só entram na base de conhecimento após cadastro explícito e persistência no backend.</p>
       </div>
     </div>
   );

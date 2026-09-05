@@ -127,7 +127,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
                 ? 'bg-purple-100 text-purple-900 border-purple-200'
                 : 'bg-emerald-100 text-emerald-900 border-emerald-200'
             }`}>
-              {isMaster ? '🛡️ Matriz Sovereign (SOS Sales)' : `🏢 Cliente: ${workspace.name || 'Sub-conta'}`}
+              {isMaster ? '🛡️ Matriz Sovereign (SOS Vendas)' : `🏢 Cliente: ${workspace.name || 'Sub-conta'}`}
             </span>
           </div>
           <p className="text-xs text-slate-500">

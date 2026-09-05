@@ -125,7 +125,7 @@ export const MetaTrackingSetupView: React.FC<MetaTrackingSetupViewProps> = ({ wo
             </label>
 
             <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs">
-              <span><strong className="block text-slate-800">Enviar conversões confirmadas</strong><span className="text-slate-500">Somente desfechos reais registrados no SOS Sales.</span></span>
+              <span><strong className="block text-slate-800">Enviar conversões confirmadas</strong><span className="text-slate-500">Somente desfechos reais registrados no SOS Vendas.</span></span>
               <input type="checkbox" checked={tracking.metaCapiEnabled} onChange={(event) => setTracking((current) => ({ ...current, metaCapiEnabled: event.target.checked }))} className="h-4 w-4 accent-blue-600" />
             </label>
 

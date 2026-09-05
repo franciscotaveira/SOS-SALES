@@ -1,5 +1,5 @@
 /**
- * SOS SALES - MOTOR COGNITIVO SOBERANO (Francisco Rios Framework)
+ * SOS VENDAS - MOTOR COGNITIVO SOBERANO (Francisco Rios Framework)
  * 
  * Analisador de inteligência comercial em tempo real para WhatsApp:
  * 1. Extração semântica de Serviços / Produtos Solicitados

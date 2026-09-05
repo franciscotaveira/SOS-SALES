@@ -269,7 +269,7 @@ export const LiveTrafficProofView: React.FC<LiveTrafficProofViewProps> = ({ work
                 Regra Soberana de Evidência
               </p>
               <p className="mt-0.5 text-[9.5px] leading-relaxed text-[var(--sos-muted)]">
-                “Não importado” não significa R$ 0,00. O SOS Sales só calcula ROAS quando o gasto da campanha foi importado e associado à mesma coorte. Nenhuma estimativa ou simulação fictícia é criada.
+                “Não importado” não significa R$ 0,00. O SOS Vendas só calcula ROAS quando o gasto da campanha foi importado e associado à mesma coorte. Nenhuma estimativa ou simulação fictícia é criada.
               </p>
             </section>
           </>

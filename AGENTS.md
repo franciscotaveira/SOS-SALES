@@ -1,12 +1,12 @@
-# AGENTS.md — Bússola Universal SOS Sales
+# AGENTS.md — Bússola Universal SOS Vendas
 > Leia este arquivo PRIMEIRO. Ele orienta qualquer IA (Claude, Gemini, Hermes, GPT) sobre onde está o projeto, o que está feito e o que fazer agora.
-> Atualizado: 04 Set 2026 | MCT OS v2.0
+> Atualizado: 05 Set 2026 | MCT OS v2.0
 
 ---
 
 ## 1. IDENTIDADE DO PROJETO
 
-**SOS Sales** — CRM operacional de alta performance para vendas via WhatsApp.
+**SOS Vendas** — CRM operacional de alta performance para vendas via WhatsApp.
 - **URL Produção:** https://crm.iaparavendas.tech
 - **VPS:** 179.197.72.221 (Ubuntu 24.04, Docker, Caddy)
 - **Supabase:** yiiuebhyqixzluguxsqi (aws-0-ca-central-1.pooler.supabase.com:6543)
@@ -183,7 +183,7 @@ _Atualizado automaticamente pela AGY (Antigravity) em 18 Ago 2026_
 <claude-mem-context>
 # Memory Context
 
-# [SOS-SALES] recent context, 2026-09-04 12:58pm GMT-3
+# [SOS-SALES] recent context, 2026-09-05 2:52am GMT-3
 
 No previous sessions found.
 </claude-mem-context>

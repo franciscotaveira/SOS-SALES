@@ -111,7 +111,7 @@ export class RecurringFollowUpWorker {
             await this.calendarGateway.createEvent(item.workspaceId, {
               workspaceId: item.workspaceId,
               title: `Follow-up: ${item.leadName} (${item.reason})`,
-              description: `Agendado automaticamente pelo SOS Sales via regra ${item.recurrenceRule}`,
+              description: `Agendado automaticamente pelo SOS Vendas via regra ${item.recurrenceRule}`,
               startAt: nextOccurrence.toISOString(),
               endAt: new Date(nextOccurrence.getTime() + 30 * 60 * 1000).toISOString(),
               followUpId: item.id,

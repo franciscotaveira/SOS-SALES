@@ -86,13 +86,13 @@ function demoConfig(workspaceId: string): WorkspaceCommercialConfig {
 
   return {
     workspaceId,
-    businessName: 'SOS Sales Comercial',
+    businessName: 'SOS Vendas Comercial',
     businessType: 'general',
     agendaProviderType: 'google_calendar',
     agendaProviderName: 'Google Agenda',
     agendaUrl: 'https://calendar.google.com/calendar/u/0/r',
-    pixKey: 'pix@salesos.com.br',
-    pixReceiverName: 'SOS Sales Inteligência Comercial',
+    pixKey: 'pix@sosvendas.com.br',
+    pixReceiverName: 'SOS Vendas Inteligência Comercial',
     businessAddress: 'Brasil',
     customMacros: [
       {

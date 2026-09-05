@@ -637,7 +637,7 @@ function OperationalApp({
   const [isOffline, setIsOffline] = React.useState(!navigator.onLine);
   const [isNetworkErrorForced, setIsNetworkErrorForced] = React.useState(false);
   const runtimeConfigurationError = salesOsRuntimeConfig.mode === 'unconfigured'
-    ? salesOsRuntimeConfig.reason ?? 'A configuração de operação do SOS Sales está incompleta.'
+    ? salesOsRuntimeConfig.reason ?? 'A configuração de operação do SOS Vendas está incompleta.'
     : null;
 
   // Online / Offline listener
@@ -889,7 +889,7 @@ function OperationalApp({
       <main className="min-h-screen bg-slate-950 px-6 flex items-center justify-center text-slate-100">
         <section className="max-w-xl rounded-2xl border-2 border-amber-500/70 bg-slate-900 p-7 shadow-2xl">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">Configuração necessária</p>
-          <h1 className="mt-2 text-2xl font-bold">O SOS Sales não exibirá dados de demonstração em produção.</h1>
+          <h1 className="mt-2 text-2xl font-bold">O SOS Vendas não exibirá dados de demonstração em produção.</h1>
           <p className="mt-3 text-sm leading-6 text-slate-300">{runtimeConfigurationError}</p>
           <div className="mt-5 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 font-mono text-xs text-slate-200">
             VITE_SOS_API_URL=https://api.seudominio.com/api/v1{`\n`}
@@ -966,7 +966,7 @@ function OperationalApp({
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-3 border-[#00a884] border-t-transparent rounded-full animate-spin"></div>
           <span className="text-xs font-mono tracking-wider text-slate-300">
-            Carregando SOS Sales OS Cockpit...
+            Carregando SOS Vendas OS Cockpit...
           </span>
         </div>
       </div>
@@ -1065,7 +1065,7 @@ function AuthenticatedApp() {
           
           {/* Logo & Brand Header */}
           <div className="flex flex-col items-center text-center">
-            <img src="/logo.svg" alt="SOS Sales" className="h-11 w-auto mb-3" />
+            <img src="/logo.svg" alt="SOS Vendas" className="h-11 w-auto mb-3" />
             <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold uppercase tracking-wider mb-2">
               🇧🇷 Cockpit Comercial Seguro
             </span>

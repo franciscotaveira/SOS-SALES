@@ -145,7 +145,7 @@ export const LtvConfigManager: React.FC<LtvConfigManagerProps> = ({ workspace })
             </span>
           </div>
           <p className="text-xs text-slate-600 max-w-2xl leading-relaxed">
-            Configure a periodicidade biológica ou comercial de retorno dos seus clientes. O motor de IA do SOS Sales dispara lembretes e ofertas na janela de maior probabilidade de recompra.
+            Configure a periodicidade biológica ou comercial de retorno dos seus clientes. O motor de IA do SOS Vendas dispara lembretes e ofertas na janela de maior probabilidade de recompra.
           </p>
         </div>
 

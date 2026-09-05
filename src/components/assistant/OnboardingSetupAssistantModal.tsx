@@ -47,7 +47,7 @@ export function OnboardingSetupAssistantModal({
     {
       id: 'm-init-1',
       sender: 'atlas',
-      text: `Olá! Eu sou o **Atlas**, seu Especialista de Configuração do SOS Sales. 🚀\n\nEstou aqui para deixar o sistema 100% pronto para o seu negócio vender no WhatsApp 24/7 sem você ter que quebrar a cabeça com menus técnicos.\n\nComo posso te ajudar agora?`,
+      text: `Olá! Eu sou o **Atlas**, seu Especialista de Configuração do SOS Vendas. 🚀\n\nEstou aqui para deixar o sistema 100% pronto para o seu negócio vender no WhatsApp 24/7 sem você ter que quebrar a cabeça com menus técnicos.\n\nComo posso te ajudar agora?`,
       timestamp: 'Agora',
       quickActions: [
         {
@@ -120,7 +120,7 @@ export function OnboardingSetupAssistantModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: `O usuário está configurando o SOS Sales para a empresa "${currentWorkspace.name}" (nicho: ${currentWorkspace.businessType}). Ele perguntou: "${text}". Responda como o Atlas, consultor de onboarding do SOS Sales. Seja claro, didático, amigável para pequenos empresários e passe orientações passo a passo em no máximo 3 parágrafos curtos. Se envolver telas do sistema (Catálogo, Configurações, WhatsApp, Playbook), indique onde ele clica.`,
+          prompt: `O usuário está configurando o SOS Vendas para a empresa "${currentWorkspace.name}" (nicho: ${currentWorkspace.businessType}). Ele perguntou: "${text}". Responda como o Atlas, consultor de onboarding do SOS Vendas. Seja claro, didático, amigável para pequenos empresários e passe orientações passo a passo em no máximo 3 parágrafos curtos. Se envolver telas do sistema (Catálogo, Configurações, WhatsApp, Playbook), indique onde ele clica.`,
         }),
       });
 

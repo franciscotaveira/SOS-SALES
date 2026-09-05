@@ -52,7 +52,7 @@ function loadReleaseManifest() {
   const releaseStr = activeEnv === 'production' ? ((manifest.release as string) || 'v2.0.0-prod') : `v2.0.0-${activeEnv}`;
 
   return {
-    product: 'SOS Sales',
+    product: 'SOS Vendas',
     edition: 'Enterprise Multi-Tenant WhatsApp CRM',
     version: '2.0.0',
     kernel: 'TX Commercial Core v2.0',
@@ -125,6 +125,12 @@ export interface AppDependencies {
   workspaceProvisioningGateway?: WorkspaceProvisioningGateway;
   /** Production-owned read gateway for connected Meta WABA channel metadata. */
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
+  /** Optional server-side WABA credential resolver for explicit composition and tests. */
+  wabaCredentialsResolver?: (workspaceId: string) => Promise<{
+    phoneNumberId?: string;
+    wabaId?: string;
+    accessToken?: string;
+  } | null>;
   /** Optional capability adapter for Meta Business Agent Platform. */
   metaBusinessAgentGateway?: MetaBusinessAgentGateway;
   /** Deployment-owned database pool for webhook persistence and routing. */
@@ -231,9 +237,9 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     openapi: {
       openapi: '3.0.3',
       info: {
-        title: 'SOS Sales API',
+        title: 'SOS Vendas API',
         version: '1.0.0',
-        description: 'API do SOS Sales — Sistema Operacional Comercial (TX Commercial Core). Todas as rotas exigem Bearer JWT emitido pelo Supabase Auth.'
+        description: 'API do SOS Vendas — Sistema Operacional Comercial (TX Commercial Core). Todas as rotas exigem Bearer JWT emitido pelo Supabase Auth.'
       },
       servers: [
         { url: 'http://localhost:4334', description: 'Local Dev' },
@@ -326,6 +332,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
     wabaChannelInfoGateway: dependencies.wabaChannelInfoGateway,
+    wabaCredentialsResolver: dependencies.wabaCredentialsResolver,
     outboundDispatchGateway: dependencies.outboundDispatchGateway,
   });
 
@@ -363,7 +370,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     config: { rateLimit: false },
   }, async () => ({
     status: 'ok',
-    system: 'SOS Sales Commercial Core',
+    system: 'SOS Vendas Commercial Core',
     kernel: 'TX Commercial Core',
     version: releaseManifest.version,
     release: releaseManifest.release,
