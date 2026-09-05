@@ -150,10 +150,10 @@ export class NvidiaNimEngine {
         if (options?.topP !== undefined) {
           bodyPayload.top_p = options.topP;
         }
-        // Nemotron 3.5 returns its reasoning trace in the assistant content by
-        // default. Customer-facing CRM paths must receive only the final text;
-        // reasoning remains an explicit opt-in for internal experiments.
-        if (options?.enableThinking !== undefined || modelToTry === NVIDIA_MODEL_TIERS.NEMOTRON) {
+        // Nemotron models (3.5, 3-super, etc.) return their reasoning trace in the
+        // assistant content by default. Customer-facing CRM paths must receive only
+        // the final text; reasoning remains an explicit opt-in for internal experiments.
+        if (options?.enableThinking !== undefined || modelToTry.toLowerCase().includes('nemotron')) {
           bodyPayload.chat_template_kwargs = {
             enable_thinking: options?.enableThinking === true,
           };
@@ -192,7 +192,13 @@ export class NvidiaNimEngine {
           usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
         };
 
-        const replyContent = data.choices?.[0]?.message?.content || '';
+        let replyContent = data.choices?.[0]?.message?.content || '';
+
+        // Sanitização de segurança: remover blocos de raciocínio se presentes
+        if (replyContent.includes('<think>')) {
+          replyContent = replyContent.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+        }
+
         const latencyMs = Date.now() - startTime;
 
         return {
