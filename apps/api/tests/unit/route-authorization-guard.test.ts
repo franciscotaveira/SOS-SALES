@@ -6,8 +6,7 @@ import { aiCopilotRoutes } from '../../src/interfaces/http/routes/ai-copilot-rou
 import { agentRoutes } from '../../src/interfaces/http/routes/agent-routes.js';
 import { metaPartnerRoutes } from '../../src/interfaces/http/routes/meta-partner-routes.js';
 import { autonomousRevenueRoutes } from '../../src/interfaces/http/routes/autonomous-revenue-routes.js';
-import { abacatePayRoutes } from '../../src/interfaces/http/routes/abacatepay-routes.js';
-import { AbacatePayGateway } from '../../src/infrastructure/billing/abacatepay-gateway.js';
+import { caktoBillingRoutes } from '../../src/interfaces/http/routes/cakto-billing-routes.js';
 import { OperatorAuthenticator, AuthenticatedActor } from '../../src/application/ports/operator-authenticator.js';
 import { WorkspaceDirectory, AccessibleWorkspace } from '../../src/application/ports/workspace-directory.js';
 import { OutboundDispatchGateway } from '../../src/application/ports/outbound-dispatch-gateway.js';
@@ -91,11 +90,14 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
       authenticator: deps !== undefined ? deps.authenticator : mockAuthenticator,
       workspaceDirectory: deps !== undefined ? deps.workspaceDirectory : mockWorkspaceDirectory,
     });
-    await app.register(abacatePayRoutes, {
+    await app.register(caktoBillingRoutes, {
       authenticator: deps !== undefined ? deps.authenticator : mockAuthenticator,
       workspaceDirectory: deps !== undefined ? deps.workspaceDirectory : mockWorkspaceDirectory,
-      abacateGateway: new AbacatePayGateway('test-only-key', 'https://billing.invalid'),
       webhookSecret: 'test-only-webhook-secret',
+      databasePool: {
+        query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+        connect: vi.fn(),
+      } as any,
     });
     await app.register(autonomousRevenueRoutes, {
       workspaceDirectory: deps !== undefined ? deps.workspaceDirectory : mockWorkspaceDirectory,
@@ -405,57 +407,33 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
     await app.close();
   });
 
-  it('AUTH-11: Billing charge returns 401 without a bearer token', async () => {
+  it('AUTH-11: Billing plans return 401 without a bearer token', async () => {
     const app = await buildTestApp();
     const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/billing/abacatepay/charges',
-      payload: {
-        workspaceId: '11111111-1111-1111-1111-111111111111',
-        customerName: 'Test Customer',
-        customerPhone: '+5549999999999',
-        customerEmail: 'customer@example.test',
-        productName: 'Test Product',
-        priceInCents: 100,
-      },
+      method: 'GET',
+      url: '/api/v1/billing/cakto/plans',
     });
     expect(res.statusCode).toBe(401);
     await app.close();
   });
 
-  it('AUTH-12: Viewer cannot create a billing charge', async () => {
+  it('AUTH-12: Viewer can read the subscription for their workspace', async () => {
     const app = await buildTestApp();
     const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/billing/abacatepay/charges',
+      method: 'GET',
+      url: '/api/v1/workspaces/11111111-1111-1111-1111-111111111111/billing/subscription',
       headers: { authorization: 'Bearer valid_token_tenant_a_viewer.part2.part3' },
-      payload: {
-        workspaceId: '11111111-1111-1111-1111-111111111111',
-        customerName: 'Test Customer',
-        customerPhone: '+5549999999999',
-        customerEmail: 'customer@example.test',
-        productName: 'Test Product',
-        priceInCents: 100,
-      },
     });
-    expect(res.statusCode).toBe(403);
+    expect(res.statusCode).toBe(200);
     await app.close();
   });
 
-  it('AUTH-13: Tenant A owner cannot create a charge for Tenant B', async () => {
+  it('AUTH-13: Tenant A owner cannot read Tenant B subscription', async () => {
     const app = await buildTestApp();
     const res = await app.inject({
-      method: 'POST',
-      url: '/api/v1/billing/abacatepay/charges',
+      method: 'GET',
+      url: '/api/v1/workspaces/22222222-2222-2222-2222-222222222222/billing/subscription',
       headers: { authorization: 'Bearer valid_token_tenant_a_owner.part2.part3' },
-      payload: {
-        workspaceId: '22222222-2222-2222-2222-222222222222',
-        customerName: 'Test Customer',
-        customerPhone: '+5549999999999',
-        customerEmail: 'customer@example.test',
-        productName: 'Test Product',
-        priceInCents: 100,
-      },
     });
     expect(res.statusCode).toBe(403);
     await app.close();

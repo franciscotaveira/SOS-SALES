@@ -1,5 +1,5 @@
 # SOS Vendas API — OpenAPI 3.0.3
-# Auto-gerado por scripts/generate-openapi.ts em 2026-09-05T05:59:55.353Z
+# Auto-gerado por scripts/generate-openapi.ts em 2026-09-05T07:26:28.121Z
 # NÃO EDITAR MANUALMENTE — regenere com: npm run generate:openapi
 openapi: 3.0.3
 info:
@@ -17,7 +17,7 @@ paths:
   /webhooks/waha/{channelConnectionId}:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -39,7 +39,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/members:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -51,7 +51,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/member-invitations:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -68,13 +68,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/members/{membershipId}:
     delete:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -86,7 +86,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/priorities:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -98,7 +98,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -110,7 +110,7 @@ paths:
   /api/v1/journeys/{journeyId}/messages:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -122,13 +122,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/cockpit:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -140,13 +140,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/handoffs/{handoffCaseId}/accept:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -158,13 +158,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/handoffs/{handoffCaseId}/resolve:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -176,13 +176,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/handoffs/{handoffCaseId}/return-to-ai:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -194,13 +194,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/stage:
     patch:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -212,13 +212,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/follow-ups:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -230,13 +230,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/outcomes:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -248,13 +248,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/waba-outbound-drafts:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -266,13 +266,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/outbound-drafts:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -284,13 +284,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/outbound-dispatches/{dispatchId}/approve:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -302,13 +302,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/outbound-dispatches/{dispatchId}/cancel:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -320,13 +320,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/outbound-dispatches/{dispatchId}:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -338,7 +338,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/traffic-proof:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -350,13 +350,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/facts:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -368,7 +368,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/appointments:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -379,7 +379,7 @@ paths:
           description: Default Response
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -391,13 +391,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/appointments/{appointmentId}:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -408,13 +408,13 @@ paths:
           description: Default Response
     patch:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -425,13 +425,13 @@ paths:
           description: Default Response
     delete:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -443,7 +443,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/notes:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -454,7 +454,7 @@ paths:
           description: Default Response
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -466,13 +466,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/notes/{noteId}:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -483,13 +483,13 @@ paths:
           description: Default Response
     patch:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -500,13 +500,13 @@ paths:
           description: Default Response
     delete:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -523,7 +523,7 @@ paths:
   /api/v1/workspaces/{parentWorkspaceId}/client-workspaces:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -535,7 +535,7 @@ paths:
   /api/v1/workspaces/{workspaceId}:
     delete:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -547,7 +547,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/operational-settings:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -558,7 +558,7 @@ paths:
           description: Default Response
     patch:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -570,13 +570,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/contacts/{contactId}:
     patch:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -588,7 +588,7 @@ paths:
   /api/v1/api/v1/atlas/tools/read/dossier/{workspaceId}:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -600,7 +600,7 @@ paths:
   /api/v1/api/v1/atlas/tools/read/known-facts/{workspaceId}:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -612,7 +612,7 @@ paths:
   /api/v1/api/v1/atlas/tools/read/pipeline/{workspaceId}:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -624,7 +624,7 @@ paths:
   /api/v1/api/v1/atlas/tools/read/whatsapp-health/{workspaceId}:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -636,7 +636,7 @@ paths:
   /api/v1/api/v1/atlas/tools/read/historical-diagnosis/{workspaceId}:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -648,7 +648,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/ghosting/opportunities:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -660,13 +660,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/resurrect:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -678,7 +678,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/retention/opportunities:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -700,7 +700,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/flows/public-key:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -717,7 +717,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/flows/data-exchange:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -726,123 +726,69 @@ paths:
       responses:
         200:
           description: Default Response
-  /api/v1/billing/abacatepay/charges:
-    post:
+  /api/v1/billing/cakto/plans:
+    get:
       tags:
         - Billing
-      description: Cria uma cobrança PIX via AbacatePay com link de pagamento e chave copia-e-cola.
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - workspaceId
-                - customerName
-                - customerPhone
-                - customerEmail
-                - productName
-                - priceInCents
-              properties:
-                workspaceId:
-                  type: string
-                  format: uuid
-                customerName:
-                  type: string
-                customerPhone:
-                  type: string
-                customerEmail:
-                  type: string
-                customerTaxId:
-                  type: string
-                productName:
-                  type: string
-                priceInCents:
-                  type: number
-                  minimum: 100
-                externalId:
-                  type: string
-                metadata:
-                  type: object
-        required: true
+      description: Lista os planos Cakto ativos e seus checkouts.
       responses:
-        201:
+        200:
           description: Default Response
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  billingId:
-                    type: string
-                  url:
-                    type: string
-                  status:
-                    type: string
-                  amount:
-                    type: number
-                  pixCopiaECola:
-                    type: string
-                  pixQrCode:
-                    type: string
-        400:
-          description: Default Response
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - error
-                properties:
-                  error:
-                    type: string
-        503:
-          description: Default Response
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - error
-                properties:
-                  error:
-                    type: string
-  /webhooks/abacatepay:
-    post:
+  /api/v1/workspaces/{workspaceId}/billing/subscription:
+    get:
       tags:
-        - Webhooks
-      description: Webhook público para receber confirmação de pagamentos do AbacatePay.
+        - Billing
+      description: Retorna a assinatura Cakto vigente do workspace.
       parameters:
-        - 
+        -
           schema:
             type: string
-            minLength: 16
-          in: query
-          name: webhookSecret
-          required: true
-        - 
-          schema:
-            type: string
-            minLength: 16
-          in: header
-          name: x-webhook-signature
+          in: path
+          name: workspaceId
           required: true
       responses:
         200:
           description: Default Response
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  received:
-                    type: boolean
-                  event:
-                    type: string
+  /api/v1/workspaces/{workspaceId}/billing/claim:
+    post:
+      tags:
+        - Billing
+      description: Vincula ao workspace uma compra Cakto pendente do mesmo e-mail verificado.
+      parameters:
+        -
+          schema:
+            type: string
+          in: path
+          name: workspaceId
+          required: true
+      responses:
+        200:
+          description: Default Response
+  /webhooks/cakto:
+    post:
+      tags:
+        - Webhooks
+      description: Recebe eventos assinados de pedidos e assinaturas da Cakto (V1 e V2).
+      parameters:
+        -
+          schema:
+            type: string
+          in: header
+          name: x-cakto-timestamp
+          required: true
+        -
+          schema:
+            type: string
+          in: header
+          name: x-cakto-signature
+          required: true
+      responses:
+        200:
+          description: Default Response
   /api/v1/workspaces/{workspaceId}/channels/whatsapp/qr:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -854,7 +800,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/whatsapp/status:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -866,7 +812,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/whatsapp/logout:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -878,7 +824,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/whatsapp/sync:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -890,13 +836,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/contacts/{phone}/profile-picture:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -908,7 +854,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/whatsapp/clear-history:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -920,7 +866,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/whatsapp/clear-journey:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -932,7 +878,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/configure:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -944,7 +890,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/oauth-connect:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -956,7 +902,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/list-accounts:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -968,7 +914,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/channel-info:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -980,7 +926,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/server-config:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -992,7 +938,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/capabilities:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1004,7 +950,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/send-order-details:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1016,7 +962,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/send-location-request:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1028,7 +974,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/send-product:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1040,7 +986,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/send-multi-product:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1052,7 +998,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/send-carousel:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1069,7 +1015,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/templates:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1081,7 +1027,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/create-template:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1093,13 +1039,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/templates/{templateName}:
     delete:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1111,7 +1057,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/send-template:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1123,7 +1069,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/send-buttons:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1135,7 +1081,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/send-list:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1147,7 +1093,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/send-media:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1159,7 +1105,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/waba/send-flow:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1171,7 +1117,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/groups/broadcast:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1183,7 +1129,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/broadcast:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1195,7 +1141,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/groups:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1207,13 +1153,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/groups/{groupId}/send-message:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1225,13 +1171,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/groups/{groupId}/resolve:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1243,13 +1189,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/send-message:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1261,7 +1207,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/contacts:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1273,7 +1219,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/conversations/start:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1285,7 +1231,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/tracking:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1296,7 +1242,7 @@ paths:
           description: Default Response
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1308,7 +1254,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/tracking/test-capi:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1320,7 +1266,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/tracking/meta/list-datasets:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1332,7 +1278,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/tracking/simulate-lead-attribution:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1344,7 +1290,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/tracking/reconcile-retroactive:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1356,7 +1302,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/reports/performance-sla:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1473,7 +1419,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/agent/config:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1484,7 +1430,7 @@ paths:
           description: Default Response
     put:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1496,13 +1442,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/bot/status:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1514,13 +1460,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/bot/enable:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1532,13 +1478,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/bot/disable:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1550,13 +1496,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/bot/pause:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1568,13 +1514,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/journeys/{journeyId}/bot/resume:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1586,7 +1532,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/intelligence:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1597,7 +1543,7 @@ paths:
           description: Default Response
     put:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1609,7 +1555,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/intelligence/diagnosis:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1621,7 +1567,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/knowledge-docs:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1632,7 +1578,7 @@ paths:
           description: Default Response
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1644,13 +1590,13 @@ paths:
   /api/v1/workspaces/{workspaceId}/knowledge-docs/{docId}:
     delete:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
           name: workspaceId
           required: true
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1662,7 +1608,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/messenger/links:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1673,7 +1619,7 @@ paths:
           description: Default Response
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1685,7 +1631,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/messenger/nlp/enable:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1697,7 +1643,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/messenger/config:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1709,7 +1655,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/messenger/welcome-screen:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1721,7 +1667,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/instagram/icebreakers:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1733,7 +1679,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/comments/private-reply-config:
     put:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1745,7 +1691,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/comments/private-reply:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1757,7 +1703,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/messenger/insights:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1769,7 +1715,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/channels/messenger/conversations:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1781,7 +1727,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/meta-business-agent/eligibility:
     get:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1793,7 +1739,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/meta-business-agent/onboarding:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1805,7 +1751,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/meta-business-agent/test:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1817,7 +1763,7 @@ paths:
   /api/v1/workspaces/{workspaceId}/meta-business-agent/thread-control:
     post:
       parameters:
-        - 
+        -
           schema:
             type: string
           in: path
@@ -1827,12 +1773,12 @@ paths:
         200:
           description: Default Response
 servers:
-  - 
+  -
     url: "http://localhost:4334"
     description: Local Dev
-  - 
+  -
     url: "https://sos.mct.com.br"
     description: Produção VPS
 security:
-  - 
+  -
     bearerAuth: []

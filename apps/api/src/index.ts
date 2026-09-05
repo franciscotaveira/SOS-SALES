@@ -28,8 +28,8 @@ export { WabaClient } from './infrastructure/channels/meta/waba-client.js';
 export { InstagramDmClient } from './infrastructure/channels/meta/instagram-dm-client.js';
 export { MessengerClient } from './infrastructure/channels/meta/messenger-client.js';
 export { ConversationsApiClient } from './infrastructure/channels/meta/conversations-api-client.js';
-export { AbacatePayGateway } from './infrastructure/billing/abacatepay-gateway.js';
-export type { CreateAbacateChargeInput, AbacateChargeOutput } from './infrastructure/billing/abacatepay-gateway.js';
+export { CaktoGateway } from './infrastructure/billing/cakto-gateway.js';
+export { PostgresCaktoBilling } from './infrastructure/billing/postgres-cakto-billing.js';
 export { OpenRouterEngine } from './infrastructure/ai/openrouter-engine.js';
 export { NvidiaNimEngine } from './infrastructure/ai/nvidia-nim-engine.js';
 export {

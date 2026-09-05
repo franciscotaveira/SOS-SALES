@@ -125,8 +125,8 @@ Os testes abaixo são deliberadamente não destrutivos: usam somente `HEAD` e
 `OPTIONS`. Todos devem retornar `403`, sem atingir Fastify nem fornecedores.
 
 ```bash
-curl -s -o /dev/null -w "16. Billing HEAD: %{http_code}\n" -I https://crm.iaparavendas.tech/api/v1/billing/abacatepay/charges
-curl -s -o /dev/null -w "17. Billing OPTIONS: %{http_code}\n" -X OPTIONS https://crm.iaparavendas.tech/api/v1/billing/abacatepay/charges
+curl -s -o /dev/null -w "16. Billing HEAD: %{http_code}\n" -I https://crm.iaparavendas.tech/api/v1/billing/cakto/plans
+curl -s -o /dev/null -w "17. Billing OPTIONS: %{http_code}\n" -X OPTIONS https://crm.iaparavendas.tech/api/v1/billing/cakto/plans
 curl -s -o /dev/null -w "18. Messenger HEAD: %{http_code}\n" -I https://crm.iaparavendas.tech/api/v1/workspaces/11111111-1111-1111-1111-111111111111/channels/messenger/welcome-screen
 curl -s -o /dev/null -w "19. Messenger OPTIONS: %{http_code}\n" -X OPTIONS https://crm.iaparavendas.tech/api/v1/workspaces/11111111-1111-1111-1111-111111111111/channels/messenger/welcome-screen
 curl -s -o /dev/null -w "20. Agent HEAD: %{http_code}\n" -I https://crm.iaparavendas.tech/api/v1/workspaces/11111111-1111-1111-1111-111111111111/journeys/22222222-2222-2222-2222-222222222222/bot/pause

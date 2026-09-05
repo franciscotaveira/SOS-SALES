@@ -32,7 +32,7 @@ import { publicSupplierRoutes } from './routes/public-supplier-routes.js';
 import { wahaWebhookRoutes } from './routes/webhooks/waha.js';
 import { wabaWebhookPlugin } from './routes/webhooks/waba-webhook.js';
 import { operatorAuthRoutes } from './routes/operator-auth.js';
-import { abacatePayRoutes } from './routes/abacatepay-routes.js';
+import { caktoBillingRoutes } from './routes/cakto-billing-routes.js';
 import { aiCopilotRoutes } from './routes/ai-copilot-routes.js';
 import { whatsappChannelRoutes } from './routes/whatsapp-channel-routes.js';
 import { agentRoutes } from './routes/agent-routes.js';
@@ -282,6 +282,49 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     } as RateLimitPluginOptions);
   }
 
+  // Billing enforcement is deployed dark first. "observe" reports missing
+  // entitlements without blocking; "enforce" returns 402 after Cakto plans and
+  // existing customers have been reconciled.
+  const billingEnforcementMode = process.env.BILLING_ENFORCEMENT_MODE || 'off';
+  if (billingEnforcementMode !== 'off' && databasePool) {
+    app.addHook('preHandler', async (request, reply) => {
+      const pathname = request.url.split('?')[0];
+      const match = /^\/api\/v1\/workspaces\/([0-9a-f-]{36})(?:\/|$)/i.exec(pathname);
+      if (!match || pathname.includes('/billing/')) return;
+      try {
+        const entitlement = await databasePool.query(
+          `SELECT EXISTS (
+             SELECT 1 FROM public.workspace_subscriptions
+             WHERE workspace_id = $1 AND (
+               status IN ('active', 'trialing') OR
+               (status = 'past_due' AND access_until > NOW())
+             )
+           ) AS allowed`,
+          [match[1].toLowerCase()],
+        );
+        if (entitlement.rows[0]?.allowed) return;
+        if (billingEnforcementMode === 'observe') {
+          request.log.warn({ workspaceId: match[1] }, 'Workspace has no active Cakto entitlement');
+          return;
+        }
+        return reply.code(402).send({
+          statusCode: 402,
+          error: 'Payment Required',
+          message: 'A assinatura deste workspace precisa ser regularizada',
+        });
+      } catch (error) {
+        request.log.error({ error, workspaceId: match[1] }, 'Unable to verify billing entitlement');
+        if (billingEnforcementMode === 'enforce') {
+          return reply.code(503).send({
+            statusCode: 503,
+            error: 'Service Unavailable',
+            message: 'Não foi possível validar a assinatura agora',
+          });
+        }
+      }
+    });
+  }
+
   // Webhook Routes
   app.register(wahaWebhookRoutes, {
     secretProvider,
@@ -314,7 +357,8 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     databasePool,
     ingestionGateway,
   });
-  app.register(abacatePayRoutes, {
+  app.register(caktoBillingRoutes, {
+    databasePool,
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
   });

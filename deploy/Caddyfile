@@ -36,7 +36,7 @@ crm.iaparavendas.tech, sos.mct.com.br {
         # 3. Bloqueia plugins mutáveis encontrados no bundle implantado sem JWT,
         # membership ou RBAC. O bloqueio é deliberadamente independente do método
         # para impedir bypass por HEAD/OPTIONS e permanece até o redeploy autenticado.
-        @blocked_unguarded_plugins path_regexp ^(?:/api/v1/billing/abacatepay/charges|/api/v1/workspaces/[^/]+/channels/(?:messenger/(?:links|nlp/enable|welcome-screen)|instagram/icebreakers|comments/private-reply(?:-config)?)|/api/v1/workspaces/[^/]+/journeys/[^/]+/bot/(?:pause|resume))$
+        @blocked_unguarded_plugins path_regexp ^(?:/api/v1/workspaces/[^/]+/channels/(?:messenger/(?:links|nlp/enable|welcome-screen)|instagram/icebreakers|comments/private-reply(?:-config)?)|/api/v1/workspaces/[^/]+/journeys/[^/]+/bot/(?:pause|resume))$
         respond @blocked_unguarded_plugins "Forbidden: Operational plugin disabled during containment" 403
 
         # Backend API e Swagger
@@ -68,7 +68,7 @@ crm.iaparavendas.tech, sos.mct.com.br {
 
     route {
         # Bloqueio de IP direto incondicional para TODOS os métodos em rotas críticas e sensíveis
-        @ip_blocked path_regexp ^(?:/api/v1/billing/abacatepay/charges|/api/v1/workspaces/[^/]+/(?:contacts|tracking|reports|channels/waba/channel-info|channels/whatsapp/status|channels/whatsapp/logout|channels/whatsapp/clear-history|channels/messenger/(?:links|nlp/enable|welcome-screen)|channels/instagram/icebreakers|channels/comments/private-reply(?:-config)?|journeys/[^/]+/bot/(?:pause|resume)))$
+        @ip_blocked path_regexp ^(?:/api/v1/workspaces/[^/]+/(?:contacts|tracking|reports|channels/waba/channel-info|channels/whatsapp/status|channels/whatsapp/logout|channels/whatsapp/clear-history|channels/messenger/(?:links|nlp/enable|welcome-screen)|channels/instagram/icebreakers|channels/comments/private-reply(?:-config)?|journeys/[^/]+/bot/(?:pause|resume)))$
         respond @ip_blocked "Forbidden: Direct IP access not permitted" 403
 
         reverse_proxy /api/* sos-sales-api:4334

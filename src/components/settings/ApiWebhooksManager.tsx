@@ -139,7 +139,7 @@ export function resolveWorkspaceApiDefaults(wsId: string, wsName?: string): {
     apiKeys: [
       {
         id: 'key-sos-01',
-        name: 'SOS Vendas · AbacatePay & Master Data Pipeline',
+        name: 'SOS Vendas · Cakto & Master Data Pipeline',
         tokenPrefix: 'sos_live_mct_24x...',
         fullToken: 'sos_live_mct_24xf8912e741c900bb341e9981a',
         scopes: ['read:conversations', 'write:deals', 'read:metrics', 'export:analytics', 'admin:all'],

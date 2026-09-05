@@ -389,23 +389,13 @@ async function runMasterValidation() {
   }
 
   // -------------------------------------------------------------
-  // 8. BILLING & CHECKOUT PIX (ABACATEPAY)
+  // 8. BILLING & SUBSCRIPTION CHECKOUT (CAKTO)
   // -------------------------------------------------------------
-  console.log('\n--- 8. BILLING & PIX CHECKOUT (ABACATEPAY) ---');
+  console.log('\n--- 8. BILLING & SUBSCRIPTION CHECKOUT (CAKTO) ---');
   {
-    const res = await apiFetch('/billing/abacatepay/charges', {
-      method: 'POST',
-      body: JSON.stringify({
-        workspaceId: WS_ID,
-        customerName: 'Francisco Taveira',
-        customerPhone: '+554999998888',
-        customerEmail: 'franciscotaveira.mkt@gmail.com',
-        productName: 'Assinatura Mensal SOS Sales Core',
-        priceInCents: 19700,
-      }),
-    });
-    const passed = res.ok || res.status === 201 || (res.status === 200 && res.data?.id);
-    record('Billing', 'POST Create Pix Charge (AbacatePay)', passed, { status: res.status, data: res.data });
+    const plans = await apiFetch('/billing/cakto/plans');
+    const passed = plans.status === 200 && Array.isArray(plans.data?.data);
+    record('Billing', 'GET Active Subscription Plans (Cakto)', passed, { status: plans.status, data: plans.data });
   }
 
   // -------------------------------------------------------------

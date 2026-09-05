@@ -50,6 +50,11 @@ services:
       - WAHA_API_KEY=${LAB_WAHA_API_KEY:-mct_sos_waha_lab_secret_2026}
       - META_VERIFY_TOKEN=${LAB_META_VERIFY_TOKEN:-lab_verify_token_stub}
       - META_APP_SECRET=${LAB_META_APP_SECRET:-lab_app_secret_stub_32chars_min}
+      - CAKTO_CLIENT_ID=${LAB_CAKTO_CLIENT_ID:-}
+      - CAKTO_CLIENT_SECRET=${LAB_CAKTO_CLIENT_SECRET:-}
+      - CAKTO_WEBHOOK_SECRET=${LAB_CAKTO_WEBHOOK_SECRET:-lab_cakto_webhook_secret_not_for_production}
+      - CAKTO_PAST_DUE_GRACE_DAYS=${LAB_CAKTO_PAST_DUE_GRACE_DAYS:-7}
+      - BILLING_ENFORCEMENT_MODE=${LAB_BILLING_ENFORCEMENT_MODE:-observe}
     depends_on:
       redis-lab:
         condition: service_healthy

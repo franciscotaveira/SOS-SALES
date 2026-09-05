@@ -834,3 +834,22 @@
   - `src/components/settings/MetaBusinessAgentSettingsView.tsx`
 - **Operational gate:** Código e testes unitários passam no worktree limpo. A migration ainda precisa ser aplicada no Supabase de produção e a integração Meta precisa de canário controlado; nenhum deploy ou mensagem real foi executado nesta alteração.
 - **Date:** 2026-09-01
+
+---
+
+## Task 34: Cakto como autoridade única de assinatura e acesso ao SaaS
+- **Decision:** A Cakto substitui a cobrança avulsa AbacatePay no billing do SOS Vendas. Produto/oferta da Cakto é mapeado para plano interno; webhooks assinados atualizam uma única assinatura por ciclo e o acesso ao workspace deriva do status persistido.
+- **Rationale:**
+  1. Cobrança Pix avulsa não modelava renovação, inadimplência, cancelamento, reembolso ou chargeback e seu webhook não alterava acesso.
+  2. Entregas Cakto são verificadas por HMAC-SHA256 sobre `timestamp.corpo_cru`, limitadas por janela anti-replay e deduplicadas por evento/pedido.
+  3. Webhooks nunca consultam `auth.users` nem escolhem tenant por e-mail. A compra fica pendente e só é vinculada por usuário autenticado, com e-mail verificado e papel owner no workspace.
+  4. A aplicação suporta rollout `off` → `observe` → `enforce`, evitando bloquear clientes antes da reconciliação; renovação recusada recebe carência configurável.
+- **Scope:**
+  - `apps/api/supabase/migrations/20260905010000_cakto_subscription_billing.sql`
+  - `apps/api/src/infrastructure/billing/cakto-gateway.ts`
+  - `apps/api/src/infrastructure/billing/postgres-cakto-billing.ts`
+  - `apps/api/src/interfaces/http/routes/cakto-billing-routes.ts`
+  - `apps/api/src/interfaces/http/app.ts`
+  - `src/services/salesOsGateway.ts`
+- **Operational gate:** Produção permanece em `BILLING_ENFORCEMENT_MODE=off` até produtos, ofertas e preços serem confirmados no painel Cakto, credenciais instaladas no cofre do VPS, migration aplicada e webhook de teste homologado no Docker Lab.
+- **Date:** 2026-09-05

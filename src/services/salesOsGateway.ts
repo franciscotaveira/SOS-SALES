@@ -986,7 +986,20 @@ export class HttpSalesOsGateway implements SalesOsGateway {
   }
 
   async listWorkspaces(): Promise<ApiWorkspace[]> {
-    return (await this.request<ApiEnvelope<ApiWorkspace[]>>('/workspaces')).data;
+    const workspaces = (await this.request<ApiEnvelope<ApiWorkspace[]>>('/workspaces')).data;
+    await Promise.allSettled(
+      workspaces
+        .filter((workspace) => workspace.role === 'owner')
+        .map((workspace) => this.claimBillingSubscription(workspace.id)),
+    );
+    return workspaces;
+  }
+
+  async claimBillingSubscription(workspaceId: string): Promise<number> {
+    return (await this.request<ApiEnvelope<{ claimed: number }>>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/billing/claim`,
+      { method: 'POST' },
+    )).data.claimed;
   }
 
   async initializeWorkspace(workspaceName?: string): Promise<{
@@ -1008,6 +1021,7 @@ export class HttpSalesOsGateway implements SalesOsGateway {
       method: 'POST',
       body: workspaceName ? { workspaceName } : {},
     });
+    await this.claimBillingSubscription(response.data.workspaceId);
     return response.data;
   }
 

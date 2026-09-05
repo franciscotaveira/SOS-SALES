@@ -16,7 +16,9 @@ COPY apps/api/src ./src
 
 # Runtime images only execute JavaScript; declaration generation is validated
 # separately by `tsc --noEmit` and must not block container assembly.
-RUN npx tsup src/index.ts --format esm && node scripts/generate-release-manifest.mjs
+RUN npx tsup src/index.ts --format esm \
+    && npx tsup scripts/reconcile-cakto-subscriptions.ts --format esm --out-dir dist \
+    && node scripts/generate-release-manifest.mjs
 
 # Stage 2: Production Runner
 FROM node:22-alpine AS runner

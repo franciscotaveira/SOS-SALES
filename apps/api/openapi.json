@@ -1115,175 +1115,92 @@
         }
       }
     },
-    "/api/v1/billing/abacatepay/charges": {
-      "post": {
+    "/api/v1/billing/cakto/plans": {
+      "get": {
         "tags": [
           "Billing"
         ],
-        "description": "Cria uma cobrança PIX via AbacatePay com link de pagamento e chave copia-e-cola.",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "workspaceId",
-                  "customerName",
-                  "customerPhone",
-                  "customerEmail",
-                  "productName",
-                  "priceInCents"
-                ],
-                "properties": {
-                  "workspaceId": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
-                  "customerName": {
-                    "type": "string"
-                  },
-                  "customerPhone": {
-                    "type": "string"
-                  },
-                  "customerEmail": {
-                    "type": "string"
-                  },
-                  "customerTaxId": {
-                    "type": "string"
-                  },
-                  "productName": {
-                    "type": "string"
-                  },
-                  "priceInCents": {
-                    "type": "number",
-                    "minimum": 100
-                  },
-                  "externalId": {
-                    "type": "string"
-                  },
-                  "metadata": {
-                    "type": "object"
-                  }
-                }
-              }
-            }
-          },
-          "required": true
-        },
+        "description": "Lista os planos Cakto ativos e seus checkouts.",
         "responses": {
-          "201": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "billingId": {
-                      "type": "string"
-                    },
-                    "url": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "amount": {
-                      "type": "number"
-                    },
-                    "pixCopiaECola": {
-                      "type": "string"
-                    },
-                    "pixQrCode": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "error"
-                  ],
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "error"
-                  ],
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
+          "200": {
+            "description": "Default Response"
           }
         }
       }
     },
-    "/webhooks/abacatepay": {
-      "post": {
+    "/api/v1/workspaces/{workspaceId}/billing/subscription": {
+      "get": {
         "tags": [
-          "Webhooks"
+          "Billing"
         ],
-        "description": "Webhook público para receber confirmação de pagamentos do AbacatePay.",
+        "description": "Retorna a assinatura Cakto vigente do workspace.",
         "parameters": [
           {
             "schema": {
-              "type": "string",
-              "minLength": 16
+              "type": "string"
             },
-            "in": "query",
-            "name": "webhookSecret",
-            "required": true
-          },
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 16
-            },
-            "in": "header",
-            "name": "x-webhook-signature",
+            "in": "path",
+            "name": "workspaceId",
             "required": true
           }
         ],
         "responses": {
           "200": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "received": {
-                      "type": "boolean"
-                    },
-                    "event": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/billing/claim": {
+      "post": {
+        "tags": [
+          "Billing"
+        ],
+        "description": "Vincula ao workspace uma compra Cakto pendente do mesmo e-mail verificado.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/webhooks/cakto": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "description": "Recebe eventos assinados de pedidos e assinaturas da Cakto (V1 e V2).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "name": "x-cakto-timestamp",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "header",
+            "name": "x-cakto-signature",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
           }
         }
       }

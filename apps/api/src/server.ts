@@ -258,6 +258,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     workspaceProvisioningGateway: new PostgresWorkspaceProvisioningGateway(dbPool),
     wabaChannelInfoGateway: new PostgresWabaChannelInfoGateway(dbPool),
     metaBusinessAgentGateway: new (await import('./infrastructure/database/postgres-meta-business-agent-gateway.js')).PostgresMetaBusinessAgentGateway(dbPool),
+    databasePool: dbPool,
     trustProxy: false,
     logger: {
       transport: {

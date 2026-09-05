@@ -49,7 +49,10 @@ app.ready().then(async () => {
     }
     if (Array.isArray(obj)) {
       if (obj.length === 0) return '[]';
-      return '\n' + obj.map(item => `${pad(indent)}- ${toYaml(item, indent + 2)}`).join('\n');
+      return '\n' + obj.map(item => {
+        const val = toYaml(item, indent + 2);
+        return val.startsWith('\n') ? `${pad(indent)}-${val}` : `${pad(indent)}- ${val}`;
+      }).join('\n');
     }
     if (typeof obj === 'object') {
       const entries = Object.entries(obj as Record<string, unknown>);
@@ -71,6 +74,8 @@ app.ready().then(async () => {
 
   writeFileSync('./openapi.json', json, 'utf8');
   writeFileSync('./openapi.yaml', yaml, 'utf8');
+  writeFileSync('../../openapi.json', json, 'utf8');
+  writeFileSync('../../openapi.yaml', yaml, 'utf8');
 
   console.log('✅ OpenAPI spec gerada:');
   console.log('   → apps/api/openapi.json');
