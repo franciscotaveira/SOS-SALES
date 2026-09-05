@@ -4,6 +4,7 @@ const LOCAL_DATABASE_HOSTS = new Set([
   'localhost',
   '127.0.0.1',
   '::1',
+  'db',
   'postgres-lab',
   'host.docker.internal',
 ]);

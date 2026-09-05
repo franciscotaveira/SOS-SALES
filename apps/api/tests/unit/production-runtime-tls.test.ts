@@ -61,6 +61,10 @@ describe('production database TLS contract', () => {
       'postgresql://postgres:postgres@127.0.0.1:55432/postgres',
       {},
     )).toBe(false);
+    expect(resolveDatabaseSslConfig(
+      'postgresql://postgres:postgres@db:5432/postgres',
+      {},
+    )).toBe(false);
   });
 
   it('allows the IPv6 loopback database without a CA', () => {
