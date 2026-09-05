@@ -49,7 +49,7 @@ export const mockWorkspaces: Workspace[] = [
       {
         id: 'chan-sora-whatsapp',
         name: 'WhatsApp Sora Concierge 24/7',
-        phoneNumber: '+55 49 98402-8899',
+        phoneNumber: '+55 49 98890-2028',
         health: 'connected',
         wabaAccountId: 'waba_sora_official',
       },
