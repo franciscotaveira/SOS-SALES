@@ -19,6 +19,7 @@ const DEFAULT_CONFIG: WorkspaceAgentRuntimeConfig = {
   runtimeEnabled: false,
   responderMode: 'sos_sales',
   metaAgentId: null,
+  metaAgentChannelConnectionId: null,
   metaAgentEnabled: false,
   metaAgentEligibilityStatus: 'UNKNOWN',
   metaAgentCheckedAt: null,
