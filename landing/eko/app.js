@@ -2,6 +2,7 @@
   const offer = window.EKO_OFFER || {};
   const checkoutCtas = document.querySelectorAll('[data-checkout]');
   const interestCtas = document.querySelectorAll('[data-interest]');
+  const optimizationCtas = document.querySelectorAll('[data-optimization]');
 
   document.querySelectorAll('[data-price]').forEach((node) => { node.textContent = offer.price || ''; });
   document.querySelectorAll('[data-access]').forEach((node) => {
@@ -30,6 +31,7 @@
 
   checkoutCtas.forEach((button) => configureLink(button, offer.checkoutUrl, 'O checkout do EKO'));
   interestCtas.forEach((button) => configureLink(button, offer.interestUrl, 'A lista de interesse'));
+  optimizationCtas.forEach((button) => configureLink(button, offer.optimizationUrl, 'O contato para diagnóstico de agente'));
 
   document.querySelectorAll('.faq-question').forEach((button) => {
     button.addEventListener('click', () => {

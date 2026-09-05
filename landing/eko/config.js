@@ -6,5 +6,6 @@ window.EKO_OFFER = {
   checkoutUrl: '',
   // Exiba apenas informações confirmadas sobre entrega, acesso e suporte.
   accessText: '',
-  interestUrl: ''
+  interestUrl: '',
+  optimizationUrl: 'https://wa.me/5549988447562?text=Olá!%20Quero%20diagnosticar%20e%20otimizar%20um%20agente%20de%20IA%20da%20minha%20empresa.'
 };
