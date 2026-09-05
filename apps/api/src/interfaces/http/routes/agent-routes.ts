@@ -1093,6 +1093,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       history?: Array<{ role: 'customer' | 'assistant' | 'user'; content?: string; text?: string }>;
       context?: { originType?: string; campaignName?: string; adHook?: string };
       contactName?: string;
+      modelTier?: 'fast' | 'reasoning' | 'nemotron' | 'nemotron_super';
     };
   }>(
     '/api/v1/workspaces/:workspaceId/agent/simulator/chat',
@@ -1112,6 +1113,10 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       if (userMessage.length > MAX_SIMULATOR_MESSAGE_CHARS) {
         return reply.status(413).send({ error: `Mensagem excede o limite de ${MAX_SIMULATOR_MESSAGE_CHARS} caracteres` });
       }
+
+      const selectedTier = body.modelTier === 'reasoning' || body.modelTier === 'nemotron_super'
+        ? NVIDIA_MODEL_TIERS.REASONING
+        : NVIDIA_MODEL_TIERS.FAST;
 
       // 1. INTERCEPTAÇÃO DE COMANDOS DO TREINADOR (In-Chat Direct Tuning)
       if (userMessage.startsWith('/')) {
@@ -1333,16 +1338,16 @@ MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
       // 7. INFERÊNCIA VIA MOTOR SOBERANO (NVIDIA NIM com Fallback OpenRouter)
       const startTime = Date.now();
       let generatedReply = '';
-      let modelUsed = NVIDIA_MODEL_TIERS.FAST;
+      let modelUsed = selectedTier;
 
       try {
         const nimResult = await nvidiaEngine.generateChatCompletion(llmMessages, {
-          model: NVIDIA_MODEL_TIERS.FAST,
+          model: selectedTier,
           temperature: 0.3,
           maxTokens: 400,
         });
         generatedReply = nimResult.content || nimResult.text || '';
-        modelUsed = nimResult.model || NVIDIA_MODEL_TIERS.FAST;
+        modelUsed = nimResult.model || selectedTier;
       } catch (nimErr) {
         request.log.warn({ err: nimErr }, 'NVIDIA NIM indisponível no simulador, acionando OpenRouter fallback');
         try {

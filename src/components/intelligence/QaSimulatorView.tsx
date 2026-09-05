@@ -210,6 +210,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
   const [calibratingIndex, setCalibratingIndex] = useState<number | null>(null);
   const [calibrationInput, setCalibrationInput] = useState('');
   const [isCalibrating, setIsCalibrating] = useState(false);
+  const [selectedModelTier, setSelectedModelTier] = useState<'fast' | 'reasoning'>('reasoning');
 
   // Carregar dados de inteligência do workspace ao montar
   React.useEffect(() => {
@@ -330,6 +331,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
           message: userText,
           history: customChatHistory.map((m) => ({ role: m.role, content: m.text })),
           contactName: 'Lead Simulado',
+          modelTier: selectedModelTier,
         }),
       });
 
@@ -699,15 +701,47 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                    NVIDIA NIM Nemotron 3.5 · Guardrails comerciais ativos
+                    {selectedModelTier === 'reasoning'
+                      ? '🧠 NVIDIA NIM Nemotron Super 120B (Raciocínio Profundo) · Guardrails ativos'
+                      : '⚡ NVIDIA NIM Nemotron 3.5 Lightning (Rápido) · Guardrails ativos'}
                   </span>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
+                {/* Seletor de Modelo de Raciocínio */}
+                <div className="hidden sm:flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedModelTier('reasoning')}
+                    className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      selectedModelTier === 'reasoning'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Nemotron Super 120B — Raciocínio avançado e inteligência comercial profunda"
+                  >
+                    <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                    <span>Nemotron 120B (Raciocínio)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedModelTier('fast')}
+                    className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      selectedModelTier === 'fast'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Nemotron 3.5 Lightning 30B — Resposta ultra-rápida (sub-segundo)"
+                  >
+                    <Zap className="w-2.5 h-2.5 text-amber-300" />
+                    <span>Nemotron 3.5 (Rápido)</span>
+                  </button>
+                </div>
+
                 <button
                   onClick={() => setCustomChatHistory([])}
-                  className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors"
+                  className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
                   title="Limpar histórico do teste"
                 >
                   Limpar
