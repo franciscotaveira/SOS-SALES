@@ -4,7 +4,7 @@
 
 ## Cartão da oferta
 
-- **Comprador:** freelancer, consultor ou pequena agência. Esta é uma trilha profissional distinta da jornada do dono que quer melhorar seu atendimento..
+- **Comprador:** freelancer, consultor ou pequena agência. Esta é uma trilha profissional distinta da jornada do dono que quer melhorar seu atendimento.
 - **Formato:** PDF + Notion.
 - **Preço:** hipótese a testar; definir somente após validar compra e esforço de suporte.
 - **Resultado comprado:** Checklist de dependências, responsáveis, validação por etapa e passagem de operação.

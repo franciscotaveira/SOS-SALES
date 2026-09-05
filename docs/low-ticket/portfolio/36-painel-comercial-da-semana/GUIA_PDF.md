@@ -4,7 +4,7 @@
 
 ## Para que serve
 
-Este kit foi desenhado para dono, autônomo ou gestor de pequena equipe. Ferramentas com premissas editáveis, exemplo e instruções; sem depender de programação ou implantação individual.. Ele ajuda a produzir: **Resumo de oportunidades, vendas, perdas e ações, com roteiro de reunião curta**. O kit não instala ferramentas nem opera contas do comprador.
+Este kit foi desenhado para dono, autônomo ou gestor de pequena equipe. Ferramentas com premissas editáveis, exemplo e instruções; sem depender de programação ou implantação individual. Ele ajuda a produzir: **Resumo de oportunidades, vendas, perdas e ações, com roteiro de reunião curta**. O kit não instala ferramentas nem opera contas do comprador.
 
 ## Antes de começar
 
@@ -36,7 +36,7 @@ Este kit foi desenhado para dono, autônomo ou gestor de pequena equipe. Ferrame
 
 ## Exemplo fictício
 
-Exemplo fictício — Registro: “Empresa Aurora”; Origem / canal: “cliente pediu uma próxima ação clara”; Resultado: “registrar, executar uma vez e revisar”.
+Exemplo fictício — Registro: “Oportunidade Aurora”; Origem / canal: “indicação”; Etapa / status: “em revisão”; Próxima ação: “enviar proposta”; Resultado: “a preencher”;
 
 ## Revisão antes de usar
 

@@ -4,7 +4,7 @@
 
 ## Cartão da oferta
 
-- **Comprador:** dono, autônomo ou gestor de pequena equipe. Ferramentas com premissas editáveis, exemplo e instruções; sem depender de programação ou implantação individual..
+- **Comprador:** dono, autônomo ou gestor de pequena equipe. Ferramentas com premissas editáveis, exemplo e instruções; sem depender de programação ou implantação individual.
 - **Formato:** Planilha/Notion + PDF.
 - **Preço:** hipótese a testar; definir somente após validar compra e esforço de suporte.
 - **Resultado comprado:** Registro de origem, oportunidade, venda e perda, preservando origem desconhecida.

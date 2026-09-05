@@ -4,7 +4,7 @@
 
 ## Para que serve
 
-Este kit foi desenhado para dono ou líder que precisa orientar vendedores. Formato possível: oficina gravada curta, fichas de prática e modelos preenchíveis.. Ele ajuda a produzir: **Rubrica simples de clareza, contexto, informação correta e próximo passo**. O kit não instala ferramentas nem opera contas do comprador.
+Este kit foi desenhado para dono ou líder que precisa orientar vendedores. Formato possível: oficina gravada curta, fichas de prática e modelos preenchíveis. Ele ajuda a produzir: **Rubrica simples de clareza, contexto, informação correta e próximo passo**. O kit não instala ferramentas nem opera contas do comprador.
 
 ## Antes de começar
 
@@ -36,7 +36,7 @@ Este kit foi desenhado para dono ou líder que precisa orientar vendedores. Form
 
 ## Exemplo fictício
 
-Exemplo fictício — Pessoa: “Empresa Aurora”; Habilidade / cenário: “cliente pediu uma próxima ação clara”; Resultado: “registrar, executar uma vez e revisar”.
+Exemplo fictício — Pessoa: “Vendedor Aurora”; Habilidade / cenário: “responder preço com contexto”; Simulação realizada: “10/09”; Critério de prontidão: “não inventa condição”;
 
 ## Revisão antes de usar
 

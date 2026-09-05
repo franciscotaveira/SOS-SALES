@@ -4,7 +4,7 @@
 
 ## Cartão da oferta
 
-- **Comprador:** dono ou líder que precisa orientar vendedores. Formato possível: oficina gravada curta, fichas de prática e modelos preenchíveis..
+- **Comprador:** dono ou líder que precisa orientar vendedores. Formato possível: oficina gravada curta, fichas de prática e modelos preenchíveis.
 - **Formato:** PDF + Notion.
 - **Preço:** hipótese a testar; definir somente após validar compra e esforço de suporte.
 - **Resultado comprado:** Plano diário de aprendizagem, exercícios e critérios de prontidão para atender.

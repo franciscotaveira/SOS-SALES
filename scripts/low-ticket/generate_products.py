@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import unicodedata
 import zipfile
 from datetime import date
@@ -197,7 +196,7 @@ def parse_catalog() -> list[dict[str, str]]:
             continue
         product_id, title, delivery, mark = match.groups()
         meta = FAMILY_META[family]
-        price_index = int(product_id) % 6
+        price_index = (int(product_id) - 1) % 6
         records.append(
             {
                 "id": product_id,
@@ -619,7 +618,7 @@ def readme_markdown(record: dict[str, str]) -> str:
             "- `material.pdf`: versão pronta para entrega.",
             "- `material.md`: fonte editável.",
             "- `pagina-venda.md`: copy de checkout e divulgação.",
-            "- `thumbnail.png`: imagem da família do produto.",
+            "- A imagem da família do produto aparece na vitrine e na página de venda.",
             "",
             f"Preço-teste sugerido: R$ {record['price']},00.",
             "",
@@ -832,12 +831,12 @@ def main() -> None:
         (product_dir / "README.md").write_text(readme, encoding="utf-8")
         pdf_path = product_dir / "material.pdf"
         build_pdf(record, material, pdf_path)
-        image_src = WEB_ASSETS / record["image"]
         image_dst = product_dir / "thumbnail.png"
-        shutil.copy2(image_src, image_dst)
+        if image_dst.exists():
+            image_dst.unlink()
         archive_path = RELEASES / f"{record['slug']}.zip"
         with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for filename in ("README.md", "material.md", "material.pdf", "pagina-venda.md", "thumbnail.png"):
+            for filename in ("README.md", "material.md", "material.pdf", "pagina-venda.md"):
                 archive.write(product_dir / filename, arcname=filename)
         record["release"] = str(archive_path.relative_to(ROOT))
         record["salesPage"] = f"https://iaparavendas.tech/produtos/itens/{record['slug']}/"

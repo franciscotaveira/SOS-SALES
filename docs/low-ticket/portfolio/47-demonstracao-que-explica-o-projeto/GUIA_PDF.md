@@ -4,7 +4,7 @@
 
 ## Para que serve
 
-Este kit foi desenhado para freelancer, consultor ou pequena agência. Esta é uma trilha profissional distinta da jornada do dono que quer melhorar seu atendimento.. Ele ajuda a produzir: **Roteiro de apresentação com cenário, evidência do funcionamento e limites do escopo**. O kit não instala ferramentas nem opera contas do comprador.
+Este kit foi desenhado para freelancer, consultor ou pequena agência. Esta é uma trilha profissional distinta da jornada do dono que quer melhorar seu atendimento. Ele ajuda a produzir: **Roteiro de apresentação com cenário, evidência do funcionamento e limites do escopo**. O kit não instala ferramentas nem opera contas do comprador.
 
 ## Antes de começar
 
@@ -36,7 +36,7 @@ Este kit foi desenhado para freelancer, consultor ou pequena agência. Esta é u
 
 ## Exemplo fictício
 
-Exemplo fictício — Projeto / cliente: “Empresa Aurora”; Etapa: “cliente pediu uma próxima ação clara”; Resultado: “registrar, executar uma vez e revisar”.
+Exemplo fictício — Projeto / cliente: “Empresa Aurora”; Etapa: “proposta”; Dependência: “aprovar escopo”; Responsável: “gestor do projeto”; Próximo passo: “marcar revisão”;
 
 ## Revisão antes de usar
 
