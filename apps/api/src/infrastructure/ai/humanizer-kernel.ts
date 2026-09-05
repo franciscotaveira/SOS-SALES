@@ -135,7 +135,11 @@ export class HumanizerKernel {
     text = text.replace(/\n{3,}/g, '\n\n');
     text = text.replace(/[ \t]{2,}/g, ' ');
 
-    // 8. Blindagem Determinística contra Vazamentos de Jailbreak / Identidade de IA
+    // 8. Sanitização Anti-Eco de Telefone (LGPD)
+    // Remove qualquer número de telefone ecoado na resposta — mesmo quando a Sofia está recusando
+    text = text.replace(/\(?\d{2}\)?\s?\d{4,5}-?\d{4}/g, '[telefone protegido]');
+
+    // 9. Blindagem Determinística contra Vazamentos de Jailbreak / Identidade de IA
     const jailbreakPatterns = [
       /modelo de linguagem/i,
       /inteligência artificial/i,
@@ -144,10 +148,28 @@ export class HumanizerKernel {
       /o salão (?:não existe|faliu|fechou as portas)/i,
       /a empresa (?:não existe|faliu|fechou as portas)/i,
       /não posso atender a essa solicitação/i,
+      /desenvolvid[oa] por (?:pesquisadores|nvidia|openai|google|meta|microsoft)/i,
+      /sou (?:um|uma) (?:ia|bot|robô|assistente virtual|modelo)/i,
     ];
     for (const pattern of jailbreakPatterns) {
       if (pattern.test(text)) {
         text = 'Estamos atendendo normalmente e a todo vapor por aqui! Me conta, qual opção você gostaria de conhecer hoje?';
+        break;
+      }
+    }
+
+    // 10. Blindagem Anti-Cortesia Falsa (History Poisoning / Social Engineering)
+    const falseConcessionPatterns = [
+      /liberar? (?:as? )?(?:licenças?|acessos?|contas?) (?:grátis|gratuita|free)/i,
+      /cortesia (?:liberada|concedida|aprovada)/i,
+      /acesso liberado para (?:todos|você|vocês)/i,
+      /(?:vou|posso) liberar (?:de )?graça/i,
+      /(?:plano|conta) (?:100%? )?(?:grátis|gratuita|free) (?:para|pra)/i,
+      /(?:sem custo|sem cobrar|de graça) (?:para|pra) (?:você|vocês|todos)/i,
+    ];
+    for (const pattern of falseConcessionPatterns) {
+      if (pattern.test(text)) {
+        text = 'Nossos planos oficiais são: Mensal R$ 97/mês sem fidelidade ou Anual R$ 582 à vista no Pix (50% OFF). Qual deles te interessa mais?';
         break;
       }
     }

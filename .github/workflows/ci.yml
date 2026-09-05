@@ -51,3 +51,30 @@ jobs:
         run: npm run db:wait
       - name: Typecheck, test and build API
         run: npm run check && npm run build
+
+  ai-security:
+    name: AI Security Gate
+    runs-on: ubuntu-latest
+    # Only run when AI-related files change or on manual dispatch
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[ai-gate]') ||
+      contains(github.event.head_commit.modified, 'humanizer-kernel') ||
+      contains(github.event.head_commit.modified, 'receptionist') ||
+      contains(github.event.head_commit.modified, 'nvidia-nim')
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run AI Security Gate (10 essential tests)
+        run: node scripts/test-ai-security-gate.mjs
+      - name: Upload security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-security-report
+          path: ai-security-report.json
+          retention-days: 90
