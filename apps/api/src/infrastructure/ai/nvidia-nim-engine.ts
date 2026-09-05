@@ -36,10 +36,8 @@ export interface NvidiaChatCompletionResult {
 }
 
 export const NVIDIA_MODEL_TIERS = {
-  FAST: 'meta/llama-3.1-70b-instruct',
+  FAST: 'nvidia/llama-3.3-nemotron-super-49b-v1',
   REASONING: 'deepseek-ai/deepseek-r1',
-  // Kept as an explicit opt-in tier for compatibility. It is never selected
-  // as an automatic fallback because the old 340B endpoint is retired.
   NEMOTRON: 'nvidia/llama-3.3-nemotron-super-49b-v1',
   VISION: 'meta/llama-3.2-11b-vision-instruct',
 };

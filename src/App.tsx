@@ -177,6 +177,7 @@ function AppContent({
   });
 
   // Role-based security fallback: prevent unauthorized roles from viewing restricted tabs
+  // Fine-grained RBAC tab authorization guard
   React.useEffect(() => {
     const roleHierarchy: Record<OperatorRole, number> = {
       viewer: 0,
@@ -190,7 +191,7 @@ function AppContent({
     if (activeTab === 'configuracoes' && userLevel < 4) {
       setActiveTab('agora');
     }
-    if ((activeTab === 'clientes' || activeTab === 'resultados' || activeTab === 'playbook' || activeTab === 'simulador') && userLevel < 3) {
+    if ((activeTab === 'clientes' || activeTab === 'resultados') && userLevel < 3) {
       setActiveTab('agora');
     }
   }, [activeTab, role, setActiveTab]);
@@ -219,7 +220,6 @@ function AppContent({
       'agenda',
       'anotacoes',
       'grupos',
-      'simulador',
       'analytics',
     ];
     if (isProductionMvp && hiddenProductionTabs.includes(activeTab)) {
@@ -469,22 +469,19 @@ function AppContent({
         </TabErrorBoundary>
       )}
 
-      {activeTab === 'simulador' && !isAuthenticatedApiMode && (
+      {activeTab === 'simulador' && (
         <TabErrorBoundary tabName="Simulador QA">
           <QaSimulatorView
             currentWorkspace={currentWorkspace}
             onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
             onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
             isNetworkErrorForced={isNetworkErrorForced}
+            onNavigateToTab={(tab) => {
+              setActiveTab('playbook');
+              setIntelligenceSubTab(tab);
+            }}
           />
         </TabErrorBoundary>
-      )}
-
-      {activeTab === 'simulador' && isAuthenticatedApiMode && (
-        <ApiModeUnavailable
-          title="Simulador isolado do ambiente operacional"
-          detail="Os cenários desta tela são dados de laboratório e não alteram nem comprovam o funcionamento do agente em produção. Use a homologação autenticada do backend para validar o Receptionist."
-        />
       )}
 
       {activeTab === 'configuracoes' && (
@@ -546,13 +543,13 @@ function AppContent({
             }
             if (subTab) {
               if (tab === 'configuracoes') setSettingsSubTab(subTab);
-              if (tab === 'resultados') setResultsSubTab(subTab);
+              if (tab === 'resultados') setResultsSubTab(subTab as ResultsSubTab);
               if (tab === 'grupos') setGroupSubTab(subTab);
               if (tab === 'playbook') setIntelligenceSubTab(subTab);
             }
           }}
-          isChannelOnline={currentWorkspace.whatsappConnected}
-          isOfficialChannelConfigured={Boolean(currentWorkspace.metaPhoneNumberId)}
+          isChannelOnline={Boolean(currentWorkspace.channels?.some((c) => c.health === 'healthy' || c.health === 'connected' || (c as any).status === 'CONNECTED'))}
+          isOfficialChannelConfigured={Boolean(currentWorkspace.channels?.some((c) => Boolean(c.wabaAccountId)))}
         />
       </AppShell>
     );

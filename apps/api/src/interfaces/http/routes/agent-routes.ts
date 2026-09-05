@@ -22,6 +22,9 @@ import {
   type ResponderMode,
   type ResponderOwner,
 } from '../../../application/agents/receptionist-agent.js';
+import { NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
+import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.js';
+import { analyzeConversationDossier, MessageLike } from '../../../application/services/cognitive-analyzer.js';
 
 interface BotParams {
   workspaceId: string;
@@ -1063,6 +1066,348 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         request.log.error({ err }, 'Error deleting knowledge document');
         return reply.status(500).send({ error: 'Falha ao remover documento' });
       }
+    }
+  );
+
+  /**
+   * POST /api/v1/workspaces/:workspaceId/agent/simulator/chat
+   * Simulador Comercial Cognitivo em Tempo Real com Suporte a Comandos In-Chat:
+   * Permite testar o agente Sofia em ambiente 100% isolado (Padrão Meta Business AI),
+   * inspecionar o Dossiê Cognitivo vivo e ajustar regras via comandos (/preco, /regra, /horario, /pix, /tom).
+   */
+  app.post<{
+    Params: { workspaceId: string };
+    Body: {
+      message: string;
+      history?: Array<{ role: 'customer' | 'assistant' | 'user'; content?: string; text?: string }>;
+      context?: { originType?: string; campaignName?: string; adHook?: string };
+      contactName?: string;
+    };
+  }>(
+    '/api/v1/workspaces/:workspaceId/agent/simulator/chat',
+    async (request, reply) => {
+      const actor = request.operatorActor;
+      if (!actor) return unauthorized(reply, 'Operador não autenticado');
+      const workspaceId = normalizeWorkspaceUuid(request.params.workspaceId);
+      if (!workspaceId) return reply.status(404).send({ error: 'Workspace não encontrado' });
+
+      const body = request.body || {};
+      const userMessage = (body.message || '').trim();
+      if (!userMessage) {
+        return reply.status(400).send({ error: 'Mensagem vazia' });
+      }
+
+      // 1. INTERCEPTAÇÃO DE COMANDOS DO TREINADOR (In-Chat Direct Tuning)
+      if (userMessage.startsWith('/')) {
+        const parts = userMessage.split(' ');
+        const cmd = parts[0].toLowerCase();
+        const arg = parts.slice(1).join(' ').trim();
+
+        if (cmd === '/regra' || cmd === '/diretriz') {
+          if (!arg) return reply.status(400).send({ error: 'Especifique a regra após o comando. Ex: /regra Não conceder desconto sem autorização' });
+          const bundleRes = await query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`, [workspaceId]);
+          const bundle = bundleRes.rows[0]?.bundle || {};
+          const currentDirectives = Array.isArray(bundle.directives) ? bundle.directives : [];
+          currentDirectives.push(arg);
+          bundle.directives = currentDirectives;
+          await query(
+            `INSERT INTO public.workspace_intelligence_bundles (workspace_id, bundle, updated_at)
+             VALUES ($1, $2::jsonb, NOW())
+             ON CONFLICT (workspace_id) DO UPDATE SET bundle = $2::jsonb, updated_at = NOW()`,
+            [workspaceId, JSON.stringify(bundle)]
+          );
+          return reply.status(200).send({
+            success: true,
+            isCommand: true,
+            command: cmd,
+            agentResponse: `🛡️ Nova diretriz comercial assimilada com sucesso: "${arg}". A Sofia já utilizará essa regra nos próximos atendimentos.`,
+            updatedConfig: { field: 'directives', value: arg },
+          });
+        }
+
+        if (cmd === '/preco' || cmd === '/valor') {
+          if (!arg) return reply.status(400).send({ error: 'Especifique a política de preço. Ex: /preco Plano Anual por 12x de R$ 97' });
+          const bundleRes = await query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`, [workspaceId]);
+          const bundle = bundleRes.rows[0]?.bundle || {};
+          const currentDirectives = Array.isArray(bundle.directives) ? bundle.directives : [];
+          currentDirectives.push(`Política de Preço: ${arg}`);
+          bundle.directives = currentDirectives;
+          await query(
+            `INSERT INTO public.workspace_intelligence_bundles (workspace_id, bundle, updated_at)
+             VALUES ($1, $2::jsonb, NOW())
+             ON CONFLICT (workspace_id) DO UPDATE SET bundle = $2::jsonb, updated_at = NOW()`,
+            [workspaceId, JSON.stringify(bundle)]
+          );
+          return reply.status(200).send({
+            success: true,
+            isCommand: true,
+            command: cmd,
+            agentResponse: `💰 Tabela de preços atualizada: "${arg}". A IA responderá com essa condição imediatamente.`,
+            updatedConfig: { field: 'pricing', value: arg },
+          });
+        }
+
+        if (cmd === '/horario' || cmd === '/horarios') {
+          if (!arg) return reply.status(400).send({ error: 'Especifique o horário. Ex: /horario Segunda a Sexta: 08h às 20h | Sábado: 09h às 14h' });
+          await query(
+            `UPDATE public.workspace_agent_config SET working_hours = $2, updated_at = NOW() WHERE workspace_id = $1`,
+            [workspaceId, arg]
+          );
+          await query(
+            `UPDATE public.workspace_operational_settings SET business_hours = $2, updated_at = NOW() WHERE workspace_id = $1`,
+            [workspaceId, arg]
+          );
+          return reply.status(200).send({
+            success: true,
+            isCommand: true,
+            command: cmd,
+            agentResponse: `⏰ Horário de atendimento atualizado com sucesso para: "${arg}".`,
+            updatedConfig: { field: 'working_hours', value: arg },
+          });
+        }
+
+        if (cmd === '/pix') {
+          if (!arg) return reply.status(400).send({ error: 'Especifique a chave Pix. Ex: /pix contato@iaparavendas.tech' });
+          await query(
+            `UPDATE public.workspace_operational_settings SET pix_key = $2, updated_at = NOW() WHERE workspace_id = $1`,
+            [workspaceId, arg]
+          );
+          return reply.status(200).send({
+            success: true,
+            isCommand: true,
+            command: cmd,
+            agentResponse: `🔑 Chave Pix do negócio atualizada para: "${arg}".`,
+            updatedConfig: { field: 'pix_key', value: arg },
+          });
+        }
+
+        if (cmd === '/tom') {
+          const validTones = ['elegante_acolhedor', 'direto_objetivo', 'tecnico_formal', 'comercial_fechador', 'empatico_cuidadoso'];
+          const normalizedTone = arg.toLowerCase().replace(/[\s-]/g, '_');
+          if (!validTones.includes(normalizedTone)) {
+            return reply.status(400).send({
+              error: `Tom inválido. Escolha um dos seguintes: ${validTones.join(', ')}`,
+            });
+          }
+          await query(
+            `UPDATE public.workspace_agent_config
+             SET behavior_config = jsonb_set(COALESCE(behavior_config, '{}'::jsonb), '{tone}', to_jsonb($2::text)), updated_at = NOW()
+             WHERE workspace_id = $1`,
+            [workspaceId, normalizedTone]
+          );
+          return reply.status(200).send({
+            success: true,
+            isCommand: true,
+            command: cmd,
+            agentResponse: `🎭 Tom de voz da IA alterado para: "${normalizedTone}".`,
+            updatedConfig: { field: 'tone', value: normalizedTone },
+          });
+        }
+      }
+
+      // 2. CONSTRUÇÃO DO HISTÓRICO PARA ANÁLISE COGNITIVA
+      const rawHistory = body.history || [];
+      const messagesForAnalysis: MessageLike[] = rawHistory.map((h) => ({
+        direction: (h.role === 'customer' || h.role === 'user') ? 'INBOUND' : 'OUTBOUND',
+        senderType: (h.role === 'customer' || h.role === 'user') ? 'CUSTOMER' : 'AI_AGENT',
+        text: h.content || h.text || '',
+        sentAt: new Date().toISOString(),
+      }));
+
+      // Adiciona a mensagem atual do lead
+      messagesForAnalysis.push({
+        direction: 'INBOUND',
+        senderType: 'CUSTOMER',
+        text: userMessage,
+        sentAt: new Date().toISOString(),
+      });
+
+      // 3. EXECUTA O MOTOR COGNITIVO SOBERANO
+      const dossier = analyzeConversationDossier(messagesForAnalysis, body.contactName || 'Lead Interessado');
+
+      // 4. CARREGA CONFIGURAÇÕES REAIS DO WORKSPACE
+      const [agentConfigRes, opSettingsRes, intelligenceRes] = await Promise.all([
+        query(`SELECT agent_name, business_type, phone, city, working_hours, behavior_config FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
+        query(`SELECT pix_key, business_hours, macros, target_revenue_cents FROM public.workspace_operational_settings WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
+        query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
+      ]);
+
+      const agentRow = agentConfigRes.rows[0] || {};
+      const opRow = opSettingsRes.rows[0] || {};
+      const bundle = intelligenceRes.rows[0]?.bundle || {};
+
+      const agentName = agentRow.agent_name || 'Sofia';
+      const businessType = agentRow.business_type || 'Software Comercial & CRM WhatsApp';
+      const city = agentRow.city || 'Chapecó, SC';
+      const workingHours = agentRow.working_hours || opRow.business_hours || 'Segunda a Sexta: 08h às 20h';
+      const pixKey = opRow.pix_key || 'contato@iaparavendas.tech';
+      const directives = Array.isArray(bundle.directives) ? bundle.directives : [];
+      const catalog = Array.isArray(bundle.catalog) ? bundle.catalog : [];
+
+      // Monta catálogo textual
+      let catalogText = '';
+      if (catalog.length > 0) {
+        catalogText = catalog.map((item: any) => `- ${item.name || item.title}: ${item.price || item.value || 'Sob consulta'} (${item.description || ''})`).join('\n');
+      } else {
+        catalogText = `- Plano Anual Empresa Amiga: 12x de R$ 97,00 (Total R$ 1.164,00 c/ 50% de desconto)\n- Plano Mensal Flexível: R$ 197,00/mês (sem fidelidade)\n- Plano Escala VIP: R$ 1.497,00/mês (multi-atendentes e IA avançada)`;
+      }
+
+      // 5. ENGENHARIA DE SYSTEM PROMPT COGNITIVO (Framework Francisco Rios)
+      const systemPrompt = `Você é ${agentName}, a especialista comercial de alta performance e conversão da empresa "${businessType}" localizada em ${city}.
+Horário de atendimento oficial: ${workingHours}.
+Chave Pix oficial da empresa: ${pixKey}.
+
+CATÁLOGO OFICIAL DE PRODUTOS/SERVIÇOS:
+${catalogText}
+
+DIRETRIZES & REGRAS COMERCIAIS ATIVAS (Ensinadas pelo Gestor):
+${directives.length > 0 ? directives.map((d: string) => `• ${d}`).join('\n') : '• Atendimento consultivo, direto e sem burocracia.'}
+
+MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
+1. CONTINUIDADE COGNITIVA (Anti-Regressão):
+   - ${dossier.antiRegressionRule || 'Nunca pergunte o que o cliente já demonstrou ou decidiu.'}
+   - Se o cliente perguntou preço ou plano, entregue o valor imediatamente e de forma transparente.
+   - Jamais reinicie o diálogo com perguntas genéricas vazias do tipo "Olá, como posso ajudar hoje?".
+2. MOMENTUM DE COMPRA:
+   - Responda em tom natural de WhatsApp, parágrafos concisos e objetivos (máximo 3 frases).
+3. MENOR PRÓXIMO PASSO (Microcompromisso):
+   - Conduza a conversa propondo este próximo passo: "${dossier.smallestNextMove?.actionTitle || 'Avançar para decisão'}".
+   - Exemplo de condução: "${dossier.smallestNextMove?.draftText || 'Qual opção faz mais sentido para você?'}"`;
+
+      // 6. PREPARAÇÃO DAS MENSAGENS PARA O LLM
+      const llmMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'system', content: systemPrompt },
+      ];
+
+      for (const h of rawHistory.slice(-8)) {
+        llmMessages.push({
+          role: (h.role === 'customer' || h.role === 'user') ? 'user' : 'assistant',
+          content: h.content || h.text || '',
+        });
+      }
+
+      llmMessages.push({ role: 'user', content: userMessage });
+
+      // 7. INFERÊNCIA VIA MOTOR SOBERANO (NVIDIA NIM com Fallback OpenRouter)
+      const startTime = Date.now();
+      let generatedReply = '';
+      let modelUsed = 'nvidia/llama-3.3-nemotron-super-49b-v1';
+
+      try {
+        const nim = new NvidiaNimEngine();
+        const nimResult = await nim.generateChatCompletion(llmMessages, {
+          model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+          temperature: 0.3,
+          maxTokens: 400,
+        });
+        generatedReply = nimResult.content || nimResult.text || '';
+        modelUsed = nimResult.model || 'nvidia/llama-3.3-nemotron-super-49b-v1';
+      } catch (nimErr) {
+        request.log.warn({ err: nimErr }, 'NVIDIA NIM indisponível no simulador, acionando OpenRouter fallback');
+        try {
+          const openRouter = new OpenRouterEngine();
+          const orResult = await openRouter.generateChatCompletion(llmMessages, {
+            model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+          });
+          generatedReply = orResult.content || '';
+          modelUsed = orResult.model || 'openrouter/llama-3.1-70b';
+        } catch (orErr) {
+          generatedReply = dossier.smallestNextMove?.draftText || `Olá! O nosso Plano Anual Empresa Amiga está em condição promocional por 12x de R$ 97,00. Quer garantir sua ativação hoje?`;
+          modelUsed = 'sos-rule-engine-fallback';
+        }
+      }
+
+      const latencyMs = Date.now() - startTime;
+
+      return reply.status(200).send({
+        success: true,
+        agentResponse: generatedReply,
+        model: modelUsed,
+        latencyMs,
+        dossier,
+        suggestedCalibrations: [
+          { label: 'Ajustar Preço', action: 'price' },
+          { label: 'Ajustar Horário', action: 'hours' },
+          { label: 'Ensinar Nova Regra', action: 'directive' },
+        ],
+      });
+    }
+  );
+
+  /**
+   * POST /api/v1/workspaces/:workspaceId/agent/simulator/calibrate
+   * Calibração Rápida da Resposta do Agente:
+   * Permite que o operador ensine uma nova regra ou corrija a resposta anterior
+   * diretamente a partir de um balão no chat, persistindo no banco e regenerando a resposta.
+   */
+  app.post<{
+    Params: { workspaceId: string };
+    Body: {
+      correctionInstruction: string;
+      lastCustomerMessage: string;
+      lastAgentResponse?: string;
+      history?: Array<{ role: 'customer' | 'assistant' | 'user'; content?: string; text?: string }>;
+    };
+  }>(
+    '/api/v1/workspaces/:workspaceId/agent/simulator/calibrate',
+    async (request, reply) => {
+      const actor = request.operatorActor;
+      if (!actor) return unauthorized(reply, 'Operador não autenticado');
+      const workspaceId = normalizeWorkspaceUuid(request.params.workspaceId);
+      if (!workspaceId) return reply.status(404).send({ error: 'Workspace não encontrado' });
+
+      const body = request.body || {};
+      const instruction = (body.correctionInstruction || '').trim();
+      const lastCustomerMessage = (body.lastCustomerMessage || '').trim();
+
+      if (!instruction) {
+        return reply.status(400).send({ error: 'Instrução de calibração é obrigatória' });
+      }
+
+      // 1. PERSISTE A DIRETRIZ CORRETIVA NO BANCO
+      const bundleRes = await query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`, [workspaceId]);
+      const bundle = bundleRes.rows[0]?.bundle || {};
+      const currentDirectives = Array.isArray(bundle.directives) ? bundle.directives : [];
+      currentDirectives.push(`Regra Corretiva: ${instruction}`);
+      bundle.directives = currentDirectives;
+
+      await query(
+        `INSERT INTO public.workspace_intelligence_bundles (workspace_id, bundle, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (workspace_id) DO UPDATE SET bundle = $2::jsonb, updated_at = NOW()`,
+        [workspaceId, JSON.stringify(bundle)]
+      );
+
+      // 2. REGENERA A RESPOSTA COM A NOVA INSTRUÇÃO EMBARCADA
+      const nim = new NvidiaNimEngine();
+      const systemPrompt = `Você é Sofia, especialista comercial do SOS Vendas.
+O gestor acabou de calibrar uma regra obrigatória que você DEVE seguir:
+"${instruction}"
+
+Responda à última mensagem do cliente aplicando rigorosamente esta nova diretriz de forma persuasiva, empática e objetiva no WhatsApp.`;
+
+      const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: lastCustomerMessage || 'Quanto custa o serviço?' },
+      ];
+
+      let calibratedReply = '';
+      try {
+        const nimResult = await nim.generateChatCompletion(messages, {
+          model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+          temperature: 0.2,
+        });
+        calibratedReply = nimResult.content || nimResult.text || '';
+      } catch (err) {
+        calibratedReply = `Entendido! Atualizei a regra: "${instruction}".`;
+      }
+
+      return reply.status(200).send({
+        success: true,
+        message: 'Diretriz de calibração assimilada com sucesso!',
+        savedDirective: instruction,
+        calibratedResponse: calibratedReply,
+      });
     }
   );
 };

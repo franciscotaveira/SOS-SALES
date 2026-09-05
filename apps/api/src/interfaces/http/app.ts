@@ -290,7 +290,10 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     app.addHook('preHandler', async (request, reply) => {
       const pathname = request.url.split('?')[0];
       const match = /^\/api\/v1\/workspaces\/([0-9a-f-]{36})(?:\/|$)/i.exec(pathname);
-      if (!match || pathname.includes('/billing/')) return;
+      // Billing and bonus status endpoints must remain reachable while a
+      // customer is claiming a purchase; the endpoint itself returns no kit
+      // until the workspace has a current entitlement.
+      if (!match || pathname.includes('/billing/') || pathname.includes('/bonuses/eko')) return;
       try {
         const entitlement = await databasePool.query(
           `SELECT EXISTS (

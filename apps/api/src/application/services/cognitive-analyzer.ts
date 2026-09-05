@@ -12,6 +12,19 @@ export interface MessageLike {
   sentAt?: string | Date;
 }
 
+export interface CriticalGap {
+  id: string;
+  question: string;
+  impact: string;
+}
+
+export interface SmallestNextMove {
+  actionTitle: string;
+  draftText: string;
+  rationale: string;
+  microCommitmentGoal: string;
+}
+
 export interface InferredDossier {
   primaryServiceOrProduct: string;
   confidenceService: number;
@@ -29,11 +42,38 @@ export interface InferredDossier {
     confirmedByCustomer: boolean;
     observedAt: string;
   }>;
+  criticalGaps?: CriticalGap[];
   suggestedStage: 'LEAD' | 'QUALIFICADO' | 'PROPOSTA' | 'NEGOCIACAO' | 'GANHO';
   stageReason: string;
+  primaryFriction?: string;
+  frictionEvidence?: string;
+  antiRegressionRule?: string;
+  smallestNextMove?: SmallestNextMove;
 }
 
 const SERVICE_PATTERNS = [
+  // SaaS & SOS Vendas Commercial Patterns
+  {
+    name: 'Plano Anual Empresa Amiga (12x R$ 97)',
+    keywords: ['anual', 'empresa amiga', '12x', '97', 'anuidade', 'plano anual', 'licença anual', 'desconto anual', 'promoção anual'],
+    weight: 12,
+  },
+  {
+    name: 'Plano Mensal Flexível (R$ 197/mês)',
+    keywords: ['mensal', 'mensalidade', '197', 'flexivel', 'flexível', 'plano mensal', 'sem fidelidade'],
+    weight: 10,
+  },
+  {
+    name: 'Plano Escala VIP / Implantação',
+    keywords: ['escala', 'vip', 'implantação', 'implantacao', 'equipe grande', 'multi-atendente', 'consultoria'],
+    weight: 10,
+  },
+  {
+    name: 'Automação WhatsApp & Agente IA',
+    keywords: ['ia', 'agente', 'bot', 'sofia', 'receptionist', 'automação', 'automacao', 'waha', 'waba', 'meta ads', 'vácuo', 'vacuo', 'responder sozinho'],
+    weight: 9,
+  },
+  // Haven / Estética / Beleza Patterns
   {
     name: 'Design de Sobrancelha & Buço',
     keywords: ['buço', 'buco', 'sobrancelha', 'sobrancelhas', 'henna', 'egipcia', 'egípcia', 'linha buço', 'fio a fio'],
@@ -241,6 +281,58 @@ export function analyzeConversationDossier(
     observedAt: now,
   });
 
+  // Fricções & Objeções
+  let primaryFriction: string | undefined = undefined;
+  let frictionEvidence: string | undefined = undefined;
+  if (allTextLower.includes('caro') || allTextLower.includes('desconto') || allTextLower.includes('parcela')) {
+    primaryFriction = 'Sensibilidade a Preço / Orçamento';
+    frictionEvidence = 'Cliente consultou condições de pagamento ou valores parcelados.';
+  } else if (allTextLower.includes('lotado') || allTextLower.includes('sem horário') || allTextLower.includes('outro dia')) {
+    primaryFriction = 'Disponibilidade de Agenda';
+    frictionEvidence = 'Conciliação de horário com a rotina do cliente.';
+  }
+
+  // Lacunas Críticas de Fechamento (EKO)
+  const criticalGaps: CriticalGap[] = [];
+  if (matchedService.includes('Plano') && !allTextLower.includes('cartão') && !allTextLower.includes('pix') && !hasWonSignal) {
+    criticalGaps.push({
+      id: 'gap-payment-method',
+      question: 'Qual a forma preferida de pagamento (Pix ou Cartão em 12x)?',
+      impact: 'Define o envio do link de checkout ou da chave Pix de ativação.',
+    });
+  }
+
+  // Regra Anti-Regressão Cognitiva (Francisco Rios Framework)
+  let antiRegressionRule = 'Proibido reiniciar com "Olá, como posso ajudar?". Conecte diretamente à oferta ativa.';
+  if (matchedService && matchedService !== 'Interesse Geral / Atendimento Comercial') {
+    antiRegressionRule = `Cliente já solicitou ${matchedService}. Não pergunte qual produto/serviço deseja. Apresente valores ou o próximo passo.`;
+  }
+
+  // Menor Próximo Passo (SmallestNextMove)
+  const firstName = _contactName ? _contactName.split(' ')[0] : 'tudo bem';
+  let smallestNextMove: SmallestNextMove = {
+    actionTitle: 'Apresentar Condição e Ofertar Escolha Binária',
+    draftText: `Olá ${firstName}! O ${matchedService} está com condição especial hoje. Quer que eu libere seu acesso agora ou prefere tirar alguma dúvida antes?`,
+    rationale: 'Reduz o atrito cognitivo do cliente oferecendo uma escolha binária simples.',
+    microCommitmentGoal: 'Definir o próximo passo de adesão.',
+  };
+
+  if (suggestedStage === 'NEGOCIACAO') {
+    smallestNextMove = {
+      actionTitle: 'Conquistar Microcompromisso de Fechamento',
+      draftText: `Perfeito ${firstName}! Posso gerar o link de liberação imediata do seu plano com a condição especial? Me confirma seu melhor e-mail!`,
+      rationale: 'Cliente já negociou. Travar o microcompromisso antes que o momentum esfrie.',
+      microCommitmentGoal: 'Obter e-mail para envio de ativação.',
+    };
+  } else if (suggestedStage === 'GANHO') {
+    smallestNextMove = {
+      actionTitle: 'Enviar Dados de Pagamento / Ativação',
+      draftText: `Show ${firstName}! Tudo pronto para iniciar! Segue nossa chave Pix oficial para a ativação imediata. Assim que enviar o comprovante, liberamos seu acesso!`,
+      rationale: 'Fechamento comercial confirmado. Conduzir ao pagamento imediato.',
+      microCommitmentGoal: 'Confirmar pagamento do sinal/plano.',
+    };
+  }
+
   return {
     primaryServiceOrProduct: matchedService,
     confidenceService,
@@ -250,7 +342,12 @@ export function analyzeConversationDossier(
     offerHook,
     entryMessage,
     knownFacts,
+    criticalGaps,
     suggestedStage,
     stageReason,
+    primaryFriction,
+    frictionEvidence,
+    antiRegressionRule,
+    smallestNextMove,
   };
 }

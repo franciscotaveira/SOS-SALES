@@ -866,3 +866,20 @@
 - **Acceptance gate:** Antes de habilitar bloqueio por assinatura, executar uma compra real controlada pelo valor mínimo aceito pela Cakto (R$ 5,00 em 2026-09-05) ou usar o staging oficial fornecido pelo suporte da Cakto; confirmar, em ordem, pagamento aprovado, entrega autenticada do webhook, persistência idempotente, claim automático no login com o mesmo e-mail e reflexo correto do status no CRM.
 - **Rollout:** Manter `BILLING_ENFORCEMENT_MODE=off` durante o teste financeiro; usar `observe` somente após o fluxo de compra e claim estar homologado; ativar `enforce` apenas com aprovação explícita e teste de regressão para clientes existentes.
 - **Date:** 2026-09-05
+
+---
+
+## Task 36: Bônus EKO entregue dentro do CRM com gate de assinatura
+- **Decision:** O assinante do SOS Vendas recebe o EKO como um kit de implantação autenticado dentro do CRM. O backend verifica a assinatura Cakto vigente antes de devolver os seis módulos; o owner pode vincular uma compra pendente pelo e-mail verificado sem expor a compra a outro workspace.
+- **Rationale:**
+  1. A promessa comercial de “EKO incluso na assinatura” precisa ter uma entrega concreta e rastreável, não apenas um link público para a página de venda.
+  2. O conteúdo é útil no momento de ativação: oferta, roteiro de conversa, aquisição, limites/handoff, fontes de conhecimento e testes.
+  3. O material é copiável e baixável, mas continua sob a mesma autenticação multi-tenant do CRM; assinaturas canceladas, reembolsadas ou sem vínculo não recebem o kit.
+- **Scope:**
+  - `apps/api/src/application/services/eko-bonus.ts`
+  - `apps/api/src/interfaces/http/routes/cakto-billing-routes.ts`
+  - `apps/api/tests/unit/eko-bonus.test.ts`
+  - `src/components/assistant/EkoBonusModal.tsx`
+  - `src/components/layout/AppShell.tsx`
+- **Operational gate:** Validar o endpoint no Docker Lab, promover frontend/API pelo fluxo de release limpo e executar um canário autenticado com uma assinatura Cakto vinculada antes de mudar `BILLING_ENFORCEMENT_MODE`.
+- **Date:** 2026-09-05

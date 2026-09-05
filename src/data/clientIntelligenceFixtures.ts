@@ -14,7 +14,7 @@ import {
 // ============================================================================
 export const mockSalesOsIntelligence: ClientIntelligenceBundle = {
   workspaceId: 'ws-sos-sales-official',
-  profile: {
+  companyProfile: {
     legalName: 'SOS VENDAS TECNOLOGIA LTDA',
     tradeName: 'SOS Vendas · Sistema Operacional de Vendas',
     taxId: '54.128.930/0001-44',
@@ -74,7 +74,7 @@ export const mockSalesOsIntelligence: ClientIntelligenceBundle = {
     workspaceId: 'ws-sos-sales-official',
     name: 'Sofia · Especialista Comercial SOS Vendas',
     avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-    systemPrompt:
+    persona:
       'Você é a Sofia, consultora comercial do SOS Vendas. Seu objetivo é ajudar empresários e gestores a entenderem como o SOS Vendas estanca o prejuízo de clientes perdidos no vácuo do WhatsApp, demonstrando a velocidade das respostas em 1 clique e o subsídio de 50% do Programa Empresa Amiga (12x R$ 97).',
     toneOfVoice: 'consultivo_premium',
     autonomyMode: 'copilot_supervised',
@@ -101,23 +101,29 @@ export const mockSalesOsIntelligence: ClientIntelligenceBundle = {
   catalog: [
     {
       id: 'prod-sos-anual',
+      sku: 'SOS-ANUAL-01',
       name: 'Plano Anual SOS Vendas (Incentivo 50% OFF)',
       category: 'software_subscription',
-      price: 1164.0,
-      recurrence: '12x de R$ 97/mês (Total R$ 1.164)',
-      description: 'Acesso completo ao SOS Vendas para 1 número comercial + 5 operadores + Motor de Inteligência Comercial e Recuperação Automática de Vendas.',
-      conversionTriggerPitch: 'O Plano Anual com incentivo do Programa Empresa Amiga sai de R$ 197 por apenas 12x de R$ 97. Recuperando 1 venda por mês o sistema já se paga com sobra!',
-      activePromotions: '50% de desconto vitalício enquanto a assinatura estiver ativa',
-      stockStatus: 'available',
-    },
-    {
-      id: 'srv-sos-monthly',
-      name: 'Plano Mensal Flexível SOS Vendas',
-      description: 'Acesso completo ao Cockpit Comercial, fila com SLA, Copilot 1-Clique, Traffic Proof Meta CAPI e até 5 operadores.',
       basePrice: 1164.0,
       minPromoPrice: 1164.0,
       durationOrExecutionTime: '12 meses de acesso',
       imageUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&auto=format&fit=crop&q=80',
+      inStock: true,
+      tags: ['anual', 'saas', 'meta_ads'],
+      description: 'Acesso completo ao SOS Vendas para 1 número comercial + 5 operadores + Motor de Inteligência Comercial e Recuperação Automática de Vendas.',
+    },
+    {
+      id: 'srv-sos-monthly',
+      sku: 'SOS-MENSAL-01',
+      name: 'Plano Mensal Flexível SOS Vendas',
+      category: 'software_subscription',
+      description: 'Acesso completo ao Cockpit Comercial, fila com SLA, Copilot 1-Clique, Traffic Proof Meta CAPI e até 5 operadores.',
+      basePrice: 197.0,
+      minPromoPrice: 197.0,
+      durationOrExecutionTime: 'Mensal sem fidelidade',
+      imageUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&auto=format&fit=crop&q=80',
+      inStock: true,
+      tags: ['mensal', 'saas'],
     },
   ],
   documents: [
@@ -157,7 +163,6 @@ export const mockSalesOsIntelligence: ClientIntelligenceBundle = {
       type: 'operator_correction',
       date: '2026-08-15T14:00:00Z',
       leadContext: 'Empresário perguntou se precisava de computador caro para usar o SOS Vendas.',
-      customerTrigger: 'Preciso comprar um computador novo ou instalar programa pesado pra rodar?',
       originalAiProposal: 'O sistema roda em servidores locais.',
       humanCorrection: 'O SOS Vendas roda 100% na nuvem. Basta qualquer computador ou celular com navegador web.',
       learnedFact: 'O SOS Vendas é 100% web na nuvem e não requer hardware ou instalação pesada.',
@@ -1243,11 +1248,11 @@ export const mockSoraIntelligence: ClientIntelligenceBundle = {
 // MAPA OFICIAL DE WORKSPACES: AS 3 CONTAS
 // ============================================================================
 export const clientIntelligenceMap: Record<string, ClientIntelligenceBundle> = {
-  'ws-sos-sales-official': mockSosSalesIntelligence,
+  'ws-sos-sales-official': mockSalesOsIntelligence,
   'ws-haven-beauty': mockHavenIntelligence,
   'ws-sora-spa': mockSoraIntelligence,
   // Compatibilidade com chaves antigas
   'ws-escovaria': mockHavenIntelligence,
   'ws-peliculas': mockHavenIntelligence,
-  'ws-agencia': mockSosSalesIntelligence,
+  'ws-agencia': mockSalesOsIntelligence,
 };

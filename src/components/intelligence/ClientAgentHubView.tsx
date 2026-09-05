@@ -8,6 +8,7 @@ import { ProductCatalogSection } from './ProductCatalogSection';
 import { AgentKnowledgeBaseSection } from './AgentKnowledgeBaseSection';
 import { ContinuousLearningSection } from './ContinuousLearningSection';
 import { HistoricalDiagnosisSection } from './HistoricalDiagnosisSection';
+import { QaSimulatorView } from './QaSimulatorView';
 import {
   Building2,
   ShoppingBag,
@@ -23,6 +24,8 @@ import {
   ChevronDown,
   Save,
   Loader2,
+  Zap,
+  FileText,
 } from 'lucide-react';
 
 import { SalesAiThesisConfig } from '../settings/SalesAiThesisConfig';
@@ -42,6 +45,7 @@ export type IntelligenceTab =
   | 'diagnosis'
   | 'knowledge'
   | 'catalog'
+  | 'simulator'
   | 'learning'
   | 'agent';
 
@@ -79,13 +83,27 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
   workspaces,
   onSelectWorkspace,
   activeSubTab: externalActiveSubTab,
+  onChangeSubTab,
   canManage = false,
 }) => {
-  const requestedActiveTab = externalActiveSubTab ?? 'knowledge';
-  const productionTabs = new Set<IntelligenceTab>(['profile', 'knowledge', 'catalog', 'diagnosis']);
-  const activeTab: IntelligenceTab = salesOsRuntimeConfig.mode === 'api' && !productionTabs.has(requestedActiveTab)
+  const [internalTab, setInternalTab] = React.useState<IntelligenceTab>(externalActiveSubTab ?? 'knowledge');
+
+  React.useEffect(() => {
+    if (externalActiveSubTab) {
+      setInternalTab(externalActiveSubTab);
+    }
+  }, [externalActiveSubTab]);
+
+  const productionTabs = new Set<IntelligenceTab>(['profile', 'knowledge', 'catalog', 'simulator', 'diagnosis']);
+  const requestedTab = externalActiveSubTab ?? internalTab;
+  const activeTab: IntelligenceTab = salesOsRuntimeConfig.mode === 'api' && !productionTabs.has(requestedTab)
     ? 'knowledge'
-    : requestedActiveTab;
+    : requestedTab;
+
+  const handleTabChange = (tab: IntelligenceTab) => {
+    setInternalTab(tab);
+    onChangeSubTab?.(tab);
+  };
 
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -346,7 +364,92 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
         </div>
       </div>
 
-      {/* Active Section Content (Navigation controlled via sidebar) */}
+      {/* Navigation Sub-Tabs Bar */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-[var(--sos-border)]">
+        <button
+          type="button"
+          onClick={() => handleTabChange('knowledge')}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'knowledge'
+              ? 'bg-[var(--sos-ink)] text-white shadow-xs'
+              : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-surface)]'
+          }`}
+        >
+          <Brain className="w-3.5 h-3.5" />
+          <span>Base de Conhecimento & Arquivos</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+            activeTab === 'knowledge'
+              ? 'bg-white/20 text-white'
+              : 'bg-[var(--sos-border)] text-[var(--sos-muted)]'
+          }`}>
+            {currentBundle.documents.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange('simulator')}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'simulator'
+              ? 'bg-[var(--sos-ai)] text-white shadow-xs'
+              : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-surface)]'
+          }`}
+        >
+          <Zap className="w-3.5 h-3.5 text-amber-300" />
+          <span>Simulador & Treinador IA</span>
+          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+            Padrão Meta
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange('catalog')}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'catalog'
+              ? 'bg-[var(--sos-ink)] text-white shadow-xs'
+              : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-surface)]'
+          }`}
+        >
+          <ShoppingBag className="w-3.5 h-3.5" />
+          <span>Catálogo & Preços</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+            activeTab === 'catalog'
+              ? 'bg-white/20 text-white'
+              : 'bg-[var(--sos-border)] text-[var(--sos-muted)]'
+          }`}>
+            {currentBundle.catalog.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange('profile')}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'profile'
+              ? 'bg-[var(--sos-ink)] text-white shadow-xs'
+              : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-surface)]'
+          }`}
+        >
+          <Building2 className="w-3.5 h-3.5" />
+          <span>Perfil da Empresa</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange('diagnosis')}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'diagnosis'
+              ? 'bg-[var(--sos-ink)] text-white shadow-xs'
+              : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-surface)]'
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5" />
+          <span>Diagnóstico</span>
+        </button>
+      </div>
+
+      {/* Active Section Content */}
       {bundleStatus === 'empty' && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
           <strong>Nenhuma inteligência persistida neste workspace.</strong>{' '}
@@ -433,6 +536,10 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
             void updateCurrentBundle((prev) => ({ ...prev, catalog: items }));
           }}
         />
+      )}
+
+      {activeTab === 'simulator' && (
+        <QaSimulatorView currentWorkspace={currentWorkspace} />
       )}
 
       {activeTab === 'thesis' && <SalesAiThesisConfig workspaceId={currentWorkspace.id} />}

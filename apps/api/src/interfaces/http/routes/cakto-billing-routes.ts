@@ -3,6 +3,11 @@ import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import type { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
 import type { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
+import {
+  EKO_BONUS_MODULES,
+  EKO_BONUS_VERSION,
+  hasEkoBonusEntitlement,
+} from '../../../application/services/eko-bonus.js';
 import { PostgresCaktoBilling, type CaktoWebhookPayload } from '../../../infrastructure/billing/postgres-cakto-billing.js';
 import { assertTenantAccess, unauthorized, verifyOperatorAuth } from '../helpers/auth-guard.js';
 import { normalizeWorkspaceUuid } from './whatsapp-channel-routes.js';
@@ -92,6 +97,43 @@ export const caktoBillingRoutes: FastifyPluginAsync<CaktoBillingRoutesOptions> =
       [workspaceId],
     );
     return { data: subscription.rows[0] || null };
+  });
+
+  app.get('/api/v1/workspaces/:workspaceId/bonuses/eko', {
+    preHandler: async (request, reply) => {
+      if (!options.authenticator) return unauthorized(reply, 'Authenticator is required');
+      const actor = await verifyOperatorAuth(request, reply, options.authenticator);
+      if (!actor) return;
+      const workspaceId = normalizeWorkspaceUuid((request.params as { workspaceId?: string }).workspaceId || '');
+      if (!workspaceId) return reply.code(400).send({ error: 'Invalid workspaceId' });
+      if (!await assertTenantAccess(request, reply, workspaceId, actor, options.workspaceDirectory, 'viewer')) return;
+    },
+    schema: { tags: ['Billing'], description: 'Retorna o bônus EKO de implantação quando a assinatura Cakto está vigente.' },
+  }, async (request, reply) => {
+    if (!options.databasePool) return reply.code(503).send({ error: 'Billing database is not configured' });
+    const workspaceId = normalizeWorkspaceUuid((request.params as { workspaceId: string }).workspaceId)!;
+    const subscription = await options.databasePool.query(
+      `SELECT status, access_until AS "accessUntil", current_period_end AS "currentPeriodEnd"
+       FROM public.workspace_subscriptions
+       WHERE workspace_id = $1
+       ORDER BY last_provider_event_at DESC LIMIT 1`,
+      [workspaceId],
+    );
+    const row = subscription.rows[0] || null;
+    const eligible = hasEkoBonusEntitlement(row);
+
+    return {
+      data: {
+        eligible,
+        product: 'EKO',
+        version: EKO_BONUS_VERSION,
+        title: 'Kit de Configuração Comercial para IA no WhatsApp',
+        description: 'Material de implantação para organizar oferta, contexto, limites e testes antes de liberar o agente.',
+        modules: eligible ? EKO_BONUS_MODULES : [],
+        subscriptionStatus: row?.status || null,
+        claimRequired: !eligible,
+      },
+    };
   });
 
   app.post('/api/v1/workspaces/:workspaceId/billing/claim', {

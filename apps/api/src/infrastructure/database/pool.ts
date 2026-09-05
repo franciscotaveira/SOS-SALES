@@ -26,8 +26,8 @@ export function getSslConfig(url: string) {
 function createPool(): Pool {
   const pool = new Pool({
     connectionString,
-    max: 20,
-    idleTimeoutMillis: 30000,
+    max: 8,
+    idleTimeoutMillis: 10000,
     connectionTimeoutMillis: 10000,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,

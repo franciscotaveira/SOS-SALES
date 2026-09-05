@@ -4,6 +4,7 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { useFeatureFlags } from '../../contexts/FeatureFlagContext';
 import { salesOsRuntimeConfig } from '../../config/runtime';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
+import { EkoBonusModal } from '../assistant/EkoBonusModal';
 import {
   getWorkspaceAiMode,
   loadWorkspaceAgentConfig,
@@ -40,6 +41,7 @@ import {
   BookOpen,
   Megaphone,
   Building2,
+  Gift,
 } from 'lucide-react';
 
 export type NavigationTab =
@@ -128,6 +130,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
   const [helpModalOpen, setHelpModalOpen] = React.useState(false);
+  const [ekoBonusOpen, setEkoBonusOpen] = React.useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = React.useState(false);
   const [administrationOpen, setAdministrationOpen] = React.useState(false);
 
@@ -171,7 +174,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const isProductionMvp = salesOsRuntimeConfig.mode === 'api';
   const showGroups = !isProductionMvp && isFeatureEnabled('agency_groups');
   const showTrafficProof = isFeatureEnabled('traffic_proof');
-  const showQaSimulator = !isProductionMvp && isFeatureEnabled('qa_simulator');
+  const showQaSimulator = isFeatureEnabled('qa_simulator') || isAdmin;
 
   // RBAC permissions based on role
   const isOwner = role === 'owner';
@@ -424,15 +427,15 @@ export const AppShell: React.FC<AppShellProps> = ({
           id: 'playbook' as NavigationTab,
           label: isProductionMvp ? 'IA & Conhecimento' : 'Inteligência',
           icon: Bot,
-          roleRequired: 'admin' as OperatorRole,
+          roleRequired: 'operator' as OperatorRole,
           visible: true,
         },
         {
           id: 'simulador' as NavigationTab,
-          label: 'Simulador',
+          label: 'Simulador & Treinador IA',
           icon: Zap,
-          roleRequired: 'admin' as OperatorRole,
-          visible: !isProductionMvp && (showQaSimulator || isAdmin),
+          roleRequired: 'operator' as OperatorRole,
+          visible: true,
         },
       ],
     },
@@ -493,10 +496,8 @@ export const AppShell: React.FC<AppShellProps> = ({
       { id: 'resultados' as NavigationTab, label: 'Resultados dos anúncios', icon: PieChart, section: 'Negócio', subTab: 'traffic_proof', roleRequired: 'admin' as OperatorRole },
       { id: 'resultados' as NavigationTab, label: 'Conectar rastreamento Meta', icon: BarChart3, section: 'Gestão', subTab: 'tracking', roleRequired: 'owner' as OperatorRole },
     ] : []),
-    { id: 'playbook' as NavigationTab, label: isProductionMvp ? 'IA & Conhecimento da empresa' : 'Sales AI Playbook & Inteligência', icon: Bot, section: 'Inteligência', roleRequired: 'admin' as OperatorRole },
-    ...(!isProductionMvp && (showQaSimulator || isAdmin) ? [
-      { id: 'simulador' as NavigationTab, label: 'Simulador de QA & Estresse', icon: Zap, section: 'Inteligência', roleRequired: 'admin' as OperatorRole },
-    ] : []),
+    { id: 'playbook' as NavigationTab, label: isProductionMvp ? 'IA & Conhecimento da empresa' : 'Sales AI Playbook & Inteligência', icon: Bot, section: 'Inteligência', roleRequired: 'operator' as OperatorRole },
+    { id: 'simulador' as NavigationTab, label: 'Simulador & Treinador IA', icon: Zap, section: 'Inteligência', roleRequired: 'operator' as OperatorRole },
     { id: 'configuracoes', label: 'Configurações do Workspace', icon: Settings, section: 'Sistema', roleRequired: 'owner' },
   ];
 
@@ -662,11 +663,13 @@ export const AppShell: React.FC<AppShellProps> = ({
                             { id: 'profile', label: 'Perfil da Empresa' },
                             { id: 'knowledge', label: 'Base de Conhecimento' },
                             { id: 'catalog', label: 'Catálogo de Serviços' },
+                            { id: 'simulator', label: 'Simulador & Treinador IA' },
                             { id: 'diagnosis', label: 'Diagnóstico da operação' },
                           ] : [
                             { id: 'profile', label: 'Perfil da Empresa' },
                             { id: 'knowledge', label: 'Base de Conhecimento' },
                             { id: 'catalog', label: 'Catálogo de Serviços' },
+                            { id: 'simulator', label: 'Simulador & Treinador IA' },
                             { id: 'agent', label: 'Robôs Especialistas' },
                             { id: 'learning', label: 'Curadoria & Aprendizado' },
                             { id: 'thesis', label: 'Tese & Tom de Voz' },
@@ -1045,6 +1048,17 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </button>
               )}
 
+              {isProductionMvp && (
+                <button
+                  onClick={() => setEkoBonusOpen(true)}
+                  className="p-1.5 rounded-lg text-emerald-300 hover:text-emerald-200 hover:bg-emerald-950/40 transition-colors cursor-pointer"
+                  title="Bônus EKO de implantação"
+                  aria-label="Abrir bônus EKO"
+                >
+                  <Gift className="w-3.5 h-3.5 shrink-0" />
+                </button>
+              )}
+
               <button
                 onClick={() => setHelpModalOpen(true)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-colors cursor-pointer"
@@ -1166,6 +1180,22 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <span className="hidden sm:inline">Guia de Início</span>
               </button>
             )}
+
+            {/* Direct Quick Access to Simulador IA */}
+            <button
+              id="topbar-simulador-btn"
+              onClick={() => onChangeTab('simulador')}
+              className={`h-8 sm:h-9 px-2.5 rounded-xl border transition-all flex items-center justify-center gap-1.5 text-xs font-bold shadow-2xs cursor-pointer active:scale-95 shrink-0 ${
+                activeTab === 'simulador'
+                  ? 'bg-purple-600 text-white border-purple-700 shadow-purple-600/30'
+                  : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
+              }`}
+              title="Abrir Simulador e Testes de IA"
+              aria-label="Simulador IA"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+              <span className="inline font-bold">Simulador IA</span>
+            </button>
 
             {/* Mobile Search Button */}
             <button
@@ -1513,6 +1543,14 @@ export const AppShell: React.FC<AppShellProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {isProductionMvp && (
+        <EkoBonusModal
+          workspaceId={currentWorkspace.id}
+          isOpen={ekoBonusOpen}
+          onClose={() => setEkoBonusOpen(false)}
+        />
       )}
     </div>
   );
