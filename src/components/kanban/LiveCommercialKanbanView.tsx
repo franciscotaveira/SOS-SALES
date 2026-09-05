@@ -426,6 +426,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activePipelineId, setActivePipelineId] = useState<string>('general');
+  const [mobileActiveStage, setMobileActiveStage] = useState<string>('LEAD');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [draggedJourneyId, setDraggedJourneyId] = useState<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
@@ -737,9 +738,150 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
         </div>
       )}
 
-      {/* Kanban Board Grid - Largura Total */}
+      {/* Mobile Stage Selector Strip */}
+      <div className="md:hidden flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 touch-scroll">
+        {columnsData.map((col) => (
+          <button
+            key={col.id}
+            onClick={() => setMobileActiveStage(col.id)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all flex items-center gap-1.5 cursor-pointer ${
+              mobileActiveStage === col.id
+                ? 'bg-[var(--sos-ink)] text-white shadow-xs'
+                : 'bg-[var(--sos-surface)] border border-[var(--sos-border)] text-[var(--sos-muted)] hover:text-[var(--sos-ink)]'
+            }`}
+          >
+            <span>{col.title}</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-extrabold ${col.badgeBg} ${col.badgeText}`}>
+              {col.items.length}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Mobile Single Column View (Full Width) */}
+      <div className="md:hidden flex-1 min-h-0 flex flex-col bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-xl overflow-hidden shadow-2xs">
+        {(() => {
+          const col = columnsData.find((c) => c.id === mobileActiveStage) || columnsData[0];
+          if (!col) return null;
+          const colIdx = columnsData.findIndex((c) => c.id === col.id);
+
+          return (
+            <div className="flex flex-col h-full min-h-0">
+              <div className={`p-2.5 border-b bg-slate-50/70 flex items-center justify-between ${col.headerBorder}`}>
+                <div className="min-w-0">
+                  <span className="font-bold text-xs text-[var(--sos-ink)] block font-heading truncate">{col.title}</span>
+                  <div className="truncate text-[10px] text-[var(--sos-muted)]">{col.subtitle}</div>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${col.badgeBg} ${col.badgeText} shrink-0`}>
+                  {col.items.length} oportunidades
+                </span>
+              </div>
+
+              <div className="flex-1 p-2 space-y-2 overflow-y-auto min-h-0 touch-scroll">
+                {loading ? (
+                  <div className="space-y-2 pt-2">
+                    <div className="h-20 bg-[var(--sos-border)]/40 rounded-xl animate-pulse" />
+                    <div className="h-20 bg-[var(--sos-border)]/40 rounded-xl animate-pulse" />
+                  </div>
+                ) : col.items.length === 0 ? (
+                  <div className="h-40 flex flex-col items-center justify-center text-center p-4 text-[var(--sos-muted)]">
+                    <span className="text-xs font-medium">Nenhum lead nesta etapa</span>
+                  </div>
+                ) : (
+                  col.items.map((journey) => {
+                    const isUpdating = updatingId === journey.id;
+                    const title = journey.contactName || (journey.contactPhone ? `Contato +${journey.contactPhone}` : 'Novo Lead');
+                    const serviceInfo = detectKanbanService(journey, isHairSalon);
+                    const normalizedStage = normalizeStage(journey.pipelineStage);
+                    const isHot = normalizedStage === 'PROPOSTA' || normalizedStage === 'NEGOCIACAO' || (journey as any).slaState === 'OVERDUE';
+                    const isWarm = normalizedStage === 'QUALIFICADO';
+                    const leadBadge = isHot
+                      ? { label: 'Etapa avançada', bg: 'bg-amber-100 text-amber-900 border-amber-300' }
+                      : isWarm
+                        ? { label: 'Qualificado', bg: 'bg-blue-100 text-blue-900 border-blue-300' }
+                        : { label: 'Novo', bg: 'bg-slate-100 text-slate-700 border-slate-300' };
+
+                    return (
+                      <div
+                        key={journey.id}
+                        onClick={() => {
+                          onSelectJourney?.(journey.id);
+                          onSwitchToCockpit?.();
+                        }}
+                        className={`p-3 bg-white border border-[var(--sos-border)] border-l-4 ${col.accentColor} rounded-xl shadow-xs transition-all active:scale-[0.99] space-y-2 cursor-pointer ${
+                          isUpdating ? 'animate-pulse' : ''
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2 min-w-0">
+                            <ContactAvatar
+                              name={journey.contactName}
+                              phone={journey.contactPhone}
+                              workspaceId={workspaceId}
+                              avatarUrl={(journey as any)?.contactAvatar || (journey as any)?.avatarUrl}
+                              size="sm"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-[var(--sos-ink)] truncate font-heading">
+                                {title}
+                              </p>
+                              {journey.contactPhone && (
+                                <p className="text-[10px] text-[var(--sos-muted)] font-mono">
+                                  {journey.contactPhone}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border shrink-0 ${leadBadge.bg}`}>
+                            {leadBadge.label}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border truncate max-w-[80%] shadow-2xs ${serviceInfo.bg}`}>
+                            {serviceInfo.tag}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 text-[10.5px] text-slate-500">
+                          <span className="font-medium">
+                            {new Date(journey.updatedAt).toLocaleDateString('pt-BR')}
+                          </span>
+
+                          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            {colIdx > 0 && (
+                              <button
+                                disabled={isUpdating}
+                                onClick={(e) => handleStageMove(journey, 'prev', e)}
+                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-bold transition flex items-center gap-0.5 text-[10px]"
+                              >
+                                <ArrowLeft className="w-3 h-3" /> Voltar
+                              </button>
+                            )}
+                            {colIdx < activePipeline.columns.length - 1 && (
+                              <button
+                                disabled={isUpdating}
+                                onClick={(e) => handleStageMove(journey, 'next', e)}
+                                className="px-2 py-1 bg-[var(--sos-action)] hover:bg-[var(--sos-action-hover)] text-white rounded-lg font-bold transition flex items-center gap-0.5 text-[10px] shadow-2xs"
+                              >
+                                Avançar <ArrowRight className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Desktop Kanban Board Grid - Largura Total */}
       <div
-        className="grid grid-cols-1 gap-2.5 flex-1 min-h-0 overflow-x-auto"
+        className="hidden md:grid gap-2.5 flex-1 min-h-0 overflow-x-auto"
         style={{ gridTemplateColumns: `repeat(${columnsData.length}, minmax(240px, 1fr))` }}
       >
         {columnsData.map((col, colIdx) => {

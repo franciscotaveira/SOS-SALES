@@ -1059,7 +1059,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   };
 
   return (
-    <div className="h-screen max-h-screen w-screen overflow-hidden flex bg-[#F5F7FA] text-[#101828]">
+    <div className="h-screen h-dvh max-h-screen max-h-dvh w-screen overflow-hidden flex flex-col lg:flex-row bg-[#F5F7FA] text-[#101828]">
       {/* Desktop Persistent Sidebar (232px expanded / 72px collapsed) */}
       <aside
         id="app-persistent-sidebar"
@@ -1082,63 +1082,81 @@ export const AppShell: React.FC<AppShellProps> = ({
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-150"
             onClick={() => setMobileDrawerOpen(false)}
           />
-          <div className="relative flex flex-col w-[260px] bg-[#0B132B] text-white h-full shadow-2xl z-10 animate-in slide-in-from-left duration-200 overflow-hidden">
+          <div className="relative flex flex-col w-[280px] bg-[#0B132B] text-white h-full pt-safe pb-safe shadow-2xl z-10 animate-in slide-in-from-left duration-200 overflow-hidden">
             {renderNavContent(true)}
           </div>
         </div>
       )}
 
       {/* Main App Workspace */}
-      <div className="flex-1 h-full max-h-screen flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 h-full max-h-screen max-h-dvh flex flex-col min-w-0 overflow-hidden">
         {/* Sleek Compact TopBar (Search + Notifications Only) */}
         <header
           id="app-topbar"
-          className="h-11 bg-white border-b border-slate-200 shrink-0 px-3 sm:px-4 flex items-center justify-between z-20 shadow-2xs"
+          className="h-12 lg:h-11 bg-white border-b border-slate-200 shrink-0 px-3 sm:px-4 pt-safe flex items-center justify-between z-20 shadow-2xs"
         >
-          {/* Left: Mobile Drawer Trigger (Mobile Only) */}
+          {/* Left: Mobile Brand & Drawer Trigger (Mobile Only) */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setMobileDrawerOpen(true)}
-              className="lg:hidden p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:ring-2 focus-visible:ring-[#00A884]"
+              className="lg:hidden p-2 -ml-1 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:ring-2 focus-visible:ring-[#00A884]"
               aria-label="Abrir menu de navegação"
             >
               <Menu className="w-5 h-5" />
             </button>
+            <div className="lg:hidden flex items-center gap-1.5">
+              <div className="w-6 h-6 rounded-md bg-[#001f18] border border-[#00a884]/40 flex items-center justify-center shrink-0">
+                <Flame className="w-3.5 h-3.5 text-[#00A884]" />
+              </div>
+              <span className="font-heading font-black text-xs text-slate-900 tracking-tight truncate max-w-[110px]">
+                {currentWorkspace.name}
+              </span>
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  isChannelOnline
+                    ? 'bg-emerald-500 animate-pulse'
+                    : isOfficialChannelConfigured
+                    ? 'bg-sky-500'
+                    : 'bg-rose-500'
+                }`}
+                title={channelBadgeCopy}
+              />
+            </div>
           </div>
 
           {/* Center: Global Search / Command Palette Trigger (Ctrl+K) */}
-          <div className="flex items-center flex-1 max-w-[400px] mx-auto">
+          <div className="flex items-center flex-1 max-w-[400px] mx-2">
             <button
               onClick={() => setSearchModalOpen(true)}
-              className="w-full h-9 flex items-center justify-between px-3 bg-slate-100/90 hover:bg-slate-200/80 border border-slate-200 rounded-xl text-xs text-slate-500 transition-colors shadow-2xs cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
+              className="w-full h-8 sm:h-9 flex items-center justify-between px-2.5 sm:px-3 bg-slate-100/90 hover:bg-slate-200/80 border border-slate-200 rounded-xl text-xs text-slate-500 transition-colors shadow-2xs cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <Search className="w-3.5 h-3.5 text-slate-400" />
-                <span>Buscar telas e comandos...</span>
+                <span className="truncate">Buscar...</span>
               </div>
-              <kbd className="text-[10px] font-mono bg-white border border-slate-300 rounded px-1.5 py-0.5 text-slate-500 font-semibold shadow-2xs">
+              <kbd className="hidden sm:inline-block text-[10px] font-mono bg-white border border-slate-300 rounded px-1.5 py-0.5 text-slate-500 font-semibold shadow-2xs">
                 ⌘K
               </kbd>
             </button>
           </div>
 
           {/* Right: Notifications Popover (SLA Alerts) */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <div className="relative">
               <button
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
-                className="h-9 p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors relative flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
+                className="h-9 w-9 p-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors relative flex items-center justify-center cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
                 title="Notificações e Alertas de SLA"
                 aria-label="Ver notificações de SLA"
               >
                 <Bell className="w-4 h-4" />
                 {pendingPrioritiesCount > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500" />
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
                 )}
               </button>
 
               {notificationsOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-50 text-xs space-y-2 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-50 text-xs space-y-2 animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                     <span className="font-bold text-slate-900 font-heading">Alertas de Atendimento</span>
                     <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold">
@@ -1180,9 +1198,105 @@ export const AppShell: React.FC<AppShellProps> = ({
         </header>
 
         {/* Workspace Main Outlet */}
-        <main id="app-main-outlet" className="flex-1 min-h-0 h-[calc(100vh-3.25rem)] w-full flex flex-col overflow-hidden relative">
+        <main
+          id="app-main-outlet"
+          className="flex-1 min-h-0 w-full flex flex-col overflow-hidden relative pb-[64px] lg:pb-0"
+        >
           {children}
         </main>
+
+        {/* Mobile Bottom Navigation Bar (High Touch Ergonomics) */}
+        <nav
+          id="app-mobile-bottom-nav"
+          aria-label="Navegação mobile rápida"
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B132B]/95 backdrop-blur-md border-t border-slate-800/90 px-1 py-1 pb-safe flex items-center justify-around shadow-2xl"
+        >
+          {/* 1. Agora (Cockpit Prioritário) */}
+          <button
+            onClick={() => handleNavClick('agora')}
+            className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
+              activeTab === 'agora'
+                ? 'text-[#00A884] font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <div className="relative">
+              <Flame className={`w-5 h-5 transition-transform ${activeTab === 'agora' ? 'scale-110 text-[#00A884]' : ''}`} />
+              {pendingPrioritiesCount > 0 && (
+                <span className="absolute -top-1 -right-2 bg-rose-600 text-white text-[9px] font-extrabold px-1 rounded-full ring-2 ring-[#0B132B]">
+                  {pendingPrioritiesCount > 9 ? '9+' : pendingPrioritiesCount}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] mt-0.5 tracking-tight">Agora</span>
+            {activeTab === 'agora' && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00A884] absolute bottom-0.5" />
+            )}
+          </button>
+
+          {/* 2. Conversas (Chat 1:1) */}
+          <button
+            onClick={() => handleNavClick('conversas', 'list')}
+            className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
+              activeTab === 'conversas' && activeConversationsMode === 'list'
+                ? 'text-[#00A884] font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <MessageSquare className={`w-5 h-5 transition-transform ${activeTab === 'conversas' && activeConversationsMode === 'list' ? 'scale-110 text-[#00A884]' : ''}`} />
+            <span className="text-[10px] mt-0.5 tracking-tight">Conversas</span>
+            {activeTab === 'conversas' && activeConversationsMode === 'list' && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00A884] absolute bottom-0.5" />
+            )}
+          </button>
+
+          {/* 3. Funil Kanban */}
+          {showKanban && (
+            <button
+              onClick={() => handleNavClick('conversas', 'kanban')}
+              className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
+                activeTab === 'conversas' && activeConversationsMode === 'kanban'
+                  ? 'text-[#00A884] font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Columns3 className={`w-5 h-5 transition-transform ${activeTab === 'conversas' && activeConversationsMode === 'kanban' ? 'scale-110 text-[#00A884]' : ''}`} />
+              <span className="text-[10px] mt-0.5 tracking-tight">Funil</span>
+              {activeTab === 'conversas' && activeConversationsMode === 'kanban' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00A884] absolute bottom-0.5" />
+              )}
+            </button>
+          )}
+
+          {/* 4. IA / Conhecimento (ou Agenda) */}
+          <button
+            onClick={() => handleNavClick('playbook')}
+            className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
+              activeTab === 'playbook'
+                ? 'text-[#00A884] font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Bot className={`w-5 h-5 transition-transform ${activeTab === 'playbook' ? 'scale-110 text-[#00A884]' : ''}`} />
+            <span className="text-[10px] mt-0.5 tracking-tight">IA</span>
+            {activeTab === 'playbook' && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00A884] absolute bottom-0.5" />
+            )}
+          </button>
+
+          {/* 5. Menu Completo (Abre Drawer Lateral) */}
+          <button
+            onClick={() => setMobileDrawerOpen(true)}
+            className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all ${
+              mobileDrawerOpen || activeTab === 'configuracoes' || activeTab === 'clientes' || activeTab === 'resultados'
+                ? 'text-[#00A884] font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Settings className="w-5 h-5" />
+            <span className="text-[10px] mt-0.5 tracking-tight">Mais</span>
+          </button>
+        </nav>
       </div>
 
       {/* Global Search / Command Palette Modal */}

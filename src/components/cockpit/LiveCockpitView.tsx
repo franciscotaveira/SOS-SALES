@@ -1119,10 +1119,14 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         </div>
       </div>
 
-      {/* Main 2-Column Focus Layout (Full Width) */}
-      <div className="grid flex-1 min-h-0 gap-2.5 grid-cols-1 md:grid-cols-[290px_minmax(0,1fr)] overflow-hidden w-full">
-        {/* Priority / All Conversations Sidebar */}
-        <aside className="bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col h-full min-h-0 overflow-hidden">
+      {/* Main 2-Column Focus Layout (Master-Detail on Mobile) */}
+      <div className="flex-1 min-h-0 grid gap-2.5 grid-cols-1 md:grid-cols-[290px_minmax(0,1fr)] overflow-hidden w-full">
+        {/* Priority / All Conversations Sidebar (Visible when no chat selected on mobile, always visible on desktop) */}
+        <aside
+          className={`${
+            selectedJourneyId ? "hidden md:flex" : "flex"
+          } bg-white border border-slate-200 rounded-2xl shadow-xs flex-col h-full min-h-0 overflow-hidden`}
+        >
           <div className="border-b border-slate-100 bg-slate-50/70 p-2 space-y-1.5 shrink-0">
             {/* Tab switchers: Linha 1 (Fluxos de Atendimento) */}
             <div className="grid grid-cols-3 gap-1 bg-slate-200/70 p-0.5 rounded-xl text-[10.5px] font-bold">
@@ -1218,7 +1222,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             </div>
           </div>
 
-          <div className="space-y-1.5 overflow-y-auto p-1.5 flex-1 min-h-0">
+          <div className="space-y-1.5 overflow-y-auto p-1.5 flex-1 min-h-0 touch-scroll">
             {priorities.state === "loading" && journeys.state === "loading" ? (
               <p className="px-2 py-5 text-sm text-slate-500 text-center">Carregando contatos…</p>
             ) : null}
@@ -1241,8 +1245,12 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           </div>
         </aside>
 
-        {/* Central Conversation and Actions */}
-        <section className="bg-white border border-slate-200 rounded-2xl shadow-xs min-w-0 flex flex-col h-full min-h-0 overflow-hidden">
+        {/* Central Conversation and Actions (Full width when selected on mobile) */}
+        <section
+          className={`${
+            selectedJourneyId ? "flex" : "hidden md:flex"
+          } bg-white border border-slate-200 rounded-2xl shadow-xs min-w-0 flex-col h-full min-h-0 overflow-hidden`}
+        >
           {cockpit.state === "loading" && (
             <div className="flex h-full min-h-[400px] items-center justify-center text-sm text-slate-500">
               Carregando contexto da conversa…
@@ -1278,6 +1286,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               onCreateOutboundDraft={handleCreateOutboundDraft}
               onClearCurrentJourney={handleClearCurrentJourney}
               onUpdateContactName={handleUpdateContactName}
+              onBackToQueue={() => onSelectedJourneyChange(undefined)}
               actionInProgress={actionInProgress}
             />
           )}
@@ -1424,6 +1433,7 @@ function LiveJourneyBody({
   onCreateOutboundDraft,
   onClearCurrentJourney,
   onUpdateContactName,
+  onBackToQueue,
   loyaltyMap,
   onToggleLoyalty,
   actionInProgress,
@@ -1448,6 +1458,7 @@ function LiveJourneyBody({
   onCreateOutboundDraft: (text: string) => void;
   onClearCurrentJourney?: () => void;
   onUpdateContactName?: (newName: string) => void | Promise<void>;
+  onBackToQueue?: () => void;
   actionInProgress: boolean;
 }) {
   const { journey, acquisitionContexts, messages, decisionState, recommendation, handoff, outcome, knownFacts } = view;
@@ -1909,11 +1920,22 @@ function LiveJourneyBody({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full overflow-hidden">
-      {/* 1. CABEÇALHO DO CHAT (Ultra Limpo & Focado) */}
-      <header className="border-b border-slate-100 bg-white px-3.5 py-2 shrink-0">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          {/* Esquerda: Identificação do Contato */}
-          <div className="flex items-center gap-2.5 min-w-0">
+      {/* 1. CABEÇALHO DO CHAT (Mobile First & Ultra Limpo) */}
+      <header className="border-b border-slate-100 bg-white px-2.5 sm:px-3.5 py-2 shrink-0">
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap">
+          {/* Esquerda: Identificação do Contato + Botão Voltar Mobile */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">
+            {onBackToQueue && (
+              <button
+                type="button"
+                onClick={onBackToQueue}
+                className="md:hidden p-1.5 -ml-1 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition cursor-pointer shrink-0"
+                title="Voltar para a lista de conversas"
+                aria-label="Voltar para a fila"
+              >
+                <ChevronLeft size={20} />
+              </button>
+            )}
             <ContactAvatar
               name={journey.contact.name}
               phone={journey.contact.phone}
@@ -1921,11 +1943,11 @@ function LiveJourneyBody({
               avatarUrl={(journey.contact as any)?.avatarUrl || (journey as any)?.leadAvatar}
               size="md"
               showOnlineBadge={isWindowActive}
-              className="shadow-2xs"
+              className="shadow-2xs shrink-0"
             />
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="font-bold text-sm text-slate-900 truncate font-heading">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap sm:flex-nowrap">
+                <p className="font-bold text-xs sm:text-sm text-slate-900 truncate font-heading max-w-[120px] sm:max-w-none">
                   {journey.contact.name || "Contato WhatsApp"}
                 </p>
                 <button
@@ -1939,27 +1961,27 @@ function LiveJourneyBody({
                   title="Editar nome do contato"
                   className="p-0.5 text-slate-400 hover:text-slate-700 rounded transition cursor-pointer"
                 >
-                  <Edit2 size={12} />
+                  <Edit2 size={11} />
                 </button>
                 <button
                   type="button"
                   onClick={() => onToggleLoyalty?.(journey.id, journey.contact.phone)}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border transition-all cursor-pointer shadow-2xs hover:scale-105 ${loyalty.badgeClass}`}
+                  className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold border transition-all cursor-pointer shadow-2xs hover:scale-105 shrink-0 ${loyalty.badgeClass}`}
                   title="Clique para alternar entre Cliente Recorrente e Novo Lead"
                 >
                   {loyalty.label}
                 </button>
                 {isWindowActive && (
-                  <span className="rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 text-[9.5px] font-bold text-emerald-800 flex items-center gap-0.5">
+                  <span className="hidden sm:inline-flex rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 text-[9.5px] font-bold text-emerald-800 items-center gap-0.5">
                     <Clock size={10} />
                     {(Number(hoursRemaining) || 0).toFixed(1)}h
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <span className="font-mono text-[11px]">{journey.contact.phone}</span>
+              <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-slate-500 truncate">
+                <span className="font-mono text-[10px] sm:text-[11px]">{journey.contact.phone}</span>
                 <span className="text-slate-300">•</span>
-                <span className="text-[11px] font-semibold text-slate-700 truncate max-w-[150px]">
+                <span className="text-[10px] sm:text-[11px] font-semibold text-slate-700 truncate max-w-[120px] sm:max-w-[150px]">
                   {acquisition?.campaignName || "Origem não atribuída"}
                 </span>
               </div>
@@ -1967,15 +1989,26 @@ function LiveJourneyBody({
           </div>
 
           {/* Direita: Ações Essenciais */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            {/* Botão Dossiê IA (Acesso Direto em Mobile & Desktop) */}
+            <button
+              type="button"
+              onClick={() => (onOpenDossierFocus || onToggleDossier)?.()}
+              className="inline-flex items-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-950 px-2 sm:px-2.5 py-1 text-xs font-bold transition cursor-pointer shadow-2xs"
+              title="Abrir Dossiê Completo do Lead & IA"
+            >
+              <Sparkles size={13} className="text-indigo-600" />
+              <span className="hidden sm:inline">Dossiê</span>
+            </button>
+
             {isHandoffActive && !handoff.acceptedAt && (
               <button
                 type="button"
                 onClick={() => onAcceptHandoff(handoff.id)}
                 disabled={actionInProgress}
-                className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 px-2 sm:px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
               >
-                <UserCheck size={13} /> Assumir
+                <UserCheck size={13} /> <span className="hidden sm:inline">Assumir</span>
               </button>
             )}
 
@@ -1983,17 +2016,17 @@ function LiveJourneyBody({
               type="button"
               onClick={onOpenFollowUpModal}
               disabled={actionInProgress}
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2 sm:px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
             >
-              <Clock size={13} /> Follow-up
+              <Clock size={13} /> <span className="hidden sm:inline">Follow-up</span>
             </button>
 
-            {/* Etapa do Funil */}
+            {/* Etapa do Funil (Desktop) */}
             <select
               value={currentNormalized}
               onChange={(e) => onStageChange(e.target.value)}
               disabled={actionInProgress}
-              className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-800 shadow-2xs focus:ring-1 focus:ring-emerald-600 cursor-pointer"
+              className="hidden sm:inline-block rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-800 shadow-2xs focus:ring-1 focus:ring-emerald-600 cursor-pointer"
             >
               {PIPELINE_STAGES.map((s) => (
                 <option key={s.value} value={s.value}>
@@ -2007,9 +2040,9 @@ function LiveJourneyBody({
               type="button"
               onClick={onOpenOutcomeModal}
               disabled={actionInProgress}
-              className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-2 sm:px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-2xs"
             >
-              <CheckCircle2 size={13} /> Concluir
+              <CheckCircle2 size={13} /> <span className="hidden sm:inline">Concluir</span>
             </button>
 
             <div className="relative">
@@ -2020,10 +2053,31 @@ function LiveJourneyBody({
                 aria-expanded={moreActionsOpen}
                 aria-label="Mais ações da conversa"
               >
-                <MoreHorizontal size={14} /> Mais
+                <MoreHorizontal size={14} /> <span className="hidden sm:inline">Mais</span>
               </button>
               {moreActionsOpen && (
                 <div className="absolute right-0 top-full z-40 mt-1 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                  {/* Etapa no dropdown para mobile */}
+                  <div className="sm:hidden px-2.5 py-1.5 border-b border-slate-100">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Etapa do Funil
+                    </label>
+                    <select
+                      value={currentNormalized}
+                      onChange={(e) => {
+                        onStageChange(e.target.value);
+                        setMoreActionsOpen(false);
+                      }}
+                      className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-1 text-slate-800"
+                    >
+                      {PIPELINE_STAGES.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => {
