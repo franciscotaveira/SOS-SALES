@@ -699,7 +699,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                    NVIDIA NIM Llama 3.3 · Zero Alucinação
+                    NVIDIA NIM Nemotron 3.5 · Guardrails comerciais ativos
                   </span>
                 </div>
               </div>
