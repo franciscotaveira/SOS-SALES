@@ -12,6 +12,12 @@ iaparavendas.tech, www.iaparavendas.tech {
         try_files {path} /index.html
         file_server
     }
+    @productsBare path /produtos
+    redir @productsBare /produtos/ 308
+    handle_path /produtos/* {
+        root * /var/www/landing/produtos
+        file_server
+    }
     handle {
         root * /var/www/landing
         try_files {path} /index.html
