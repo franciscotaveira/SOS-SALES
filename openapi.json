@@ -1151,6 +1151,29 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/bonuses/eko": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "description": "Retorna o bônus EKO de implantação quando a assinatura Cakto está vigente.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/billing/claim": {
       "post": {
         "tags": [
@@ -2128,7 +2151,7 @@
                   },
                   "model": {
                     "type": "string",
-                    "default": "meta/llama-3.1-70b-instruct"
+                    "default": "nvidia/nemotron-3.5-lightning-30b-a3b"
                   },
                   "prompt": {
                     "type": "string",
@@ -2475,6 +2498,44 @@
             },
             "in": "path",
             "name": "docId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/agent/simulator/chat": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/agent/simulator/calibrate": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
             "required": true
           }
         ],

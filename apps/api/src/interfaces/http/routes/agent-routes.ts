@@ -25,6 +25,7 @@ import {
 import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.js';
 import { analyzeConversationDossier, MessageLike } from '../../../application/services/cognitive-analyzer.js';
+import { SOS_SALES_DEFAULT_CATALOG_TEXT, SOS_SALES_DEFAULT_PRICE_SUMMARY } from '../../../application/services/commercial-offers.js';
 
 interface BotParams {
   workspaceId: string;
@@ -95,6 +96,11 @@ interface WorkspaceAgentRuntimeConfig {
 
 type DatabaseQuery = typeof dbPool.query;
 const defaultDatabaseQuery = dbPool.query.bind(dbPool) as DatabaseQuery;
+const MAX_SIMULATOR_MESSAGE_CHARS = 4_000;
+const MAX_SIMULATOR_HISTORY_MESSAGES = 24;
+const MAX_SIMULATOR_HISTORY_MESSAGE_CHARS = 4_000;
+const MAX_TRAINER_DIRECTIVES = 100;
+const MAX_TRAINER_DIRECTIVE_CHARS = 1_000;
 
 function asObject(value: unknown): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
@@ -309,7 +315,7 @@ function isProviderConfigured(): boolean {
   const enabled = process.env.RECEPTIONIST_ENABLED?.trim().toLowerCase() === 'true';
   const apiKey = process.env.NVIDIA_API_KEY?.trim() || '';
   const baseUrl = process.env.NVIDIA_NIM_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1';
-  const model = process.env.NVIDIA_NIM_MODEL?.trim() || 'meta/llama-3.1-70b-instruct';
+  const model = process.env.NVIDIA_NIM_MODEL?.trim() || NVIDIA_MODEL_TIERS.FAST;
   let validBaseUrl = false;
   try {
     validBaseUrl = new URL(baseUrl).protocol === 'https:';
@@ -606,7 +612,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           responderChangedAt,
           responderChangeReason,
           engine: 'nvidia_nim',
-          model: process.env.NVIDIA_NIM_MODEL || 'meta/llama-3.1-70b-instruct',
+          model: process.env.NVIDIA_NIM_MODEL || NVIDIA_MODEL_TIERS.FAST,
           receptionistEnabled: process.env.RECEPTIONIST_ENABLED === 'true',
           autonomyMode: runtimeConfig.autonomyMode,
           workspaceRuntimeEnabled: runtimeConfig.runtimeEnabled,
@@ -1097,9 +1103,14 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       if (!workspaceId) return reply.status(404).send({ error: 'Workspace não encontrado' });
 
       const body = request.body || {};
-      const userMessage = (body.message || '').trim();
+      const userMessage = typeof body.message === 'string'
+        ? body.message.trim()
+        : '';
       if (!userMessage) {
         return reply.status(400).send({ error: 'Mensagem vazia' });
+      }
+      if (userMessage.length > MAX_SIMULATOR_MESSAGE_CHARS) {
+        return reply.status(413).send({ error: `Mensagem excede o limite de ${MAX_SIMULATOR_MESSAGE_CHARS} caracteres` });
       }
 
       // 1. INTERCEPTAÇÃO DE COMANDOS DO TREINADOR (In-Chat Direct Tuning)
@@ -1107,13 +1118,21 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         const parts = userMessage.split(' ');
         const cmd = parts[0].toLowerCase();
         const arg = parts.slice(1).join(' ').trim();
+        if (arg.length > MAX_TRAINER_DIRECTIVE_CHARS) {
+          return reply.status(413).send({ error: `Parâmetro do comando excede o limite de ${MAX_TRAINER_DIRECTIVE_CHARS} caracteres` });
+        }
 
         if (cmd === '/regra' || cmd === '/diretriz') {
           if (!arg) return reply.status(400).send({ error: 'Especifique a regra após o comando. Ex: /regra Não conceder desconto sem autorização' });
           const bundleRes = await query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`, [workspaceId]);
-          const bundle = bundleRes.rows[0]?.bundle || {};
-          const currentDirectives = Array.isArray(bundle.directives) ? bundle.directives : [];
-          currentDirectives.push(arg);
+          const bundle = asObject(bundleRes.rows[0]?.bundle);
+          const currentDirectives = Array.isArray(bundle.directives)
+            ? bundle.directives
+              .filter((item): item is string => typeof item === 'string')
+              .map((item) => item.slice(0, MAX_TRAINER_DIRECTIVE_CHARS))
+              .slice(-MAX_TRAINER_DIRECTIVES + 1)
+            : [];
+          currentDirectives.push(arg.slice(0, MAX_TRAINER_DIRECTIVE_CHARS));
           bundle.directives = currentDirectives;
           await query(
             `INSERT INTO public.workspace_intelligence_bundles (workspace_id, bundle, updated_at)
@@ -1131,11 +1150,16 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         }
 
         if (cmd === '/preco' || cmd === '/valor') {
-          if (!arg) return reply.status(400).send({ error: 'Especifique a política de preço. Ex: /preco Plano Anual por 12x de R$ 97' });
+          if (!arg) return reply.status(400).send({ error: 'Especifique a política de preço. Ex: /preco Plano Anual no Pix por R$ 582 à vista' });
           const bundleRes = await query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`, [workspaceId]);
-          const bundle = bundleRes.rows[0]?.bundle || {};
-          const currentDirectives = Array.isArray(bundle.directives) ? bundle.directives : [];
-          currentDirectives.push(`Política de Preço: ${arg}`);
+          const bundle = asObject(bundleRes.rows[0]?.bundle);
+          const currentDirectives = Array.isArray(bundle.directives)
+            ? bundle.directives
+              .filter((item): item is string => typeof item === 'string')
+              .map((item) => item.slice(0, MAX_TRAINER_DIRECTIVE_CHARS))
+              .slice(-MAX_TRAINER_DIRECTIVES + 1)
+            : [];
+          currentDirectives.push(`Política de Preço: ${arg}`.slice(0, MAX_TRAINER_DIRECTIVE_CHARS));
           bundle.directives = currentDirectives;
           await query(
             `INSERT INTO public.workspace_intelligence_bundles (workspace_id, bundle, updated_at)
@@ -1211,11 +1235,17 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       }
 
       // 2. CONSTRUÇÃO DO HISTÓRICO PARA ANÁLISE COGNITIVA
-      const rawHistory = body.history || [];
+      const rawHistory = Array.isArray(body.history)
+        ? body.history.slice(-MAX_SIMULATOR_HISTORY_MESSAGES)
+        : [];
       const messagesForAnalysis: MessageLike[] = rawHistory.map((h) => ({
         direction: (h.role === 'customer' || h.role === 'user') ? 'INBOUND' : 'OUTBOUND',
         senderType: (h.role === 'customer' || h.role === 'user') ? 'CUSTOMER' : 'AI_AGENT',
-        text: h.content || h.text || '',
+        text: typeof h.content === 'string'
+          ? h.content.trim().slice(0, MAX_SIMULATOR_HISTORY_MESSAGE_CHARS)
+          : typeof h.text === 'string'
+            ? h.text.trim().slice(0, MAX_SIMULATOR_HISTORY_MESSAGE_CHARS)
+            : '',
         sentAt: new Date().toISOString(),
       }));
 
@@ -1228,7 +1258,10 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       });
 
       // 3. EXECUTA O MOTOR COGNITIVO SOBERANO
-      const dossier = analyzeConversationDossier(messagesForAnalysis, body.contactName || 'Lead Interessado');
+      const contactName = typeof body.contactName === 'string' && body.contactName.trim()
+        ? body.contactName.trim().slice(0, 120)
+        : 'Lead Interessado';
+      const dossier = analyzeConversationDossier(messagesForAnalysis, contactName);
 
       // 4. CARREGA CONFIGURAÇÕES REAIS DO WORKSPACE
       const [agentConfigRes, opSettingsRes, intelligenceRes] = await Promise.all([
@@ -1254,7 +1287,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       if (catalog.length > 0) {
         catalogText = catalog.map((item: any) => `- ${item.name || item.title}: ${item.price || item.value || 'Sob consulta'} (${item.description || ''})`).join('\n');
       } else {
-        catalogText = `- Plano Anual Empresa Amiga: 12x de R$ 97,00 (Total R$ 1.164,00 c/ 50% de desconto)\n- Plano Mensal Flexível: R$ 197,00/mês (sem fidelidade)\n- Plano Escala VIP: R$ 1.497,00/mês (multi-atendentes e IA avançada)`;
+        catalogText = SOS_SALES_DEFAULT_CATALOG_TEXT;
       }
 
       // 5. ENGENHARIA DE SYSTEM PROMPT COGNITIVO (Framework Francisco Rios)
@@ -1287,7 +1320,11 @@ MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
       for (const h of rawHistory.slice(-8)) {
         llmMessages.push({
           role: (h.role === 'customer' || h.role === 'user') ? 'user' : 'assistant',
-          content: h.content || h.text || '',
+          content: typeof h.content === 'string'
+            ? h.content.trim().slice(0, MAX_SIMULATOR_HISTORY_MESSAGE_CHARS)
+            : typeof h.text === 'string'
+              ? h.text.trim().slice(0, MAX_SIMULATOR_HISTORY_MESSAGE_CHARS)
+              : '',
         });
       }
 
@@ -1313,7 +1350,7 @@ MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
           generatedReply = orResult.content || '';
           modelUsed = orResult.model || 'openrouter-default';
         } catch (orErr) {
-          generatedReply = dossier.smallestNextMove?.draftText || `Olá! O nosso Plano Anual Empresa Amiga está em condição promocional por 12x de R$ 97,00. Quer garantir sua ativação hoje?`;
+          generatedReply = dossier.smallestNextMove?.draftText || `Olá! ${SOS_SALES_DEFAULT_PRICE_SUMMARY} Quer que eu te envie o checkout da opção que faz mais sentido?`;
           modelUsed = 'sos-rule-engine-fallback';
         }
       }
@@ -1358,18 +1395,30 @@ MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
       if (!workspaceId) return reply.status(404).send({ error: 'Workspace não encontrado' });
 
       const body = request.body || {};
-      const instruction = (body.correctionInstruction || '').trim();
-      const lastCustomerMessage = (body.lastCustomerMessage || '').trim();
+      const instruction = typeof body.correctionInstruction === 'string'
+        ? body.correctionInstruction.trim()
+        : '';
+      const lastCustomerMessage = typeof body.lastCustomerMessage === 'string'
+        ? body.lastCustomerMessage.trim().slice(0, MAX_SIMULATOR_MESSAGE_CHARS)
+        : '';
 
       if (!instruction) {
         return reply.status(400).send({ error: 'Instrução de calibração é obrigatória' });
       }
 
       // 1. PERSISTE A DIRETRIZ CORRETIVA NO BANCO
+      if (instruction.length > MAX_TRAINER_DIRECTIVE_CHARS) {
+        return reply.status(413).send({ error: `Instrução excede o limite de ${MAX_TRAINER_DIRECTIVE_CHARS} caracteres` });
+      }
       const bundleRes = await query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`, [workspaceId]);
-      const bundle = bundleRes.rows[0]?.bundle || {};
-      const currentDirectives = Array.isArray(bundle.directives) ? bundle.directives : [];
-      currentDirectives.push(`Regra Corretiva: ${instruction}`);
+      const bundle = asObject(bundleRes.rows[0]?.bundle);
+      const currentDirectives = Array.isArray(bundle.directives)
+        ? bundle.directives
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.slice(0, MAX_TRAINER_DIRECTIVE_CHARS))
+          .slice(-MAX_TRAINER_DIRECTIVES + 1)
+        : [];
+      currentDirectives.push(`Regra Corretiva: ${instruction}`.slice(0, MAX_TRAINER_DIRECTIVE_CHARS));
       bundle.directives = currentDirectives;
 
       await query(

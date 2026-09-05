@@ -1,8 +1,13 @@
 import pg from 'pg';
 const { Client } = pg;
 
+const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL (ou SUPABASE_DB_URL) deve ser fornecida por variável de ambiente.');
+}
+
 const client = new Client({
-  connectionString: 'postgresql://sos_sales_runtime.yiiuebhyqixzluguxsqi:Ntr%2A82469356@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
+  connectionString,
   ssl: { rejectUnauthorized: false },
 });
 
@@ -15,17 +20,23 @@ async function run() {
   // 1. Workspace Agent Config
   const services = JSON.stringify([
     {
-      name: 'Plano Anual SOS Vendas (Incentivo 50% OFF)',
-      price: 1164.0,
-      recurrence: '12x de R$ 97/mês (Total R$ 1.164,00)',
+      name: 'Plano Anual SOS Vendas (Pix · 50% OFF)',
+      price: 582.0,
+      recurrence: 'R$ 582,00 à vista no Pix',
       description: 'Acesso completo ao SOS Vendas para 1 número comercial + 5 operadores + Motor de Inteligência Comercial e Recuperação Automática de Vendas.',
-      conversionTriggerPitch: 'O Plano Anual com incentivo do Programa Empresa Amiga sai de R$ 197 por apenas 12x de R$ 97. Recuperando 1 venda por mês o sistema já se paga com sobra!',
+      conversionTriggerPitch: 'O Plano Anual no Pix está com 50% OFF no lançamento e sai por R$ 582,00 à vista. Quer receber o checkout dessa condição?',
     },
     {
       name: 'Plano Mensal Flexível SOS Vendas',
-      price: 197.0,
-      recurrence: 'R$ 197/mês',
+      price: 97.0,
+      recurrence: 'R$ 97,00/mês',
       description: 'Acesso completo ao Cockpit Comercial, fila com SLA, Copilot 1-Clique, Traffic Proof Meta CAPI e até 5 operadores.',
+    },
+    {
+      name: 'Plano Anual SOS Vendas (Cartão · 40% OFF)',
+      price: 698.4,
+      recurrence: '12x de R$ 58,20',
+      description: 'Acesso completo ao SOS Vendas com um ano de previsibilidade e desconto no cartão.',
     },
     {
       name: 'Plano Escala VIP (Mentoria & Implementação)',
@@ -35,7 +46,7 @@ async function run() {
     },
   ]);
 
-  const prompt = `Você é a Sofia, especialista comercial do SOS Vendas. Seu objetivo é ajudar empresários e gestores a entenderem como o SOS Vendas estanca o prejuízo de clientes perdidos no vácuo do WhatsApp, demonstrando a velocidade das respostas em 1 clique e o subsídio de 50% do Programa Empresa Amiga (12x R$ 97). Reforce a garantia incondicional de 7 dias com reembolso integral e os dados protegidos no Brasil.`;
+  const prompt = `Você é a Sofia, especialista comercial do SOS Vendas. Seu objetivo é ajudar empresários e gestores a reduzir o prejuízo de clientes perdidos no vácuo do WhatsApp, demonstrando a velocidade das respostas em 1 clique e as condições ativas da Cakto: mensal R$ 97,00; anual no Pix R$ 582,00 à vista (50% OFF); anual no cartão 12x de R$ 58,20 (40% OFF). Nunca invente desconto, prazo, garantia ou condição fora da oferta publicada.`;
 
   const qAgent = `
     UPDATE public.workspace_agent_config
@@ -97,7 +108,7 @@ async function run() {
       {
         id: 'oferta',
         label: '🏷️ Oferta Empresa Amiga (50% OFF)',
-        template: 'Oi {{nome}}! O Plano Anual com incentivo do Programa Empresa Amiga sai de R$ 197 por apenas 12x de R$ 97. Vamos garantir sua ativação agora com 7 dias de garantia?',
+        template: 'Oi {{nome}}! O Plano Anual no Pix está com 50% OFF no lançamento e sai por R$ 582,00 à vista. Quer que eu te envie o checkout?',
       },
       {
         id: 'localizacao',

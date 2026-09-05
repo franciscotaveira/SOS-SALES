@@ -12,7 +12,7 @@ function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>) {
         rowCount: 1,
         rows: [{
           bundle: {
-            catalog: [{ name: 'Plano Anual Empresa Amiga', price: '12x de R$ 97,00' }],
+            catalog: [{ name: 'Plano Anual no Pix', price: 'R$ 582,00 à vista' }],
             directives: ['Priorizar atendimento humanizado'],
           },
         }],
@@ -157,6 +157,38 @@ describe('Agent Simulator Routes (Meta Business AI Pattern)', () => {
       expect.stringContaining('workspace_intelligence_bundles'),
       expect.any(Array),
     );
+    await app.close();
+  });
+
+  it('rejects oversized trainer input before touching the database or model', async () => {
+    const { app, query } = buildRouteApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/agent/simulator/chat`,
+      headers: { authorization: 'Bearer valid.jwt.token' },
+      payload: { message: `/regra ${'x'.repeat(1_001)}` },
+    });
+
+    expect(response.statusCode).toBe(413);
+    expect(query).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('treats malformed history and contact values as empty safe input', async () => {
+    const { app } = buildRouteApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/agent/simulator/chat`,
+      headers: { authorization: 'Bearer valid.jwt.token' },
+      payload: {
+        message: 'Quero conhecer os planos.',
+        history: 'não é um array',
+        contactName: 42,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().dossier).toBeDefined();
     await app.close();
   });
 });

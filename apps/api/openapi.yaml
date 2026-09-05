@@ -1,5 +1,5 @@
 # SOS Vendas API — OpenAPI 3.0.3
-# Auto-gerado por scripts/generate-openapi.ts em 2026-09-05T07:26:28.121Z
+# Auto-gerado por scripts/generate-openapi.ts em 2026-09-05T11:32:48.717Z
 # NÃO EDITAR MANUALMENTE — regenere com: npm run generate:openapi
 openapi: 3.0.3
 info:
@@ -749,6 +749,21 @@ paths:
       responses:
         200:
           description: Default Response
+  /api/v1/workspaces/{workspaceId}/bonuses/eko:
+    get:
+      tags:
+        - Billing
+      description: Retorna o bônus EKO de implantação quando a assinatura Cakto está vigente.
+      parameters:
+        -
+          schema:
+            type: string
+          in: path
+          name: workspaceId
+          required: true
+      responses:
+        200:
+          description: Default Response
   /api/v1/workspaces/{workspaceId}/billing/claim:
     post:
       tags:
@@ -1376,7 +1391,7 @@ paths:
                   type: string
                 model:
                   type: string
-                  default: meta/llama-3.1-70b-instruct
+                  default: nvidia/nemotron-3.5-lightning-30b-a3b
                 prompt:
                   type: string
                   default: "Olá! Responda como especialista comercial do SOS Vendas em 2 linhas."
@@ -1601,6 +1616,30 @@ paths:
             type: string
           in: path
           name: docId
+          required: true
+      responses:
+        200:
+          description: Default Response
+  /api/v1/workspaces/{workspaceId}/agent/simulator/chat:
+    post:
+      parameters:
+        -
+          schema:
+            type: string
+          in: path
+          name: workspaceId
+          required: true
+      responses:
+        200:
+          description: Default Response
+  /api/v1/workspaces/{workspaceId}/agent/simulator/calibrate:
+    post:
+      parameters:
+        -
+          schema:
+            type: string
+          in: path
+          name: workspaceId
           required: true
       responses:
         200:

@@ -2,7 +2,7 @@
  * TX COMMERCIAL CORE — AI RECEPTIONIST SYSTEM PROMPTS
  *
  * Prompts soberanos parametrizáveis por workspace.
- * Otimizados para meta/llama-3.1-70b-instruct
+ * Otimizados para o modelo FAST configurado no motor NVIDIA NIM
  * via NVIDIA NIM (https://integrate.api.nvidia.com/v1)
  */
 

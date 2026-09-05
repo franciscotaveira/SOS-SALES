@@ -14,9 +14,9 @@ const MODELS_TO_BENCHMARK = [
 const TEST_SCENARIOS = [
   {
     name: 'Cenário 1: Quebra de Objeção de Preço & Incentivo 50%',
-    systemPrompt: 'Você é a Sofia, consultora comercial do SOS Sales. Responda em português para WhatsApp com no máximo 3 frases curtas e objetivas, destacando o benefício de 50% no plano anual (12x R$ 97).',
-    userMessage: 'Achei R$ 197 por mês um pouco caro para a minha loja. Tem algum desconto?',
-    successCriteria: 'Mencionar o desconto de 50% no plano anual (12x R$ 97) de forma cordial e sem inventar outro valor.',
+    systemPrompt: 'Você é a Sofia, consultora comercial do SOS Vendas. Responda em português para WhatsApp com no máximo 3 frases curtas e objetivas, apresentando as condições ativas: mensal R$ 97,00; anual no Pix R$ 582,00 à vista (50% OFF); anual no cartão 12x de R$ 58,20 (40% OFF).',
+    userMessage: 'Achei R$ 97 por mês um pouco caro para a minha loja. Tem algum desconto?',
+    successCriteria: 'Apresentar uma condição anual ativa de forma cordial e sem inventar outro valor.',
   },
   {
     name: 'Cenário 2: Velocidade & Solução de Vácuo',

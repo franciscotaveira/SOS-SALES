@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
+import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.js';
 import { MultimodalVisionAnalyzer } from '../../../infrastructure/ai/multimodal-vision-analyzer.js';
 import { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
@@ -166,7 +166,7 @@ export const aiCopilotRoutes: FastifyPluginAsync<AiCopilotRoutesOptions> = async
           type: 'object',
           properties: {
             apiKey: { type: 'string' },
-            model: { type: 'string', default: 'meta/llama-3.1-70b-instruct' },
+            model: { type: 'string', default: NVIDIA_MODEL_TIERS.FAST },
             prompt: { type: 'string', default: 'Olá! Responda como especialista comercial do SOS Vendas em 2 linhas.' },
           },
         },

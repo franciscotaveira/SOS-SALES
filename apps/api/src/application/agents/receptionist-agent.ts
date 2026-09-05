@@ -11,7 +11,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
+import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
 import { WabaClient } from '../../infrastructure/channels/meta/waba-client.js';
 import { WahaOutboundAdapter } from '../../infrastructure/channels/waha/waha-outbound-adapter.js';
 import { dbPool } from '../../infrastructure/database/pool.js';
@@ -252,7 +252,7 @@ export function getReceptionistActionPolicy(decision: ReceptionistDecision): Rec
 }
 
 const GEMINI_BOOK_FLOW_ID = process.env.WABA_BOOKING_FLOW_ID || '';
-const NVIDIA_MODEL = process.env.NVIDIA_NIM_MODEL || 'meta/llama-3.1-70b-instruct';
+const NVIDIA_MODEL = process.env.NVIDIA_NIM_MODEL || NVIDIA_MODEL_TIERS.FAST;
 
 type JsonRecord = Record<string, unknown>;
 

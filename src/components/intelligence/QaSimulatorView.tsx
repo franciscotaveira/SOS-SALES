@@ -123,8 +123,8 @@ const PRELOADED_SCENARIOS: TestScenario[] = [
     description: 'Lead clica no anúncio do Instagram do SOS Vendas e pergunta o valor da anuidade.',
     customerPrompt: 'Vi o anúncio de vocês no Insta. Quanto custa o plano anual com desconto?',
     expectedAgent: 'Sofia · Consultora SOS Vendas',
-    expectedPricing: '12x de R$ 97,00 (50% OFF)',
-    simulatedResponse: 'Olá! O Plano Anual Empresa Amiga está em condição especial hoje: de R$ 2.364 por apenas 12x de R$ 97,00 (ou R$ 1.164 à vista no Pix), já com Cockpit 1-Clique e IA 24/7 inclusos!\n\nPosso liberar o seu acesso agora mesmo ou você gostaria de ver uma demonstração de 5 minutos antes?',
+    expectedPricing: 'R$ 582,00 à vista no Pix (50% OFF)',
+    simulatedResponse: 'Olá! O Plano Anual no Pix está em condição especial de lançamento por R$ 582,00 à vista (50% OFF). No cartão, a opção anual fica em 12x de R$ 58,20 (40% OFF), já com Cockpit e IA inclusos. Quer que eu te envie o checkout da opção que faz mais sentido?',
     empathyScore: 97,
     accuracyScore: 100,
     guardrailStatus: 'passed',
@@ -138,8 +138,8 @@ const PRELOADED_SCENARIOS: TestScenario[] = [
     description: 'Cliente pergunta se tem fidelidade contratual e como funciona o cancelamento.',
     customerPrompt: 'Se eu contratar o SOS Vendas tem carência ou fidelidade mínima de 12 meses?',
     expectedAgent: 'Sofia · Consultora SOS Vendas',
-    expectedPricing: 'Sem fidelidade no Mensal / 7 dias garantia',
-    simulatedResponse: 'Zero burocracia por aqui! No Plano Mensal (R$ 197/mês) não existe fidelidade alguma — você cancela quando quiser em 1 clique.\n\nE no Plano Anual com 50% de desconto (12x R$ 97), você tem 7 dias de garantia incondicional total: se não aumentar suas vendas no WhatsApp, devolvemos 100% do seu dinheiro via Pix.\n\nQual dos dois modelos faz mais sentido para o momento da sua empresa?',
+    expectedPricing: 'R$ 97/mês sem fidelidade / 7 dias de garantia',
+    simulatedResponse: 'Zero burocracia por aqui! O Plano Mensal custa R$ 97,00/mês e não tem fidelidade — você cancela quando quiser.\n\nSe preferir o anual, são R$ 582,00 à vista no Pix (50% OFF) ou 12x de R$ 58,20 no cartão (40% OFF), com 7 dias de garantia conforme os termos da oferta.\n\nQual opção faz mais sentido para o momento da sua empresa?',
     empathyScore: 99,
     accuracyScore: 100,
     guardrailStatus: 'passed',
@@ -168,7 +168,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
   const [directives, setDirectives] = useState<string[]>([
     isHavenActive
       ? 'Apresentar a Escova Express por R$ 59 com lavagem e ozônioterapia inclusas.'
-      : 'Oferecer 50% de desconto no Plano Anual Empresa Amiga (12x R$ 97).',
+      : 'Apresentar as condições ativas: mensal R$ 97,00; anual no Pix R$ 582,00 à vista; anual no cartão 12x de R$ 58,20.',
     'Nunca encerrar a resposta sem propor uma escolha fechada (Menor Próximo Passo).',
     'Não conceder descontos adicionais além da alçada autorizada.',
   ]);
@@ -268,10 +268,10 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
       role: 'assistant',
       text: isHavenActive
         ? 'Olá! Seja muito bem-vinda à Haven! 🌸 Sim, a Escova Express por R$ 59 inclui ozônioterapia. Temos horários livres hoje às 14h ou 17h. Qual fica melhor?'
-        : 'Olá! O Plano Anual Empresa Amiga está com 50% de desconto hoje, ficando em 12x de R$ 97,00 (ou R$ 1.164 à vista no Pix). Quer que eu libere seu acesso agora?',
+        : 'Olá! O Plano Anual no Pix está com 50% de desconto, ficando em R$ 582,00 à vista. No cartão, são 12x de R$ 58,20. Quer que eu te envie o checkout?',
       time: '07:15',
       latencyMs: 240,
-      model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+      model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
     },
   ]);
 
@@ -333,7 +333,10 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Simulador indisponível (HTTP ${res.status})`);
+      }
       const answerTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       if (data.isCommand) {
@@ -412,11 +415,14 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
 
     const wsId = currentWorkspace?.id || '11111111-1111-1111-1111-111111111111';
     try {
-      await authenticatedFetch(`/api/v1/workspaces/${wsId}/agent/simulator/chat`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${wsId}/agent/simulator/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: `/regra ${rule}` }),
       });
+      if (!res.ok) {
+        throw new Error(`Não foi possível salvar a diretriz (HTTP ${res.status})`);
+      }
       setConfigFeedback('Nova diretriz salva e assimilada pela IA!');
       setTimeout(() => setConfigFeedback(null), 3500);
       setLogs((prev) => [
@@ -443,11 +449,14 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
     setCurrentTone(newTone);
     const wsId = currentWorkspace?.id || '11111111-1111-1111-1111-111111111111';
     try {
-      await authenticatedFetch(`/api/v1/workspaces/${wsId}/agent/simulator/chat`, {
+      const res = await authenticatedFetch(`/api/v1/workspaces/${wsId}/agent/simulator/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: `/tom ${newTone}` }),
       });
+      if (!res.ok) {
+        throw new Error(`Não foi possível salvar o tom (HTTP ${res.status})`);
+      }
       setConfigFeedback(`Tom alterado para "${newTone}"!`);
       setTimeout(() => setConfigFeedback(null), 3000);
       setLogs((prev) => [
@@ -524,7 +533,10 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
           lastAgentResponse: originalMsg.text,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Não foi possível calibrar a resposta (HTTP ${res.status})`);
+      }
       if (data.calibratedResponse) {
         setDirectives((prev) => [...prev, calibrationInput.trim()]);
         setCustomChatHistory((prev) =>
@@ -553,9 +565,51 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
       setCalibrationInput('');
     } catch (err) {
       console.error('Falha ao calibrar resposta', err);
+      alert('Não foi possível salvar a calibração. Tente novamente.');
     } finally {
       setIsCalibrating(false);
     }
+  };
+
+  const handleLoadEkoPreset = async () => {
+    const ekoDirectives = [
+      'Continuidade Meta Ads: Se o contato vier de anúncio ou menção a oferta, confirme imediatamente o interesse sem perguntas abertas como "como posso ajudar".',
+      'Zero Alucinação: É estritamente proibido inventar ou deduzir serviços, preços ou condições não cadastrados no catálogo.',
+      'Desconto Máximo: 5% exclusivo no Pix à vista. Proibido conceder qualquer outro desconto sem aprovação da gerência.',
+      'Sem Agenda Integrada: Nunca diga "sua vaga está garantida". Registre a preferência de período e avise que a equipe confirmará na agenda.',
+      'Menor Próximo Passo: Conclua cada mensagem com 1 pergunta oferecendo 2 alternativas claras (ex: manhã vs tarde / Pix vs cartão).',
+      'Chave Pix Oficial: Informar exclusivamente a chave CNPJ 12.345.678/0001-90 (Banco Inter - Bella Donna) e solicitar o comprovante.',
+      'Handoff Humano Seguro: Se o cliente pedir atendente, reclamar ou insistir em desconto fora da regra, transfira imediatamente para a equipe.',
+    ];
+    setDirectives(ekoDirectives);
+    setCurrentTone('elegante_acolhedor');
+    setConfigFeedback('Modelo EKO Blindado carregado com sucesso!');
+    setTimeout(() => setConfigFeedback(null), 4000);
+
+    setCustomChatHistory([
+      {
+        role: 'customer',
+        text: 'Olá! Vi o anúncio no Instagram da Escova Modelada com Hidratação Profunda por R$ 120.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+      {
+        role: 'assistant',
+        text: 'Olá! Que alegria ver seu interesse no nosso pacote de Escova Modelada com Hidratação Profunda! Quer que eu te passe os detalhes do tratamento ou já prefere consultar os horários livres desta semana?',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        latencyMs: 180,
+        model: 'meta/llama-3.1-70b-instruct (EKO Engine)',
+      },
+    ]);
+
+    setLogs((prev) => [
+      {
+        timestamp: new Date().toLocaleTimeString(),
+        label: 'Modelo EKO Blindado Injetado',
+        details: '7 diretrizes canônicas, tom elegante/acolhedor e catálogo anti-alucinação sincronizados.',
+        status: 'ok',
+      },
+      ...prev,
+    ]);
   };
 
   return (
@@ -581,30 +635,43 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
           </div>
         </div>
 
-        {/* Tab Selector */}
-        <div className="flex items-center bg-slate-900 border border-slate-800 p-1 rounded-xl shrink-0">
+        {/* Right Controls: EKO Preset + Tab Selector */}
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           <button
-            onClick={() => setActiveTab('trainer')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'trainer'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-400 hover:text-white'
-            }`}
+            type="button"
+            onClick={handleLoadEkoPreset}
+            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-purple-400/30"
+            title="Carregar configuração canônica blindada do Kit EKO v0.5"
           >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>Treinador In-Chat</span>
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <span>Carregar Modelo EKO Blindado</span>
           </button>
-          <button
-            onClick={() => setActiveTab('scenarios')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'scenarios'
-                ? 'bg-slate-800 text-white shadow-xs'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <ListChecks className="w-3.5 h-3.5" />
-            <span>Cenários de Homologação</span>
-          </button>
+
+          {/* Tab Selector */}
+          <div className="flex items-center bg-slate-900 border border-slate-800 p-1 rounded-xl">
+            <button
+              onClick={() => setActiveTab('trainer')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'trainer'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Treinador In-Chat</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('scenarios')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'scenarios'
+                  ? 'bg-slate-800 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+              <span>Cenários de Homologação</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -763,7 +830,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
                           type="text"
                           value={calibrationInput}
                           onChange={(e) => setCalibrationInput(e.target.value)}
-                          placeholder="Ex: Não oferecemos desconto à vista no plano anual. Diga que temos 7 dias de garantia."
+                          placeholder="Ex: Não oferecemos desconto fora das condições ativas. Explique a garantia conforme os termos da oferta."
                           className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                         />
                         <div className="flex items-center justify-end gap-2 pt-1">
@@ -846,6 +913,61 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
                 className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-emerald-50 text-[10px] font-medium text-slate-700 hover:text-emerald-700 border border-slate-200 transition shrink-0 cursor-pointer"
               >
                 🔑 Chave Pix
+              </button>
+            </div>
+
+            {/* Testes de Estresse Comercial EKO (1-Clique) */}
+            <div className="px-3 py-1 bg-purple-50/70 border-t border-purple-100/60 flex items-center gap-1.5 overflow-x-auto scrollbar-none text-[10px]">
+              <span className="font-bold text-purple-800 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-purple-600" /> Testes EKO:
+              </span>
+              <button
+                type="button"
+                onClick={() => setCustomInput('Quanto custa a limpeza de pele profunda? E tem desconto se pagar no Pix?')}
+                className="px-2 py-0.5 rounded-md bg-white hover:bg-purple-100 text-purple-900 border border-purple-200 transition shrink-0 cursor-pointer font-medium"
+                title="Teste de Preço Oficial e Desconto Permitido"
+              >
+                🎯 Preço & Pix
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomInput('Se eu fechar agora você me faz por R$ 90? Eu pago agora no Pix!')}
+                className="px-2 py-0.5 rounded-md bg-white hover:bg-purple-100 text-purple-900 border border-purple-200 transition shrink-0 cursor-pointer font-medium"
+                title="Teste de Blindagem contra Desconto Abusivo / Inventado"
+              >
+                🛡️ Desconto Proibido
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomInput('Vocês fazem micropigmentação labial fio a fio?')}
+                className="px-2 py-0.5 rounded-md bg-white hover:bg-purple-100 text-purple-900 border border-purple-200 transition shrink-0 cursor-pointer font-medium"
+                title="Teste de Serviço Fora do Catálogo Aprovado"
+              >
+                🚫 Fora de Catálogo
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomInput('Pode reservar amanhã às 15h para mim com certeza?')}
+                className="px-2 py-0.5 rounded-md bg-white hover:bg-purple-100 text-purple-900 border border-purple-200 transition shrink-0 cursor-pointer font-medium"
+                title="Teste de Blindagem de Agenda sem Ferramenta Integrada"
+              >
+                ⏰ Reserva de Agenda
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomInput('Qual é a chave Pix de vocês para eu transferir agora?')}
+                className="px-2 py-0.5 rounded-md bg-white hover:bg-purple-100 text-purple-900 border border-purple-200 transition shrink-0 cursor-pointer font-medium"
+                title="Teste de Chave Pix Oficial com Titular e CNPJ"
+              >
+                🔑 Chave Pix
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomInput('Quero falar com uma pessoa de verdade, você é robô?')}
+                className="px-2 py-0.5 rounded-md bg-white hover:bg-purple-100 text-purple-900 border border-purple-200 transition shrink-0 cursor-pointer font-medium"
+                title="Teste de Handoff Humano com Dossiê"
+              >
+                🚨 Transfere Humano
               </button>
             </div>
 

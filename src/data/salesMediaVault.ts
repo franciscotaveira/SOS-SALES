@@ -124,7 +124,7 @@ export const defaultSalesMediaVault: SalesMediaResource[] = [
     title: 'Proposta Comercial SOS Vendas · Programa Empresa Amiga',
     authorOrSpeaker: 'MCT Tecnologia',
     category: 'Proposta & Planos',
-    description: 'Documento PDF com os detalhes do Plano Anual com 50% OFF (12x R$ 97) e garantia incondicional de 7 dias.',
+    description: 'Documento com os detalhes das condições ativas do SOS Vendas: mensal R$ 97,00; anual no Pix R$ 582,00 à vista (50% OFF); anual no cartão 12x de R$ 58,20 (40% OFF).',
     url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
     fileSizeFormatted: '1.2 MB',
     recommendedStages: ['PROPOSTA', 'NEGOCIACAO'],

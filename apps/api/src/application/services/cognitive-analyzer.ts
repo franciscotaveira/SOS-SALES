@@ -1,3 +1,5 @@
+import { SOS_SALES_OFFERS } from './commercial-offers.js';
+
 /**
  * SOS SALES - MOTOR COGNITIVO SOBERANO (Backend Edition)
  * Análise semântica e enriquecimento de jornada em tempo de leitura/escrita.
@@ -54,13 +56,17 @@ export interface InferredDossier {
 const SERVICE_PATTERNS = [
   // SaaS & SOS Vendas Commercial Patterns
   {
-    name: 'Plano Anual Empresa Amiga (12x R$ 97)',
-    keywords: ['anual', 'empresa amiga', '12x', '97', 'anuidade', 'plano anual', 'licença anual', 'desconto anual', 'promoção anual'],
+    name: 'Planos Anuais SOS Vendas (Pix ou Cartão)',
+    keywords: [
+      'anual', 'empresa amiga', 'anuidade', 'plano anual', 'licença anual',
+      'licenca anual', 'desconto anual', 'promoção anual', 'promocao anual',
+      '582', '698,40', '698.40', '58,20', '58.20', 'pix', 'cartão', 'cartao',
+    ],
     weight: 12,
   },
   {
-    name: 'Plano Mensal Flexível (R$ 197/mês)',
-    keywords: ['mensal', 'mensalidade', '197', 'flexivel', 'flexível', 'plano mensal', 'sem fidelidade'],
+    name: `${SOS_SALES_OFFERS.monthly.name} (${SOS_SALES_OFFERS.monthly.displayPrice})`,
+    keywords: ['mensal', 'mensalidade', '97', 'flexivel', 'flexível', 'plano mensal', 'sem fidelidade'],
     weight: 10,
   },
   {

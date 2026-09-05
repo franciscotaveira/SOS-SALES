@@ -7,7 +7,7 @@
 
 const NIM_BASE_URL = process.env.NVIDIA_NIM_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 const NIM_API_KEY = process.env.NVIDIA_API_KEY;
-const NIM_MODEL = process.env.NVIDIA_NIM_MODEL || 'meta/llama-3.1-70b-instruct';
+const NIM_MODEL = process.env.NVIDIA_NIM_MODEL || 'nvidia/nemotron-3.5-lightning-30b-a3b';
 
 if (!NIM_API_KEY) {
   console.error('❌ NVIDIA_API_KEY não encontrada');

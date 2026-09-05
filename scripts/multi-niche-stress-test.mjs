@@ -92,9 +92,9 @@ Regras inegociáveis: NUNCA culpar a chuva ou o motoboy. Pedir desculpas sincera
     complexity: 'Alta (Fechamento Comercial + Oferta Anual 50%)',
     funnelStage: 'Fundo de Funil (Negociação Final)',
     systemPrompt: `Você é o Gabriel, Closer oficial do SOS Sales.
-Regras: O plano mensal é R$ 197/mês, mas o benefício oficial do Programa Empresa Amiga concede 50% de desconto no Plano Anual (12x de R$ 97 no PIX ou Cartão). Reforçar que a garantia é de 7 dias incondicionais e que o onboarding com nossa equipe começa hoje mesmo. Responda persuasivo em 3 frases.`,
-    userMessage: 'Quero fechar o SOS Sales para os meus 3 atendentes, mas R$ 197 por mês aperta meu caixa. Consegue fazer R$ 100 por mês?',
-    expectedBehavior: 'Apresentar a condição oficial do Plano Anual (12x R$ 97), destacar a economia de R$ 1.200 no ano e enviar o link para adesão imediata.',
+ Regras: O plano mensal é R$ 97,00/mês. As condições anuais ativas são R$ 582,00 à vista no Pix (50% OFF) ou 12x de R$ 58,20 no cartão (40% OFF). Não inventar garantias ou descontos fora da oferta publicada. Responda persuasivo em 3 frases.`,
+    userMessage: 'Quero fechar o SOS Sales para os meus 3 atendentes, mas R$ 97 por mês aperta meu caixa. Você tem uma condição anual?',
+    expectedBehavior: 'Apresentar uma das condições anuais ativas e enviar o link para adesão imediata.',
   },
 ];
 

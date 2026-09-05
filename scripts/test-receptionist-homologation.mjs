@@ -126,7 +126,7 @@ async function run() {
         'Authorization': `Bearer ${NIM_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'meta/llama-3.1-70b-instruct',
+        model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
         messages: testMessages,
         temperature: 0.25,
         max_tokens: 512,
