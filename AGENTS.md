@@ -18,8 +18,10 @@
 ## 2. ESTADO ATUAL (04 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `5d010661400c1e44d4f8b20b3a445d6ffb99f90e` (SOS Vendas Mobile App Experience & Native Touch UX)
+- Release ativa: `7c49a2cd4cdf1ba73c97e04476d4c93872fc2f9c` (SOS Vendas Color Palette Alignment & Unified Icon Semantics)
 - Experiência mobile nativa: Bottom Navigation Bar com safe-area insets, Cockpit master-detail (Lista ↔ Chat 1:1), Funil Kanban com seletor de etapas por pills e Dossiê IA acessível via modal/bottom sheet.
+- Sistema de cores padronizado (`--sos-action: #00A884`, `--sos-operational: #2563EB`, `--sos-ai: #7C3AED`, `--sos-warning: #D97706`, `--sos-danger: #DC2626`, `--sos-dark: #0B132B`).
+- Ícones Lucide alinhados: `Mais` (Menu), `Dossiê` (Sparkles), `Assumir` (UserCheck), `Concluir` (CheckCircle2), `Agora` (Flame), `Conversas` (MessageSquare), `Funil` (Columns3).
 - Interface operacional enxuta: Cockpit 1:1, Funil Kanban, Configurações de Canais & Traqueamento.
 - Espelhamento de Agenda Web (Trinks / Portal do Salão) destravado no Cockpit (`Alt + A`).
 - API: rotas E2E OK, auth Supabase + RLS multi-tenant, 44 tabelas no schema público.
