@@ -26,12 +26,12 @@
   - Composer com prevenção de auto-zoom no iOS (fonte 16px) e alternância nativa entre Microfone e Enviar ao digitar.
   - Funil Kanban e Central de Conversas sem overflow horizontal, com seletor de etapas por pills e cartões edge-to-edge.
 - Todos os agentes e módulos de IA padronizados no motor soberano **NVIDIA NIM** (`NvidiaNimEngine`):
-  - **Receptionist 24/7:** `meta/llama-3.1-70b-instruct` / `nvidia/llama-3.3-nemotron-super-49b-v1`
-  - **Copilot Comercial & Dossiê do Lead:** `meta/llama-3.1-70b-instruct`
+  - **Receptionist 24/7:** `nvidia/nemotron-3.5-lightning-30b-a3b` (NVIDIA NIM)
+  - **Copilot Comercial & Dossiê do Lead:** `nvidia/nemotron-3.5-lightning-30b-a3b`
   - **Visão & OCR Multimodal:** `meta/llama-3.2-11b-vision-instruct`
-  - **Reanimação de Vácuo / Ghosting:** `meta/llama-3.1-70b-instruct`
-  - **Evolução de Playbook:** `meta/llama-3.1-70b-instruct` / `deepseek-ai/deepseek-r1`
-  - **Retenção & LTV Pós-Venda:** `meta/llama-3.1-70b-instruct`
+  - **Reanimação de Vácuo / Ghosting:** `nvidia/nemotron-3.5-lightning-30b-a3b`
+  - **Evolução de Playbook:** `nvidia/nemotron-3.5-lightning-30b-a3b` / `deepseek-ai/deepseek-r1`
+  - **Retenção & LTV Pós-Venda:** `nvidia/nemotron-3.5-lightning-30b-a3b`
 - Experiência mobile nativa: Bottom Navigation Bar com safe-area insets, Cockpit master-detail (Lista ↔ Chat 1:1), Funil Kanban com seletor de etapas por pills e Dossiê IA acessível via modal/bottom sheet.
 - Sistema de cores padronizado (`--sos-action: #00A884`, `--sos-operational: #2563EB`, `--sos-ai: #7C3AED`, `--sos-warning: #D97706`, `--sos-danger: #DC2626`, `--sos-dark: #0B132B`).
 - Ícones Lucide alinhados: `Mais` (Menu), `Dossiê` (Sparkles), `Assumir` (UserCheck), `Concluir` (CheckCircle2), `Agora` (Flame), `Conversas` (MessageSquare), `Funil` (Columns3).
@@ -201,7 +201,7 @@ _Atualizado automaticamente pela AGY (Antigravity) em 18 Ago 2026_
 <claude-mem-context>
 # Memory Context
 
-# [SOS-SALES] recent context, 2026-09-05 8:32am GMT-3
+# [SOS-SALES] recent context, 2026-09-05 8:38am GMT-3
 
 No previous sessions found.
 </claude-mem-context>

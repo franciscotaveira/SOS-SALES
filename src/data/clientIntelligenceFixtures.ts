@@ -65,7 +65,7 @@ export const mockSalesOsIntelligence: ClientIntelligenceBundle = {
     targetAudience:
       'PMEs, clínicas, salões, estética, oficinas e prestadores de serviços que investem em anúncios ou recebem volume de WhatsApp.',
     guaranteesAndPolicies:
-      'Garantia incondicional de 7 dias com reembolso integral. Conformidade total com a LGPD e dados hospedados no Brasil.',
+      'Condições de cancelamento e reembolso somente conforme a oferta e os termos publicados. Conformidade total com a LGPD e dados hospedados no Brasil.',
     parkingAndAccessInfo: 'Suporte VIP direto no WhatsApp e Onboarding guiado com time de engenharia comercial.',
     acceptedPaymentMethods: ['PIX', 'Cartão de Crédito'],
   },

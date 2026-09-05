@@ -1,7 +1,7 @@
 # SOS SALES — PLAYBOOK COMERCIAL SOBERANO v2.0
 > **MCT LTDA | iAParaVendas.tech**
 > **Missão:** Transformar WhatsApp de PMEs em máquinas previsíveis de faturamento supervisionado.
-> **Oferta de Lançamento:** **R$ 97/mês (Plano Anual: R$ 1.164/ano)** ou R$ 197/mês (Avulso).
+> **Condições ativas na Cakto:** **R$ 97/mês** no mensal, **R$ 582,00 à vista no Pix (50% OFF)** ou **12x de R$ 58,20 no cartão (40% OFF)** no anual. O EKO é liberado dentro do CRM após a confirmação e vinculação da compra.
 
 ---
 
@@ -40,8 +40,8 @@ Após obter essas respostas, resuma a dor do lead e chame o Consultor Closer:
 ---
 
 ### 🤖 Agente 2: Closer Comercial (`@sos-closer-bot`)
-* **Papel:** Apresentar a solução contextualizada para o nicho, quebrar objeções e ofertar o Plano Anual de Lançamento por R$ 97/mês.
-* **Objetivo:** Gerar a Chave PIX / Link de Checkout de R$ 1.164,00 e fechar.
+* **Papel:** Apresentar a solução contextualizada para o nicho, quebrar objeções e ofertar a condição ativa da Cakto.
+* **Objetivo:** Gerar o checkout correto para a forma de pagamento escolhida e fechar sem inventar prazo, desconto ou garantia.
 
 ```text
 [SYSTEM PROMPT - CLOSER COMERCIAL]
@@ -50,11 +50,11 @@ Você é assertivo, seguro, empático e mestre em psicologia de fechamento comer
 Sua missão:
 1. Explicar como o Cockpit resolve o problema específico identificado pelo SDR.
 2. Destacar que a IA é SUPERVISIONADA: ela analisa a conversa e sugere a resposta perfeita, e o operador só clica em "Aprovar".
-3. Apresentar a Condição de Lançamento:
-   - "Estamos liberando a condição oficial de lançamento: de R$ 197/mês por apenas 12x de R$ 97 no Plano Anual (R$ 1.164 à vista)."
-   - Bônus: Cockpit + Até 5 operadores + Atribuição de ROAS Meta Ads + Playbook de Vendas completo.
+3. Apresentar as condições ativas:
+   - "No mensal, o SOS Vendas custa R$ 97 por mês. No anual, você pode pagar R$ 582,00 à vista no Pix (50% OFF) ou 12x de R$ 58,20 no cartão (40% OFF)."
+   - Bônus: EKO dentro do CRM após confirmação e vinculação, além do Cockpit, até 5 operadores e atribuição de resultados de Meta Ads.
 4. Chamada para Ação:
-   - "Para você já começar a operar hoje e conectar seu WhatsApp em 2 minutos, posso gerar sua chave PIX com o valor promocional congelado?"
+   - "Qual condição faz mais sentido: mensal, anual no Pix ou anual no cartão? Posso te enviar o checkout correspondente."
 ```
 
 ---
@@ -94,7 +94,7 @@ Assim que o pagamento for aprovado:
 
 ### Objeção 4: *"R$ 97 por mês é caro para o meu momento atual."*
 > **Resposta:**
-> *"Vamos fazer uma conta rápida: quanto custa o seu produto ou serviço? Se o SOS Sales te ajudar a fechar apenas 1 venda extra no mês inteiro que você teria perdido por demora, o sistema já se pagou com sobra. Na média, nossos clientes aumentam em +4% a conversão geral logo nas primeiras 2 semanas."*
+> *"Vamos fazer uma conta rápida: quanto vale uma venda que hoje pode ser perdida por demora ou falta de follow-up? O SOS Vendas organiza a fila e acelera a resposta; você escolhe entre R$ 97 no mensal ou uma condição anual com desconto, sem eu inventar uma promessa de resultado."*
 
 ---
 
@@ -103,10 +103,10 @@ Assim que o pagamento for aprovado:
 | Momento | Gatilho | Mensagem-Chave | Objetivo |
 |---|---|---|---|
 | **Minuto 0** | Lead iniciou conversa | Diagnóstico inicial pelo SDR em até 10s | Qualificar e engajar no ato |
-| **Minuto 3** | Respondeu diagnóstico | Apresentação personalizada + Oferta Lançamento R$ 97/mês | Gerar intenção de compra |
+| **Minuto 3** | Respondeu diagnóstico | Apresentação personalizada + condição ativa da Cakto | Gerar intenção de compra |
 | **+ 2 horas** | Visualizou proposta e não fechou | Vídeo curto de 45s mostrando o Cockpit funcionando | Prova visual e quebra de inércia |
-| **+ 24 horas** | Sem resposta | *"Conseguiu ver o vídeo? Só temos mais 3 vagas no lote de lançamento com o valor de R$ 97 congelado."* | Urgência e escassez honesta |
-| **+ 48 horas** | Follow-up final | *"Vou encerrar sua pré-reserva de lançamento hoje. Quer que eu mantenha sua condição ou posso liberar para o próximo da fila?"* | Fechamento ou desqualificação limpa |
+| **+ 24 horas** | Sem resposta | *"Conseguiu ver o vídeo? Se quiser, reenvio o checkout da condição vigente e tiro a sua dúvida principal."* | Retomar a decisão sem escassez artificial |
+| **+ 48 horas** | Follow-up final | *"Posso encerrar este atendimento por agora. Quer que eu deixe o link mensal, Pix anual ou cartão anual para você decidir com calma?"* | Fechamento ou desqualificação limpa |
 
 ---
 
@@ -116,4 +116,6 @@ Assim que o pagamento for aprovado:
 * **Área de Demonstração Interativa:** `https://iaparavendas.tech/#demo`
 * **CRM em Produção:** `https://crm.iaparavendas.tech`
 * **Documentação de API:** `https://crm.iaparavendas.tech/docs`
-* **Chave PIX Oficial de Checkout:** Gerada via integração Asaas / AbacatePay no valor de **R$ 1.164,00** (Plano Anual).
+* **Checkout mensal:** `https://pay.cakto.com.br/rjp9yrg_1086792`
+* **Checkout anual no Pix:** `https://pay.cakto.com.br/hi6kzc3`
+* **Checkout anual no cartão:** `https://pay.cakto.com.br/azum85z`

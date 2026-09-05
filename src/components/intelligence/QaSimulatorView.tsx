@@ -131,15 +131,15 @@ const PRELOADED_SCENARIOS: TestScenario[] = [
     explanation: 'Aplicou a Regra Anti-Regressão estrita: não perguntou como pode ajudar, informou o preço parcelado de imediato e ofertou escolha binária.',
   },
   {
-    id: 'sos-sales-garantia-fidelidade',
+    id: 'sos-sales-contrato-fidelidade',
     category: 'sos',
     title: '4. Objeção de Contrato & Fidelidade',
     badge: 'Menor Próximo Passo',
     description: 'Cliente pergunta se tem fidelidade contratual e como funciona o cancelamento.',
     customerPrompt: 'Se eu contratar o SOS Vendas tem carência ou fidelidade mínima de 12 meses?',
     expectedAgent: 'Sofia · Consultora SOS Vendas',
-    expectedPricing: 'R$ 97/mês sem fidelidade / 7 dias de garantia',
-    simulatedResponse: 'Zero burocracia por aqui! O Plano Mensal custa R$ 97,00/mês e não tem fidelidade — você cancela quando quiser.\n\nSe preferir o anual, são R$ 582,00 à vista no Pix (50% OFF) ou 12x de R$ 58,20 no cartão (40% OFF), com 7 dias de garantia conforme os termos da oferta.\n\nQual opção faz mais sentido para o momento da sua empresa?',
+    expectedPricing: 'R$ 97/mês sem fidelidade / condições da oferta',
+    simulatedResponse: 'Zero burocracia por aqui! O Plano Mensal custa R$ 97,00/mês e não tem fidelidade — você cancela conforme as condições contratadas.\n\nSe preferir o anual, são R$ 582,00 à vista no Pix (50% OFF) ou 12x de R$ 58,20 no cartão (40% OFF). Posso te enviar o checkout da opção que faz mais sentido?',
     empathyScore: 99,
     accuracyScore: 100,
     guardrailStatus: 'passed',
@@ -191,7 +191,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
       fileSize: '185 KB',
       status: 'INDEXED',
       chunks: 5,
-      summary: isHavenActive ? 'Diretrizes de encaixe na agenda Trinks e confirmação via WhatsApp.' : 'Script de desarmamento de objeções e garantia incondicional de 7 dias.',
+      summary: isHavenActive ? 'Diretrizes de encaixe na agenda Trinks e confirmação via WhatsApp.' : 'Script de desarmamento de objeções, condições comerciais e cancelamento.',
     },
   ]);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
@@ -578,7 +578,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
       'Desconto Máximo: 5% exclusivo no Pix à vista. Proibido conceder qualquer outro desconto sem aprovação da gerência.',
       'Sem Agenda Integrada: Nunca diga "sua vaga está garantida". Registre a preferência de período e avise que a equipe confirmará na agenda.',
       'Menor Próximo Passo: Conclua cada mensagem com 1 pergunta oferecendo 2 alternativas claras (ex: manhã vs tarde / Pix vs cartão).',
-      'Chave Pix Oficial: Informar exclusivamente a chave CNPJ 12.345.678/0001-90 (Banco Inter - Bella Donna) e solicitar o comprovante.',
+      'Chave Pix Oficial: Informar exclusivamente a chave Pix publicada nas configurações do workspace e solicitar o comprovante. Nunca inventar uma chave no simulador.',
       'Handoff Humano Seguro: Se o cliente pedir atendente, reclamar ou insistir em desconto fora da regra, transfira imediatamente para a equipe.',
     ];
     setDirectives(ekoDirectives);
@@ -597,7 +597,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
         text: 'Olá! Que alegria ver seu interesse no nosso pacote de Escova Modelada com Hidratação Profunda! Quer que eu te passe os detalhes do tratamento ou já prefere consultar os horários livres desta semana?',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         latencyMs: 180,
-        model: 'meta/llama-3.1-70b-instruct (EKO Engine)',
+        model: 'nvidia/nemotron-3.5-lightning-30b-a3b (EKO Engine)',
       },
     ]);
 

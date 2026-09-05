@@ -899,3 +899,23 @@
   - `apps/api/tests/unit/agent-simulator-routes.test.ts`
 - **Operational gate:** Homologar uma mensagem real no Docker Lab com a chave de provider configurada e observar resposta final, latência e fallback antes de qualquer ativação automática em produção.
 - **Date:** 2026-09-05
+
+---
+
+## Task 38: Catálogo comercial e limites do simulador devem refletir a oferta publicada
+- **Decision:** Usar as três ofertas Cakto ativas como fallback oficial do agente e do simulador: mensal R$ 97,00; anual no Pix R$ 582,00 à vista (50% OFF); anual no cartão 12x de R$ 58,20 (40% OFF). O simulador limita mensagens, histórico e diretrizes antes de persistir ou enviar ao provider.
+- **Rationale:**
+  1. Respostas antigas (R$ 197/mês e 12x R$ 97) contradiziam os checkouts atualmente publicados e poderiam treinar o operador com uma condição inexistente.
+  2. Histórico e diretrizes sem limite permitiam crescimento de payload e de bundle sem necessidade operacional.
+  3. O script de seed não pode conter credenciais de banco versionadas; a conexão passa a ser fornecida por variável de ambiente.
+- **Scope:**
+  - `apps/api/src/application/services/commercial-offers.ts`
+  - `apps/api/src/application/services/cognitive-analyzer.ts`
+  - `apps/api/src/interfaces/http/routes/agent-routes.ts`
+  - `apps/api/src/application/agents/receptionist-agent.ts`
+  - `apps/api/scripts/seed-commercial-agent-config.mjs`
+  - `src/components/intelligence/QaSimulatorView.tsx`
+  - `docs/SOS_SALES_COMMERCIAL_PLAYBOOK.md`
+  - `apps/api/tests/unit/agent-simulator-routes.test.ts`
+- **Operational gate:** Atualizar `NVIDIA_NIM_MODEL` no `.env.production` do VPS para o endpoint atual antes de promover; executar Docker Lab, suíte de testes e canário autenticado do simulador.
+- **Date:** 2026-09-05
