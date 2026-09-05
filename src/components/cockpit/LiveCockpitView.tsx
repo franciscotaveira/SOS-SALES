@@ -1994,10 +1994,10 @@ function LiveJourneyBody({
             <button
               type="button"
               onClick={() => (onOpenDossierFocus || onToggleDossier)?.()}
-              className="inline-flex items-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-950 px-2 sm:px-2.5 py-1 text-xs font-bold transition cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-950 px-2 sm:px-2.5 py-1 text-xs font-bold transition cursor-pointer shadow-2xs"
               title="Abrir Dossiê Completo do Lead & IA"
             >
-              <Sparkles size={13} className="text-indigo-600" />
+              <Sparkles size={13} className="text-[#7C3AED]" />
               <span className="hidden sm:inline">Dossiê</span>
             </button>
 
@@ -2008,7 +2008,7 @@ function LiveJourneyBody({
                 disabled={actionInProgress}
                 className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 px-2 sm:px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
               >
-                <UserCheck size={13} /> <span className="hidden sm:inline">Assumir</span>
+                <UserCheck size={13} className="text-[#2563EB]" /> <span className="hidden sm:inline">Assumir</span>
               </button>
             )}
 
@@ -2018,7 +2018,7 @@ function LiveJourneyBody({
               disabled={actionInProgress}
               className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2 sm:px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
             >
-              <Clock size={13} /> <span className="hidden sm:inline">Follow-up</span>
+              <Clock size={13} className="text-slate-500" /> <span className="hidden sm:inline">Follow-up</span>
             </button>
 
             {/* Etapa do Funil (Desktop) */}
@@ -2026,7 +2026,7 @@ function LiveJourneyBody({
               value={currentNormalized}
               onChange={(e) => onStageChange(e.target.value)}
               disabled={actionInProgress}
-              className="hidden sm:inline-block rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-800 shadow-2xs focus:ring-1 focus:ring-emerald-600 cursor-pointer"
+              className="hidden sm:inline-block rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-800 shadow-2xs focus:ring-1 focus:ring-[#00A884] cursor-pointer"
             >
               {PIPELINE_STAGES.map((s) => (
                 <option key={s.value} value={s.value}>
@@ -2040,7 +2040,7 @@ function LiveJourneyBody({
               type="button"
               onClick={onOpenOutcomeModal}
               disabled={actionInProgress}
-              className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-2 sm:px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1 rounded-xl bg-[#00A884] hover:bg-[#008F70] text-white px-2 sm:px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-2xs"
             >
               <CheckCircle2 size={13} /> <span className="hidden sm:inline">Concluir</span>
             </button>

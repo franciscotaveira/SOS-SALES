@@ -1,5 +1,36 @@
 @import "tailwindcss";
 
+@theme {
+  --color-sos-canvas: #F8FAFC;
+  --color-sos-surface: #FFFFFF;
+  --color-sos-ink: #0F172A;
+  --color-sos-muted: #475569;
+  --color-sos-action: #00A884;
+  --color-sos-action-hover: #008F70;
+  --color-sos-action-subtle: #E6F7F2;
+  --color-sos-success: #00A884;
+  --color-sos-success-subtle: #E6F7F2;
+  --color-sos-operational: #2563EB;
+  --color-sos-operational-hover: #1D4ED8;
+  --color-sos-operational-subtle: #EFF6FF;
+  --color-sos-ai: #7C3AED;
+  --color-sos-ai-hover: #6D28D9;
+  --color-sos-ai-subtle: #F5F3FF;
+  --color-sos-warning: #D97706;
+  --color-sos-warning-hover: #B45309;
+  --color-sos-warning-subtle: #FFFBEB;
+  --color-sos-danger: #DC2626;
+  --color-sos-danger-hover: #B91C1C;
+  --color-sos-danger-subtle: #FEF2F2;
+  --color-sos-dark: #0B132B;
+  --color-sos-border: #E2E8F0;
+  --color-sos-border-strong: #94A3B8;
+
+  --font-heading: 'Sora', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 @layer base {
   :root {
     /* Brand & Typography Tokens */
@@ -12,19 +43,24 @@
     --sos-surface: #FFFFFF;
     --sos-ink: #0F172A;
     --sos-muted: #475569;
-    --sos-action: #059669;
-    --sos-action-hover: #047857;
-    --sos-action-subtle: #ECFDF5;
-    --sos-operational: #1D4ED8;
-    --sos-operational-hover: #1E40AF;
+    --sos-action: #00A884;
+    --sos-action-hover: #008F70;
+    --sos-action-subtle: #E6F7F2;
+    --sos-success: #00A884;
+    --sos-success-subtle: #E6F7F2;
+    --sos-operational: #2563EB;
+    --sos-operational-hover: #1D4ED8;
     --sos-operational-subtle: #EFF6FF;
-    --sos-ai: #6D28D9;
+    --sos-ai: #7C3AED;
+    --sos-ai-hover: #6D28D9;
     --sos-ai-subtle: #F5F3FF;
-    --sos-warning: #B45309;
+    --sos-warning: #D97706;
+    --sos-warning-hover: #B45309;
     --sos-warning-subtle: #FFFBEB;
-    --sos-danger: #B91C1C;
+    --sos-danger: #DC2626;
+    --sos-danger-hover: #B91C1C;
     --sos-danger-subtle: #FEF2F2;
-    --sos-structural-dark: #0F172A;
+    --sos-structural-dark: #0B132B;
     --sos-border: #E2E8F0;
     --sos-border-strong: #94A3B8;
 

@@ -1286,15 +1286,20 @@ export const AppShell: React.FC<AppShellProps> = ({
 
           {/* 5. Menu Completo (Abre Drawer Lateral) */}
           <button
+            id="mobile-nav-more-btn"
             onClick={() => setMobileDrawerOpen(true)}
-            className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all ${
-              mobileDrawerOpen || activeTab === 'configuracoes' || activeTab === 'clientes' || activeTab === 'resultados'
+            aria-label="Abrir menu de opções e configurações"
+            className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
+              mobileDrawerOpen || ['configuracoes', 'clientes', 'resultados', 'grupos', 'agenda', 'simulador', 'anotacoes'].includes(activeTab)
                 ? 'text-[#00A884] font-bold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Settings className="w-5 h-5" />
+            <Menu className={`w-5 h-5 transition-transform ${mobileDrawerOpen ? 'scale-110 text-[#00A884]' : ''}`} />
             <span className="text-[10px] mt-0.5 tracking-tight">Mais</span>
+            {['configuracoes', 'clientes', 'resultados', 'grupos', 'agenda', 'simulador', 'anotacoes'].includes(activeTab) && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00A884] absolute bottom-0.5" />
+            )}
           </button>
         </nav>
       </div>
