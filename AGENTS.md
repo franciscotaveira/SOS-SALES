@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (04 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `5e112f8b908f2102fe7181825e51b2f8a66c63b8`
+- Release ativa: `0901427f1d38b148e59db7940905967a59c3c673` (SOS Vendas Rebranding & Modern Visual Identity)
 - Interface operacional enxuta: Cockpit 1:1, Funil Kanban, Configurações de Canais & Traqueamento.
 - Espelhamento de Agenda Web (Trinks / Portal do Salão) destravado no Cockpit (`Alt + A`).
 - API: rotas E2E OK, auth Supabase + RLS multi-tenant, 44 tabelas no schema público.
