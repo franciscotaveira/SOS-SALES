@@ -1,5 +1,7 @@
 # Portfólio Low-Ticket — arquitetura inicial
 
+> SUPERADO pela pesquisa `PESQUISA_OFERTAS_LOW_TICKET_2026-09-05.md`. Este documento preserva hipóteses anteriores, inclusive decisões contraditórias sobre testes e follow-up. “Publicado/confirmado” abaixo não foi verificado no painel Cakto: a evidência é apenas local. Não usar este documento como inventário vigente ou plano de lançamento.
+
 > Estado: proposta de validação. Não publicar, precificar definitivamente ou anunciar sem a aprovação de Francisco. O estado público atual e os ativos preparados para Cakto divergem; não cadastrar produto novo antes de reconciliar esse inventário.
 
 ## Tese
@@ -97,6 +99,59 @@ O ativo intelectual comum é o método próprio de Continuidade Cognitiva: prese
 | Kit de follow-up pronto | Encosta demais na funcionalidade central do SOS Sales e vende uma versão manual da dor que o SaaS resolve melhor. |
 | Curso de Cakto/área de membros | Redundante com a plataforma escolhida e fora do nosso ativo intelectual central. |
 | Certificação de agente seguro | Sem reconhecimento externo e sem protocolo comercial validado; alto risco de promessa indevida. |
+
+## Expansões encontradas na segunda varredura
+
+Estas são hipóteses de portfólio, não produtos autorizados. Cada uma nasce de um ativo interno diferente e foi filtrada contra o inventário EKO/Cakto.
+
+| Prioridade | Hipótese | Dor e momento | Fonte de conhecimento | Relação com os produtos atuais | Veredito |
+| --- | --- | --- | --- | --- | --- |
+| 1 | **EKO Teste Real — 12 provas antes de confiar no agente** | Empresa já configurou uma IA e não sabe se ela erra preço, contexto, política ou handoff | Golden Evaluation Set, protocolos de benchmark e AI Assurance | EKO organiza a base; Cenários Adaptativos cria cenários; este produto registra comportamento observado, evidência e decisão de corrigir | Candidato válido, desde que não seja vendido como checklist de configuração nem certificação |
+| 2 | **Microcurso: IA que Continua a Venda** | Dono entende IA, mas ainda trata cada conversa como se começasse do zero | Formação em Vendas Conversacionais, Memória do Gancho e Apostila-Mãe SOS Sales | Não entrega templates EKO; ensina a lógica de origem → intenção → próxima ação | Candidato válido, em formato curto e sem ensinar integrações técnicas voláteis |
+| 3 | **Diagnóstico gratuito: sua IA sabe quando parar?** | Capta quem já usa agente e tem receio de respostas inadequadas | Taxonomia de falhas, guardrails e handoff | Porta de entrada para Teste Real ou Revisão Estratégica; não é outro produto pago | Criar como ferramenta de aquisição, não como SKU |
+| 4 | **Pacote vertical “Agenda sem Promessa”** | Serviços com agenda perdem venda ou prometem horário sem consulta | Manual operacional de agendamento, Cenários Adaptativos e operação Haven | Só é diferente do Cenários Adaptativos se ficar restrito a agenda, confirmação, remarcação e handoff | Validar apenas para uma vertical não regulada; não lançar catálogo de nichos agora |
+| 5 | **Scorecard Comercial Semanal** | Pequena empresa não transforma leads, atendimento e resultados em decisão semanal | Marketing OS e scorecard já existente | É melhor como bônus de onboarding do SOS Sales ou lead magnet; valor isolado baixo | Não vender sozinho agora |
+
+### 1. EKO Teste Real — produto candidato
+
+**Fronteira que impede redundância:**
+
+- EKO: prepara a verdade do negócio.
+- Cenários Adaptativos: cria cenários adequados ao tipo de negócio.
+- EKO Teste Real: testa uma IA já configurada, captura a resposta observada e decide corrigir, transferir ou aprovar.
+
+**MVP possível:** 12 mensagens de teste, rubric de resultado, campo de evidência, classificação de risco e plano de correção. Sem prompts de configuração, sem revisão humana incluída, sem selo e sem alegação de conformidade.
+
+**Preço a testar:** R$ 37–47, como produto independente para quem já possui um agente. Não anexar automaticamente ao EKO até comprovar que o comprador compreende a diferença.
+
+### 2. Microcurso: IA que Continua a Venda — produto candidato
+
+**Promessa verificável:** “Aprenda a estruturar um atendimento que continua a conversa iniciada no anúncio, na indicação ou na mensagem do cliente.”
+
+**Recorte seguro de quatro aulas:**
+
+1. O clique não é o começo da venda: origem, gancho e intenção.
+2. Quando responder, perguntar, consultar ou transferir.
+3. Como evitar regressão cognitiva: não repetir o que o cliente já informou.
+4. Como fazer um teste simples antes de usar a IA com clientes.
+
+**Não incluir:** API, Cloud API, Meta Business Agent, preço/recurso de fornecedor, automação de WhatsApp ou promessa de agenda cheia. Esses tópicos são dinâmicos, técnicos ou pertencem a produtos/serviços de maior escopo.
+
+### 3. Diagnóstico gratuito — instrumento de aquisição
+
+Uma página de 10 perguntas pode classificar a pessoa em três rotas:
+
+- **Base confusa:** EKO.
+- **Agente já configurado, comportamento inseguro:** EKO Teste Real.
+- **Volume, equipe, SLA e follow-up recorrente:** SOS Sales.
+
+O resultado não deve se vender como auditoria. Ele apenas aponta a próxima prioridade declarada pelo próprio comprador.
+
+### 4. Pacote vertical Agenda sem Promessa — hipótese posterior
+
+Criar somente se os primeiros compradores do EKO indicarem que agenda, disponibilidade e remarcação são o bloqueio dominante. O pacote conteria políticas de confirmação, coleta de preferência, critérios de transferência e cenários de remarcação — sempre sem afirmar disponibilidade se a agenda não estiver integrada.
+
+Não usar dados, textos, preços, identidade ou resultados da Haven/Brazuca/qualquer cliente como material comercial sem autorização explícita e específica.
 
 ## Esteira comercial
 
