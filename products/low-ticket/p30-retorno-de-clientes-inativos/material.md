@@ -2,7 +2,7 @@
 
 **Família:** Pós-venda e relacionamento  
 **Para:** negócio que já possui clientes e quer cuidar da continuidade  
-**Preço-teste sugerido:** R$ 37,00  
+**Preço-teste sugerido:** R$ 47,00  
 **Versão:** v1.0 · material de aplicação
 
 ## O que este produto resolve

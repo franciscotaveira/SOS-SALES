@@ -2,7 +2,7 @@
 
 **Família:** Implantação de IA  
 **Para:** freelancer, consultor ou pequena agência de automação  
-**Preço-teste sugerido:** R$ 97,00  
+**Preço-teste sugerido:** R$ 47,00  
 **Versão:** v1.0 · material de aplicação
 
 ## O que este produto resolve

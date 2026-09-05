@@ -2,7 +2,7 @@
 
 **Família:** Apresentação comercial  
 **Para:** prestador de serviço, pequeno comércio ou profissional independente  
-**Preço-teste sugerido:** R$ 27,00  
+**Preço-teste sugerido:** R$ 37,00  
 **Versão:** v1.0 · material de aplicação
 
 ## O que este produto resolve

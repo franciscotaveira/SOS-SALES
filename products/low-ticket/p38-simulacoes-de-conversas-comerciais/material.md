@@ -2,7 +2,7 @@
 
 **Família:** Treinamento e padrão  
 **Para:** dono ou líder que precisa orientar vendedores  
-**Preço-teste sugerido:** R$ 47,00  
+**Preço-teste sugerido:** R$ 67,00  
 **Versão:** v1.0 · material de aplicação
 
 ## O que este produto resolve

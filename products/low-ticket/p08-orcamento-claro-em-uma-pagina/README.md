@@ -4,7 +4,7 @@ Arquivos do pacote:
 - `material.pdf`: versão pronta para entrega.
 - `material.md`: fonte editável.
 - `pagina-venda.md`: copy de checkout e divulgação.
-- `thumbnail.png`: imagem da família do produto.
+- A imagem da família do produto aparece na vitrine e na página de venda.
 
 Preço-teste sugerido: R$ 37,00.
 

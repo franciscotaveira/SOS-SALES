@@ -2,7 +2,7 @@
 
 **Família:** Agenda e atendimento  
 **Para:** negócio de serviços com horários marcados  
-**Preço-teste sugerido:** R$ 47,00  
+**Preço-teste sugerido:** R$ 27,00  
 **Versão:** v1.0 · material de aplicação
 
 ## O que este produto resolve

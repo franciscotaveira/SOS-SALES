@@ -13,7 +13,7 @@
 ## O que não está incluído
 Instalação, gestão de campanhas, consultoria ilimitada, garantia de resultado ou informação que a empresa ainda não confirmou.
 
-## Investimento de teste: R$ 27,00
+## Investimento de teste: R$ 47,00
 Pagamento único. A oferta e as condições finais precisam ser conferidas no checkout Cakto antes de publicar.
 
 ## Perguntas frequentes

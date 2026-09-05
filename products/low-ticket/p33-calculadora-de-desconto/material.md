@@ -2,7 +2,7 @@
 
 **Família:** Ferramentas comerciais  
 **Para:** dono, autônomo ou gestor de pequena equipe  
-**Preço-teste sugerido:** R$ 47,00  
+**Preço-teste sugerido:** R$ 37,00  
 **Versão:** v1.0 · material de aplicação
 
 ## O que este produto resolve
