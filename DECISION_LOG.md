@@ -853,3 +853,16 @@
   - `src/services/salesOsGateway.ts`
 - **Operational gate:** Produção permanece em `BILLING_ENFORCEMENT_MODE=off` até produtos, ofertas e preços serem confirmados no painel Cakto, credenciais instaladas no cofre do VPS, migration aplicada e webhook de teste homologado no Docker Lab.
 - **Date:** 2026-09-05
+
+---
+
+## Task 35: Onboarding canônico por e-mail da compra Cakto
+- **Decision:** Manter o onboarding automático baseado no e-mail usado na compra da Cakto. O webhook registra a assinatura sem escolher tenant; no primeiro carregamento ou criação do workspace, o CRM vincula automaticamente a assinatura pendente ao workspace do owner autenticado cujo e-mail verificado coincide com o e-mail normalizado da compra.
+- **Rationale:**
+  1. Preserva uma experiência de ativação sem intervenção manual no caminho principal.
+  2. Evita que um webhook externo consulte usuários ou atribua acesso ao tenant errado.
+  3. Mantém a vinculação auditável e restrita a usuário autenticado, e-mail verificado e papel owner.
+- **Fallback:** Quando o e-mail da compra for diferente do e-mail de login, a assinatura permanece pendente até claim assistido ou vinculação manual pelo suporte, com verificação de titularidade.
+- **Acceptance gate:** Antes de habilitar bloqueio por assinatura, executar uma compra real controlada pelo valor mínimo aceito pela Cakto (R$ 5,00 em 2026-09-05) ou usar o staging oficial fornecido pelo suporte da Cakto; confirmar, em ordem, pagamento aprovado, entrega autenticada do webhook, persistência idempotente, claim automático no login com o mesmo e-mail e reflexo correto do status no CRM.
+- **Rollout:** Manter `BILLING_ENFORCEMENT_MODE=off` durante o teste financeiro; usar `observe` somente após o fluxo de compra e claim estar homologado; ativar `enforce` apenas com aprovação explícita e teste de regressão para clientes existentes.
+- **Date:** 2026-09-05
