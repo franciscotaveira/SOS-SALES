@@ -1031,7 +1031,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   const view = cockpit.state === "ready" ? cockpit.value : null;
 
   return (
-    <div className="flex-1 min-h-0 h-full flex flex-col p-3 sm:p-4 overflow-hidden">
+    <div className="flex-1 min-h-0 h-full flex flex-col p-0 md:p-3 overflow-hidden">
       {feedback && (
         <div
           className={`mb-3 flex items-center justify-between gap-3 rounded-xl border-2 px-4 py-2 text-xs font-semibold shadow-2xs shrink-0 ${
@@ -1070,8 +1070,8 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
           </button>
         </div>
       )}
-      {/* Gamificação Comercial & Meta do Vendedor */}
-      <div className="mb-2 flex items-center justify-between gap-3 px-3.5 py-1.5 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-xl shadow-xs border border-slate-700/80 shrink-0 text-xs flex-wrap">
+      {/* Gamificação Comercial & Meta do Vendedor (Oculta no mobile quando em conversa 1:1) */}
+      <div className={`mb-2 items-center justify-between gap-3 px-3.5 py-1.5 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white rounded-none md:rounded-xl shadow-xs border-y md:border border-slate-700/80 shrink-0 text-xs flex-wrap ${selectedJourneyId ? 'hidden md:flex' : 'flex'}`}>
         <div className="flex items-center gap-2.5 flex-wrap">
           <button
             type="button"
@@ -1120,12 +1120,12 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       </div>
 
       {/* Main 2-Column Focus Layout (Master-Detail on Mobile) */}
-      <div className="flex-1 min-h-0 grid gap-2.5 grid-cols-1 md:grid-cols-[290px_minmax(0,1fr)] overflow-hidden w-full">
+      <div className="flex-1 min-h-0 grid gap-0 md:gap-2.5 grid-cols-1 md:grid-cols-[290px_minmax(0,1fr)] overflow-hidden w-full">
         {/* Priority / All Conversations Sidebar (Visible when no chat selected on mobile, always visible on desktop) */}
         <aside
           className={`${
             selectedJourneyId ? "hidden md:flex" : "flex"
-          } bg-white border border-slate-200 rounded-2xl shadow-xs flex-col h-full min-h-0 overflow-hidden`}
+          } bg-white border-0 md:border md:border-slate-200 rounded-none md:rounded-2xl shadow-none md:shadow-xs flex-col h-full min-h-0 overflow-hidden`}
         >
           <div className="border-b border-slate-100 bg-slate-50/70 p-2 space-y-1.5 shrink-0">
             {/* Tab switchers: Linha 1 (Fluxos de Atendimento) */}
@@ -1249,7 +1249,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         <section
           className={`${
             selectedJourneyId ? "flex" : "hidden md:flex"
-          } bg-white border border-slate-200 rounded-2xl shadow-xs min-w-0 flex-col h-full min-h-0 overflow-hidden`}
+          } bg-white border-0 md:border md:border-slate-200 rounded-none md:rounded-2xl shadow-none md:shadow-xs min-w-0 flex-col h-full min-h-0 overflow-hidden`}
         >
           {cockpit.state === "loading" && (
             <div className="flex h-full min-h-[400px] items-center justify-center text-sm text-slate-500">
@@ -1920,9 +1920,9 @@ function LiveJourneyBody({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full overflow-hidden">
-      {/* 1. CABEÇALHO DO CHAT (Mobile First & Ultra Limpo) */}
-      <header className="border-b border-slate-100 bg-white px-2.5 sm:px-3.5 py-2 shrink-0">
-        <div className="flex items-center justify-between gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap">
+      {/* 1. CABEÇALHO DO CHAT (Mobile First & Ultra Limpo - Linha Única Rígida) */}
+      <header className="border-b border-slate-200/80 bg-white px-2.5 sm:px-3.5 h-14 flex items-center shrink-0">
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2 w-full flex-nowrap">
           {/* Esquerda: Identificação do Contato + Botão Voltar Mobile */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">
             {onBackToQueue && (
@@ -1946,8 +1946,8 @@ function LiveJourneyBody({
               className="shadow-2xs shrink-0"
             />
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap sm:flex-nowrap">
-                <p className="font-bold text-xs sm:text-sm text-slate-900 truncate font-heading max-w-[120px] sm:max-w-none">
+              <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap">
+                <p className="font-bold text-xs sm:text-sm text-slate-900 truncate font-heading max-w-[110px] sm:max-w-none">
                   {journey.contact.name || "Contato WhatsApp"}
                 </p>
                 <button
@@ -1959,7 +1959,7 @@ function LiveJourneyBody({
                     }
                   }}
                   title="Editar nome do contato"
-                  className="p-0.5 text-slate-400 hover:text-slate-700 rounded transition cursor-pointer"
+                  className="p-0.5 text-slate-400 hover:text-slate-700 rounded transition cursor-pointer shrink-0"
                 >
                   <Edit2 size={11} />
                 </button>
@@ -1972,56 +1972,58 @@ function LiveJourneyBody({
                   {loyalty.label}
                 </button>
                 {isWindowActive && (
-                  <span className="hidden sm:inline-flex rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 text-[9.5px] font-bold text-emerald-800 items-center gap-0.5">
+                  <span className="hidden sm:inline-flex rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 text-[9.5px] font-bold text-emerald-800 items-center gap-0.5 shrink-0">
                     <Clock size={10} />
                     {(Number(hoursRemaining) || 0).toFixed(1)}h
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-slate-500 truncate">
-                <span className="font-mono text-[10px] sm:text-[11px]">{journey.contact.phone}</span>
+                <span className="font-mono text-[10px] sm:text-[11px] shrink-0">{journey.contact.phone}</span>
                 <span className="text-slate-300">•</span>
-                <span className="text-[10px] sm:text-[11px] font-semibold text-slate-700 truncate max-w-[120px] sm:max-w-[150px]">
+                <span className="text-[10px] sm:text-[11px] font-semibold text-slate-700 truncate max-w-[100px] sm:max-w-[150px]">
                   {acquisition?.campaignName || "Origem não atribuída"}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Direita: Ações Essenciais */}
+          {/* Direita: Ações Essenciais (Apenas 3 botões táteis no celular, arsenal completo no desktop) */}
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-            {/* Botão Dossiê IA (Acesso Direto em Mobile & Desktop) */}
+            {/* Botão Dossiê IA */}
             <button
               type="button"
               onClick={() => (onOpenDossierFocus || onToggleDossier)?.()}
-              className="inline-flex items-center gap-1 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-950 px-2 sm:px-2.5 py-1 text-xs font-bold transition cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-950 px-2 sm:px-2.5 py-1.5 sm:py-1 text-xs font-bold transition cursor-pointer shadow-2xs min-w-[36px] justify-center"
               title="Abrir Dossiê Completo do Lead & IA"
             >
-              <Sparkles size={13} className="text-[#7C3AED]" />
+              <Sparkles size={14} className="text-[#7C3AED]" />
               <span className="hidden sm:inline">Dossiê</span>
             </button>
 
+            {/* Desktop-only: Assumir */}
             {isHandoffActive && !handoff.acceptedAt && (
               <button
                 type="button"
                 onClick={() => onAcceptHandoff(handoff.id)}
                 disabled={actionInProgress}
-                className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 px-2 sm:px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
+                className="hidden sm:inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
               >
-                <UserCheck size={13} className="text-[#2563EB]" /> <span className="hidden sm:inline">Assumir</span>
+                <UserCheck size={13} className="text-[#2563EB]" /> <span>Assumir</span>
               </button>
             )}
 
+            {/* Desktop-only: Follow-up */}
             <button
               type="button"
               onClick={onOpenFollowUpModal}
               disabled={actionInProgress}
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2 sm:px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
+              className="hidden sm:inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
             >
-              <Clock size={13} className="text-slate-500" /> <span className="hidden sm:inline">Follow-up</span>
+              <Clock size={13} className="text-slate-500" /> <span>Follow-up</span>
             </button>
 
-            {/* Etapa do Funil (Desktop) */}
+            {/* Desktop-only: Etapa do Funil */}
             <select
               value={currentNormalized}
               onChange={(e) => onStageChange(e.target.value)}
@@ -2035,31 +2037,33 @@ function LiveJourneyBody({
               ))}
             </select>
 
-            {/* Conclusão comercial */}
+            {/* Conclusão comercial (Visível sempre) */}
             <button
               type="button"
               onClick={onOpenOutcomeModal}
               disabled={actionInProgress}
-              className="inline-flex items-center gap-1 rounded-xl bg-[#00A884] hover:bg-[#008F70] text-white px-2 sm:px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1 rounded-xl bg-[#00A884] hover:bg-[#008F70] text-white px-2 sm:px-2.5 py-1.5 sm:py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-2xs min-w-[36px] justify-center"
+              title="Registrar venda ou agendamento concluído"
             >
-              <CheckCircle2 size={13} /> <span className="hidden sm:inline">Concluir</span>
+              <CheckCircle2 size={14} /> <span className="hidden sm:inline">Concluir</span>
             </button>
 
+            {/* Menu Mais (Dropdown com Etapa, Assumir, Follow-up no Mobile) */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setMoreActionsOpen((open) => !open)}
-                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2 py-1 text-xs font-bold transition cursor-pointer"
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 p-1.5 sm:px-2 sm:py-1 text-xs font-bold transition cursor-pointer min-w-[36px]"
                 aria-expanded={moreActionsOpen}
                 aria-label="Mais ações da conversa"
               >
-                <MoreHorizontal size={14} /> <span className="hidden sm:inline">Mais</span>
+                <MoreHorizontal size={15} /> <span className="hidden sm:inline ml-1">Mais</span>
               </button>
               {moreActionsOpen && (
-                <div className="absolute right-0 top-full z-40 mt-1 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                <div className="absolute right-0 top-full z-40 mt-1 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl animate-in fade-in zoom-in-95">
                   {/* Etapa no dropdown para mobile */}
-                  <div className="sm:hidden px-2.5 py-1.5 border-b border-slate-100">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  <div className="sm:hidden px-2.5 py-2 border-b border-slate-100 bg-slate-50/50 rounded-lg mb-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                       Etapa do Funil
                     </label>
                     <select
@@ -2068,7 +2072,7 @@ function LiveJourneyBody({
                         onStageChange(e.target.value);
                         setMoreActionsOpen(false);
                       }}
-                      className="w-full text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg p-1 text-slate-800"
+                      className="w-full text-xs font-bold bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800"
                     >
                       {PIPELINE_STAGES.map((s) => (
                         <option key={s.value} value={s.value}>
@@ -2078,15 +2082,41 @@ function LiveJourneyBody({
                     </select>
                   </div>
 
+                  {isHandoffActive && !handoff.acceptedAt && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMoreActionsOpen(false);
+                        onAcceptHandoff(handoff.id);
+                      }}
+                      disabled={actionInProgress}
+                      className="sm:hidden flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-bold text-blue-900 bg-blue-50/70 hover:bg-blue-100 mb-1"
+                    >
+                      <UserCheck size={14} className="text-[#2563EB]" /> Assumir Atendimento
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreActionsOpen(false);
+                      onOpenFollowUpModal();
+                    }}
+                    disabled={actionInProgress}
+                    className="sm:hidden flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <Clock size={14} className="text-slate-500" /> Agendar Follow-up
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
                       setMoreActionsOpen(false);
                       (onOpenDossierFocus || onToggleDossier)?.();
                     }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-purple-900 hover:bg-purple-50"
                   >
-                    <FileText size={14} /> Ver dossiê
+                    <Sparkles size={14} className="text-[#7C3AED]" /> Ver Dossiê IA do Lead
                   </button>
                   {isHandoffActive && handoff.acceptedAt && (
                     <>
@@ -2133,7 +2163,7 @@ function LiveJourneyBody({
         </div>
       </header>
 
-      <div className="flex flex-col flex-1 min-h-0 p-2.5 gap-2 overflow-hidden bg-slate-50/50">
+      <div className="flex flex-col flex-1 min-h-0 p-0 md:p-2.5 gap-0 md:gap-2 overflow-hidden bg-white md:bg-slate-50/50">
         {/* Hidden File Input for Attachments */}
         <input
           type="file"
@@ -2147,7 +2177,7 @@ function LiveJourneyBody({
         <section
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="relative flex-1 min-h-0 rounded-2xl border border-slate-200/90 bg-[#efeae2] p-3 overflow-y-auto whatsapp-chat-wallpaper flex flex-col"
+          className="relative flex-1 min-h-0 rounded-none md:rounded-2xl border-0 md:border md:border-slate-200/90 bg-[#efeae2] p-2.5 sm:p-3 overflow-y-auto whatsapp-chat-wallpaper flex flex-col"
         >
           {/* Reativação: o tempo é calculado da conversa persistida; a cópia
               só aparece depois de uma análise real do backend. */}
@@ -2352,11 +2382,11 @@ function LiveJourneyBody({
                 <span className="hidden sm:inline">Atalhos</span>
               </button>
 
-              {/* Copiloto sob demanda */}
+              {/* Copiloto sob demanda (Desktop) */}
               <button
                 type="button"
                 onClick={() => setCopilotPanelOpen((open) => !open)}
-                className={`p-2 rounded-xl border transition cursor-pointer shadow-2xs shrink-0 flex items-center gap-1 font-bold text-xs ${copilotPanelOpen ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-100/80 hover:bg-emerald-50 text-slate-700"}`}
+                className={`hidden sm:inline-flex p-2 rounded-xl border transition cursor-pointer shadow-2xs shrink-0 items-center gap-1 font-bold text-xs ${copilotPanelOpen ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-100/80 hover:bg-emerald-50 text-slate-700"}`}
                 title="Abrir sugestão de resposta com IA"
               >
                 <Sparkles size={15} />
@@ -2374,24 +2404,24 @@ function LiveJourneyBody({
                 <Paperclip size={15} />
               </button>
 
-              {/* Gravar Áudio */}
+              {/* Gravar Áudio (Visível sempre no desktop; no mobile visível enquanto campo de texto vazio) */}
               <button
                 type="button"
                 onClick={startRecordingAudio}
                 disabled={actionInProgress || !supportsInlineMedia}
-                className="p-2 rounded-xl border border-slate-200 hover:border-rose-300 bg-slate-100/80 hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition shrink-0 cursor-pointer shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                className={`${draftText.trim() ? "hidden sm:inline-flex" : "inline-flex"} p-2 rounded-xl border border-slate-200 hover:border-rose-300 bg-slate-100/80 hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition shrink-0 cursor-pointer shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed`}
                 title={supportsInlineMedia ? "Gravar mensagem de voz ao vivo" : "Áudio indisponível para este canal até o upload homologado"}
               >
                 <Mic size={15} />
               </button>
 
-              {/* Input de Mensagem */}
+              {/* Input de Mensagem (16px em mobile para prevenir auto-zoom no iOS Safari) */}
               <input
                 type="text"
                 value={draftText}
                 onChange={(e) => setDraftText(e.target.value)}
                 placeholder="Digite uma mensagem ou use um atalho..."
-                className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600 shadow-2xs"
+                className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-base sm:text-xs text-slate-900 placeholder-slate-400 focus:border-emerald-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600 shadow-2xs min-w-0"
                 onKeyDown={(e) => {
                   if (e.key === "Tab" && !draftText.trim() && recommendation?.suggestedDraftText) {
                     e.preventDefault();
@@ -2406,7 +2436,7 @@ function LiveJourneyBody({
                 }}
               />
 
-              {/* Botão Enviar */}
+              {/* Botão Enviar (No mobile surge automaticamente ao digitar) */}
               <button
                 type="button"
                 onClick={() => {
@@ -2416,9 +2446,9 @@ function LiveJourneyBody({
                   }
                 }}
                 disabled={actionInProgress || !draftText.trim()}
-                className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-40 transition shrink-0 shadow-2xs cursor-pointer"
+                className={`${draftText.trim() ? "inline-flex" : "hidden sm:inline-flex"} items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-40 transition shrink-0 shadow-2xs cursor-pointer`}
               >
-                <Send size={13} /> Enviar
+                <Send size={13} /> <span className="hidden sm:inline">Enviar</span>
               </button>
             </div>
           )}

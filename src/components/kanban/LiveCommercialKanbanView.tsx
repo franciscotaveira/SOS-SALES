@@ -650,26 +650,26 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
   }, [filtered, activePipeline]);
 
   return (
-    <div className="flex flex-col h-full bg-[var(--sos-canvas)] text-[var(--sos-ink)] p-2 sm:p-3 overflow-hidden w-full space-y-2.5">
+    <div className="flex flex-col h-full bg-[var(--sos-canvas)] text-[var(--sos-ink)] p-0 sm:p-3 overflow-hidden w-full space-y-2 sm:space-y-2.5">
       {/* Header com Seletor de Pipelines & Controles */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pb-2.5 border-b border-[var(--sos-border)] shrink-0">
-        <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-2.5 pb-2 sm:pb-2.5 border-b border-[var(--sos-border)] shrink-0 px-2.5 sm:px-0 pt-2 sm:pt-0">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
           <div>
-            <h1 className="text-lg font-bold text-[var(--sos-ink)] font-heading tracking-tight flex items-center gap-2">
+            <h1 className="text-base sm:text-lg font-bold text-[var(--sos-ink)] font-heading tracking-tight flex items-center gap-2">
               <Columns3 className="w-4.5 h-4.5 text-[var(--sos-action)]" /> Funil Comercial Ao Vivo
             </h1>
-            <p className="text-xs text-[var(--sos-muted)] mt-0.5">
+            <p className="text-[11px] sm:text-xs text-[var(--sos-muted)] mt-0.5">
               {filtered.length} oportunidades ativas. Para registrar venda ou agendamento, abra a conversa e use Concluir.
             </p>
           </div>
 
           {/* Seletor de Pipeline Multi-Funil Dinâmico */}
-          <div className="flex items-center gap-1 bg-[var(--sos-surface)] p-1 rounded-lg border border-[var(--sos-border)] shadow-2xs">
+          <div className="flex items-center gap-1 bg-[var(--sos-surface)] p-1 rounded-lg border border-[var(--sos-border)] shadow-2xs overflow-x-auto touch-scroll max-w-full">
             {availablePipelines.map((pipe) => (
               <button
                 key={pipe.id}
                 onClick={() => setActivePipelineId(pipe.id)}
-                className={`px-2.5 py-0.5 rounded-md text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                className={`px-2.5 py-0.5 rounded-md text-xs font-bold transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
                   activePipelineId === pipe.id
                     ? 'bg-[var(--sos-ink)] text-white shadow-2xs'
                     : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-border)]'
@@ -683,7 +683,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
             {!isLiveApi && <button
               type="button"
               onClick={handleCustomizePipeline}
-              className="px-2 py-0.5 rounded-md text-[11px] font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer flex items-center gap-1 border-l border-slate-200 ml-1 pl-1.5"
+              className="px-2 py-0.5 rounded-md text-[11px] font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer flex items-center gap-1 border-l border-slate-200 ml-1 pl-1.5 whitespace-nowrap shrink-0"
               title="Personalizar nomes das etapas do funil para o processo da sua empresa"
             >
               <span>⚙️</span>
@@ -693,14 +693,14 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-initial">
             <Search className="w-3.5 h-3.5 text-[var(--sos-muted)] absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar no funil..."
-              className="pl-8 pr-2.5 py-1.5 bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-lg text-xs text-[var(--sos-ink)] placeholder-[var(--sos-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--sos-action)]/20 focus:border-[var(--sos-action)] transition-colors w-44 sm:w-52 shadow-2xs"
+              className="pl-8 pr-2.5 py-1.5 bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-lg text-xs text-[var(--sos-ink)] placeholder-[var(--sos-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--sos-action)]/20 focus:border-[var(--sos-action)] transition-colors w-full sm:w-52 shadow-2xs"
             />
           </div>
 
@@ -726,7 +726,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
       </div>
 
       {error && (
-        <div className="p-2.5 rounded-lg bg-[var(--sos-danger-subtle)] border border-[var(--sos-danger)]/30 text-xs text-[var(--sos-danger)] flex items-center gap-2 shrink-0">
+        <div className="mx-2.5 sm:mx-0 p-2.5 rounded-lg bg-[var(--sos-danger-subtle)] border border-[var(--sos-danger)]/30 text-xs text-[var(--sos-danger)] flex items-center gap-2 shrink-0">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 text-[var(--sos-danger)]" />
           <span>{error}</span>
           <button
@@ -739,7 +739,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
       )}
 
       {/* Mobile Stage Selector Strip */}
-      <div className="md:hidden flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 touch-scroll">
+      <div className="md:hidden flex items-center gap-1.5 overflow-x-auto px-2.5 pb-1 shrink-0 touch-scroll">
         {columnsData.map((col) => (
           <button
             key={col.id}
@@ -759,7 +759,7 @@ export const LiveCommercialKanbanView: React.FC<LiveCommercialKanbanViewProps> =
       </div>
 
       {/* Mobile Single Column View (Full Width) */}
-      <div className="md:hidden flex-1 min-h-0 flex flex-col bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-xl overflow-hidden shadow-2xs">
+      <div className="md:hidden flex-1 min-h-0 flex flex-col bg-[var(--sos-surface)] border-y sm:border border-[var(--sos-border)] rounded-none sm:rounded-xl overflow-hidden shadow-none sm:shadow-2xs">
         {(() => {
           const col = columnsData.find((c) => c.id === mobileActiveStage) || columnsData[0];
           if (!col) return null;

@@ -288,7 +288,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   }, [isQrModalOpen, workspace.id]);
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/50 text-slate-900 p-4 sm:p-6 overflow-y-auto max-w-7xl mx-auto w-full">
+    <div className="flex flex-col h-full bg-slate-50/50 text-slate-900 p-2.5 sm:p-6 overflow-y-auto max-w-7xl mx-auto w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
@@ -306,10 +306,10 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
         </div>
 
         {/* Sub-tabs pills */}
-        <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-2xs">
+        <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-2xs overflow-x-auto touch-scroll max-w-full shrink-0">
           <button
             onClick={() => handleTabChange('canais')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               currentTab === 'canais'
                 ? 'bg-slate-900 text-white shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -319,7 +319,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
           </button>
           <button
             onClick={() => handleTabChange('ia')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               currentTab === 'ia'
                 ? 'bg-slate-900 text-white shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -329,7 +329,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
           </button>
           <button
             onClick={() => handleTabChange('sla')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               currentTab === 'sla'
                 ? 'bg-slate-900 text-white shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -339,7 +339,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
           </button>
           <button
             onClick={() => handleTabChange('membros')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               currentTab === 'membros'
                 ? 'bg-slate-900 text-white shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'

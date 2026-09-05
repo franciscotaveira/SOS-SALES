@@ -1093,22 +1093,22 @@ export const AppShell: React.FC<AppShellProps> = ({
         {/* Sleek Compact TopBar (Search + Notifications Only) */}
         <header
           id="app-topbar"
-          className="h-12 lg:h-11 bg-white border-b border-slate-200 shrink-0 px-3 sm:px-4 pt-safe flex items-center justify-between z-20 shadow-2xs"
+          className="h-12 bg-white border-b border-slate-200 shrink-0 px-3 sm:px-4 pt-safe flex items-center justify-between z-20 shadow-2xs"
         >
           {/* Left: Mobile Brand & Drawer Trigger (Mobile Only) */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={() => setMobileDrawerOpen(true)}
-              className="lg:hidden p-2 -ml-1 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:ring-2 focus-visible:ring-[#00A884]"
+              className="lg:hidden p-2 -ml-1 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:ring-2 focus-visible:ring-[#00A884] shrink-0 cursor-pointer"
               aria-label="Abrir menu de navegação"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="lg:hidden flex items-center gap-1.5">
+            <div className="lg:hidden flex items-center gap-1.5 min-w-0">
               <div className="w-6 h-6 rounded-md bg-[#001f18] border border-[#00a884]/40 flex items-center justify-center shrink-0">
                 <Flame className="w-3.5 h-3.5 text-[#00A884]" />
               </div>
-              <span className="font-heading font-black text-xs text-slate-900 tracking-tight truncate max-w-[110px]">
+              <span className="font-heading font-black text-xs text-slate-900 tracking-tight truncate max-w-[130px]">
                 {currentWorkspace.name}
               </span>
               <span
@@ -1124,8 +1124,8 @@ export const AppShell: React.FC<AppShellProps> = ({
             </div>
           </div>
 
-          {/* Center: Global Search / Command Palette Trigger (Ctrl+K) */}
-          <div className="flex items-center flex-1 max-w-[400px] mx-2">
+          {/* Center: Desktop Global Search / Command Palette Trigger (Ctrl+K) */}
+          <div className="hidden lg:flex items-center flex-1 max-w-[400px] mx-4">
             <button
               onClick={() => setSearchModalOpen(true)}
               className="w-full h-8 sm:h-9 flex items-center justify-between px-2.5 sm:px-3 bg-slate-100/90 hover:bg-slate-200/80 border border-slate-200 rounded-xl text-xs text-slate-500 transition-colors shadow-2xs cursor-pointer focus-visible:ring-2 focus-visible:ring-[#00A884]"
@@ -1140,8 +1140,19 @@ export const AppShell: React.FC<AppShellProps> = ({
             </button>
           </div>
 
-          {/* Right: Notifications Popover (SLA Alerts) */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Right: Mobile Search Button + Notifications Popover */}
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Mobile Search Button */}
+            <button
+              onClick={() => setSearchModalOpen(true)}
+              className="lg:hidden h-9 w-9 p-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors flex items-center justify-center cursor-pointer"
+              title="Buscar (⌘K)"
+              aria-label="Buscar"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+
+            {/* Notifications */}
             <div className="relative">
               <button
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
@@ -1200,7 +1211,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         {/* Workspace Main Outlet */}
         <main
           id="app-main-outlet"
-          className="flex-1 min-h-0 w-full flex flex-col overflow-hidden relative pb-[64px] lg:pb-0"
+          className="flex-1 min-h-0 w-full flex flex-col overflow-hidden relative pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] lg:pb-0"
         >
           {children}
         </main>
@@ -1209,7 +1220,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         <nav
           id="app-mobile-bottom-nav"
           aria-label="Navegação mobile rápida"
-          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B132B]/95 backdrop-blur-md border-t border-slate-800/90 px-1 py-1 pb-safe flex items-center justify-around shadow-2xl"
+          className="lg:hidden fixed bottom-0 left-0 right-0 h-[calc(3.5rem+env(safe-area-inset-bottom,0px))] z-40 bg-[#0B132B]/95 backdrop-blur-md border-t border-slate-800/90 px-1 pb-safe flex items-center justify-around shadow-2xl"
         >
           {/* 1. Agora (Cockpit Prioritário) */}
           <button

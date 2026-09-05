@@ -416,12 +416,12 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[var(--sos-canvas)] text-[var(--sos-ink)] p-2 sm:p-3 overflow-hidden w-full">
+    <div className="flex flex-col h-full bg-[var(--sos-canvas)] text-[var(--sos-ink)] p-0 sm:p-3 overflow-hidden w-full">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[var(--sos-border)] shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[var(--sos-border)] shrink-0 px-2 sm:px-0 pt-2 sm:pt-0">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-bold text-[var(--sos-ink)] font-heading tracking-tight flex items-center gap-2">
+            <h1 className="text-base sm:text-lg font-bold text-[var(--sos-ink)] font-heading tracking-tight flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-[var(--sos-success)]" /> Central de Conversas & Funil
             </h1>
             <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border border-[var(--sos-success)]/30">
@@ -520,7 +520,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
 
       {/* Subviews */}
       {viewMode === 'kanban' && (
-        <div className="flex-1 overflow-hidden mt-2">
+        <div className="flex-1 overflow-hidden mt-0 sm:mt-2">
           <LiveCommercialKanbanView
             workspaceId={workspaceId}
             gateway={gateway}
@@ -531,7 +531,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
       )}
 
       {!isLiveApi && viewMode === 'notes' && (
-        <div className="flex-1 overflow-hidden mt-2">
+        <div className="flex-1 overflow-hidden mt-0 sm:mt-2">
           <NotesView
             workspace={workspace || ({ id: workspaceId, name: 'Workspace', channels: [] } as any)}
             gateway={gateway}
@@ -540,7 +540,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
       )}
 
       {!isLiveApi && viewMode === 'wallboard' && (
-        <div className="flex-1 overflow-hidden mt-2">
+        <div className="flex-1 overflow-hidden mt-0 sm:mt-2">
           <LiveWallboardView
             journeys={mappedJourneys}
             groups={[]}
@@ -557,11 +557,11 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
       {viewMode === 'list' && (
         <>
           {/* Barra de Filtros Ricos (TDAH-friendly: Alta Escaneabilidade) */}
-          <div className="py-2 space-y-2 shrink-0">
+          <div className="py-2 space-y-2 shrink-0 px-2 sm:px-0">
             {/* Linha 1: Filtro por Etapa do Funil + Busca */}
             <div className="flex flex-wrap items-center justify-between gap-2">
               {/* Etapa do Funil Chips */}
-              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1.5 text-xs overflow-x-auto touch-scroll pb-1 max-w-full shrink-0">
                 {[
                   { id: 'all', label: `Todas (${journeys.length})` },
                   { id: 'LEAD', label: '1. Novos Leads' },
@@ -573,7 +573,7 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
                   <button
                     key={chip.id}
                     onClick={() => setStageFilter(chip.id)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs whitespace-nowrap shrink-0 ${
                       stageFilter === chip.id
                         ? 'bg-[var(--sos-ink)] text-white'
                         : 'bg-[var(--sos-surface)] text-[var(--sos-muted)] border border-[var(--sos-border)] hover:bg-[var(--sos-border)]/30'
@@ -585,14 +585,14 @@ export const LiveConversationsView: React.FC<LiveConversationsViewProps> = ({
               </div>
 
               {/* Input de Busca */}
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search className="w-3.5 h-3.5 text-[var(--sos-muted)] absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Buscar contato, serviço ou mensagem..."
-                  className="pl-8 pr-3 py-1.5 bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-lg text-xs text-[var(--sos-ink)] placeholder-[var(--sos-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--sos-action)] focus:border-[var(--sos-action)] transition-colors w-56 sm:w-64 shadow-2xs"
+                  className="pl-8 pr-3 py-1.5 bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-lg text-xs text-[var(--sos-ink)] placeholder-[var(--sos-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--sos-action)] focus:border-[var(--sos-action)] transition-colors w-full sm:w-64 shadow-2xs"
                 />
               </div>
             </div>
