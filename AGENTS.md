@@ -15,10 +15,16 @@
 
 ---
 
-## 2. ESTADO ATUAL (04 Set 2026)
+## 2. ESTADO ATUAL (05 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `feff4d9bf21745a492329240361772bf676be64f` (SOS Vendas All-Agent Standardization to NVIDIA NIM Engine)
+- Release ativa: `cdd115f961378098b731f3ec3d1c2ca590c43773` (SOS Vendas Mobile Edge-to-Edge & Ergonomia Nativa PWA)
+- Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
+  - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
+  - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
+  - Cabeçalho do Chat em linha única de 56px (`h-14 flex-nowrap`): Nome com `truncate` e ações rápidas táteis (`Dossiê`, `Concluir` e `Mais (...)`).
+  - Composer com prevenção de auto-zoom no iOS (fonte 16px) e alternância nativa entre Microfone e Enviar ao digitar.
+  - Funil Kanban e Central de Conversas sem overflow horizontal, com seletor de etapas por pills e cartões edge-to-edge.
 - Todos os agentes e módulos de IA padronizados no motor soberano **NVIDIA NIM** (`NvidiaNimEngine`):
   - **Receptionist 24/7:** `meta/llama-3.1-70b-instruct` / `nvidia/llama-3.3-nemotron-super-49b-v1`
   - **Copilot Comercial & Dossiê do Lead:** `meta/llama-3.1-70b-instruct`
