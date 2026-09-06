@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (06 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `1f736c476907edab4edff7fb43a0e97d71159b16` (feat: normalização completa de identidade BSUID/Usernames inbound e outbound, governança de Graph API v21.0 eliminando v20.0 pré-sunset de 24/09)
+- Release ativa: `d820b823833f45ef50212670c8d4f7036a24bd78` (feat: motor de IA padrão unificado para NVIDIA Nemotron Super 120B para raciocínio comercial profundo, normalização de BSUID/Usernames e Graph API v21.0)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
@@ -26,8 +26,8 @@
   - Composer com prevenção de auto-zoom no iOS (fonte 16px) e alternância nativa entre Microfone e Enviar ao digitar.
   - Funil Kanban e Central de Conversas sem overflow horizontal, com seletor de etapas por pills e cartões edge-to-edge.
 - Todos os agentes e módulos de IA padronizados no motor soberano **NVIDIA NIM** (`NvidiaNimEngine`):
-  - **Receptionist 24/7:** `nvidia/nemotron-3.5-lightning-30b-a3b` (NVIDIA NIM)
-  - **Copilot Comercial & Dossiê do Lead:** `nvidia/nemotron-3.5-lightning-30b-a3b`
+  - **Receptionist 24/7:** `nvidia/nemotron-3-super-120b-a12b` (Raciocínio Profundo & Negociação Comercial)
+  - **Copilot Comercial & Dossiê do Lead:** `nvidia/nemotron-3-super-120b-a12b`
   - **Visão & OCR Multimodal:** `meta/llama-3.2-11b-vision-instruct`
   - **Reanimação de Vácuo / Ghosting:** `nvidia/nemotron-3.5-lightning-30b-a3b`
   - **Evolução de Playbook:** `nvidia/nemotron-3.5-lightning-30b-a3b` / `deepseek-ai/deepseek-r1`
