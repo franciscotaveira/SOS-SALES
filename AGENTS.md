@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (06 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `3c3f5f2bbaf8ceb8ccebe33f35ce640a8fb10b0c` (fix: cadência nativa de WhatsApp micro-mensagens 30-50 palavras, grounding fechado anti-alucinação de preços/regras, 9 superpoderes ativáveis, unificação no Nemotron Super 120B e governança Graph API v21.0)
+- Release ativa: `f7b86dd3bb7d81cacd3a6760023780f94d330a80` (feat: Conversational Interaction Engine - Message Burst Buffer, debounce 1.5s de mensagens picadas no WhatsApp, consolidação de turnos e micro-cadência anti-alucinação)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
