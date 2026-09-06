@@ -23,6 +23,8 @@ export interface MetaGraphInsightRow {
   date_stop: string;
 }
 
+import { DEFAULT_META_GRAPH_API_VERSION } from './meta-constants.js';
+
 export class MetaMarketingApiClient {
   private readonly defaultAccessToken?: string;
   private readonly apiVersion: string;
@@ -30,7 +32,7 @@ export class MetaMarketingApiClient {
 
   constructor(config?: MetaMarketingApiClientConfig) {
     this.defaultAccessToken = config?.defaultAccessToken;
-    this.apiVersion = config?.apiVersion || 'v20.0';
+    this.apiVersion = config?.apiVersion || DEFAULT_META_GRAPH_API_VERSION;
     this.baseUrl = config?.baseUrl || 'https://graph.facebook.com';
   }
 

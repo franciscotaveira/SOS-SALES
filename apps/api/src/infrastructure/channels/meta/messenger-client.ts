@@ -103,8 +103,10 @@ export interface MessengerPrivateReplyOptions {
   message: string;
 }
 
+import { DEFAULT_META_GRAPH_BASE_URL } from './meta-constants.js';
+
 export class MessengerClient {
-  private readonly baseUrl = 'https://graph.facebook.com/v20.0';
+  private readonly baseUrl = DEFAULT_META_GRAPH_BASE_URL;
 
   // ─── Text Messages ──────────────────────────────────────────────
 

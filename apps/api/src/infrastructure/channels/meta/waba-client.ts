@@ -90,6 +90,8 @@ export interface WabaSendFlowOptions {
 }
 
 
+import { DEFAULT_META_GRAPH_BASE_URL, normalizeWhatsAppRecipient, WhatsAppRecipient } from './meta-constants.js';
+
 export class WabaClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -100,7 +102,7 @@ export class WabaClient {
     fetchImpl?: typeof fetch;
     timeoutMs?: number;
   } = {}) {
-    this.baseUrl = (options.baseUrl || 'https://graph.facebook.com/v20.0').replace(/\/$/, '');
+    this.baseUrl = (options.baseUrl || DEFAULT_META_GRAPH_BASE_URL).replace(/\/$/, '');
     this.fetchImpl = options.fetchImpl ?? fetch;
     const configuredTimeout = options.timeoutMs ?? Number(process.env.WABA_REQUEST_TIMEOUT_MS || 15_000);
     this.timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
@@ -126,18 +128,28 @@ export class WabaClient {
   }
 
   /**
-   * Normalizes a phone number for the Meta API.
-   * Strips non-digits, then ensures the Brazil country code (55) is prepended
-   * if the number looks like a local Brazilian number (10–11 digits without DDI).
+   * Normalizes a recipient (phone number or BSUID) for the Meta API.
+   * If it is a phone number, strips non-digits and ensures Brazil country code (55).
+   * If it is a BSUID (contains letters / alphanumeric), preserves identity value as-is.
    */
-  private normalizePhone(raw: string): string {
+  public normalizeRecipient(recipient: string | WhatsAppRecipient): { to?: string; recipient_type: 'individual'; recipient_id?: string } {
+    const normalized = normalizeWhatsAppRecipient(recipient);
+    if (normalized.type === 'BSUID') {
+      return { recipient_type: 'individual', to: normalized.value };
+    }
+    const raw = normalized.value;
     const digits = raw.replace(/\D/g, '');
-    // Already has full international format (13+ digits starting with 55)
-    if (digits.startsWith('55') && digits.length >= 12) return digits;
-    // Add Brazil DDI for 10 or 11 digit numbers
-    if (digits.length === 10 || digits.length === 11) return `55${digits}`;
-    // Return as-is for other formats (international numbers)
-    return digits;
+    let finalPhone = digits;
+    if (digits.startsWith('55') && digits.length >= 12) {
+      finalPhone = digits;
+    } else if (digits.length === 10 || digits.length === 11) {
+      finalPhone = `55${digits}`;
+    }
+    return { recipient_type: 'individual', to: finalPhone };
+  }
+
+  private normalizePhone(raw: string): string {
+    return this.normalizeRecipient(raw).to || raw;
   }
 
   /** Meta acceptance is not proven without its provider message identifier. */

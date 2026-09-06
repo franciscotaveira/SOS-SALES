@@ -11,6 +11,7 @@ import { verifyOperatorAuth, assertTenantAccess, unauthorized, forbidden } from 
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { isSyntheticTestDataEnabled } from '../../../infrastructure/security/runtime-safety.js';
+import { DEFAULT_META_GRAPH_BASE_URL } from '../../../infrastructure/channels/meta/meta-constants.js';
 
 const WAHA_BASE_URL = process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || 'http://sos-sales-api:4334';
@@ -609,7 +610,7 @@ export async function whatsappChannelRoutes(
       let providerVerified = false;
 
       try {
-        const metaRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(phoneNumberId)}?access_token=${encodeURIComponent(accessToken)}`);
+        const metaRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(phoneNumberId)}?access_token=${encodeURIComponent(accessToken)}`);
 
 
       if (metaRes.ok) {
@@ -622,7 +623,7 @@ export async function whatsappChannelRoutes(
         verifiedName = metaData.verified_name || verifiedName;
       } else {
         // Fallback: try fetching WABA info
-        const wabaRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(wabaId)}?fields=name,id,phone_numbers&access_token=${encodeURIComponent(accessToken)}`);
+        const wabaRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(wabaId)}?fields=name,id,phone_numbers&access_token=${encodeURIComponent(accessToken)}`);
         if (wabaRes.ok) {
           const wabaData = (await wabaRes.json()) as any;
           if (wabaData.name) verifiedName = wabaData.name;
@@ -753,7 +754,7 @@ export async function whatsappChannelRoutes(
     if (code && appId && appSecret) {
       try {
         const tokenExchangeRes = await fetch(
-          `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${encodeURIComponent(appId)}&client_secret=${encodeURIComponent(appSecret)}&code=${encodeURIComponent(code)}`
+          `${DEFAULT_META_GRAPH_BASE_URL}/oauth/access_token?client_id=${encodeURIComponent(appId)}&client_secret=${encodeURIComponent(appSecret)}&code=${encodeURIComponent(code)}`
         );
         if (tokenExchangeRes.ok) {
           const tokenData = (await tokenExchangeRes.json()) as any;
@@ -775,7 +776,7 @@ export async function whatsappChannelRoutes(
     try {
       // 2. Auto-discover WABA and Phone Number if missing
       if (!phoneNumberId && wabaId) {
-        const phonesRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(wabaId)}/phone_numbers?access_token=${encodeURIComponent(accessToken)}`);
+        const phonesRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(wabaId)}/phone_numbers?access_token=${encodeURIComponent(accessToken)}`);
         if (phonesRes.ok) {
           const phonesData = (await phonesRes.json()) as any;
           if (Array.isArray(phonesData.data) && phonesData.data.length > 1) {
@@ -807,7 +808,7 @@ export async function whatsappChannelRoutes(
       let providerVerified = false;
 
       try {
-        const metaRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name,whatsapp_business_account&access_token=${encodeURIComponent(accessToken)}`);
+        const metaRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name,whatsapp_business_account&access_token=${encodeURIComponent(accessToken)}`);
         if (metaRes.ok) {
           const metaData = (await metaRes.json()) as { display_phone_number?: string; verified_name?: string; id?: string; whatsapp_business_account?: { id?: string } };
           providerVerified = metaData.id === phoneNumberId;
@@ -817,7 +818,7 @@ export async function whatsappChannelRoutes(
             wabaId = metaData.whatsapp_business_account.id;
           }
         } else if (wabaId) {
-          const wabaRes = await fetch(`https://graph.facebook.com/v20.0/${encodeURIComponent(wabaId)}?fields=name,id,phone_numbers&access_token=${encodeURIComponent(accessToken)}`);
+          const wabaRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(wabaId)}?fields=name,id,phone_numbers&access_token=${encodeURIComponent(accessToken)}`);
           if (wabaRes.ok) {
             const wabaData = (await wabaRes.json()) as any;
             if (wabaData.name) verifiedName = wabaData.name;
@@ -1043,7 +1044,7 @@ export async function whatsappChannelRoutes(
       let identityRes: Response;
       try {
         identityRes = await fetch(
-          `https://graph.facebook.com/v20.0/me?fields=id&access_token=${encodeURIComponent(token)}`,
+          `${DEFAULT_META_GRAPH_BASE_URL}/me?fields=id&access_token=${encodeURIComponent(token)}`,
         );
       } catch {
         return reply.status(502).send({
@@ -1066,7 +1067,7 @@ export async function whatsappChannelRoutes(
 
       // Strategy 1: debug_token to get granular scopes target_ids
       try {
-        const debugRes = await fetch(`https://graph.facebook.com/v20.0/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`);
+        const debugRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`);
         if (debugRes.ok) {
           const debugData = (await debugRes.json()) as any;
           const scopes = debugData?.data?.granular_scopes || [];
@@ -1075,7 +1076,7 @@ export async function whatsappChannelRoutes(
               for (const targetId of s.target_ids) {
                 if (!seenWabaIds.has(targetId)) {
                   // Probe as WABA phone numbers
-                  const phonesRes = await fetch(`https://graph.facebook.com/v20.0/${targetId}/phone_numbers?access_token=${encodeURIComponent(token)}&fields=id,display_phone_number,verified_name`);
+                  const phonesRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${targetId}/phone_numbers?access_token=${encodeURIComponent(token)}&fields=id,display_phone_number,verified_name`);
                   if (phonesRes.ok) {
                     const phonesData = (await phonesRes.json()) as any;
                     const phoneNumbers = phonesData?.data || [];
@@ -1091,7 +1092,7 @@ export async function whatsappChannelRoutes(
 
       // Strategy 2: /me/businesses (owned and client WABAs)
       try {
-        const meRes = await fetch(`https://graph.facebook.com/v20.0/me/businesses?access_token=${encodeURIComponent(token)}&fields=id,name,whatsapp_business_accounts{id,name},owned_whatsapp_business_accounts{id,name},client_whatsapp_business_accounts{id,name}`);
+        const meRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/me/businesses?access_token=${encodeURIComponent(token)}&fields=id,name,whatsapp_business_accounts{id,name},owned_whatsapp_business_accounts{id,name},client_whatsapp_business_accounts{id,name}`);
         if (meRes.ok) {
           const bizData = (await meRes.json()) as any;
           if (Array.isArray(bizData?.data)) {
@@ -1104,7 +1105,7 @@ export async function whatsappChannelRoutes(
               for (const waba of allWabas) {
                 if (waba.id && !seenWabaIds.has(waba.id)) {
                   seenWabaIds.add(waba.id);
-                  const phonesRes = await fetch(`https://graph.facebook.com/v20.0/${waba.id}/phone_numbers?access_token=${encodeURIComponent(token)}&fields=id,display_phone_number,verified_name`);
+                  const phonesRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${waba.id}/phone_numbers?access_token=${encodeURIComponent(token)}&fields=id,display_phone_number,verified_name`);
                   let phoneNumbers: any[] = [];
                   if (phonesRes.ok) {
                     const phonesData = (await phonesRes.json()) as any;
@@ -1125,7 +1126,7 @@ export async function whatsappChannelRoutes(
           if (!seenWabaIds.has(candidateId)) {
             try {
               const probeRes = await fetch(
-                `https://graph.facebook.com/v20.0/${encodeURIComponent(candidateId)}?fields=id,name,phone_numbers{id,display_phone_number,verified_name}&access_token=${encodeURIComponent(token)}`
+                `${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(candidateId)}?fields=id,name,phone_numbers{id,display_phone_number,verified_name}&access_token=${encodeURIComponent(token)}`
               );
               if (probeRes.ok) {
                 const probeData = (await probeRes.json()) as any;
@@ -2303,7 +2304,7 @@ export async function whatsappChannelRoutes(
 
     try {
       const metaRes = await fetch(
-        `https://graph.facebook.com/v20.0/${encodeURIComponent(targetPixelId)}/events?access_token=${encodeURIComponent(token)}`,
+        `${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(targetPixelId)}/events?access_token=${encodeURIComponent(token)}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2363,7 +2364,7 @@ export async function whatsappChannelRoutes(
 
       // 1. Inspect token via debug_token
       try {
-        const debugRes = await fetch(`https://graph.facebook.com/v20.0/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`);
+        const debugRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`);
         if (debugRes.ok) {
           const debugData = (await debugRes.json()) as any;
           const granularScopes = debugData?.data?.granular_scopes;
@@ -2390,7 +2391,7 @@ export async function whatsappChannelRoutes(
 
       // 2. Fetch Ad Accounts and Pixels / Datasets
       try {
-        const adAccountsRes = await fetch(`https://graph.facebook.com/v20.0/me/adaccounts?fields=id,name,account_id,pixels{id,name}&access_token=${encodeURIComponent(token)}`);
+        const adAccountsRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/me/adaccounts?fields=id,name,account_id,pixels{id,name}&access_token=${encodeURIComponent(token)}`);
         if (adAccountsRes.ok) {
           const adData = (await adAccountsRes.json()) as any;
           if (Array.isArray(adData?.data)) {
@@ -2416,7 +2417,7 @@ export async function whatsappChannelRoutes(
 
       // 3. Fetch Businesses and Owned Pixels / Datasets
       try {
-        const bizRes = await fetch(`https://graph.facebook.com/v20.0/me/businesses?fields=id,name,owned_pixels{id,name},client_pixels{id,name}&access_token=${encodeURIComponent(token)}`);
+        const bizRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/me/businesses?fields=id,name,owned_pixels{id,name},client_pixels{id,name}&access_token=${encodeURIComponent(token)}`);
         if (bizRes.ok) {
           const bizData = (await bizRes.json()) as any;
           if (Array.isArray(bizData?.data)) {

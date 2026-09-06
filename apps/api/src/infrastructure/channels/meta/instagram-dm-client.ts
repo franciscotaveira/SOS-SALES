@@ -58,8 +58,10 @@ export interface InstagramSendHeartReactionOptions {
   senderMessageId: string;
 }
 
+import { DEFAULT_META_GRAPH_BASE_URL } from './meta-constants.js';
+
 export class InstagramDmClient {
-  private readonly baseUrl = 'https://graph.facebook.com/v20.0';
+  private readonly baseUrl = DEFAULT_META_GRAPH_BASE_URL;
 
   // ─── Text Messages ──────────────────────────────────────────────
 

@@ -14,8 +14,10 @@ export interface MessengerMetricDailyPoint {
   value: number;
 }
 
+import { DEFAULT_META_GRAPH_BASE_URL } from './meta-constants.js';
+
 export class MessengerInsightsClient {
-  private readonly baseUrl = 'https://graph.facebook.com/v20.0';
+  private readonly baseUrl = DEFAULT_META_GRAPH_BASE_URL;
 
   /**
    * Fetches key Messenger metrics for a date range.

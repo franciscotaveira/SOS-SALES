@@ -26,6 +26,8 @@ export function hashPhone(phone?: string | null): string | undefined {
   return createHash('sha256').update(digitsOnly, 'utf8').digest('hex');
 }
 
+import { DEFAULT_META_GRAPH_API_VERSION } from './meta-constants.js';
+
 export class CapiClient implements CapiDispatchGateway {
   private readonly defaultAccessToken?: string;
   private readonly apiVersion: string;
@@ -34,7 +36,7 @@ export class CapiClient implements CapiDispatchGateway {
 
   constructor(config?: CapiClientConfig) {
     this.defaultAccessToken = config?.defaultAccessToken;
-    this.apiVersion = config?.apiVersion || 'v20.0';
+    this.apiVersion = config?.apiVersion || DEFAULT_META_GRAPH_API_VERSION;
     this.baseUrl = config?.baseUrl || 'https://graph.facebook.com';
     this.defaultTestEventCode = config?.defaultTestEventCode || process.env.META_TEST_EVENT_CODE;
   }

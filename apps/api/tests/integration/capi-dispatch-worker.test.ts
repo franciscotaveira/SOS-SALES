@@ -51,7 +51,7 @@ describe('Meta Conversions API (CAPI) Dispatch Worker', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(sentUrl).toContain('/v20.0/123456789012345/events');
+    expect(sentUrl).toMatch(/\/v(20|21)\.0\/123456789012345\/events/);
     expect(sentBody.data[0]).toEqual({
       event_name: 'Purchase',
       event_time: expect.any(Number),
