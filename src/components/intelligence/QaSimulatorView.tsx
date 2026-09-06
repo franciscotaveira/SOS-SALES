@@ -438,8 +438,8 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
         const res = await authenticatedFetch(`/api/v1/workspaces/${wsId}/intelligence`);
         if (!res.ok) return;
         const data = await res.json();
-        if (!isMounted || !data.bundle) return;
-
+        if (!isMounted || !data?.bundle) return;
+        const b = data.bundle;
         const guardrails = Array.isArray(b.agentConfig?.safetyGuardrails) && b.agentConfig.safetyGuardrails.length > 0
           ? b.agentConfig.safetyGuardrails
           : Array.isArray(b.directives) && b.directives.length > 0
