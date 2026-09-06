@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (05 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `647f3288e9cd6ee3af9f93f01c39161b4db2c0b4` (SOS Vendas Commercial Truth + Simulador Nemotron 3.5)
+- Release ativa: `dabcc9b132ef70503922bc8dc9739f6677985c03` (SOS Vendas AI Intelligence Restored + Receptionist Settings + Canonical Bundles)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
