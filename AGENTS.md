@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (06 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `f7b86dd3bb7d81cacd3a6760023780f94d330a80` (feat: Conversational Interaction Engine - Message Burst Buffer, debounce 1.5s de mensagens picadas no WhatsApp, consolidação de turnos e micro-cadência anti-alucinação)
+- Release ativa: `56abc49166e7434be00d09b388fb167858ffb4a9` (fix: auditoria gstack completa - gap de tipagem e integridade do QA Simulator View, suite 522/522 tests green, preflight e promote VPS)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
