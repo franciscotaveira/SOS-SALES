@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (05 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `dabcc9b132ef70503922bc8dc9739f6677985c03` (SOS Vendas AI Intelligence Restored + Receptionist Settings + Canonical Bundles)
+- Release ativa: `18477f63082e75c9b16c16aa7fc92ae3cab365fe` (fix: null-safe toLowerCase and document normalization in Base de Conhecimento + AI Intelligence Restored)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
