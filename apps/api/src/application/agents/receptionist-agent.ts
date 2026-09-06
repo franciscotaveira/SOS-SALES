@@ -313,6 +313,18 @@ function formatPublishedBusinessHours(profile: JsonRecord): string | undefined {
   return openDays.length > 0 ? openDays.join(', ') : undefined;
 }
 
+function parsePublishedPrice(baseVal: unknown, fallbackVal: unknown): number | undefined {
+  const direct = finiteNumber(baseVal);
+  if (direct !== undefined && direct > 0) return direct;
+  if (typeof fallbackVal === 'number' && Number.isFinite(fallbackVal) && fallbackVal > 0) return fallbackVal;
+  if (typeof fallbackVal === 'string') {
+    const cleaned = fallbackVal.replace(/[^\d.,]/g, '').replace(',', '.');
+    const num = parseFloat(cleaned);
+    if (Number.isFinite(num) && num > 0) return num;
+  }
+  return undefined;
+}
+
 function mapPublishedCatalog(catalog: unknown): WorkspaceConfig['services'] {
   if (!Array.isArray(catalog)) return [];
   return catalog
@@ -321,8 +333,8 @@ function mapPublishedCatalog(catalog: unknown): WorkspaceConfig['services'] {
     .map((item) => {
       const name = nonEmptyString(item.name);
       if (!name) return null;
-      const price = finiteNumber(item.basePrice);
-      const duration = nonEmptyString(item.durationOrExecutionTime);
+      const price = parsePublishedPrice(item.basePrice, item.price ?? item.value);
+      const duration = nonEmptyString(item.durationOrExecutionTime, item.duration);
       return {
         name,
         ...(price !== undefined && price > 0
@@ -374,6 +386,11 @@ function mapPublishedBehavior(
     energetico_direto: 'direto_objetivo',
     acolhedor_empatico: 'empatico_cuidadoso',
     tecnico_especialista: 'tecnico_formal',
+    comercial_fechador: 'comercial_fechador',
+    elegante_acolhedor: 'elegante_acolhedor',
+    direto_objetivo: 'direto_objetivo',
+    tecnico_formal: 'tecnico_formal',
+    empatico_cuidadoso: 'empatico_cuidadoso',
   };
   const mappedTone = typeof tone === 'string' ? toneMap[tone] : undefined;
   if (mappedTone) behavior.tone = mappedTone;
@@ -407,17 +424,21 @@ function applyPublishedIntelligence(
   const address = asJsonRecord(profile.address);
   const catalogServices = mapPublishedCatalog(bundle.catalog);
   const knowledge = collectPublishedKnowledge(bundle.documents, databaseDocuments);
-  const publishedName = nonEmptyString(profile.tradeName, profile.legalName);
-  const publishedAgentName = nonEmptyString(agentConfig.name);
-  const publishedBusinessType = nonEmptyString(profile.segment);
+  const publishedName = nonEmptyString(profile.tradeName, profile.legalName, bundle.tradeName);
+  const publishedAgentName = nonEmptyString(agentConfig.name, bundle.agentName);
+  const publishedBusinessType = nonEmptyString(profile.segment, bundle.businessType);
   const publishedCity = nonEmptyString(
     address.city && address.state ? `${String(address.city).trim()}, ${String(address.state).trim()}` : undefined,
     address.city,
+    bundle.city,
   );
-  const publishedPhone = nonEmptyString(profile.phone);
+  const publishedPhone = nonEmptyString(profile.phone, bundle.phone);
   const publishedHours = formatPublishedBusinessHours(profile);
   const persona = nonEmptyString(agentConfig.persona);
-  const guardrails = stringArray(agentConfig.safetyGuardrails);
+  const rawGuardrails = Array.isArray(agentConfig.safetyGuardrails) && agentConfig.safetyGuardrails.length > 0
+    ? agentConfig.safetyGuardrails
+    : bundle.directives;
+  const guardrails = stringArray(rawGuardrails);
   const escalationTriggers = stringArray(agentConfig.escalationTriggers);
   const allowedPaymentMethods = stringArray(agentConfig.allowedPaymentMethods, 10);
   const installmentLimit = finiteNumber(agentConfig.installmentLimitWithoutInterest);

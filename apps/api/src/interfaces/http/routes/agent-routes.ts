@@ -1282,26 +1282,40 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const bundle = intelligenceRes.rows[0]?.bundle || {};
       const wsRow = workspaceRes.rows[0] || {};
 
-      const wsName = bundle.tradeName || wsRow.name || 'SOS Vendas';
+      const profile = (bundle.companyProfile || {}) as Record<string, any>;
+      const agentConfig = (bundle.agentConfig || {}) as Record<string, any>;
+
+      const wsName = profile.tradeName || bundle.tradeName || wsRow.name || 'SOS Vendas';
       const normWs = (wsName + ' ' + workspaceId).toLowerCase();
 
       const isHaven = normWs.includes('haven') || normWs.includes('escovaria') || workspaceId === '22222222-2222-2222-2222-222222222222';
       const isSora = normWs.includes('sora') || workspaceId === '33333333-3333-3333-3333-333333333333';
       const isSos = normWs.includes('sos') || workspaceId === '11111111-1111-1111-1111-111111111111';
 
-      const agentName = agentRow.agent_name && agentRow.agent_name !== 'Assistente'
-        ? agentRow.agent_name
-        : (isHaven ? 'Camila · Concierge Haven' : isSora ? 'Sora Concierge' : isSos ? 'Sofia · Consultora SOS Vendas' : `${wsName} · Atendente Virtual`);
+      const agentName = agentConfig.name
+        || bundle.agentName
+        || (agentRow.agent_name && agentRow.agent_name !== 'Assistente'
+          ? agentRow.agent_name
+          : (isHaven ? 'Camila · Concierge Haven 24/7' : isSora ? 'Sora Concierge 24/7' : isSos ? 'Sofia · Consultora SOS Vendas' : `${wsName} · Atendente Virtual`));
 
-      const businessType = agentRow.business_type && agentRow.business_type.trim()
-        ? agentRow.business_type
-        : (isHaven ? 'Escovaria e Salão de Beleza Premium' : isSora ? 'Headspa Japonês & Massagem Craniana' : isSos ? 'Software Comercial (SaaS) & Inteligência de Vendas no WhatsApp' : 'Prestação de Serviços');
+      const businessType = profile.segment
+        || bundle.businessType
+        || (agentRow.business_type && agentRow.business_type.trim()
+          ? agentRow.business_type
+          : (isHaven ? 'Escovaria e Salão de Beleza Premium' : isSora ? 'Headspa Japonês & Massagem Craniana' : isSos ? 'Software Comercial (SaaS) & Inteligência de Vendas no WhatsApp' : 'Prestação de Serviços'));
 
-      const city = agentRow.city || 'Chapecó, SC';
+      const city = profile.address?.city || bundle.city || agentRow.city || 'Chapecó, SC';
       const workingHours = agentRow.working_hours || opRow.business_hours || (isHaven ? 'Segunda a Sábado: 09h às 19h' : 'Segunda a Sexta: 08h às 20h | Sábado: 09h às 18h');
       const pixKey = opRow.pix_key || (isHaven ? 'pix@havenescovaria.com.br' : 'contato@iaparavendas.tech');
-      const directives = Array.isArray(bundle.directives) && bundle.directives.length > 0
-        ? bundle.directives
+
+      const rawDirectives = (Array.isArray(agentConfig.safetyGuardrails) && agentConfig.safetyGuardrails.length > 0)
+        ? agentConfig.safetyGuardrails
+        : (Array.isArray(bundle.directives) && bundle.directives.length > 0)
+          ? bundle.directives
+          : null;
+
+      const directives = rawDirectives && rawDirectives.length > 0
+        ? rawDirectives
         : (isHaven
             ? ['Apresentar a Escova Express por R$ 59 com lavagem e ozônioterapia inclusas.', 'Agendamentos oficiais via link do Trinks: https://www.trinks.com/haven-escovaria', 'Cobrar sinal Pix de R$ 30 para sábado.']
             : isSos
@@ -1313,7 +1327,20 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
 
       let catalogText = '';
       if (catalog.length > 0) {
-        catalogText = catalog.map((item: any) => `- ${item.name || item.title}: ${item.price || item.value || 'Sob consulta'} (${item.description || ''})`).join('\n');
+        catalogText = catalog.map((item: any) => {
+          const name = item.name || item.title || 'Item';
+          let priceFormatted = 'Sob consulta';
+          if (typeof item.basePrice === 'number' && item.basePrice > 0) {
+            priceFormatted = `R$ ${item.basePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            if (typeof item.minPromoPrice === 'number' && item.minPromoPrice < item.basePrice && item.minPromoPrice > 0) {
+              priceFormatted += ` (Preço especial: R$ ${item.minPromoPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`;
+            }
+          } else if (item.price || item.value) {
+            priceFormatted = String(item.price || item.value);
+          }
+          const desc = item.description ? ` - ${item.description}` : '';
+          return `- ${name}: ${priceFormatted}${desc}`;
+        }).join('\n');
       } else if (isHaven) {
         catalogText = `- Escova Express: R$ 59,00 (Lavagem com produtos de alta performance + ozônioterapia + modelagem expressa)
 - Esmaltação em Gel Premium: R$ 150,00 (Dura até 21 dias sem lascar)
@@ -1329,6 +1356,10 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         catalogText = `- Atendimento e Serviços ${wsName}: Condições e valores sob consulta com a equipe.`;
       }
 
+      const simTemperature = typeof agentConfig.creativityTemperature === 'number'
+        ? Math.max(0.1, Math.min(1.0, agentConfig.creativityTemperature))
+        : 0.6;
+
       // 5. ENGENHARIA DE SYSTEM PROMPT COGNITIVO (Framework Francisco Rios)
       const systemPrompt = `Você é ${agentName}, a especialista comercial e de atendimento de alta performance da empresa "${wsName}" (${businessType}) localizada em ${city}.
 Horário de atendimento oficial: ${workingHours}.
@@ -1341,13 +1372,14 @@ DIRETRIZES & REGRAS COMERCIAIS ATIVAS (Ensinadas pelo Gestor):
 ${directives.map((d: string) => `• ${d}`).join('\n')}
 
 MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
-1. CONTINUIDADE COGNITIVA (Anti-Regressão):
+1. CONTINUIDADE COGNITIVA & NATURALIDADE:
    - ${dossier.antiRegressionRule || 'Nunca pergunte o que o cliente já demonstrou ou decidiu.'}
    - Se o cliente perguntou preço ou produto, entregue o valor imediatamente e com total transparência.
-   - Jamais reinicie o diálogo com perguntas genéricas vazias do tipo "Olá, como posso ajudar hoje?".
-2. MOMENTUM DE COMPRA:
-   - Responda em tom natural de WhatsApp, parágrafos concisos e objetivos (máximo 3 frases).
-3. MENOR PRÓXIMO PASSO (Microcompromisso):
+   - Jamais reinicie o diálogo com perguntas genéricas vazias do tipo "Olá, como posso ajudar hoje?". Vá direto ao ponto de forma acolhedora.
+2. MOMENTUM DE COMPRA NO WHATSAPP:
+   - Responda em tom natural e humano de WhatsApp, parágrafos curtos e concisos (máximo 2 a 3 blocos ágeis).
+   - Apresente os preços e condições com segurança e clareza.
+3. MENOR PRÓXIMO PASSO (Microcompromisso Suave):
    - Conduza a conversa propondo este próximo passo: "${dossier.smallestNextMove?.actionTitle || 'Avançar para decisão'}".
    - Exemplo de condução: "${dossier.smallestNextMove?.draftText || 'Qual opção faz mais sentido para você?'}"
 
@@ -1379,8 +1411,8 @@ ${HUMANIZER_PROMPT_DIRECTIVES}`;
       try {
         const nimResult = await nvidiaEngine.generateChatCompletion(llmMessages, {
           model: selectedTier,
-          temperature: 0.3,
-          maxTokens: 400,
+          temperature: simTemperature,
+          maxTokens: 450,
         });
         generatedReply = nimResult.content || nimResult.text || '';
         modelUsed = nimResult.model || selectedTier;

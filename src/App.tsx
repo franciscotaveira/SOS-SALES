@@ -464,7 +464,7 @@ function AppContent({
             onSelectWorkspace={onSelectWorkspace}
             activeSubTab={intelligenceSubTab}
             onChangeSubTab={setIntelligenceSubTab}
-            canManage={currentWorkspace.operatorRole === 'owner'}
+            canManage={role === 'owner' || role === 'admin' || currentWorkspace.operatorRole === 'owner' || currentWorkspace.operatorRole === 'admin' || !isProductionMvp}
           />
         </TabErrorBoundary>
       )}

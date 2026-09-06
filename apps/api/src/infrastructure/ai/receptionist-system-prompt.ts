@@ -197,14 +197,14 @@ export function buildSystemPrompt(config: WorkspaceConfig): string {
   };
 
   // Regra de preços adaptativa:
-  // - Se há preços cadastrados → citar apenas eles.
-  // - Se não há → proibir qualquer menção a valores em R$.
+  // - Se há preços cadastrados → apresentar com clareza e transparência.
+  // - Se não há → proibir invenção de valores em R$ e direcionar ao canal oficial.
   const priceRule = hasKnownPrices
-    ? `- Cite apenas os preços listados acima (campo "R$ ..."). NUNCA invente valores fora dessa lista.
-- Se o serviço não tiver preço listado, diga: "Para valores atualizados acesse ${config.bookingUrl || 'nosso site'} 😊"`
-    : `- NUNCA mencione qualquer valor em Reais (R$). NUNCA diga frases como "a partir de R$", "por apenas R$", "custam R$" ou qualquer número que pareça um preço.
-- Se perguntarem o preço, diga SEMPRE: "Para ver os valores atualizados acesse ${config.bookingUrl || 'nosso site'} 😊"
-- Esta regra é ABSOLUTA e não admite exceções.`;
+    ? `- Apresente os preços oficiais listados acima de forma clara, natural e transparente (campo "R$ ..."). NUNCA invente valores fora dessa lista.
+- Se o cliente perguntar de um serviço sem preço fixo tabelado, informe com gentileza que as condições são sob consulta ou detalhadas em: "${config.bookingUrl || 'nosso catálogo'}".`
+    : `- NUNCA mencione qualquer valor em Reais (R$). NUNCA diga frases como "a partir de R$", "por apenas R$", "custam R$" ou qualquer número que pareça um preço inventado.
+- Se perguntarem o preço de procedimentos sem valor tabelado, oriente com gentileza direcionando para: "${config.bookingUrl || 'nosso canal oficial'}".
+- Esta regra é ABSOLUTA para serviços sem preço cadastrado e previne alucinações.`;
 
   return `Você é ${config.agentName}, a recepcionista virtual da ${config.name} — ${config.businessType} em ${config.city}.
 
@@ -232,7 +232,7 @@ CONTATO: ${config.phone}
 
 REGRA CRÍTICA — PREÇOS (INEGOCIÁVEL, FALHA GRAVE SE VIOLADA):
 ${priceRule}
-- Prefira SEMPRE enviar o link de agendamento a responder preços manualmente
+- Apresente os valores oficiais com clareza e ofereça o próximo passo de agendamento/adesão de forma fluida.
 
 INSTRUÇÕES DE ATENDIMENTO:
 

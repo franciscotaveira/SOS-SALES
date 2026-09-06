@@ -2,7 +2,12 @@ export type ToneOfVoice =
   | 'consultivo_premium'
   | 'energetico_direto'
   | 'acolhedor_empatico'
-  | 'tecnico_especialista';
+  | 'tecnico_especialista'
+  | 'comercial_fechador'
+  | 'elegante_acolhedor'
+  | 'direto_objetivo'
+  | 'tecnico_formal'
+  | 'empatico_cuidadoso';
 
 export type AgentAutonomyMode =
   | 'copilot_supervised'

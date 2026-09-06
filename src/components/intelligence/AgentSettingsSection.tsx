@@ -1,707 +1,603 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AiAgentConfig, ToneOfVoice, AgentAutonomyMode } from '../../types/intelligence';
 import {
   Bot,
   Sparkles,
   Sliders,
-  ShieldAlert,
+  ShieldCheck,
   Percent,
   CreditCard,
   PhoneForwarded,
   Save,
   Check,
   Zap,
-  Users,
-  Target,
-  Briefcase,
-  Calendar,
-  ShieldCheck,
-  ArrowRight,
-  Layers,
-  HelpCircle,
-  Clock,
-  ChevronRight,
-  Activity,
-  RotateCcw,
-  BookOpen,
+  Plus,
+  Trash2,
   Lock,
+  Clock,
+  MessageSquare,
+  AlertCircle,
+  HelpCircle,
 } from 'lucide-react';
 
 interface AgentSettingsSectionProps {
   agentConfig: AiAgentConfig;
-  onSaveAgentConfig?: (updated: AiAgentConfig) => void;
+  onSaveAgentConfig?: (updated: AiAgentConfig) => void | Promise<boolean>;
+  canManage?: boolean;
 }
-
-export type SpecialistRole = 'router' | 'receptionist' | 'closer' | 'scheduler' | 'guardrail' | 'groups';
-
-export interface SpecialistProfile {
-  id: SpecialistRole;
-  name: string;
-  codename: string;
-  roleLabel: string;
-  icon: any;
-  color: string;
-  badgeColor: string;
-  description: string;
-  toneOfVoice: ToneOfVoice;
-  autonomyMode: AgentAutonomyMode;
-  systemPrompt: string;
-  maxDiscountPercent: number;
-  installmentLimit: number;
-  safetyGuardrails: string[];
-  escalationTriggers: string[];
-}
-
-export const defaultSpecialistProfiles: Record<SpecialistRole, SpecialistProfile> = {
-  router: {
-    id: 'router',
-    name: 'Atlas · Maestro Orquestrador',
-    codename: 'ATLAS_ROUTER',
-    roleLabel: 'Roteamento & Contexto',
-    icon: Layers,
-    color: 'from-slate-800 to-slate-950 text-white',
-    badgeColor: 'bg-slate-100 text-slate-800 border-slate-300',
-    description: 'Lê a intenção do cliente e aciona o especialista com o menor contexto possível, evitando alucinações.',
-    toneOfVoice: 'consultivo_premium',
-    autonomyMode: 'autonomous_24_7',
-    systemPrompt: `Você é o Atlas, Maestro e Roteador Geral do ecossistema SOS Vendas.
-SUA MISSÃO EXCLUSIVA: Analisar a mensagem do lead/cliente, recuperar apenas os dados essenciais da etapa atual da jornada comercial e delegar a resposta para o Agente Especialista adequado.
-
-REGRAS INEGOCIÁVEIS:
-1. Nunca responda diretamente ao cliente com preços ou ofertas se a intenção for de fechamento; direcione para o Especialista Closer.
-2. Se o lead acabou de clicar num anúncio (CTWA), acione imediatamente a Sofia (Triagem & Boas-Vindas).
-3. Se o lead pedir horários ou vagas, acione a Clara (Agenda).
-4. Mantenha o contexto estritamente enxuto para evitar qualquer tipo de alucinação.`,
-    maxDiscountPercent: 0,
-    installmentLimit: 1,
-    safetyGuardrails: [
-      'Nunca inventar promoções ou dados não presentes no RAG',
-      'Isolar o contexto de cada conversa por workspace_id',
-      'Roteamento com latência máxima de 300ms',
-    ],
-    escalationTriggers: [
-      'Mensagem ambígua ou incompreensível após 2 tentativas',
-      'Solicitação explícita de operador humano',
-    ],
-  },
-  receptionist: {
-    id: 'receptionist',
-    name: 'Sofia · Triagem & Recepção CTWA',
-    codename: 'SOFIA_CTWA',
-    roleLabel: 'Recepção CTWA',
-    icon: Target,
-    color: 'from-blue-600 to-indigo-700 text-white',
-    badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
-    description: 'Acolhe o lead do anúncio, resgata a oferta prometida e qualifica intenção sem prometer descontos.',
-    toneOfVoice: 'acolhedor_empatico',
-    autonomyMode: 'autonomous_24_7',
-    systemPrompt: `Você é a Sofia, Concierge de Boas-Vindas da empresa.
-SUA MISSÃO EXCLUSIVA: Recepcionar calorosamente os leads vindos de anúncios do Meta Ads (Instagram/Facebook) ou contato direto no WhatsApp.
-
-COMO AGIR:
-1. Resgate a oferta ou headline exata do anúncio clicado pelo cliente (ex: "Vi que você se interessou pelo nosso tratamento capilar de luxo!").
-2. Descubra o nome do cliente e sua principal necessidade em no máximo 2 perguntas rápidas e acolhedoras.
-3. Transfira para o especialista Closer assim que o interesse for qualificado.
-
-PROIBIÇÕES ESTRITAS:
-- NUNCA conceda descontos, não invente preços de pacote.
-- NUNCA prometa brindes que não estejam explícitos na campanha oficial.`,
-    maxDiscountPercent: 0,
-    installmentLimit: 1,
-    safetyGuardrails: [
-      'Proibido prometer desconto ou negociar margem',
-      'Limite de 2 perguntas por mensagem para não cansar o lead',
-      'Respeitar estritamente a oferta do criativo de entrada',
-    ],
-    escalationTriggers: [
-      'Cliente pergunta sobre valores antes da qualificação',
-      'Cliente expressa urgência extrema no atendimento',
-    ],
-  },
-  closer: {
-    id: 'closer',
-    name: 'Vítor · Closer & Fechamento Comercial',
-    codename: 'VITOR_CLOSER',
-    roleLabel: 'Vendas & Proposta',
-    icon: Briefcase,
-    color: 'from-emerald-600 to-teal-700 text-white',
-    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    description: 'Apresenta a tese de fechamento, contorna objeções e aplica alçadas de desconto com aprovação.',
-    toneOfVoice: 'energetico_direto',
-    autonomyMode: 'semi_autonomous',
-    systemPrompt: `Você é o Vítor, Closer de Vendas especializado em conversão consultiva.
-SUA MISSÃO EXCLUSIVA: Apresentar o valor do serviço/produto, contornar objeções de preço e prazo, e guiar o cliente até a decisão de compra.
-
-ESTRATÉGIA DE NEGOCIAÇÃO:
-1. Mostre primeiro o valor e a transformação do serviço antes de falar em preço.
-2. Ao receber objeção de preço, aplique a técnica do contraste de valor e facilite o pagamento (PIX ou cartão).
-3. Se necessário para fechamento imediato, utilize a Alçada de Desconto Máximo autorizada (até 15% à vista no PIX).
-4. Gere o link ou instrução de pagamento do sinal.
-
-PROIBIÇÕES:
-- NUNCA ultrapasse o teto de 15% de desconto sem solicitar aprovação do gestor.
-- Não aceite promessas verbais; exija confirmação do sinal.`,
-    maxDiscountPercent: 15,
-    installmentLimit: 3,
-    safetyGuardrails: [
-      'Desconto máximo fixado em 15% no PIX',
-      'Parcelamento sem juros limitado a 3x',
-      'Exigir aprovação de supervisor para qualquer condição fora da tabela',
-    ],
-    escalationTriggers: [
-      'Pedido de desconto acima de 15%',
-      'Cliente solicita condição especial de pagamento personalizada',
-    ],
-  },
-  scheduler: {
-    id: 'scheduler',
-    name: 'Clara · Concierge de Agendamentos',
-    codename: 'CLARA_AGENDA',
-    roleLabel: 'Vagas & Calendário',
-    icon: Calendar,
-    color: 'from-purple-600 to-indigo-700 text-white',
-    badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
-    description: 'Consulta horários livres, reserva o sinal e envia endereço e confirmação no WhatsApp.',
-    toneOfVoice: 'consultivo_premium',
-    autonomyMode: 'autonomous_24_7',
-    systemPrompt: `Você é a Clara, responsável pela gestão da Agenda e Atendimento VIP.
-SUA MISSÃO EXCLUSIVA: Organizar a reserva de horários, confirmação de presença e orientações de chegada para o cliente.
-
-FLUXO DE AGENDAMENTO:
-1. Consulte a grade de horários disponíveis no sistema e ofereça 2 opções inteligentes (ex: "Temos quinta às 14h ou sexta às 10h").
-2. Trave a vaga temporária por 30 minutos aguardando o comprovante do sinal.
-3. Envie a localização no Google Maps, orientações de estacionamento e lembrete automático 24h antes.
-
-PROIBIÇÕES:
-- NUNCA realize agendamentos com intervalo menor que 30 minutos entre clientes.
-- NUNCA confirme a reserva sem a validação do sinal ou aprovação do operador.`,
-    maxDiscountPercent: 0,
-    installmentLimit: 1,
-    safetyGuardrails: [
-      'Checagem obrigatória de conflito de horário na agenda',
-      'Envio automático de endereço e mapa após reserva',
-      'Tolerância de atraso máxima de 15 minutos informada ao cliente',
-    ],
-    escalationTriggers: [
-      'Cliente solicita horário indisponível fora do expediente',
-      'Cancelamento ou reagendamento de última hora (< 2h)',
-    ],
-  },
-  guardrail: {
-    id: 'guardrail',
-    name: 'Sentinela · Guardrail & Handoff Humano',
-    codename: 'SENTINEL_SLA',
-    roleLabel: 'Supervisão & Segurança',
-    icon: ShieldCheck,
-    color: 'from-rose-600 to-pink-700 text-white',
-    badgeColor: 'bg-rose-50 text-rose-700 border-rose-200',
-    description: 'Monitora omissões e estresse. Transfere imediatamente para o atendente humano no Cockpit.',
-    toneOfVoice: 'tecnico_especialista',
-    autonomyMode: 'copilot_supervised',
-    systemPrompt: `Você é o Sentinela, motor de segurança operacional e supervisão em tempo real.
-SUA MISSÃO EXCLUSIVA: Monitorar silenciosamente 100% das mensagens entre clientes e robôs para prevenir atrito, alucinação ou estouro de SLA.
-
-GATILHOS DE TRANSBORDO IMEDIATO (HANDOFF):
-1. O cliente solicitou explicitamente falar com atendente humano ("quero falar com gente", "atendente por favor").
-2. Detecção de sentimento negativo, irritação ou 2 perguntas consecutivas não compreendidas pela IA.
-3. Pedido de cancelamento, estorno financeiro ou litígio.
-4. Ao disparar o Handoff, silencie os outros robôs e alerte o operador no Cockpit com contador de SLA de 3 minutos.`,
-    maxDiscountPercent: 0,
-    installmentLimit: 1,
-    safetyGuardrails: [
-      'Transferência imediata ao detectar palavras de risco ("procon", "cancelar", "humano")',
-      'Pausa obrigatória de respostas automáticas durante o atendimento do operador',
-      'Gravação do motivo do handoff no Dossiê Vivo do cliente',
-    ],
-    escalationTriggers: [
-      'Palavras-chave de risco jurídico ou reclamação',
-      'Tempo de resposta sem retorno do cliente > 15 minutos',
-    ],
-  },
-  groups: {
-    id: 'groups',
-    name: 'Radar · Monitor de Grupos B2B',
-    codename: 'RADAR_GROUPS',
-    roleLabel: 'Monitoramento B2B',
-    icon: Users,
-    color: 'from-amber-600 to-orange-700 text-white',
-    badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
-    description: 'Sintetiza conversas de grupos de clientes, detecta solicitações e emite o resumo matinal para a equipe.',
-    toneOfVoice: 'consultivo_premium',
-    autonomyMode: 'autonomous_24_7',
-    systemPrompt: `Você é o Radar, analista de inteligência de contas e monitor de grupos de WhatsApp.
-SUA MISSÃO EXCLUSIVA: Acompanhar o fluxo de conversas nos grupos de clientes da agência, gerar resumos executivos diários e alertar sobre demandas críticas.
-
-ROTINAS:
-1. Daily Digest Matinal: Sintetize o que foi solicitado na véspera e o que está pendente de entrega.
-2. Alerta de Oportunidade: Avise o time imediatamente se o cliente falar sobre "aumentar orçamento", "novo produto" ou "campanha de feriado".
-3. Alerta de Risco: Avise o gestor se o cliente manifestar dúvida de ROI ou atraso de criativos.`,
-    maxDiscountPercent: 0,
-    installmentLimit: 1,
-    safetyGuardrails: [
-      'Não responder no grupo sem comando explícito @bot ou autorização prévia',
-      'Isolar mensagens confidenciais de um grupo para não vazar em outros',
-      'Emitir resumo matinal pontualmente às 08:30',
-    ],
-    escalationTriggers: [
-      'Cliente expressa insatisfação com entregas da agência',
-      'Solicitação de reunião urgente com a diretoria',
-    ],
-  },
-};
 
 export const AgentSettingsSection: React.FC<AgentSettingsSectionProps> = ({
   agentConfig: initialConfig,
   onSaveAgentConfig,
+  canManage = true,
 }) => {
-  const [profiles, setProfiles] = useState<Record<SpecialistRole, SpecialistProfile>>(() => {
-    const savedProfiles = localStorage.getItem('sos_specialist_profiles');
-    if (savedProfiles) {
-      try {
-        return JSON.parse(savedProfiles);
-      } catch (e) {
-        return defaultSpecialistProfiles;
-      }
-    }
-    return defaultSpecialistProfiles;
-  });
-
-  const [selectedSpecialist, setSelectedSpecialist] = useState<SpecialistRole>('router');
+  const [config, setConfig] = useState<AiAgentConfig>(initialConfig);
   const [saved, setSaved] = useState(false);
   const [newGuardrail, setNewGuardrail] = useState('');
   const [newTrigger, setNewTrigger] = useState('');
+  const [newPaymentMethod, setNewPaymentMethod] = useState('');
 
-  const activeProfile = profiles[selectedSpecialist];
+  useEffect(() => {
+    setConfig(initialConfig);
+  }, [initialConfig]);
 
-  const updateActiveProfile = (partial: Partial<SpecialistProfile>) => {
-    setProfiles((prev) => ({
-      ...prev,
-      [selectedSpecialist]: {
-        ...prev[selectedSpecialist],
-        ...partial,
-      },
-    }));
-  };
-
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('sos_specialist_profiles', JSON.stringify(profiles));
-    if (onSaveAgentConfig) {
-      onSaveAgentConfig({
-        ...initialConfig,
-        name: activeProfile.name,
-        persona: activeProfile.systemPrompt,
-        toneOfVoice: activeProfile.toneOfVoice,
-        autonomyMode: activeProfile.autonomyMode,
-        maxDiscountPercent: activeProfile.maxDiscountPercent,
-        safetyGuardrails: activeProfile.safetyGuardrails,
-        escalationTriggers: activeProfile.escalationTriggers,
-      });
-    }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
+    if (!canManage) return;
 
-  const handleResetToDefault = () => {
-    updateActiveProfile(defaultSpecialistProfiles[selectedSpecialist]);
+    if (onSaveAgentConfig) {
+      const ok = await onSaveAgentConfig(config);
+      if (ok !== false) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
+      }
+    } else {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    }
   };
 
   const handleAddGuardrail = () => {
     if (!newGuardrail.trim()) return;
-    updateActiveProfile({
-      safetyGuardrails: [...activeProfile.safetyGuardrails, newGuardrail.trim()],
-    });
+    setConfig((prev) => ({
+      ...prev,
+      safetyGuardrails: [...(prev.safetyGuardrails || []), newGuardrail.trim()],
+    }));
     setNewGuardrail('');
   };
 
   const handleRemoveGuardrail = (index: number) => {
-    const updated = activeProfile.safetyGuardrails.filter((_, i) => i !== index);
-    updateActiveProfile({ safetyGuardrails: updated });
+    setConfig((prev) => ({
+      ...prev,
+      safetyGuardrails: (prev.safetyGuardrails || []).filter((_, i) => i !== index),
+    }));
   };
 
   const handleAddTrigger = () => {
     if (!newTrigger.trim()) return;
-    updateActiveProfile({
-      escalationTriggers: [...activeProfile.escalationTriggers, newTrigger.trim()],
-    });
+    setConfig((prev) => ({
+      ...prev,
+      escalationTriggers: [...(prev.escalationTriggers || []), newTrigger.trim()],
+    }));
     setNewTrigger('');
   };
 
   const handleRemoveTrigger = (index: number) => {
-    const updated = activeProfile.escalationTriggers.filter((_, i) => i !== index);
-    updateActiveProfile({ escalationTriggers: updated });
+    setConfig((prev) => ({
+      ...prev,
+      escalationTriggers: (prev.escalationTriggers || []).filter((_, i) => i !== index),
+    }));
   };
 
-  const specialistList: SpecialistProfile[] = Object.values(profiles);
+  const handleTogglePaymentMethod = (method: string) => {
+    setConfig((prev) => {
+      const current = prev.allowedPaymentMethods || [];
+      const exists = current.includes(method);
+      return {
+        ...prev,
+        allowedPaymentMethods: exists ? current.filter((m) => m !== method) : [...current, method],
+      };
+    });
+  };
+
+  const handleAddCustomPaymentMethod = () => {
+    if (!newPaymentMethod.trim()) return;
+    if (!config.allowedPaymentMethods.includes(newPaymentMethod.trim())) {
+      setConfig((prev) => ({
+        ...prev,
+        allowedPaymentMethods: [...(prev.allowedPaymentMethods || []), newPaymentMethod.trim()],
+      }));
+    }
+    setNewPaymentMethod('');
+  };
+
+  const toneOptions: { value: ToneOfVoice; label: string; desc: string }[] = [
+    {
+      value: 'comercial_fechador',
+      label: 'Comercial Fechador (Recomendado)',
+      desc: 'Ágil, persuasivo, focado no menor próximo passo e fechamento de vendas.',
+    },
+    {
+      value: 'consultivo_premium',
+      label: 'Consultivo Premium',
+      desc: 'Elegante, focado em agregar valor e diagnóstico aprofundado.',
+    },
+    {
+      value: 'acolhedor_empatico',
+      label: 'Acolhedor & Empático',
+      desc: 'Caloroso, atencioso, ideal para clínicas, saúde e estética.',
+    },
+    {
+      value: 'direto_objetivo',
+      label: 'Direto & Objetivo',
+      desc: 'Respostas ultra-rápidas, sem rodeios, ideal para suporte e operações dinâmicas.',
+    },
+    {
+      value: 'tecnico_especialista',
+      label: 'Técnico Especialista',
+      desc: 'Vocabulário preciso, formal e com autoridade em especificações técnicas.',
+    },
+  ];
+
+  const autonomyOptions: { value: AgentAutonomyMode; label: string; desc: string }[] = [
+    {
+      value: 'copilot_supervised',
+      label: 'Copiloto Supervisionado',
+      desc: 'A IA gera a melhor resposta e aguarda aprovação humana antes do envio.',
+    },
+    {
+      value: 'semi_autonomous',
+      label: 'Autônomo Supervisionado',
+      desc: 'Responde dúvidas comuns automaticamente e escala para a equipe se houver fricção.',
+    },
+    {
+      value: 'autonomous_24_7',
+      label: '100% Autônomo 24/7',
+      desc: 'Conduz o atendimento completo de ponta a ponta sem intervenção humana obrigatória.',
+    },
+  ];
+
+  const standardPaymentMethods = ['Pix', 'Cartão de Crédito', 'Cartão de Débito', 'Boleto Bancário', 'Link de Pagamento'];
 
   return (
     <form onSubmit={handleSave} className="space-y-6 animate-in fade-in duration-200">
-      {/* Header Banner */}
-      <div className="bg-[var(--sos-surface)] border-[var(--sos-border)] rounded-2xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-[var(--sos-background)] border-[var(--sos-border)] text-[var(--sos-operational)] flex items-center justify-center">
-              <Bot className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold font-heading flex items-center gap-2">
-                <span>Equipe de Robôs Especialistas</span>
-                <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-[var(--sos-surface)]/20 text-[var(--sos-success)] font-bold border-[var(--sos-border)]/30">
-                  Especialistas Dedicados
-                </span>
-              </h2>
-              <p className="text-xs text-[var(--sos-muted)]">
-                Cada robô tem uma função clara (atender anúncio, fechar venda, marcar horário ou proteger contra descontos não autorizados).
-              </p>
+      <fieldset disabled={!canManage} className="contents">
+        {/* Header Banner */}
+        <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-lg bg-[var(--sos-ai)]/20 text-[var(--sos-ai)] flex items-center justify-center font-bold shadow-2xs">
+                <Bot className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold font-heading flex items-center gap-2 text-[var(--sos-ink)]">
+                  <span>{config.name || 'Agente Comercial IA 24/7'}</span>
+                  <span className="text-[9.5px] font-mono px-2 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] font-bold border border-[var(--sos-ai)]/30 flex items-center gap-1">
+                    <Sparkles className="w-2.5 h-2.5" /> Motor NVIDIA Nemotron 3.5
+                  </span>
+                </h2>
+                <p className="text-xs text-[var(--sos-muted)]">
+                  Configuração soberana da atendente virtual que opera no Cockpit e no WhatsApp oficial da empresa.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={handleResetToDefault}
-            className="flex items-center gap-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors"
-            title="Restaurar prompt padrão de fábrica para este especialista"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Padrão de Fábrica</span>
-          </button>
 
           <button
             type="submit"
             id="btn-save-agent-settings"
-            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-[#00A884] hover:bg-[#008f6f] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+            disabled={!canManage}
+            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-2xs shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saved ? (
               <>
-                <Check className="w-4 h-4" />
+                <Check className="w-3.5 h-3.5" />
                 <span>Salvo com Sucesso!</span>
               </>
             ) : (
               <>
-                <Save className="w-4 h-4" />
-                <span>Salvar Configurações do Squad</span>
+                <Save className="w-3.5 h-3.5" />
+                <span>Salvar Configurações da Agente</span>
               </>
             )}
           </button>
         </div>
-      </div>
 
-      {/* Interactive Squad Grid / Switcher */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {specialistList.map((spec) => {
-          const isSelected = selectedSpecialist === spec.id;
-          const Icon = defaultSpecialistProfiles[spec.id].icon;
-
-          return (
-            <button
-              key={spec.id}
-              type="button"
-              onClick={() => setSelectedSpecialist(spec.id)}
-              className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between overflow-hidden shadow-2xs group cursor-pointer ${
-                isSelected
-                  ? 'bg-white border-purple-500 ring-2 ring-purple-500/20 shadow-md'
-                  : 'bg-white/90 border-slate-200 hover:border-slate-300 hover:bg-white'
-              }`}
-            >
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center bg-gradient-to-br ${defaultSpecialistProfiles[spec.id].color} shadow-xs`}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded-full border ${defaultSpecialistProfiles[spec.id].badgeColor}`}>
-                    {spec.roleLabel}
-                  </span>
-                </div>
-
-                <div>
-                  <h3 className="font-bold text-xs text-slate-900 leading-tight">
-                    {spec.name}
-                  </h3>
-                  <p className="text-[10.5px] text-slate-500 line-clamp-2 mt-0.5">
-                    {spec.description}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
-                <span className="flex items-center gap-1 font-semibold text-emerald-600">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Ativo no Cockpit
-                </span>
-                <ChevronRight className={`w-3 h-3 text-slate-400 transition-transform ${isSelected ? 'rotate-90 text-purple-600 font-bold' : ''}`} />
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Selected Specialist Detailed Workspace */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-5">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <div className={`w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br ${defaultSpecialistProfiles[activeProfile.id].color}`}>
-              {React.createElement(defaultSpecialistProfiles[activeProfile.id].icon, { className: 'w-4 h-4' })}
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 font-heading">
-                Configurando: {activeProfile.name}
-              </h3>
-              <span className="text-[10.5px] text-slate-500 font-mono">
-                {activeProfile.codename} · Isolamento de Memória & RAG Ativo
-              </span>
-            </div>
-          </div>
-
-          <span className="text-xs text-purple-700 bg-purple-50 font-bold px-2.5 py-1 rounded-full border border-purple-200 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-purple-600" /> Especialista Pré-Configurado
-          </span>
-        </div>
-
+        {/* Bloco 1: Identidade, Persona & Tom de Voz */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column: Identidade & Prompt do Especialista */}
-          <div className="space-y-4">
-            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                  <Bot className="w-3.5 h-3.5 text-purple-600" /> Identidade & Atuação
-                </span>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  {activeProfile.roleLabel}
-                </span>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    Nome do Agente Especialista
-                  </label>
-                  <input
-                    type="text"
-                    value={activeProfile.name}
-                    onChange={(e) => updateActiveProfile({ name: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-[#00A884]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Nível de Autonomia
-                    </label>
-                    <select
-                      value={activeProfile.autonomyMode}
-                      onChange={(e) =>
-                        updateActiveProfile({ autonomyMode: e.target.value as AgentAutonomyMode })
-                      }
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-semibold focus:ring-2 focus:ring-[#00A884]"
-                    >
-                      <option value="autonomous_24_7">Autônomo 24/7</option>
-                      <option value="copilot_supervised">Copilot Supervisionado</option>
-                      <option value="semi_autonomous">Semi-Autônomo</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Tom de Voz
-                    </label>
-                    <select
-                      value={activeProfile.toneOfVoice}
-                      onChange={(e) =>
-                        updateActiveProfile({ toneOfVoice: e.target.value as ToneOfVoice })
-                      }
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-semibold focus:ring-2 focus:ring-[#00A884]"
-                    >
-                      <option value="consultivo_premium">Consultivo & Premium</option>
-                      <option value="energetico_direto">Energético & Direto</option>
-                      <option value="acolhedor_empatico">Acolhedor & Empático</option>
-                      <option value="tecnico_especialista">Técnico & Especialista</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
+          <div className="bg-white border border-[var(--sos-border)] rounded-xl p-4 shadow-2xs space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-[var(--sos-border)]">
+              <Sparkles className="w-4 h-4 text-[var(--sos-ai)]" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--sos-ink)] font-heading">
+                Identidade & Papel Comercial
+              </h3>
             </div>
 
-            {/* Prompt de Instrução Específico do Especialista */}
-            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <label className="block text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5 text-indigo-600" /> Diretriz de Escopo Estrito (System Prompt)
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-[var(--sos-ink)] mb-1">
+                  Nome da Atendente / Consultora Virtual
                 </label>
-                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-bold border border-emerald-200">
-                  Pré-Configurado
-                </span>
-              </div>
-
-              <textarea
-                rows={9}
-                value={activeProfile.systemPrompt}
-                onChange={(e) => updateActiveProfile({ systemPrompt: e.target.value })}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#00A884] font-mono text-[11px] leading-relaxed"
-                placeholder="Instruções de conduta e regras deste agente especialista..."
-              />
-              <p className="text-[10.5px] text-slate-500">
-                💡 O escopo estrito garante que este robô só responda sobre seu domínio, eliminando 100% das alucinações de contexto.
-              </p>
-            </div>
-          </div>
-
-          {/* Right Column: Alçadas Financeiras & Guardrails de Segurança */}
-          <div className="space-y-4">
-            {/* Alçadas */}
-            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3 text-xs">
-              <div className="flex items-center justify-between pb-1 border-b border-slate-200">
-                <div className="flex items-center gap-2">
-                  <Percent className="w-4 h-4 text-emerald-600" />
-                  <h4 className="font-bold text-slate-800">
-                    Alçada Comercial deste Agente
-                  </h4>
-                </div>
-                <span className="text-[10px] text-slate-500">
-                  {activeProfile.maxDiscountPercent > 0 ? 'Negociação Ativa' : 'Sem Alçada de Desconto'}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    Desconto Máximo Autorizado (%)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="50"
-                    value={activeProfile.maxDiscountPercent}
-                    onChange={(e) =>
-                      updateActiveProfile({ maxDiscountPercent: Number(e.target.value) })
-                    }
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-[#00A884]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    Parcelamento sem Juros (Vezes)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="12"
-                    value={activeProfile.installmentLimit}
-                    onChange={(e) =>
-                      updateActiveProfile({ installmentLimit: Number(e.target.value) })
-                    }
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-[#00A884]"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Guardrails Rígidos de Segurança */}
-            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3 text-xs">
-              <div className="flex items-center justify-between pb-1 border-b border-slate-200">
-                <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-rose-600" />
-                  <h4 className="font-bold text-slate-800">
-                    Guardrails Rígidos de Segurança
-                  </h4>
-                </div>
-                <span className="text-[10px] text-rose-700 font-semibold">
-                  {(activeProfile?.safetyGuardrails || []).length} regras ativas
-                </span>
-              </div>
-
-              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-                {(activeProfile?.safetyGuardrails || []).map((guardrail, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200 text-slate-700"
-                  >
-                    <span className="text-[11px] leading-tight">🔒 {guardrail}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveGuardrail(idx)}
-                      className="text-rose-500 hover:text-rose-700 font-bold text-xs ml-2 cursor-pointer"
-                      title="Remover regra"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex gap-2 pt-1">
                 <input
                   type="text"
+                  value={config.name || ''}
+                  onChange={(e) => setConfig({ ...config, name: e.target.value })}
+                  placeholder="Ex: Sofia · Consultora SOS Vendas"
+                  className="w-full text-xs px-3 py-2 border border-[var(--sos-border)] rounded-lg bg-[var(--sos-surface)] text-[var(--sos-ink)] focus:border-[var(--sos-ai)] focus:outline-none"
+                />
+                <span className="text-[10px] text-[var(--sos-muted)] mt-0.5 block">
+                  Nome com o qual o agente se apresentará no início dos atendimentos no WhatsApp.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[var(--sos-ink)] mb-1">
+                  Persona & Diretrizes de Postura
+                </label>
+                <textarea
+                  rows={4}
+                  value={config.persona || ''}
+                  onChange={(e) => setConfig({ ...config, persona: e.target.value })}
+                  placeholder="Ex: Consultora comercial experiente, ágil, acolhedora e focada em entender a necessidade do cliente para apresentar a melhor solução de forma transparente."
+                  className="w-full text-xs px-3 py-2 border border-[var(--sos-border)] rounded-lg bg-[var(--sos-surface)] text-[var(--sos-ink)] focus:border-[var(--sos-ai)] focus:outline-none resize-y"
+                />
+                <span className="text-[10px] text-[var(--sos-muted)] mt-0.5 block">
+                  Define a personalidade e mentalidade do agente durante todas as conversas.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[var(--sos-ink)] mb-1">
+                  Modo de Autonomia Operacional
+                </label>
+                <div className="space-y-2">
+                  {autonomyOptions.map((opt) => (
+                    <label
+                      key={opt.value}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition ${
+                        config.autonomyMode === opt.value
+                          ? 'border-[var(--sos-ai)] bg-[var(--sos-ai-subtle)]/30 text-[var(--sos-ink)]'
+                          : 'border-[var(--sos-border)] bg-[var(--sos-surface)] hover:bg-slate-50 text-[var(--sos-muted)]'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="autonomyMode"
+                        value={opt.value}
+                        checked={config.autonomyMode === opt.value}
+                        onChange={() => setConfig({ ...config, autonomyMode: opt.value })}
+                        className="mt-0.5 accent-[var(--sos-ai)]"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-[var(--sos-ink)] block">{opt.label}</span>
+                        <span className="text-[10.5px] text-[var(--sos-muted)] leading-relaxed">{opt.desc}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-[var(--sos-border)] rounded-xl p-4 shadow-2xs space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-[var(--sos-border)]">
+              <Sliders className="w-4 h-4 text-[var(--sos-operational)]" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--sos-ink)] font-heading">
+                Tom de Voz & Criatividade
+              </h3>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[var(--sos-ink)] mb-1">
+                  Tom de Voz Predominante
+                </label>
+                <div className="space-y-2">
+                  {toneOptions.map((tone) => (
+                    <label
+                      key={tone.value}
+                      className={`flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition ${
+                        config.toneOfVoice === tone.value
+                          ? 'border-[var(--sos-operational)] bg-blue-50/50 text-[var(--sos-ink)]'
+                          : 'border-[var(--sos-border)] bg-[var(--sos-surface)] hover:bg-slate-50 text-[var(--sos-muted)]'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="toneOfVoice"
+                        value={tone.value}
+                        checked={config.toneOfVoice === tone.value}
+                        onChange={() => setConfig({ ...config, toneOfVoice: tone.value })}
+                        className="mt-0.5 accent-[var(--sos-operational)]"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-[var(--sos-ink)] block">{tone.label}</span>
+                        <span className="text-[10px] text-[var(--sos-muted)]">{tone.desc}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-[var(--sos-ink)]">
+                    Temperatura de Criatividade: {config.creativityTemperature ?? 0.6}
+                  </label>
+                  <span className="text-[10px] font-semibold text-[var(--sos-muted)]">
+                    {(config.creativityTemperature ?? 0.6) <= 0.3
+                      ? 'Mais Factual e Estrito'
+                      : (config.creativityTemperature ?? 0.6) <= 0.7
+                        ? 'Natural e Humanizado (Ideal)'
+                        : 'Mais Expressivo e Variado'}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.05"
+                  value={config.creativityTemperature ?? 0.6}
+                  onChange={(e) => setConfig({ ...config, creativityTemperature: parseFloat(e.target.value) })}
+                  className="w-full accent-[var(--sos-ai)] cursor-pointer"
+                />
+                <div className="flex justify-between text-[9px] text-[var(--sos-muted)] mt-0.5">
+                  <span>0.1 (Fiel ao Script)</span>
+                  <span>0.6 (Humanizado)</span>
+                  <span>1.0 (Livre)</span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-[var(--sos-border)]">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.workingHoursOnly ?? true}
+                    onChange={(e) => setConfig({ ...config, workingHoursOnly: e.target.checked })}
+                    className="accent-[var(--sos-ai)] rounded"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-[var(--sos-ink)] block">
+                      Respeitar Horário de Atendimento Comercial
+                    </span>
+                    <span className="text-[10px] text-[var(--sos-muted)]">
+                      Fora do horário, informa a escala de funcionamento e captura dados para retorno prioritário.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bloco 2: Alçadas Comerciais & Pagamentos */}
+        <div className="bg-white border border-[var(--sos-border)] rounded-xl p-4 shadow-2xs space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-[var(--sos-border)]">
+            <Percent className="w-4 h-4 text-emerald-600" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--sos-ink)] font-heading">
+              Alçadas Comerciais & Políticas de Pagamento
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-[var(--sos-ink)] mb-1">
+                Alçada Máxima de Desconto Autorizada (%)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={config.maxDiscountPercent ?? 0}
+                  onChange={(e) => setConfig({ ...config, maxDiscountPercent: Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="w-full text-xs px-3 py-2 border border-[var(--sos-border)] rounded-lg bg-[var(--sos-surface)] text-[var(--sos-ink)] focus:border-[var(--sos-ai)] focus:outline-none"
+                />
+                <span className="absolute right-3 top-2 text-xs font-bold text-[var(--sos-muted)]">%</span>
+              </div>
+              <span className="text-[10px] text-[var(--sos-muted)] mt-0.5 block">
+                Acima deste teto, a IA é proibida de conceder abatimento e aciona handoff para humano.
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[var(--sos-ink)] mb-1">
+                Limite de Parcelas Sem Juros
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="1"
+                  max="24"
+                  value={config.installmentLimitWithoutInterest ?? 1}
+                  onChange={(e) => setConfig({ ...config, installmentLimitWithoutInterest: Math.max(1, parseInt(e.target.value) || 1) })}
+                  className="w-full text-xs px-3 py-2 border border-[var(--sos-border)] rounded-lg bg-[var(--sos-surface)] text-[var(--sos-ink)] focus:border-[var(--sos-ai)] focus:outline-none"
+                />
+                <span className="absolute right-3 top-2 text-xs font-bold text-[var(--sos-muted)]">x</span>
+              </div>
+              <span className="text-[10px] text-[var(--sos-muted)] mt-0.5 block">
+                Número máximo de parcelas sem juros comunicado nas ofertas comerciais.
+              </span>
+            </div>
+
+            <div className="sm:col-span-2 lg:col-span-1">
+              <label className="block text-xs font-bold text-[var(--sos-ink)] mb-1">
+                Formas de Pagamento Autorizadas
+              </label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {standardPaymentMethods.map((method) => {
+                  const active = (config.allowedPaymentMethods || []).includes(method);
+                  return (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => handleTogglePaymentMethod(method)}
+                      className={`text-[10.5px] px-2.5 py-1 rounded-full font-bold border transition cursor-pointer ${
+                        active
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                          : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                      }`}
+                    >
+                      {active ? '✓ ' : '+ '}{method}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  placeholder="Outra forma..."
+                  value={newPaymentMethod}
+                  onChange={(e) => setNewPaymentMethod(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomPaymentMethod(); } }}
+                  className="flex-1 text-xs px-2.5 py-1 border border-[var(--sos-border)] rounded-lg bg-[var(--sos-surface)] text-[var(--sos-ink)]"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCustomPaymentMethod}
+                  className="px-2.5 py-1 text-xs bg-slate-700 text-white rounded-lg hover:bg-slate-800 shrink-0 cursor-pointer"
+                >
+                  Adicionar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bloco 3: Diretrizes Comerciais & Regras Invioláveis (Safety Guardrails) */}
+        <div className="bg-white border border-[var(--sos-border)] rounded-xl p-4 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-[var(--sos-border)]">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-rose-600" />
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--sos-ink)] font-heading">
+                  Diretrizes & Regras Comerciais Invioláveis (Safety Guardrails)
+                </h3>
+                <p className="text-[11px] text-[var(--sos-muted)]">
+                  Regras de negócio que o agente Sofia deve seguir rigorosamente em toda resposta.
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+              {(config.safetyGuardrails || []).length} Regras Ativas
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {(config.safetyGuardrails || []).map((rule, idx) => (
+              <div
+                key={idx}
+                className="flex items-start justify-between gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-800"
+              >
+                <div className="flex items-start gap-2 min-w-0">
+                  <span className="font-mono text-[10px] font-bold text-slate-400 mt-0.5 shrink-0">
+                    #{idx + 1}
+                  </span>
+                  <span className="leading-relaxed break-words">{rule}</span>
+                </div>
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveGuardrail(idx)}
+                    title="Remover regra"
+                    className="text-slate-400 hover:text-rose-600 p-1 shrink-0 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {canManage && (
+              <div className="flex gap-2 pt-2">
+                <input
+                  type="text"
+                  placeholder="Ex: Apresentar o plano anual por R$ 582 no Pix com 50% de desconto à vista."
                   value={newGuardrail}
                   onChange={(e) => setNewGuardrail(e.target.value)}
-                  placeholder="Adicionar novo guardrail de segurança..."
-                  className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 text-xs focus:ring-1 focus:ring-[#00A884]"
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddGuardrail(); } }}
+                  className="flex-1 text-xs px-3 py-2 border border-[var(--sos-border)] rounded-lg bg-[var(--sos-surface)] text-[var(--sos-ink)] focus:border-[var(--sos-ai)] focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={handleAddGuardrail}
-                  className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 cursor-pointer shrink-0"
+                  className="flex items-center gap-1 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer"
                 >
-                  Adicionar
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Adicionar Regra</span>
                 </button>
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bloco 4: Gatilhos de Transbordo Humano (Escalation Triggers) */}
+        <div className="bg-white border border-[var(--sos-border)] rounded-xl p-4 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-[var(--sos-border)]">
+            <div className="flex items-center gap-2">
+              <PhoneForwarded className="w-4 h-4 text-amber-600" />
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--sos-ink)] font-heading">
+                  Gatilhos de Transbordo para a Equipe Humana (Handoff Triggers)
+                </h3>
+                <p className="text-[11px] text-[var(--sos-muted)]">
+                  Cenários onde o agente transfere o controle do WhatsApp imediatamente para um operador humano.
+                </p>
+              </div>
             </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+              {(config.escalationTriggers || []).length} Gatilhos
+            </span>
+          </div>
 
-            {/* Gatilhos de Transbordo (Handoff) */}
-            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3 text-xs">
-              <div className="flex items-center justify-between pb-1 border-b border-slate-200">
-                <div className="flex items-center gap-2">
-                  <PhoneForwarded className="w-4 h-4 text-amber-600" />
-                  <h4 className="font-bold text-slate-800">
-                    Gatilhos de Handoff Humano
-                  </h4>
+          <div className="space-y-2">
+            {(config.escalationTriggers || []).map((trigger, idx) => (
+              <div
+                key={idx}
+                className="flex items-start justify-between gap-2 p-2.5 rounded-lg bg-amber-50/40 border border-amber-200/60 text-xs text-slate-800"
+              >
+                <div className="flex items-start gap-2 min-w-0">
+                  <span className="font-mono text-[10px] font-bold text-amber-600 mt-0.5 shrink-0">
+                    #{idx + 1}
+                  </span>
+                  <span className="leading-relaxed break-words">{trigger}</span>
                 </div>
-                <span className="text-[10px] text-amber-700 font-semibold">
-                  Cockpit Alert
-                </span>
-              </div>
-
-              <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
-                {activeProfile.escalationTriggers.map((trigger, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200 text-slate-700"
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTrigger(idx)}
+                    title="Remover gatilho"
+                    className="text-slate-400 hover:text-rose-600 p-1 shrink-0 cursor-pointer"
                   >
-                    <span className="text-[11px] leading-tight">⚡ {trigger}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTrigger(idx)}
-                      className="text-amber-600 hover:text-amber-800 font-bold text-xs ml-2 cursor-pointer"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
+            ))}
 
-              <div className="flex gap-2 pt-1">
+            {canManage && (
+              <div className="flex gap-2 pt-2">
                 <input
                   type="text"
+                  placeholder="Ex: Cliente solicitou falar com atendente humano ou fez reclamação de cobrança."
                   value={newTrigger}
                   onChange={(e) => setNewTrigger(e.target.value)}
-                  placeholder="Adicionar gatilho de transbordo..."
-                  className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 text-xs focus:ring-1 focus:ring-[#00A884]"
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTrigger(); } }}
+                  className="flex-1 text-xs px-3 py-2 border border-[var(--sos-border)] rounded-lg bg-[var(--sos-surface)] text-[var(--sos-ink)] focus:border-[var(--sos-ai)] focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={handleAddTrigger}
-                  className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 cursor-pointer shrink-0"
+                  className="flex items-center gap-1 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer"
                 >
-                  Adicionar
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Adicionar Gatilho</span>
                 </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
-      </div>
+      </fieldset>
     </form>
   );
 };

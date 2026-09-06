@@ -440,9 +440,13 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
         const data = await res.json();
         if (!isMounted || !data.bundle) return;
 
-        const b = data.bundle;
-        if (b.directives && Array.isArray(b.directives) && b.directives.length > 0) {
-          setDirectives(b.directives);
+        const guardrails = Array.isArray(b.agentConfig?.safetyGuardrails) && b.agentConfig.safetyGuardrails.length > 0
+          ? b.agentConfig.safetyGuardrails
+          : Array.isArray(b.directives) && b.directives.length > 0
+            ? b.directives
+            : null;
+        if (guardrails) {
+          setDirectives(guardrails);
         }
         if (b.agentConfig?.toneOfVoice) {
           setCurrentTone(b.agentConfig.toneOfVoice);
@@ -700,6 +704,7 @@ export const QaSimulatorView: React.FC<QaSimulatorViewProps> = ({
       currentBundle.directives = directives;
       if (!currentBundle.agentConfig) currentBundle.agentConfig = {};
       currentBundle.agentConfig.toneOfVoice = currentTone;
+      currentBundle.agentConfig.safetyGuardrails = directives;
 
       await authenticatedFetch(`/api/v1/workspaces/${wsId}/intelligence`, {
         method: 'PUT',
