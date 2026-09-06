@@ -350,6 +350,7 @@ async function startComposedServer(
     ? new ReceptionistInboundWorker({
       receptionistAgent: runtime.receptionistAgent ?? getReceptionistAgent(),
       outboxGateway: runtime.outboxGateway,
+      burstDebounceMs: 1500,
     })
     : undefined;
 

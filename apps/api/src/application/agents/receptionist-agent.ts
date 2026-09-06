@@ -682,7 +682,9 @@ export class ReceptionistAgent {
   }
 
   /**
-   * Busca o histórico recente de mensagens para contexto
+   * Busca o histórico recente de mensagens para contexto e consolida turnos.
+   * Se o cliente enviou múltiplas mensagens consecutivas antes da resposta da IA,
+   * consolida os fragmentos em um único turno coeso (Message Burst Consolidation).
    */
   private async getConversationContext(
     workspaceId: string,
@@ -700,12 +702,24 @@ export class ReceptionistAgent {
         [workspaceId, journeyId, limit]
       );
 
-      return result.rows
-        .reverse()
-        .map((row: { direction: string; text_content: string }) => ({
-          role: row.direction === 'inbound' ? 'user' as const : 'assistant' as const,
-          content: row.text_content,
-        }));
+      const rawRows = result.rows.reverse();
+      const consolidated: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+
+      for (const row of rawRows) {
+        const role = row.direction === 'inbound' ? ('user' as const) : ('assistant' as const);
+        const text = String(row.text_content || '').trim();
+        if (!text) continue;
+
+        const last = consolidated[consolidated.length - 1];
+        if (last && last.role === role) {
+          // Concatena mensagens consecutivas do mesmo emissor (burst)
+          last.content += `\n${text}`;
+        } else {
+          consolidated.push({ role, content: text });
+        }
+      }
+
+      return consolidated;
     } catch {
       return [];
     }
@@ -982,15 +996,25 @@ export class ReceptionistAgent {
     }
     const systemPrompt = buildSystemPrompt(wsConfig);
 
-    // Busca histórico de contexto
+    // Busca histórico de contexto consolidado (Message Burst Consolidation)
     const history = await this.getConversationContext(input.workspaceId, input.journeyId, 8);
 
-    // Monta mensagens para o NIM
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...history,
-      { role: 'user' as const, content: `${input.pushName || 'Cliente'}: ${input.textContent}` },
+    // Evita duplicar a última mensagem do usuário se ela já constar no histórico consolidado
+    const clientSpeaker = input.pushName || 'Cliente';
+    const lastTurn = history[history.length - 1];
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: systemPrompt },
     ];
+
+    if (lastTurn && lastTurn.role === 'user') {
+      // O histórico já contém o turno do usuário consolidado
+      const previousHistory = history.slice(0, -1);
+      messages.push(...previousHistory);
+      messages.push({ role: 'user', content: `${clientSpeaker}: ${lastTurn.content}` });
+    } else {
+      messages.push(...history);
+      messages.push({ role: 'user', content: `${clientSpeaker}: ${input.textContent}` });
+    }
 
     let rawResponse = '';
     let usedModel = NVIDIA_MODEL;

@@ -14,6 +14,7 @@ export interface ReceptionistInboundWorkerOptions {
   batchSize?: number;
   leaseSeconds?: number;
   workerId?: string;
+  burstDebounceMs?: number;
 }
 
 /**
@@ -38,6 +39,7 @@ export class ReceptionistInboundWorker {
   private readonly batchSize: number;
   private readonly leaseSeconds: number;
   private readonly workerId: string;
+  private readonly burstDebounceMs: number;
 
   private isRunning = false;
   private isProcessing = false;
@@ -57,6 +59,7 @@ export class ReceptionistInboundWorker {
     this.batchSize = options.batchSize ?? 10;
     this.leaseSeconds = options.leaseSeconds ?? 60;
     this.workerId = options.workerId ?? `receptionist-inbound-worker-${randomUUID()}`;
+    this.burstDebounceMs = Math.max(0, options.burstDebounceMs ?? 0);
   }
 
   /**
@@ -156,6 +159,13 @@ export class ReceptionistInboundWorker {
 
     // 2. Drive the AI Receptionist with the self-contained payload
     const input = this.toReceptionistInput(event.payload, event.aggregateId);
+
+    // Message Burst Buffer: Se configurado, aguarda microjanela para permitir
+    // agrupamento natural de mensagens sequenciais do mesmo contato.
+    if (this.burstDebounceMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.burstDebounceMs));
+    }
+
     let renewalError: Error | null = null;
     const renewalIntervalMs = Math.max(1_000, Math.floor((this.leaseSeconds * 1_000) / 3));
     const renewalTimer = this.outboxGateway.renewLease
