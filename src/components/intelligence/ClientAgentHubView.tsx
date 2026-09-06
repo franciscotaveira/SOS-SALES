@@ -526,9 +526,26 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
       };
     });
 
-    const normalizedDocs = Array.isArray(existing?.documents) && existing.documents.length > 0
+    const rawDocs = Array.isArray(existing?.documents) && existing.documents.length > 0
       ? existing.documents
       : fallback.documents;
+
+    const normalizedDocs = (rawDocs || []).map((d: any, idx: number) => ({
+      id: String(d?.id || `doc-${idx + 1}`),
+      name: String(d?.name || d?.title || `Documento ${idx + 1}`),
+      fileType: d?.fileType || 'txt',
+      fileSize: String(d?.fileSize || d?.file_size || '1 KB'),
+      uploadedAt: String(d?.uploadedAt || d?.created_at || new Date().toISOString()),
+      uploadedBy: String(d?.uploadedBy || 'Sistema'),
+      category: d?.category || 'scripts_vendas',
+      status: d?.status || 'indexed',
+      extractedChunksCount: Number(d?.extractedChunksCount ?? 1),
+      tokenCount: Number(d?.tokenCount ?? 0),
+      summary: String(d?.summary || d?.title || d?.name || 'Documento de conhecimento'),
+      rawContentSnippet: String(d?.rawContentSnippet || d?.content || ''),
+      isPrioritizedFact: Boolean(d?.isPrioritizedFact),
+      factType: d?.factType || 'faq',
+    }));
 
     return {
       ...fallback,

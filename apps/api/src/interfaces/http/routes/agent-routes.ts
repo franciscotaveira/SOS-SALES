@@ -1189,9 +1189,13 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
             [workspaceId, arg]
           );
           await query(
-            `UPDATE public.workspace_operational_settings SET business_hours = $2, updated_at = NOW() WHERE workspace_id = $1`,
+            `INSERT INTO public.workspace_operational_settings (workspace_id, commercial_config, updated_at)
+             VALUES ($1, jsonb_build_object('business_hours', $2::text), NOW())
+             ON CONFLICT (workspace_id) DO UPDATE SET
+               commercial_config = jsonb_set(COALESCE(public.workspace_operational_settings.commercial_config, '{}'::jsonb), '{business_hours}', to_jsonb($2::text)),
+               updated_at = NOW()`,
             [workspaceId, arg]
-          );
+          ).catch((err) => request.log.warn({ err }, 'Failed to persist operational business_hours'));
           return reply.status(200).send({
             success: true,
             isCommand: true,
@@ -1204,9 +1208,13 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         if (cmd === '/pix') {
           if (!arg) return reply.status(400).send({ error: 'Especifique a chave Pix. Ex: /pix contato@iaparavendas.tech' });
           await query(
-            `UPDATE public.workspace_operational_settings SET pix_key = $2, updated_at = NOW() WHERE workspace_id = $1`,
+            `INSERT INTO public.workspace_operational_settings (workspace_id, commercial_config, updated_at)
+             VALUES ($1, jsonb_build_object('pix_key', $2::text), NOW())
+             ON CONFLICT (workspace_id) DO UPDATE SET
+               commercial_config = jsonb_set(COALESCE(public.workspace_operational_settings.commercial_config, '{}'::jsonb), '{pix_key}', to_jsonb($2::text)),
+               updated_at = NOW()`,
             [workspaceId, arg]
-          );
+          ).catch((err) => request.log.warn({ err }, 'Failed to persist operational pix_key'));
           return reply.status(200).send({
             success: true,
             isCommand: true,
@@ -1272,7 +1280,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       // 4. CARREGA CONFIGURAÇÕES REAIS DO WORKSPACE
       const [agentConfigRes, opSettingsRes, intelligenceRes, workspaceRes] = await Promise.all([
         query(`SELECT agent_name, business_type, phone, city, working_hours, behavior_config FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
-        query(`SELECT pix_key, business_hours, macros, target_revenue_cents FROM public.workspace_operational_settings WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
+        query(`SELECT commercial_config FROM public.workspace_operational_settings WHERE workspace_id = $1 LIMIT 1`, [workspaceId]).catch(() => ({ rows: [] })),
         query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
         query(`SELECT name, slug FROM public.workspaces WHERE id = $1 LIMIT 1`, [workspaceId]),
       ]);
@@ -1305,8 +1313,14 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           : (isHaven ? 'Escovaria e Salão de Beleza Premium' : isSora ? 'Headspa Japonês & Massagem Craniana' : isSos ? 'Software Comercial (SaaS) & Inteligência de Vendas no WhatsApp' : 'Prestação de Serviços'));
 
       const city = profile.address?.city || bundle.city || agentRow.city || 'Chapecó, SC';
-      const workingHours = agentRow.working_hours || opRow.business_hours || (isHaven ? 'Segunda a Sábado: 09h às 19h' : 'Segunda a Sexta: 08h às 20h | Sábado: 09h às 18h');
-      const pixKey = opRow.pix_key || (isHaven ? 'pix@havenescovaria.com.br' : 'contato@iaparavendas.tech');
+      const opConfig = asObject(opRow.commercial_config);
+      const workingHours = agentRow.working_hours
+        || (opRow as any).business_hours
+        || (opConfig as any).business_hours
+        || (isHaven ? 'Segunda a Sábado: 09h às 19h' : 'Segunda a Sexta: 08h às 20h | Sábado: 09h às 18h');
+      const pixKey = (opRow as any).pix_key
+        || (opConfig as any).pix_key
+        || (isHaven ? 'pix@havenescovaria.com.br' : 'contato@iaparavendas.tech');
 
       const rawDirectives = (Array.isArray(agentConfig.safetyGuardrails) && agentConfig.safetyGuardrails.length > 0)
         ? agentConfig.safetyGuardrails

@@ -90,8 +90,8 @@ export function resolveWorkspaceSimulatorContext(
 ) {
   const wsId = currentWorkspace?.id || '11111111-1111-1111-1111-111111111111';
   const wsName = bundle?.companyProfile?.tradeName || currentWorkspace?.name || 'SOS Vendas';
-  const normId = wsId.toLowerCase();
-  const normName = (wsName + ' ' + (currentWorkspace?.name || '')).toLowerCase();
+  const normId = (wsId || '').toLowerCase();
+  const normName = ((wsName || '') + ' ' + (currentWorkspace?.name || '')).toLowerCase();
 
   const isHaven = normId === '22222222-2222-2222-2222-222222222222' || normId === 'ws-haven-beauty' || normName.includes('haven') || normName.includes('escovaria');
   const isSora = normId === '33333333-3333-3333-3333-333333333333' || normId === 'ws-sora-spa' || normName.includes('sora') || normName.includes('headspa');

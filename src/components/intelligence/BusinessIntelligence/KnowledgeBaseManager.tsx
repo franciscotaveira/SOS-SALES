@@ -106,9 +106,12 @@ export const KnowledgeBaseManager: React.FC = () => {
   };
 
   const filteredDocs = documents.filter((doc) => {
-    const matchesSearch =
-      doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (doc.rawContentSnippet && doc.rawContentSnippet.toLowerCase().includes(searchQuery.toLowerCase()));
+    if (!doc) return false;
+    const query = (searchQuery || '').toLowerCase().trim();
+    const matchesSearch = !query || (
+      (doc.name || '').toLowerCase().includes(query) ||
+      (Boolean(doc.rawContentSnippet) && (doc.rawContentSnippet || '').toLowerCase().includes(query))
+    );
     const matchesType = selectedFactType === 'all' || doc.factType === selectedFactType;
     return matchesSearch && matchesType;
   });

@@ -106,7 +106,7 @@ describe('Agent Simulator Routes (Meta Business AI Pattern)', () => {
     expect(body.command).toBe('/pix');
     expect(body.agentResponse).toContain('Chave Pix do negócio atualizada');
     expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE public.workspace_operational_settings SET pix_key'),
+      expect.stringContaining('workspace_operational_settings'),
       [workspaceId, 'pix@sosvendas.com.br'],
     );
     await app.close();

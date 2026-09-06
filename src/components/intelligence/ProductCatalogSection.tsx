@@ -47,12 +47,15 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
   }, [items]);
 
   const filteredItems = React.useMemo(() => {
+    const query = (search || '').toLowerCase().trim();
     return items.filter((item) => {
-      const matchesSearch =
-        item.name.toLowerCase().includes(search.toLowerCase()) ||
-        item.sku.toLowerCase().includes(search.toLowerCase()) ||
-        item.description.toLowerCase().includes(search.toLowerCase()) ||
-        item.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()));
+      if (!item) return false;
+      const matchesSearch = !query || (
+        (item.name || '').toLowerCase().includes(query) ||
+        (item.sku || '').toLowerCase().includes(query) ||
+        (item.description || '').toLowerCase().includes(query) ||
+        (Array.isArray(item.tags) && item.tags.some((t) => typeof t === 'string' && t.toLowerCase().includes(query)))
+      );
 
       if (!matchesSearch) return false;
       if (selectedCategory !== 'all' && item.category !== selectedCategory) return false;

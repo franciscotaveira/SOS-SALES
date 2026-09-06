@@ -284,7 +284,7 @@ export const AiAssuranceAuditView: React.FC<{
     finalScore: number;
     status: 'PASSED' | 'FAILED' | 'WARNING';
   } => {
-    const text = response.toLowerCase();
+    const text = (response || '').toLowerCase();
     const commercialIssues: string[] = [];
     const humanizerIssues: string[] = [];
 

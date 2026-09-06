@@ -55,6 +55,9 @@ services:
       - CAKTO_WEBHOOK_SECRET=${LAB_CAKTO_WEBHOOK_SECRET:-lab_cakto_webhook_secret_not_for_production}
       - CAKTO_PAST_DUE_GRACE_DAYS=${LAB_CAKTO_PAST_DUE_GRACE_DAYS:-7}
       - BILLING_ENFORCEMENT_MODE=${LAB_BILLING_ENFORCEMENT_MODE:-observe}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-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}
+      - NVIDIA_NIM_MODEL=${NVIDIA_NIM_MODEL:-nvidia/nemotron-3.5-lightning-30b-a3b}
+      - NVIDIA_NIM_BASE_URL=${NVIDIA_NIM_BASE_URL:-https://integrate.api.nvidia.com/v1}
     depends_on:
       redis-lab:
         condition: service_healthy

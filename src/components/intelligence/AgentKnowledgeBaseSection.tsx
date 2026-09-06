@@ -183,11 +183,17 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
   };
 
   const filteredDocs = React.useMemo(() => {
-    return documents.filter((doc) => {
-      const matchesSearch =
-        doc.name.toLowerCase().includes(search.toLowerCase()) ||
-        doc.summary.toLowerCase().includes(search.toLowerCase()) ||
-        (doc.rawContentSnippet && doc.rawContentSnippet.toLowerCase().includes(search.toLowerCase()));
+    const query = (search || '').toLowerCase().trim();
+    return (documents || []).filter((doc) => {
+      if (!doc) return false;
+      const docName = (doc.name || '').toLowerCase();
+      const docSummary = (doc.summary || '').toLowerCase();
+      const docSnippet = (doc.rawContentSnippet || '').toLowerCase();
+      const matchesSearch = !query || (
+        docName.includes(query) ||
+        docSummary.includes(query) ||
+        docSnippet.includes(query)
+      );
       if (!matchesSearch) return false;
 
       if (selectedCategory === 'prioritized') {
@@ -208,11 +214,11 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
   }, [documents, search, selectedCategory]);
 
   const totalTokens = React.useMemo(
-    () => documents.reduce((acc, d) => acc + d.tokenCount, 0),
+    () => (documents || []).reduce((acc, d) => acc + (d?.tokenCount || 0), 0),
     [documents]
   );
   const totalChunks = React.useMemo(
-    () => documents.reduce((acc, d) => acc + d.extractedChunksCount, 0),
+    () => (documents || []).reduce((acc, d) => acc + (d?.extractedChunksCount || 0), 0),
     [documents]
   );
 
@@ -230,7 +236,7 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
     }
   };
 
-  const getDocumentStatus = (status: KnowledgeDocument['status']) => {
+  const getDocumentStatus = (status?: KnowledgeDocument['status']) => {
     switch (status) {
       case 'indexed':
         return {
@@ -250,6 +256,12 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
           label: 'Falha no processamento',
           className: 'bg-[var(--sos-danger-subtle)] text-[var(--sos-danger)] border-[var(--sos-danger)]/30',
           icon: <AlertTriangle className="w-2 h-2" />,
+        };
+      default:
+        return {
+          label: 'Conteúdo disponível',
+          className: 'bg-[var(--sos-success-subtle)] text-[var(--sos-success)] border-[var(--sos-success)]/30',
+          icon: <CheckCircle2 className="w-2 h-2" />,
         };
     }
   };
@@ -465,11 +477,11 @@ export const AgentKnowledgeBaseSection: React.FC<AgentKnowledgeBaseSectionProps>
                   </p>
 
                   <div className="flex items-center gap-2 text-[8.5px] text-[var(--sos-muted)] pt-0.5">
-                    <span>{doc.extractedChunksCount} chunks calculados</span>
+                    <span>{doc.extractedChunksCount || 0} chunks calculados</span>
                     <span>•</span>
-                    <span>{doc.tokenCount.toLocaleString()} tokens estimados</span>
+                    <span>{(doc.tokenCount || 0).toLocaleString()} tokens estimados</span>
                     <span>•</span>
-                    <span>Enviado por {doc.uploadedBy}</span>
+                    <span>Enviado por {doc.uploadedBy || 'Sistema'}</span>
                   </div>
                 </div>
               </div>
