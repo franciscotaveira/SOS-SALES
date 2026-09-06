@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (06 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `bd7eac010b1b74d4c05c09554d2f0d82e06bd905` (feat: governança centralizada de versão Meta Graph API v21.0, eliminação de v20.0 hardcoded pré-sunset de 24/09 e normalização canônica de BSUID / WhatsAppRecipient)
+- Release ativa: `1f736c476907edab4edff7fb43a0e97d71159b16` (feat: normalização completa de identidade BSUID/Usernames inbound e outbound, governança de Graph API v21.0 eliminando v20.0 pré-sunset de 24/09)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
