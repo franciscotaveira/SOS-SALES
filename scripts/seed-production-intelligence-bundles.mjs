@@ -1,4 +1,13 @@
-import pg from '../apps/api/node_modules/pg/lib/index.js';
+let pg;
+try {
+  pg = (await import('pg')).default;
+} catch {
+  try {
+    pg = (await import('../apps/api/node_modules/pg/lib/index.js')).default;
+  } catch {
+    pg = (await import('../api/node_modules/pg/lib/index.js')).default;
+  }
+}
 const { Pool } = pg;
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres.yiiuebhyqixzluguxsqi:sos-sales-db-prod-2026@aws-0-ca-central-1.pooler.supabase.com:6543/postgres';
