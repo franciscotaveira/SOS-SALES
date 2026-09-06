@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (06 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `d820b823833f45ef50212670c8d4f7036a24bd78` (feat: motor de IA padrão unificado para NVIDIA Nemotron Super 120B para raciocínio comercial profundo, normalização de BSUID/Usernames e Graph API v21.0)
+- Release ativa: `00c650b68d0c075877c3a115eae8de46875fb8a1` (feat: novo Painel de Habilidades Ativáveis - Skills & Tools com 9 superpoderes ativáveis, unificação no Nemotron Super 120B e governança Graph API v21.0)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
