@@ -49,4 +49,18 @@ describe('Meta Graph API Governance & Identity Normalization (Radar 2026)', () =
     const recipient = client.normalizeRecipient(explicitBsuid);
     expect(recipient).toEqual({ recipient_type: 'individual', to: 'meta_user_xyz' });
   });
+
+  it('should correctly handle inbound messages where phone is absent but BSUID is present', () => {
+    const rawInboundMessage = {
+      id: 'wamid.HBgL...',
+      from_user_id: 'BR_USER_CANONICAL_01',
+      timestamp: '1725624000',
+      type: 'text',
+      text: { body: 'Olá via username Meta' },
+    };
+
+    const sender = normalizeWhatsAppRecipient(rawInboundMessage.from_user_id);
+    expect(sender.type).toBe('BSUID');
+    expect(sender.value).toBe('BR_USER_CANONICAL_01');
+  });
 });

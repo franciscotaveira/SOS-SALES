@@ -12,6 +12,7 @@ import {
   type ResponderOwner,
 } from '../../../../application/agents/receptionist-agent.js';
 import { handleMessengerEntry } from './messenger-webhook-handler.js';
+import { normalizeWhatsAppRecipient } from '../../../../infrastructure/channels/meta/meta-constants.js';
 
 /**
  * Tenta encontrar uma conexão de canal pelo phoneNumberId do webhook.
@@ -573,14 +574,19 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
         // 2. Process Inbound Messages
         for (const message of messages) {
           const messageId = message.id;
-          if (!messageId || typeof message.from !== 'string') {
+          const rawSender = message.from || (message as any).from_user_id || (message as any).user_id;
+          if (!messageId || typeof rawSender !== 'string' || !rawSender.trim()) {
             request.log.warn({ hasMessageId: Boolean(messageId) }, 'Malformed WABA message ignored');
             continue;
           }
 
-          const fromPhone = `+${message.from.replace(/\D/g, '')}`;
-          const contactObj = contacts.find((c: any) => c.wa_id === message.from);
-          const pushName = contactObj?.profile?.name || fromPhone;
+          const normalizedSender = normalizeWhatsAppRecipient(rawSender);
+          const fromIdentifier = normalizedSender.type === 'PHONE' 
+            ? `+${normalizedSender.value}` 
+            : normalizedSender.value;
+          const fromPhone = fromIdentifier;
+          const contactObj = contacts.find((c: any) => c.wa_id === rawSender || c.user_id === rawSender || c.wa_id === message.from);
+          const pushName = contactObj?.profile?.name || fromIdentifier;
           const timestamp = new Date(Number(message.timestamp) * 1000).toISOString();
 
           // Extract text and interaction
@@ -647,13 +653,17 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
           // Ingest contact and journey
           try {
             // Upsert contact
+            const whatsappId = normalizedSender.type === 'PHONE'
+              ? `${normalizedSender.value}@c.us`
+              : `${normalizedSender.value}@meta`;
+
             const contactRes = await query(
               `INSERT INTO public.contacts (id, workspace_id, phone, whatsapp_id, name, created_at, updated_at)
                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $5)
                ON CONFLICT (workspace_id, phone)
                DO UPDATE SET name = COALESCE(EXCLUDED.name, contacts.name), updated_at = $5
                RETURNING id`,
-              [targetWorkspaceId, fromPhone, `${fromPhone.replace(/\D/g, '')}@c.us`, pushName, timestamp]
+              [targetWorkspaceId, fromPhone, whatsappId, pushName, timestamp]
             );
             contactId = contactRes.rows[0].id as string;
 
