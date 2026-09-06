@@ -55,7 +55,7 @@ export class NvidiaNimEngine {
   constructor(
     apiKey?: string,
     baseUrl = 'https://integrate.api.nvidia.com/v1',
-    defaultModel = NVIDIA_MODEL_TIERS.FAST,
+    defaultModel = NVIDIA_MODEL_TIERS.NEMOTRON_REASONING,
     timeoutMs = Number(process.env.NVIDIA_NIM_TIMEOUT_MS || 25_000),
   ) {
     this.apiKey = apiKey || process.env.NVIDIA_API_KEY || '';

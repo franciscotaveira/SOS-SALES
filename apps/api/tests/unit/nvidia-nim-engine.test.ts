@@ -16,6 +16,12 @@ describe('NVIDIA NIM commercial model contract', () => {
   it('uses a currently available Nemotron endpoint for the fast tier', async () => {
     expect(NVIDIA_MODEL_TIERS.FAST).toBe('nvidia/nemotron-3.5-lightning-30b-a3b');
     expect(NVIDIA_MODEL_TIERS.NEMOTRON).toBe('nvidia/nemotron-3.5-lightning-30b-a3b');
+    expect(NVIDIA_MODEL_TIERS.NEMOTRON_REASONING).toBe('nvidia/nemotron-3-super-120b-a12b');
+  });
+
+  it('defaults to Nemotron 120B for deep commercial reasoning', async () => {
+    const engine = new NvidiaNimEngine(undefined, 'https://nvidia.test/v1', undefined, 1000);
+    expect(engine.resolveModelForTier('auto')).toBe('nvidia/nemotron-3-super-120b-a12b');
   });
 
   it('disables reasoning traces for customer-facing Nemotron responses', async () => {

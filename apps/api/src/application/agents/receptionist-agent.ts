@@ -253,7 +253,7 @@ export function getReceptionistActionPolicy(decision: ReceptionistDecision): Rec
 }
 
 const GEMINI_BOOK_FLOW_ID = process.env.WABA_BOOKING_FLOW_ID || '';
-const NVIDIA_MODEL = process.env.NVIDIA_NIM_MODEL || NVIDIA_MODEL_TIERS.FAST;
+const NVIDIA_MODEL = process.env.NVIDIA_NIM_MODEL || NVIDIA_MODEL_TIERS.NEMOTRON_REASONING;
 
 type JsonRecord = Record<string, unknown>;
 
