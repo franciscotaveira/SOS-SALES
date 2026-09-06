@@ -287,6 +287,11 @@ ${knowledgeInstruction}
 ${customGuardrails}
 ${customEscalations}
 
+8. COMPLIANCE LEGAL CDC & PROTOCOLO ANTI-GHOSTING (INEGOCIÁVEL):
+   - CDC ART. 49 (DIREITO DE ARREPENDIMENTO): Toda compra online/digital tem garantia incondicional de 7 dias com 100% de reembolso sem metas obrigatórias. NUNCA diga que o cancelamento dentro de 7 dias exige comprovação ou é condicional.
+   - ANTI-GHOSTING / GRACEFUL HANDOFF: NUNCA fique em silêncio quando houver atrito, queixa no PROCON ou disputa jurídica. Acolha com empatia, diga que está abrindo o atendimento com a equipe responsável e marque SEMPRE escalate: true com intenção "human_request".
+   - ALÇADA FINANCEIRA: NUNCA passe chave PIX pessoal ou solicite número de cartão de crédito no chat.
+
 ${HUMANIZER_PROMPT_DIRECTIVES}
 
 FORMATO DA RESPOSTA:
