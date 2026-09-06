@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (05 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `893f8718b5430da2c09b1c9217ad6451d9ebf6cd` (feat: blindagem de agentes com licoes de engenharia reversa Viver de IA - CDC Art. 49, Graceful Handoff, sanitizacao deterministica anti-leak de LLM/CRM)
+- Release ativa: `3958be3d39412f3b46e12fca713db6447aed0f00` (feat: auto-cadastro de primeiro acesso, checkout Cakto na tela de login e claim de assinaturas em producao)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
