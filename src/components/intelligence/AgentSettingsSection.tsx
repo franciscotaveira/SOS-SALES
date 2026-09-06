@@ -173,7 +173,7 @@ export const AgentSettingsSection: React.FC<AgentSettingsSectionProps> = ({
                 <h2 className="text-base font-bold font-heading flex items-center gap-2 text-[var(--sos-ink)]">
                   <span>{config.name || 'Agente Comercial IA 24/7'}</span>
                   <span className="text-[9.5px] font-mono px-2 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] font-bold border border-[var(--sos-ai)]/30 flex items-center gap-1">
-                    <Sparkles className="w-2.5 h-2.5" /> Motor NVIDIA Nemotron 3.5
+                    <Sparkles className="w-2.5 h-2.5" /> Motor NVIDIA Nemotron Super 120B
                   </span>
                 </h2>
                 <p className="text-xs text-[var(--sos-muted)]">

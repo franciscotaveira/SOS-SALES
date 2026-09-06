@@ -11,6 +11,7 @@ import { ContinuousLearningSection } from './ContinuousLearningSection';
 import { HistoricalDiagnosisSection } from './HistoricalDiagnosisSection';
 import { QaSimulatorView } from './QaSimulatorView';
 import { AiAssuranceAuditView } from './AiAssuranceAuditView';
+import { SkillsManagerSection } from './SkillsManagerSection';
 import {
   Building2,
   ShoppingBag,
@@ -29,6 +30,7 @@ import {
   Loader2,
   Zap,
   FileText,
+  Wrench,
 } from 'lucide-react';
 
 import { SalesAiThesisConfig } from '../settings/SalesAiThesisConfig';
@@ -48,6 +50,7 @@ export type IntelligenceTab =
   | 'diagnosis'
   | 'knowledge'
   | 'catalog'
+  | 'skills'
   | 'simulator'
   | 'assurance'
   | 'learning'
@@ -716,9 +719,25 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
           }`}
         >
           <Bot className="w-3.5 h-3.5 text-purple-200" />
-          <span>Agente IA 24/7 & Regras</span>
+          <span>Atendente IA & Regras</span>
           <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-purple-400/20 text-purple-200 font-bold border border-purple-400/30">
-            Nemotron 3.5
+            Nemotron 120B
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange('skills')}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'skills'
+              ? 'bg-[var(--sos-ai)] text-white shadow-xs'
+              : 'text-[var(--sos-muted)] hover:text-[var(--sos-ink)] hover:bg-[var(--sos-surface)]'
+          }`}
+        >
+          <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+          <span>Habilidades Ativáveis</span>
+          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+            9 Skills
           </span>
         </button>
 
@@ -834,6 +853,12 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
               agentConfig: updatedConfig,
             }));
           }}
+        />
+      )}
+
+      {activeTab === 'skills' && (
+        <SkillsManagerSection
+          canManage={intelligenceCanManage}
         />
       )}
 
