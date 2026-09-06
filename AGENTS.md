@@ -10,15 +10,15 @@
 - **URL Produção:** https://crm.iaparavendas.tech
 - **VPS:** 179.197.72.221 (Ubuntu 24.04, Docker, Caddy)
 - **Supabase:** yiiuebhyqixzluguxsqi (aws-0-ca-central-1.pooler.supabase.com:6543)
-- **Stack:** React 19 + Vite + TypeScript + TailwindCSS v4 + Fastify 4 + PostgreSQL + Redis + WAHA + Meta Cloud API v20.0
+- **Stack:** React 19 + Vite + TypeScript + TailwindCSS v4 + Fastify 4 + PostgreSQL + Redis + WAHA + Meta Cloud API v21.0 (Graph API governada dinamicamente)
 - **Filosofia:** Poder invisível, simplicidade visível.
 
 ---
 
-## 2. ESTADO ATUAL (05 Set 2026)
+## 2. ESTADO ATUAL (06 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `49025db1d80ec0b353b81025e16d6b6ea0918da1` (feat: metodologia EKO de governanca comercial atualizada com licoes de Red Teaming da Viver de IA - CDC Art. 49, Alçada Financeira e Handoff Anti-Ghosting)
+- Release ativa: `bd7eac010b1b74d4c05c09554d2f0d82e06bd905` (feat: governança centralizada de versão Meta Graph API v21.0, eliminação de v20.0 hardcoded pré-sunset de 24/09 e normalização canônica de BSUID / WhatsAppRecipient)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
