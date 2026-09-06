@@ -7,6 +7,7 @@ export interface SupabaseAuthState {
   session: Session | null;
   user: User | null;
   signInWithPassword(email: string, password: string): Promise<void>;
+  signUp(email: string, password: string): Promise<void>;
   resetPasswordForEmail(email: string): Promise<void>;
   signOut(): Promise<void>;
 }
@@ -104,6 +105,15 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       if (!client) throw new Error('Supabase não está configurado para este ambiente.');
       const { error } = await client.auth.signInWithPassword({ email, password });
       if (error) throw new Error('Não foi possível iniciar a sessão. Verifique e-mail e senha.');
+    },
+    async signUp(email: string, password: string) {
+      if (!client) throw new Error('Supabase não está configurado para este ambiente.');
+      const { error } = await client.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: window.location.origin },
+      });
+      if (error) throw new Error(error.message || 'Não foi possível cadastrar a conta.');
     },
     async resetPasswordForEmail(email: string) {
       if (!client) throw new Error('Supabase não está configurado para este ambiente.');
