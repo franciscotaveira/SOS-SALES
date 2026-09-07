@@ -14,6 +14,7 @@ import {
   DatabaseZap,
   DollarSign,
   FileText,
+  Layers,
   LayoutGrid,
   Link2,
   MessageSquare,
