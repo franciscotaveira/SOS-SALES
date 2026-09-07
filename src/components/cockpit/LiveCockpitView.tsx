@@ -551,7 +551,8 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
       setPriorities(priorityData.length ? { state: "ready", value: priorityData } : { state: "empty" });
       setJourneys(journeyPage.data.length ? { state: "ready", value: journeyPage.data } : { state: "empty" });
       const firstId = priorityData[0]?.journeyId || journeyPage.data[0]?.id;
-      if (!selectedJourneyRef.current && firstId) onSelectedJourneyChange(firstId);
+      const isDesktop = typeof window !== 'undefined' ? window.innerWidth >= 760 : true;
+      if (!selectedJourneyRef.current && firstId && isDesktop) onSelectedJourneyChange(firstId);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não foi possível carregar a fila autenticada.";
@@ -828,16 +829,18 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   }, [gateway, loyaltyMap, workspaceId]);
 
-  const handleCreateOutboundDraft = async (text: string) => {
-    if (!selectedJourneyId) return;
+  const handleCreateOutboundDraft = async (text: string): Promise<boolean> => {
+    if (!selectedJourneyId) return false;
     setActionInProgress(true);
     try {
       const queued = await gateway.sendDirectMessage(workspaceId, selectedJourneyId, text);
       showNotification("success", queued.message || "Mensagem enfileirada para envio seguro.");
       await refresh(true);
+      return true;
     } catch (err) {
       showNotification("error", err instanceof Error ? err.message : "Erro ao enviar mensagem.");
       await refresh(true);
+      return false;
     } finally {
       setActionInProgress(false);
     }
@@ -952,7 +955,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     queueTab === 'priorities'
       ? prioritiesList
       : queueTab === 'in_progress'
-        ? journeysList.filter((j) => (j as any).status === 'in_progress' || j.pipelineStage === 'QUALIFIED' || j.pipelineStage === 'PROPOSAL' || (j as any).priorityReason)
+        ? journeysList.filter((j) => (j as any).status === 'in_progress' || (j as any).status === 'OPEN' || j.pipelineStage === 'QUALIFIED' || j.pipelineStage === 'PROPOSAL' || (j as any).priorityReason)
         : journeysList;
 
   const queue = React.useMemo(() => {
@@ -1646,7 +1649,7 @@ function LiveJourneyBody({
   onOpenOutcomeModal: () => void;
   onOpenWabaButtonsModal: () => void;
   onOpenWabaTemplateModal: () => void;
-  onCreateOutboundDraft: (text: string) => void;
+  onCreateOutboundDraft: (text: string) => Promise<boolean | void> | void;
   onClearCurrentJourney?: () => void;
   onUpdateContactName?: (newName: string) => void | Promise<void>;
   onBackToQueue?: () => void;
@@ -2637,7 +2640,7 @@ function LiveJourneyBody({
                 onChange={(e) => setDraftText(e.target.value)}
                 placeholder="Digite uma mensagem ou use um atalho..."
                 className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-base sm:text-xs text-slate-900 placeholder-slate-400 focus:border-emerald-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600 shadow-2xs min-w-0"
-                onKeyDown={(e) => {
+                onKeyDown={async (e) => {
                   if (e.key === "Tab" && !draftText.trim() && recommendation?.suggestedDraftText) {
                     e.preventDefault();
                     setDraftText(recommendation.suggestedDraftText);
@@ -2646,9 +2649,11 @@ function LiveJourneyBody({
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && draftText.trim()) {
                     e.preventDefault();
                     const textToSend = draftText.trim();
-                    onCreateOutboundDraft(textToSend);
-                    setDraftText("");
-                    if (draftStore) draftStore.clearDraft(journey.id);
+                    const res = await onCreateOutboundDraft(textToSend);
+                    if (res !== false) {
+                      setDraftText("");
+                      if (draftStore) draftStore.clearDraft(journey.id);
+                    }
                   }
                 }}
               />
@@ -2656,12 +2661,14 @@ function LiveJourneyBody({
               {/* Botão Enviar (No mobile surge automaticamente ao digitar) */}
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   if (draftText.trim()) {
                     const textToSend = draftText.trim();
-                    onCreateOutboundDraft(textToSend);
-                    setDraftText("");
-                    if (draftStore) draftStore.clearDraft(journey.id);
+                    const res = await onCreateOutboundDraft(textToSend);
+                    if (res !== false) {
+                      setDraftText("");
+                      if (draftStore) draftStore.clearDraft(journey.id);
+                    }
                   }
                 }}
                 disabled={actionInProgress || !draftText.trim()}

@@ -1,55 +1,47 @@
-# SOS SALES — COMPORTAMENTO RESPONSIVO & BREAKPOINTS
+# SOS SALES — COMPORTAMENTO RESPONSIVO & BREAKPOINTS (CANÔNICO)
 
 ## 1. Princípios de Layout Responsivo
 
-O SOS Sales deve garantir que operadores e gestores tenham uma experiência fluida em qualquer dispositivo, desde monitores ultrawide (1440px+) até celulares (390px), sem nunca renderizar três colunas densas em espaços apertados.
+O SOS Sales garante que operadores e gestores tenham uma experiência fluida e nativa em qualquer dispositivo, desde monitores ultrawide até smartphones (390px), sem nunca renderizar três colunas densas em espaços apertados.
+
+O layout do Cockpit de Atendimento é governado pela **Largura Útil do Contêiner ($C$)**, adaptando-se com precisão:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1440px+ (Desktop Amplo) : Sidebar (232px) + Fila (300px) + Chat + Dossiê    │
-│ 1280px  (Desktop Médio) : Sidebar (232px) + Fila (280px) + Chat + Dossiê    │
-│ 1024px  (Notebook)      : Sidebar (72px)  + Chat Fixa   + Drawers            │
-│ <1024px (Tablet/Mobile) : Sidebar Drawer  + Navegação 1 Região por Vez       │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ C ≥ 1120px (Desktop Amplo) : Fila 280px + Chat flexível (min 480px) + Dossiê 340px/Rail │
+│ 760px ≤ C < 1120px (Médio) : Fila 280px + Chat flexível + Dossiê em Drawer deslizante  │
+│ C < 760px (Mobile Nativo)  : 1 Região por vez (Lista/Fila ↔ Chat 1:1) + Dossiê Drawer    │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Breakpoints e Regras Estruturais
+## 2. Regras Estruturais por Faixa de Largura Útil ($C$)
 
-### 1. Desktop Amplo (≥ 1280px)
-- **Sidebar**: 232px expandida (ou 72px recolhida por preferência salva).
-- **Cockpit em 3 regiões balanceadas**:
-  - **Fila de Prioridades**: 280px – 320px (fixa com scroll interno).
-  - **Conversa Central**: Área flexível (`flex-1`) com largura confortável para leitura.
-  - **Dossiê Vivo**: Painel lateral de 360px – 400px (ou gaveta toggleável).
+### 1. Desktop Amplo ($C \ge 1120$px)
+- **Fila de Atendimento**: 280px fixa com alternância entre "Prioridades" (handoff/urgência) e "Todas as conversas".
+- **Conversa Central**: Área flexível (`flex-1`, largura mínima 480px) com leitura confortável e composer supervisionado.
+- **Dossiê Vivo do Lead & IA**: Painel lateral de 340px com opção de recolher em barra lateral compacta (Rail de 48px) ou expandir em modal imersivo.
 
-### 2. Notebooks & Telas Médias (1024px – 1279px)
-- **Sidebar**: 72px recolhida por padrão para maximizar a área útil (expansível via hover/click).
-- **Cockpit em Foco na Conversa**:
-  - **Conversa Central**: Fixa ocupando a maior parte da largura.
-  - **Fila de Prioridades**: Painel recolhível ou gaveta acessível por botão rápido.
-  - **Dossiê Vivo**: Gaveta lateral (Drawer) expansível sobre a direita com backdrop suave.
+### 2. Notebooks & Telas Médias ($760$px $\le C < 1120$px)
+- **Fila + Chat Lado a Lado**: Fila de 280px à esquerda e Timeline de chat central flexível.
+- **Dossiê Vivo**: Slide-over drawer acessível pelo cabeçalho do chat (`Dossiê` com ícone Sparkles).
+- **Sem colapso indesejado**: O operador atende e navega entre contatos sem perder o chat de vista.
 
-### 3. Tablets & Telas Pequenas (768px – 1023px)
-- **Sidebar**: Oculta em Drawer deslizante acionada pelo menu hambúrguer.
-- **Cockpit de 1 Região por Vez (Master-Detail)**:
-  - Navegação entre abas de contexto: `Fila (Agora)` ➔ `Conversa` ➔ `Dossiê / Contexto`.
-  - Preservação estrita da posição de rolagem e rascunho em edição ao alternar entre as regiões.
-
-### 4. Mobile (390px – 767px)
-- **Header Compacto**: 48px de altura com botão de menu, nome do workspace e atalho de busca.
-- **Navegação em Sequência de Ação**:
-  - `Fila`: Cartões de prioridade touch-friendly (altura mínima de 44px).
-  - `Conversa`: Timeline com botão de voltar claro (`← Fila`) e botão para abrir o Dossiê (`Dossiê (5)`).
-  - `Dossiê`: Bottom Sheet / Drawer deslizante em tela cheia com fechamento por gesto ou botão.
-- **Composer Mobile**: Ocupa a base da tela sem sobrepor mensagens ativas com teclado virtual.
+### 3. Mobile / Smartphones ($C < 760$px)
+- **Uma Região por Vez (Master-Detail Puro)**:
+  - **Fila (Lista)**: O usuário entra diretamente na lista de contatos/prioridades. A primeira conversa **não** é auto-selecionada no carregamento inicial, permitindo escaneabilidade e escolha tátil consciente.
+  - **Chat 1:1**: Ao tocar em um lead, a tela desliza para o chat completo com cabeçalho de 56px, botão `< Voltar` para a fila, e botões de ação rápida (`Dossiê`, `Concluir`, `Mais`).
+  - **Dossiê IA**: Drawer deslizante em tela cheia acionado pelo botão `Dossiê`.
+- **Composer com Prevenção de Zoom**: Campo de texto com tamanho de fonte `16px` (`text-base sm:text-xs`) para impedir auto-zoom no iOS Safari.
+- **Botão Enviar Dinâmico**: No mobile, alterna automaticamente entre microfone de áudio e botão `Enviar` conforme o operador digita.
+- **Navegação Canônica Inferior (Bottom Bar)**: 4 abas táteis — **Atendimento · Funil · Agenda · Mais**.
 
 ---
 
-## 3. Preservação de Contexto e Scroll
+## 3. Isolamento de Rascunho e Continuidade
 
-Ao alternar de visualização no modo mobile/notebook:
-1. O ID da conversa selecionada (`selectedJourneyId`) é sempre preservado.
-2. O rascunho de texto digitado no `SupervisedComposer` permanece intacto via `localStorage` ou estado pai.
-3. Não há recarregamento desnecessário de mensagens ao abrir ou fechar o drawer do dossiê.
+O hook `useConversationDrafts` e o composer garantem continuidade total:
+1. **Isolamento por Chave Composta**: Rascunhos são armazenados por `[userId + workspaceId + journeyId]`.
+2. **Proteção contra Perda**: O rascunho de texto digitado no composer não é apagado em caso de erro de rede ou falha de envio. O texto permanece preservado no campo para nova tentativa imediata.
+3. **Preservação de Contexto**: Alternar entre Fila e Chat, abrir drawers ou alternar para o Funil Kanban preserva o rascunho e a seleção da conversa.

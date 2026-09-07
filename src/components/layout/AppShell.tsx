@@ -478,9 +478,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     conversationsMode?: 'list' | 'kanban' | 'wallboard';
     subTab?: string;
   }> = [
-    { id: 'agora', label: 'Cockpit Agora (Prioridades)', icon: Flame, section: 'Operação', roleRequired: 'operator' },
-    { id: 'conversas', label: 'Todas as Conversas (Lista 1:1)', icon: MessageSquare, section: 'Operação', roleRequired: 'operator', conversationsMode: 'list' },
-    { id: 'conversas', label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação', roleRequired: 'operator', conversationsMode: 'kanban' },
+    { id: 'agora', label: 'Atendimento (Prioridades e Fila)', icon: Flame, section: 'Operação', roleRequired: 'operator' },
+    { id: 'kanban' as NavigationTab, label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação', roleRequired: 'operator' },
     { id: 'agenda' as NavigationTab, label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação', roleRequired: 'operator' as OperatorRole },
     { id: 'anotacoes' as NavigationTab, label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação', roleRequired: 'operator' as OperatorRole },
     ...(showGroups ? [{ id: 'grupos' as NavigationTab, label: 'Grupos WhatsApp', icon: Users, section: 'Operação', roleRequired: 'operator' as OperatorRole }] : []),
@@ -1168,11 +1167,11 @@ export const AppShell: React.FC<AppShellProps> = ({
               </button>
             )}
 
-            {/* Direct Quick Access to Simulador IA */}
+            {/* Direct Quick Access to Simulador IA (Desktop only - mobile accesses via IA/Mais) */}
             <button
               id="topbar-simulador-btn"
               onClick={() => onChangeTab('simulador')}
-              className={`h-8 sm:h-9 px-2.5 rounded-xl border transition-all flex items-center justify-center gap-1.5 text-xs font-bold shadow-2xs cursor-pointer active:scale-95 shrink-0 ${
+              className={`hidden lg:flex h-8 sm:h-9 px-2.5 rounded-xl border transition-all items-center justify-center gap-1.5 text-xs font-bold shadow-2xs cursor-pointer active:scale-95 shrink-0 ${
                 activeTab === 'simulador'
                   ? 'bg-purple-600 text-white border-purple-700 shadow-purple-600/30'
                   : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
@@ -1309,18 +1308,18 @@ export const AppShell: React.FC<AppShellProps> = ({
             </button>
           )}
 
-          {/* 3. IA & Inteligência */}
+          {/* 3. Agenda */}
           <button
-            onClick={() => handleNavClick('playbook')}
+            onClick={() => handleNavClick('agenda')}
             className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
-              activeTab === 'playbook'
+              activeTab === 'agenda'
                 ? 'text-[#00A884] font-bold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Bot className={`w-5 h-5 transition-transform ${activeTab === 'playbook' ? 'scale-110 text-[#00A884]' : ''}`} />
-            <span className="text-[10px] mt-0.5 tracking-tight">IA</span>
-            {activeTab === 'playbook' && (
+            <CalendarDays className={`w-5 h-5 transition-transform ${activeTab === 'agenda' ? 'scale-110 text-[#00A884]' : ''}`} />
+            <span className="text-[10px] mt-0.5 tracking-tight">Agenda</span>
+            {activeTab === 'agenda' && (
               <span className="w-1.5 h-1.5 rounded-full bg-[#00A884] absolute bottom-0.5" />
             )}
           </button>

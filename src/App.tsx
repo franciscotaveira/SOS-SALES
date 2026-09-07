@@ -287,7 +287,7 @@ function AppContent({
               selectedJourneyId={selectedJourneyId}
               onSelectJourney={(j) => setSelectedJourneyId(j.id)}
               onUpdateJourney={handleUpdateJourney}
-              onViewAllConversations={() => setActiveTab('conversas')}
+              onViewAllConversations={() => setActiveTab('agora')}
               role={role}
               currentOperatorId={currentOperatorId}
               currentOperatorName={currentOperatorName}
@@ -335,36 +335,37 @@ function AppContent({
       )}
 
       {activeTab === 'conversas' && (
-        <TabErrorBoundary tabName="Conversas & Funil">
-          {isAuthenticatedApiMode ? (
-            <LiveConversationsView
+        <TabErrorBoundary tabName="Atendimento Unificado">
+          {isAuthenticatedApiMode && salesOsGateway instanceof HttpSalesOsGateway ? (
+            <LiveCockpitView
               workspaceId={currentWorkspace.id}
-              workspace={currentWorkspace}
+              selectedJourneyId={selectedJourneyId}
+              onSelectedJourneyChange={setSelectedJourneyId}
               gateway={salesOsGateway}
-              initialViewMode={conversationsMode}
-              onJourneySelect={(journeyId) => {
-                setSelectedJourneyId(journeyId);
-                setActiveTab('agora');
+              navigationOrigin={navigationOrigin}
+              onReturnToOrigin={() => {
+                if (navigationOrigin === 'kanban') {
+                  setActiveTab('kanban');
+                  setNavigationOrigin('queue');
+                } else {
+                  setSelectedJourneyId(undefined);
+                }
               }}
-              onSwitchToCockpit={() => setActiveTab('agora')}
+              userId={userEmail || 'current-operator'}
+              initialQueueTab="all"
             />
           ) : (
-            <ConversationsHubView
-              journeys={journeys}
-              groups={agencyGroups}
-              channels={currentWorkspace.channels}
+            <CockpitView
               workspace={currentWorkspace}
+              gateway={salesOsGateway}
+              journeys={journeys}
               selectedJourneyId={selectedJourneyId}
               onSelectJourney={(j) => setSelectedJourneyId(j.id)}
-              onGoToCockpit={(j) => {
-                setSelectedJourneyId(j.id);
-                setActiveTab('agora');
-              }}
-              onOpenGroup={() => setActiveTab('grupos')}
               onUpdateJourney={handleUpdateJourney}
-              currentOperatorId={currentOperatorId}
+              onViewAllConversations={() => setActiveTab('agora')}
               role={role}
-              initialViewMode={conversationsMode}
+              currentOperatorId={currentOperatorId}
+              currentOperatorName={currentOperatorName}
             />
           )}
         </TabErrorBoundary>
@@ -519,7 +520,7 @@ function AppContent({
           onClose={() => setIsTutorialOpen(false)}
           onNavigateToTab={(tab, subTab) => {
             if (tab === 'kanban') {
-              setActiveTab('conversas');
+              setActiveTab('kanban');
               setConversationsMode('kanban');
             } else {
               setActiveTab(tab);
@@ -1153,10 +1154,11 @@ function AuthenticatedApp() {
 
           <form onSubmit={submit} className="mt-6 space-y-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+              <label htmlFor="login-email" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                 E-mail Corporativo {authMode === 'signup' && <span className="text-[10px] font-normal text-slate-500">(use o mesmo da compra)</span>}
               </label>
               <input
+                id="login-email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 type="email"
@@ -1169,7 +1171,7 @@ function AuthenticatedApp() {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                <label htmlFor="login-password" className="block text-xs font-bold uppercase tracking-wider text-slate-700">
                   Senha {authMode === 'signup' && '(mínimo 6 dígitos)'}
                 </label>
                 {authMode === 'signin' && (
@@ -1184,6 +1186,7 @@ function AuthenticatedApp() {
                 )}
               </div>
               <input
+                id="login-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 type="password"
@@ -1196,10 +1199,11 @@ function AuthenticatedApp() {
 
             {authMode === 'signup' && (
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                <label htmlFor="login-confirm-password" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                   Confirmar Senha
                 </label>
                 <input
+                  id="login-confirm-password"
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   type="password"
