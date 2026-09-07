@@ -59,20 +59,100 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
-  // Inferred media type if mediaPayload is absent but text contains indicators.
-  // No stock photos/videos — only shape detection. URL will be null when no real URL exists.
-  const inferred = React.useMemo(() => {
-    if (mediaPayload) {
-      // If payload exists but url is empty, try to build from providerMessageId
-      if (!mediaPayload.url && providerMessageId) {
-        const ext = mediaPayload.mimetype?.split('/')[1]?.split(';')[0] || '';
-        const extMap: Record<string, string> = { 'ogg': '.oga', 'mpeg': '.mp3', 'jpeg': '.jpg', 'png': '.png', 'pdf': '.pdf', 'mp4': '.mp4' };
-        const resolvedExt = extMap[ext] || (ext ? `.${ext}` : '');
-        return { ...mediaPayload, url: buildProxyUrl(providerMessageId, resolvedExt) };
+  // Inferred and normalized media payload.
+  // Supports both camelCase (SOS standard) and snake_case/lowercase (WAHA / Meta payloads).
+  const targetMedia = React.useMemo<MessageMediaPayload | null>(() => {
+    const raw = mediaPayload as unknown as Record<string, unknown> | null | undefined;
+    
+    // 1. If a media payload object is present, normalize its properties
+    if (raw && typeof raw === 'object') {
+      const mimetype = (raw.mimetype || raw.mimeType || raw.contentType || '') as string;
+      const rawUrl = (raw.url || raw.mediaUrl || raw.link || '') as string;
+      const rawFileName = (raw.fileName || raw.filename || raw.name || '') as string;
+      const rawFileSize = (raw.fileSize || raw.filesize || raw.fileLength || raw.size) as number | string | undefined;
+      const caption = (raw.caption || raw.text || raw.description || '') as string;
+      const duration = (typeof raw.duration === 'number' ? raw.duration : undefined);
+      const authorOrSpeaker = (raw.authorOrSpeaker || raw.speaker) as string | undefined;
+
+      // Determine the real media type based on raw mediaType, mimetype, filename and url
+      let detectedType: MessageMediaPayload['mediaType'] = 'document';
+      const rawType = String(raw.mediaType || raw.type || '').toLowerCase();
+      const mime = mimetype.toLowerCase();
+      const filenameLower = rawFileName.toLowerCase();
+      const urlLower = rawUrl.toLowerCase();
+
+      if (
+        rawType === 'image' ||
+        rawType === 'photo' ||
+        rawType === 'sticker' ||
+        mime.startsWith('image/') ||
+        filenameLower.endsWith('.jpg') ||
+        filenameLower.endsWith('.jpeg') ||
+        filenameLower.endsWith('.png') ||
+        filenameLower.endsWith('.webp') ||
+        filenameLower.endsWith('.gif') ||
+        urlLower.includes('.jpg') ||
+        urlLower.includes('.jpeg') ||
+        urlLower.includes('.png') ||
+        urlLower.includes('.webp')
+      ) {
+        detectedType = rawType === 'sticker' ? 'sticker' : 'image';
+      } else if (
+        rawType === 'audio' ||
+        rawType === 'ptt' ||
+        rawType === 'voice' ||
+        mime.startsWith('audio/') ||
+        filenameLower.endsWith('.ogg') ||
+        filenameLower.endsWith('.oga') ||
+        filenameLower.endsWith('.mp3') ||
+        filenameLower.endsWith('.wav') ||
+        filenameLower.endsWith('.m4a') ||
+        urlLower.includes('.ogg') ||
+        urlLower.includes('.mp3')
+      ) {
+        detectedType = rawType === 'ptt' || rawType === 'voice' ? 'ptt' : 'audio';
+      } else if (
+        rawType === 'video' ||
+        mime.startsWith('video/') ||
+        filenameLower.endsWith('.mp4') ||
+        filenameLower.endsWith('.webm') ||
+        filenameLower.endsWith('.mov') ||
+        urlLower.includes('.mp4')
+      ) {
+        detectedType = 'video';
       }
-      return mediaPayload;
+
+      // Build proxy URL if url is empty but providerMessageId is available
+      let resolvedUrl = rawUrl || undefined;
+      if (!resolvedUrl && providerMessageId) {
+        const extFromMime = mime.split('/')[1]?.split(';')[0] || '';
+        const extMap: Record<string, string> = {
+          'ogg': '.oga',
+          'mpeg': '.mp3',
+          'jpeg': '.jpg',
+          'jpg': '.jpg',
+          'png': '.png',
+          'webp': '.webp',
+          'pdf': '.pdf',
+          'mp4': '.mp4',
+        };
+        const resolvedExt = extMap[extFromMime] || (extFromMime ? `.${extFromMime}` : '');
+        resolvedUrl = buildProxyUrl(providerMessageId, resolvedExt);
+      }
+
+      return {
+        mediaType: detectedType,
+        url: resolvedUrl,
+        mimetype: mimetype || undefined,
+        caption: caption || undefined,
+        fileName: rawFileName || (detectedType === 'image' ? 'imagem_whatsapp.jpg' : detectedType === 'audio' ? 'audio_whatsapp.ogg' : 'documento_whatsapp'),
+        fileSize: rawFileSize,
+        duration,
+        authorOrSpeaker,
+      };
     }
 
+    // 2. If mediaPayload is absent, check textContent for embedded base64 or indicators
     const text = (textContent || '').trim();
     const lower = text.toLowerCase();
 
@@ -165,8 +245,6 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
 
     return null;
   }, [mediaPayload, textContent, senderName, providerMessageId, session]);
-
-  const targetMedia = mediaPayload || inferred;
 
   // Audio Playback Handler
   const togglePlayAudio = (audioUrl?: string) => {

@@ -2466,8 +2466,8 @@ function LiveJourneyBody({
                       textContent={message.textContent}
                       isOutbound={isOut}
                       senderName={isOut ? "Você" : (journey.contact.name || "Cliente")}
-                      providerMessageId={(message as any).providerMessageId || null}
-                      session={(message as any).mediaPayload?.session || undefined}
+                      providerMessageId={(message as any).providerMessageId || (message as any).mediaPayload?.providerMessageId || null}
+                      session={(message as any).mediaPayload?.session || (journey.channel?.provider === 'waha' ? (journey.channel?.name || journey.channel?.id) : undefined)}
                     />
                     <div className="mt-0.5 text-right text-[10px] text-slate-500 font-mono flex items-center justify-end gap-1">
                       <span>{formatDate(message.sentAt)}</span>
