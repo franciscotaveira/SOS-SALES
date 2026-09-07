@@ -43,36 +43,23 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
   const [internalSubTab, setInternalSubTab] = useState<ResultsSubTab>(isAuthenticatedApiMode ? 'traffic_proof' : 'analytics');
   const activeSubTab = externalActiveSubTab !== undefined ? externalActiveSubTab : internalSubTab;
   const setActiveSubTab = externalOnChangeSubTab !== undefined ? externalOnChangeSubTab : setInternalSubTab;
-  // Sanitize stale history/local state before rendering. Otherwise a direct
-  // navigation to the legacy analytics tab could flash fixture metrics for a
-  // frame in authenticated production mode before the redirect effect runs.
-  const effectiveSubTab: ResultsSubTab = isAuthenticatedApiMode
-    && activeSubTab !== 'traffic_proof'
-    && !(activeSubTab === 'tracking' && canManageTracking)
-    ? 'traffic_proof'
-    : activeSubTab;
+  const effectiveSubTab: ResultsSubTab = activeSubTab;
 
-  const SUB_TABS = isAuthenticatedApiMode ? [
+  const SUB_TABS = [
     {
       id: 'traffic_proof' as ResultsSubTab,
-      label: 'Resultados',
+      label: isAuthenticatedApiMode ? 'Resultados dos anúncios' : 'Campanhas & Anúncios (CTWA)',
       icon: TrendingUp,
     },
     ...(canManageTracking ? [{
       id: 'tracking' as ResultsSubTab,
-      label: 'Conectar Meta',
+      label: isAuthenticatedApiMode ? 'Conectar Meta Ads' : 'Traqueamento',
       icon: Target,
     }] : []),
-  ] : [
     {
       id: 'analytics' as ResultsSubTab,
       label: 'Analytics & ROI',
       icon: PieChart,
-    },
-    {
-      id: 'traffic_proof' as ResultsSubTab,
-      label: 'Campanhas & Anúncios (CTWA)',
-      icon: TrendingUp,
     },
     {
       id: 'broadcast' as ResultsSubTab,
@@ -90,12 +77,6 @@ export const ResultsHubView: React.FC<ResultsHubViewProps> = ({
       icon: FileText,
     },
   ];
-
-  React.useEffect(() => {
-    if (isAuthenticatedApiMode && (activeSubTab !== 'traffic_proof' && !(activeSubTab === 'tracking' && canManageTracking))) {
-      setActiveSubTab('traffic_proof');
-    }
-  }, [activeSubTab, canManageTracking, isAuthenticatedApiMode, setActiveSubTab]);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[var(--sos-canvas)] overflow-y-auto">

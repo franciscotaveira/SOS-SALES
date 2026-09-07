@@ -21,10 +21,16 @@
 - Release ativa: `56abc49166e7434be00d09b388fb167858ffb4a9` (fix: auditoria gstack completa - gap de tipagem e integridade do QA Simulator View, suite 522/522 tests green, preflight e promote VPS)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
-  - Cockpit Master-Detail estrito: Alternância fluida entre Fila de Oportunidades e Chat 1:1 com botão `< Voltar`.
+  - Atendimento Único: "Agora" e "Conversas" consolidados em "Atendimento", com visualizações "Prioridades" e "Todas". Estado vazio honesto para prioridades zeradas ("Nenhuma prioridade pendente no momento" + botão "Ver todas").
+  - Layout por Largura Útil ($C$):
+    - $C < 760$px: uma região por vez, cabeçalho 56px com `< Voltar` e Dossiê em slide-over drawer;
+    - $760 \le C < 1120$px: Fila 280px + Chat flexível; Dossiê em drawer;
+    - $C \ge 1120$px: Fila 280px + Chat min 480px + Dossiê 340px (ou trilho lateral recolhido de 48px).
+  - Rascunhos e Continuidade (`useConversationDrafts`): isolamento estrito por `[userId + workspaceId + journeyId]` mantendo estado sincronizado com `sessionStorage` sem perda de texto ao alternar contatos ou abas.
+  - Navegação canônica: Mobile em 4 abas (Atendimento, Funil, Agenda/IA, Mais); Desktop agrupado em Operação, IA, Gestão e Administração.
   - Cabeçalho do Chat em linha única de 56px (`h-14 flex-nowrap`): Nome com `truncate` e ações rápidas táteis (`Dossiê`, `Concluir` e `Mais (...)`).
   - Composer com prevenção de auto-zoom no iOS (fonte 16px) e alternância nativa entre Microfone e Enviar ao digitar.
-  - Funil Kanban e Central de Conversas sem overflow horizontal, com seletor de etapas por pills e cartões edge-to-edge.
+  - Funil Kanban integrado ao Cockpit com retorno contextual garantido (`← Funil`) restaurando etapa e filtros.
 - Todos os agentes e módulos de IA padronizados no motor soberano **NVIDIA NIM** (`NvidiaNimEngine`):
   - **Receptionist 24/7:** `nvidia/nemotron-3-super-120b-a12b` (Raciocínio Profundo & Negociação Comercial)
   - **Copilot Comercial & Dossiê do Lead:** `nvidia/nemotron-3-super-120b-a12b`
@@ -201,7 +207,7 @@ _Atualizado automaticamente pela AGY (Antigravity) em 18 Ago 2026_
 <claude-mem-context>
 # Memory Context
 
-# [SOS-SALES] recent context, 2026-09-05 11:32pm GMT-3
+# [SOS-SALES] recent context, 2026-09-06 11:14pm GMT-3
 
 No previous sessions found.
 </claude-mem-context>

@@ -26,3 +26,7 @@ supabase/.branches/
 *.rvf.lock
 backups/
 .audit/
+.vscode/
+compose.yaml
+compose.debug.yaml
+Dockerfile

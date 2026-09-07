@@ -29,16 +29,16 @@ O sistema utiliza uma tríade tipográfica funcional e deliberada:
 
 | Token | Hex | Uso Primário |
 | :--- | :--- | :--- |
-| **Canvas** | `#F5F7FA` | Fundo estrutural da aplicação (neutro limpo) |
+| **Canvas** | `#F8FAFC` | Fundo estrutural da aplicação (neutro limpo) |
 | **Surface** | `#FFFFFF` | Superfície de cartões, painéis e drawers |
-| **Ink** | `#101828` | Texto principal com máximo contraste |
-| **Muted** | `#667085` | Rótulos secundários, metadados e legendas |
-| **Action / Success** | `#059669` | Fechamento de vendas, ações primárias, WhatsApp oficial |
+| **Ink** | `#0F172A` | Texto principal com máximo contraste |
+| **Muted** | `#475569` | Rótulos secundários, metadados e legendas |
+| **Action / Success** | `#00A884` | Fechamento de vendas, ações primárias, WhatsApp oficial |
 | **Operational** | `#2563EB` | Ações de atendimento, navegação, filtros ativos |
 | **AI / Copilot** | `#7C3AED` | Sugestões inteligentes, tese comercial, evidências |
 | **Warning** | `#D97706` | Alertas de SLA moderado, ações pendentes de operador |
 | **Danger** | `#DC2626` | SLA crítico expirado, violação de guardrail, canal pausado |
-| **Structural Dark** | `#0F172A` | Sidebar recolhida/expandida, ribbon de continuidade |
+| **Structural Dark** | `#0B132B` | Sidebar recolhida/expandida, ribbon de continuidade |
 
 ---
 

@@ -919,3 +919,48 @@
   - `apps/api/tests/unit/agent-simulator-routes.test.ts`
 - **Operational gate:** Atualizar `NVIDIA_NIM_MODEL` no `.env.production` do VPS para o endpoint atual antes de promover; executar Docker Lab, suíte de testes e canário autenticado do simulador.
 - **Date:** 2026-09-05
+
+---
+
+## Task 39: Refatoração UI/UX Soberana para Web e Mobile (Atendimento Único & Layout Adaptativo C)
+- **Decision:** Consolidar "Agora" e "Conversas" sob o destino unificado "Atendimento" com seletores explícitos "Prioridades" e "Todas". Implementar layout adaptativo orientado à largura útil disponível ($C$):
+  - $C < 760$px (Compacto): uma região por vez, cabeçalho contextual de 56px com `< Voltar`, e drawer lateral para Dossiê;
+  - $760 \le C < 1120$px (Split): Fila de 280px + Chat flexível; Dossiê em slide-over drawer;
+  - $C \ge 1120$px (Amplo): Fila de 280px + Chat com orçamento mínimo de 480px + Dossiê de 340px (ou trilho recolhido de 48px).
+  Persistência de rascunhos em memória isolada e sincronizada com `sessionStorage` por `(userId, workspaceId, journeyId)` via hook `useConversationDrafts`.
+- **Rationale:**
+  1. Elimina perda de rascunhos e contexto quando o operador alterna entre leads, abre o dossiê ou recarrega a aba.
+  2. Garante estado vazio honesto ("Nenhuma prioridade pendente no momento") sem substituição silenciosa pela lista geral, cumprindo a filosofia MCT "Truth in Data".
+  3. Preserva a hierarquia canônica de navegação móvel (4 abas: Atendimento, Funil, Agenda/IA, Mais) e agrupamento desktop em Operação, IA, Gestão e Administração.
+  4. Permite transição fluida do Funil Kanban para o Cockpit com retorno contextual garantido (`← Funil`) sem perda de etapa ou filtros.
+- **Scope:**
+  - `src/hooks/useConversationDrafts.ts`
+  - `src/hooks/useConversationDrafts.test.ts`
+  - `src/components/cockpit/LiveCockpitView.tsx`
+  - `src/components/layout/AppShell.tsx`
+  - `src/App.tsx`
+  - `src/components/cockpit/cockpit-production-safety.test.ts`
+  - `docs/DESIGN.md`
+  - `AGENTS.md`
+- **Operational gate:** Validar a suíte completa de frontend (21/21) e backend (522/522), testar os breakpoints responsivos ($C < 760$, $760-1120$, $\ge 1120$px) e submeter à aprovação humana antes do deploy no VPS.
+- **Date:** 2026-09-06
+
+---
+
+## Task 40: Preservação e Restauração Integral de Todas as Funções (Sem Redução ou Resumo)
+- **Decision:** Remover qualquer bloqueio artificial (`isProductionMvp` / `<ApiModeUnavailable>` / redirecionamentos forçados) que ocultava ou resumia funcionalidades do sistema:
+  1. **Agenda Comercial:** Totalmente restabelecida na barra lateral sob OPERAÇÃO, no Command Palette (Ctrl+K) e no roteamento (`/agenda`), renderizando `<AgendaView>`.
+  2. **Anotações & Insights:** Totalmente restabelecida na barra lateral sob OPERAÇÃO, no Command Palette e no roteamento dedicado (`/anotacoes`), renderizando `<NotesView>`.
+  3. **Hub de Grupos WhatsApp:** Acessível via flag `agency_groups` (renderizando `<GroupsHubView>`) sem bloqueios em modo de produção autenticado.
+  4. **Sales AI Playbook & Inteligência:** Exibição completa de todas as 10 subcategorias (Perfil da Empresa, Robôs Especialistas, Habilidades Ativáveis, Catálogo & Preços, Base de Conhecimento, Simulador & Treinador IA, AI Assurance, Curadoria & Aprendizado, Tese & Tom de Voz, Diagnóstico da Operação).
+  5. **Resultados & Gestão de Campanhas:** Exposição de todas as abas operacionais (Resultados dos Anúncios / CTWA, Conectar Meta Ads / Traqueamento, Analytics & ROI, Disparo em Massa Broadcast, Links & QR Codes, Modelos WABA).
+  6. **Configurações:** Acesso a todos os controles operacionais e avançados (WhatsApp Canais, Atendimento com IA, Regras de SLA, Equipe & Operadores, API & Webhooks, Parâmetros Globais, Infra & Modelos).
+- **Rationale:** A refatoração responsiva e mobile-first deve organizar e empoderar a experiência do usuário, nunca subtrair, resumir ou bloquear funcionalidades operacionais existentes.
+- **Scope:**
+  - `src/App.tsx`
+  - `src/components/layout/AppShell.tsx`
+  - `src/components/results/ResultsHubView.tsx`
+  - `DECISION_LOG.md`
+- **Operational gate:** Testes unitários de frontend (21/21) e backend (522/522) passando com sucesso, zero erros de build TypeScript.
+- **Date:** 2026-09-07
+

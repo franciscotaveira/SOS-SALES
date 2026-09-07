@@ -209,28 +209,12 @@ function AppContent({
     }
   }, [activeTab, isFeatureEnabled, setActiveTab]);
 
-  // Keep non-core modules preserved for future tiers without leaving direct
-  // URLs, history entries or stale localStorage able to reopen them in the
-  // production MVP. The live MVP exposes only intelligence that has a real
-  // backend contract; legacy simulators and unsupported specialist screens
-  // remain isolated from production navigation.
-  React.useEffect(() => {
-    const hiddenProductionTabs: NavigationTab[] = [
-      'kanban',
-      'agenda',
-      'anotacoes',
-      'grupos',
-      'analytics',
-    ];
-    if (isProductionMvp && hiddenProductionTabs.includes(activeTab)) {
-      setActiveTab('agora');
-    }
-  }, [activeTab, isProductionMvp, setActiveTab]);
-
   const pendingCount = journeys.filter((j) => j.handoffStatus === 'pending_operator').length;
   const pendingGroupsCount = agencyGroups.filter(
     (g) => g.healthStatus === 'pending_action' || g.unreadCount > 0
   ).length;
+
+  const [navigationOrigin, setNavigationOrigin] = React.useState<'queue' | 'kanban'>('queue');
 
   return (
     <AppShell
@@ -238,11 +222,17 @@ function AppContent({
       currentWorkspace={currentWorkspace}
       onSelectWorkspace={onSelectWorkspace}
       activeTab={activeTab}
-      onChangeTab={setActiveTab}
+      onChangeTab={(tab) => {
+        if (tab !== 'agora') {
+          setNavigationOrigin('queue');
+        }
+        setActiveTab(tab);
+      }}
       pendingPrioritiesCount={pendingCount}
       pendingGroupsCount={pendingGroupsCount}
       role={role}
       onChangeRole={setRole}
+      isMobileChatActive={Boolean(selectedJourneyId && activeTab === 'agora')}
       onSimulateIncomingLeadMessage={onSimulateIncomingLeadMessage}
       onSimulateNetworkErrorToggle={onToggleForcedNetworkError}
       isNetworkErrorForced={isNetworkErrorForced}
@@ -278,6 +268,16 @@ function AppContent({
               selectedJourneyId={selectedJourneyId}
               onSelectedJourneyChange={setSelectedJourneyId}
               gateway={salesOsGateway}
+              navigationOrigin={navigationOrigin}
+              onReturnToOrigin={() => {
+                if (navigationOrigin === 'kanban') {
+                  setActiveTab('kanban');
+                  setNavigationOrigin('queue');
+                } else {
+                  setSelectedJourneyId(undefined);
+                }
+              }}
+              userId={userEmail || 'current-operator'}
             />
           ) : (
             <CockpitView
@@ -304,9 +304,13 @@ function AppContent({
               gateway={salesOsGateway}
               onSelectJourney={(journeyId) => {
                 setSelectedJourneyId(journeyId);
+                setNavigationOrigin('kanban');
                 setActiveTab('agora');
               }}
-              onSwitchToCockpit={() => setActiveTab('agora')}
+              onSwitchToCockpit={() => {
+                setNavigationOrigin('kanban');
+                setActiveTab('agora');
+              }}
             />
           ) : (
             <ConversationsHubView
@@ -367,62 +371,41 @@ function AppContent({
       )}
 
       {activeTab === 'agenda' && (
-        isProductionMvp ? (
-          <ApiModeUnavailable
-            title="Agenda ainda não está disponível no MVP autenticado"
-            detail="A agenda legada dependia de dados locais. Ela permanece fora do caminho de produção até possuir leitura e gravação reais no backend."
+        <TabErrorBoundary tabName="Agenda Comercial">
+          <AgendaView
+            workspace={currentWorkspace}
+            gateway={salesOsGateway}
+            onGoToCockpitWithJourney={(journeyId) => {
+              setSelectedJourneyId(journeyId);
+              setActiveTab('agora');
+            }}
           />
-        ) : (
-          <TabErrorBoundary tabName="Agenda Comercial">
-            <AgendaView
-              workspace={currentWorkspace}
-              gateway={salesOsGateway}
-              onGoToCockpitWithJourney={(journeyId) => {
-                setSelectedJourneyId(journeyId);
-                setActiveTab('agora');
-              }}
-            />
-          </TabErrorBoundary>
-        )
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'anotacoes' && (
-        isProductionMvp ? (
-          <ApiModeUnavailable
-            title="Anotações ainda não estão disponíveis no MVP autenticado"
-            detail="As anotações legadas usavam armazenamento local. Nenhuma nota será exibida ou gravada até existir um contrato persistido para a equipe."
+        <TabErrorBoundary tabName="Anotações & Insights">
+          <NotesView
+            workspace={currentWorkspace}
+            gateway={salesOsGateway}
           />
-        ) : (
-          <TabErrorBoundary tabName="Anotações & Insights">
-            <NotesView
-              workspace={currentWorkspace}
-              gateway={salesOsGateway}
-            />
-          </TabErrorBoundary>
-        )
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'grupos' && isFeatureEnabled('agency_groups') && (
-        isProductionMvp ? (
-          <ApiModeUnavailable
-            title="Grupos ainda não estão disponíveis no MVP autenticado"
-            detail="O monitor de grupos permanece preservado para uma fase posterior. O modo de produção não exibirá grupos simulados nem estados locais."
+        <TabErrorBoundary tabName="Hub de Grupos">
+          <GroupsHubView
+            groups={agencyGroups}
+            workspaceId={currentWorkspace.id}
+            onUpdateGroup={(updated) => {
+              setAgencyGroups((prev) =>
+                prev.map((g) => (g.id === updated.id ? updated : g))
+              );
+            }}
+            activeSubTab={groupSubTab}
+            onChangeSubTab={setGroupSubTab}
           />
-        ) : (
-          <TabErrorBoundary tabName="Hub de Grupos">
-            <GroupsHubView
-              groups={agencyGroups}
-              workspaceId={currentWorkspace.id}
-              onUpdateGroup={(updated) => {
-                setAgencyGroups((prev) =>
-                  prev.map((g) => (g.id === updated.id ? updated : g))
-                );
-              }}
-              activeSubTab={groupSubTab}
-              onChangeSubTab={setGroupSubTab}
-            />
-          </TabErrorBoundary>
-        )
+        </TabErrorBoundary>
       )}
 
       {activeTab === 'clientes' && (
@@ -572,14 +555,15 @@ function OperationalApp({
     salesOsRuntimeConfig.mode === 'api' ? [] : mockAgencyGroups
   ));
   const [selectedJourneyId, setSelectedJourneyId] = React.useState<string | undefined>(undefined);
-  // Clean URL Routing sync for SPAs (/agora, /conversas, /inteligencia, etc.)
+  // Clean URL Routing sync for SPAs (/atendimento, /funil, /inteligencia, etc.)
   const pathToTab = React.useCallback((pathname: string): NavigationTab | null => {
     const clean = pathname.replace(/^\//, '').toLowerCase().split('/')[0];
-    if (clean === 'agora' || clean === '') return 'agora';
-    if (clean === 'conversas' || clean === 'funil' || clean === 'kanban') return 'conversas';
+    if (clean === 'atendimento' || clean === 'agora' || clean === '') return 'agora';
+    if (clean === 'funil' || clean === 'kanban') return 'kanban';
+    if (clean === 'conversas') return 'agora';
     if (clean === 'grupos') return 'grupos';
     if (clean === 'agenda') return 'agenda';
-    if (clean === 'anotacoes' || clean === 'notes') return 'conversas';
+    if (clean === 'anotacoes' || clean === 'notes') return 'anotacoes';
     if (clean === 'clientes' || clean === 'empresas' || clean === 'clients') return 'clientes';
     if (clean === 'resultados' || clean === 'roi' || clean === 'analytics') return 'resultados';
     if (clean === 'inteligencia' || clean === 'playbook') return 'playbook';
@@ -590,9 +574,9 @@ function OperationalApp({
 
   const tabToPath = (tab: NavigationTab): string => {
     switch (tab) {
-      case 'agora': return '/agora';
-      case 'conversas': return '/conversas';
-      case 'kanban': return '/conversas';
+      case 'agora': return '/atendimento';
+      case 'conversas': return '/atendimento';
+      case 'kanban': return '/funil';
       case 'grupos': return '/grupos';
       case 'agenda': return '/agenda';
       case 'anotacoes': return '/anotacoes';
@@ -602,7 +586,7 @@ function OperationalApp({
       case 'playbook': return '/inteligencia';
       case 'simulador': return '/simulador';
       case 'configuracoes': return '/configuracoes';
-      default: return '/agora';
+      default: return '/atendimento';
     }
   };
 

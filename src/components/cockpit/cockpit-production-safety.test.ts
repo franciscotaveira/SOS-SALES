@@ -40,8 +40,7 @@ describe('cockpit production safety policy', () => {
   it('keeps the entry SaaS navigation focused without deleting administration', () => {
     const source = read('../layout/AppShell.tsx');
 
-    expect(source).toContain("label: 'Agora'");
-    expect(source).toContain("label: 'Conversas'");
+    expect(source).toContain("label: 'Atendimento'");
     expect(source).toContain("label: 'Funil'");
     expect(source).toContain("label: 'Resultados'");
     expect(source).toContain("label: 'Configurações'");

@@ -81,6 +81,7 @@ interface AppShellProps {
   onChangeResultsSubTab?: (subTab: any) => void;
   activeConversationsMode?: 'list' | 'kanban' | 'wallboard';
   onChangeConversationsMode?: (mode: 'list' | 'kanban' | 'wallboard') => void;
+  isMobileChatActive?: boolean;
   userEmail?: string;
   onSignOut?: () => void;
   onOpenTutorial?: () => void;
@@ -107,6 +108,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   onChangeResultsSubTab,
   activeConversationsMode = 'list',
   onChangeConversationsMode,
+  isMobileChatActive = false,
   userEmail,
   onSignOut,
   onOpenTutorial,
@@ -172,7 +174,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   // needs a real backend contract; legacy demo screens stay out of the live
   // shell without deleting their code for future tiers.
   const isProductionMvp = salesOsRuntimeConfig.mode === 'api';
-  const showGroups = !isProductionMvp && isFeatureEnabled('agency_groups');
+  const showGroups = isFeatureEnabled('agency_groups');
   const showTrafficProof = isFeatureEnabled('traffic_proof');
 
   // RBAC permissions based on role
@@ -363,11 +365,11 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   const navSections: NavSection[] = [
     {
-      title: 'ATENDIMENTO',
+      title: 'OPERAÇÃO',
       items: [
         {
           id: 'agora',
-          label: 'Agora',
+          label: 'Atendimento',
           icon: Flame,
           badge: pendingPrioritiesCount > 0 ? pendingPrioritiesCount : undefined,
           badgeColor: 'bg-[#DC2626] text-white',
@@ -375,20 +377,11 @@ export const AppShell: React.FC<AppShellProps> = ({
           visible: true,
         },
         {
-          id: 'conversas',
-          label: 'Conversas',
-          icon: MessageSquare,
-          roleRequired: 'operator',
-          visible: true,
-          conversationsMode: 'list',
-        },
-        {
-          id: 'conversas',
+          id: 'kanban' as NavigationTab,
           label: 'Funil',
           icon: Columns3,
           roleRequired: 'operator',
           visible: showKanban,
-          conversationsMode: 'kanban',
         },
         {
           id: 'grupos',
@@ -404,24 +397,19 @@ export const AppShell: React.FC<AppShellProps> = ({
           label: 'Agenda',
           icon: CalendarDays,
           roleRequired: 'operator',
-          visible: !isProductionMvp,
+          visible: true,
         },
-      ],
-    },
-    {
-      title: 'NEGÓCIO',
-      items: [
         {
-          id: 'resultados' as NavigationTab,
-          label: 'Resultados',
-          icon: Megaphone,
-          roleRequired: 'admin' as OperatorRole,
-          visible: showTrafficProof,
+          id: 'anotacoes',
+          label: 'Anotações',
+          icon: BookOpen,
+          roleRequired: 'operator',
+          visible: true,
         },
       ],
     },
     {
-      title: 'INTELIGÊNCIA',
+      title: 'IA',
       items: [
         {
           id: 'playbook' as NavigationTab,
@@ -435,12 +423,24 @@ export const AppShell: React.FC<AppShellProps> = ({
           label: 'Simulador & Treinador IA',
           icon: Zap,
           roleRequired: 'operator' as OperatorRole,
-          visible: true,
+          visible: showQaSimulator,
         },
       ],
     },
     {
-      title: 'SISTEMA',
+      title: 'GESTÃO',
+      items: [
+        {
+          id: 'resultados' as NavigationTab,
+          label: 'Resultados',
+          icon: Megaphone,
+          roleRequired: 'admin' as OperatorRole,
+          visible: showTrafficProof,
+        },
+      ],
+    },
+    {
+      title: 'ADMINISTRAÇÃO',
       items: [
         {
           id: 'configuracoes' as NavigationTab,
@@ -449,11 +449,6 @@ export const AppShell: React.FC<AppShellProps> = ({
           roleRequired: 'owner' as OperatorRole,
           visible: true,
         },
-      ],
-    },
-    {
-      title: 'ADMINISTRAÇÃO',
-      items: [
         {
           id: 'clientes' as NavigationTab,
           label: 'Empresas e subcontas',
@@ -486,10 +481,8 @@ export const AppShell: React.FC<AppShellProps> = ({
     { id: 'agora', label: 'Cockpit Agora (Prioridades)', icon: Flame, section: 'Operação', roleRequired: 'operator' },
     { id: 'conversas', label: 'Todas as Conversas (Lista 1:1)', icon: MessageSquare, section: 'Operação', roleRequired: 'operator', conversationsMode: 'list' },
     { id: 'conversas', label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação', roleRequired: 'operator', conversationsMode: 'kanban' },
-    ...(!isProductionMvp ? [
-      { id: 'agenda' as NavigationTab, label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação', roleRequired: 'operator' as OperatorRole },
-      { id: 'anotacoes' as NavigationTab, label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação', roleRequired: 'operator' as OperatorRole },
-    ] : []),
+    { id: 'agenda' as NavigationTab, label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação', roleRequired: 'operator' as OperatorRole },
+    { id: 'anotacoes' as NavigationTab, label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação', roleRequired: 'operator' as OperatorRole },
     ...(showGroups ? [{ id: 'grupos' as NavigationTab, label: 'Grupos WhatsApp', icon: Users, section: 'Operação', roleRequired: 'operator' as OperatorRole }] : []),
     { id: 'clientes' as NavigationTab, label: 'Clientes e Sub-contas', icon: Building2, section: 'Sistema', roleRequired: 'owner' as OperatorRole },
     ...(showTrafficProof ? [
@@ -659,24 +652,18 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {/* Subcategories for Playbook / Inteligência */}
                       {item.id === 'playbook' && isActive && !collapsed && (
                         <div className="mt-1 pl-6 bg-slate-800/30 space-y-0.5">
-                          {(isProductionMvp ? [
+                          {[
                             { id: 'profile', label: 'Perfil da Empresa' },
-                            { id: 'knowledge', label: 'Base de Conhecimento' },
-                            { id: 'catalog', label: 'Catálogo de Serviços' },
-                            { id: 'simulator', label: 'Simulador & Treinador IA' },
-                            { id: 'assurance', label: '🛡️ AI Assurance (Auditoria)' },
-                            { id: 'diagnosis', label: 'Diagnóstico da operação' },
-                          ] : [
-                            { id: 'profile', label: 'Perfil da Empresa' },
-                            { id: 'knowledge', label: 'Base de Conhecimento' },
-                            { id: 'catalog', label: 'Catálogo de Serviços' },
-                            { id: 'simulator', label: 'Simulador & Treinador IA' },
-                            { id: 'assurance', label: '🛡️ AI Assurance (Auditoria)' },
                             { id: 'agent', label: 'Robôs Especialistas' },
+                            { id: 'skills', label: 'Habilidades Ativáveis' },
+                            { id: 'catalog', label: 'Catálogo de Serviços' },
+                            { id: 'knowledge', label: 'Base de Conhecimento' },
+                            { id: 'simulator', label: 'Simulador & Treinador IA' },
+                            { id: 'assurance', label: '🛡️ AI Assurance (Auditoria)' },
                             { id: 'learning', label: 'Curadoria & Aprendizado' },
                             { id: 'thesis', label: 'Tese & Tom de Voz' },
-                            { id: 'diagnosis', label: 'Diagnóstico Histórico' },
-                          ]).map((sub) => {
+                            { id: 'diagnosis', label: 'Diagnóstico da operação' },
+                          ].map((sub) => {
                             const isSubActive = activeIntelligenceSubTab === sub.id;
                             return (
                               <button
@@ -729,17 +716,14 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {/* Subcategories for Gestão de Campanhas */}
                       {item.id === 'resultados' && isActive && !collapsed && (
                         <div className="mt-1 pl-6 bg-slate-800/30 space-y-0.5">
-                          {(isProductionMvp ? [
+                          {[
                             { id: 'traffic_proof', label: 'Resultados dos anúncios' },
                             ...(isOwner ? [{ id: 'tracking', label: 'Conectar Meta Ads' }] : []),
-                          ] : [
                             { id: 'analytics', label: 'Analytics & ROI' },
-                            { id: 'traffic_proof', label: 'Anúncios & CTWA' },
                             { id: 'broadcast', label: 'Disparo em Massa (Broadcast)' },
                             { id: 'campaign_links', label: 'Links & QR Code' },
                             { id: 'waba_templates', label: 'Modelos WABA' },
-                            { id: 'tracking', label: 'Traqueamento' },
-                          ]).map((sub) => {
+                          ].map((sub) => {
                             const isSubActive = activeResultsSubTab === sub.id;
                             return (
                               <button
@@ -763,18 +747,19 @@ export const AppShell: React.FC<AppShellProps> = ({
                       {/* Subcategories for Configurações */}
                       {item.id === 'configuracoes' && isActive && !collapsed && (
                         <div className="mt-1 pl-6 bg-slate-800/30 rounded-r-lg space-y-0.5">
-                          {(isProductionMvp ? [
+                          {[
                             { id: 'canais', label: 'WhatsApp' },
                             { id: 'ia', label: 'Atendimento com IA' },
                             { id: 'sla', label: 'Tempo de resposta' },
                             { id: 'membros', label: 'Equipe' },
-                          ] : [
-                            { id: 'team', label: 'Equipe & Usuários' },
-                            { id: 'api_webhooks', label: 'API & Webhooks' },
-                            { id: 'channels', label: 'Canais de WhatsApp' },
-                            { id: 'feature_flags', label: 'Parâmetros Globais' },
-                            { id: 'engines', label: 'Infra & Modelos' },
-                          ]).map((sub) => {
+                            ...(!isProductionMvp ? [
+                              { id: 'team', label: 'Equipe & Usuários' },
+                              { id: 'api_webhooks', label: 'API & Webhooks' },
+                              { id: 'channels', label: 'Canais de WhatsApp' },
+                              { id: 'feature_flags', label: 'Parâmetros Globais' },
+                              { id: 'engines', label: 'Infra & Modelos' },
+                            ] : []),
+                          ].map((sub) => {
                             const isSubActive = activeSettingsSubTab === sub.id;
                             return (
                               <button
@@ -1122,7 +1107,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         {/* Sleek Compact TopBar (Search + Notifications Only) */}
         <header
           id="app-topbar"
-          className="h-12 bg-white border-b border-slate-200 shrink-0 px-3 sm:px-4 pt-safe flex items-center justify-between z-20 shadow-2xs"
+          className={`${isMobileChatActive ? 'hidden lg:flex' : 'flex'} h-12 bg-white border-b border-slate-200 shrink-0 px-3 sm:px-4 pt-safe items-center justify-between z-20 shadow-2xs`}
         >
           {/* Left: Mobile Brand & Drawer Trigger (Mobile Only) */}
           <div className="flex items-center gap-2 min-w-0">
@@ -1268,18 +1253,22 @@ export const AppShell: React.FC<AppShellProps> = ({
         {/* Workspace Main Outlet */}
         <main
           id="app-main-outlet"
-          className="flex-1 min-h-0 w-full flex flex-col overflow-hidden relative pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] lg:pb-0"
+          className={`flex-1 min-h-0 w-full flex flex-col overflow-hidden relative ${
+            isMobileChatActive ? 'pb-0' : 'pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]'
+          } lg:pb-0`}
         >
           {children}
         </main>
 
-        {/* Mobile Bottom Navigation Bar (High Touch Ergonomics) */}
+        {/* Mobile Bottom Navigation Bar (High Touch Ergonomics - 4 Canonical Destinations) */}
         <nav
           id="app-mobile-bottom-nav"
           aria-label="Navegação mobile rápida"
-          className="lg:hidden fixed bottom-0 left-0 right-0 h-[calc(3.5rem+env(safe-area-inset-bottom,0px))] z-40 bg-[#0B132B]/95 backdrop-blur-md border-t border-slate-800/90 px-1 pb-safe flex items-center justify-around shadow-2xl"
+          className={`${
+            isMobileChatActive ? 'hidden' : 'flex'
+          } lg:hidden fixed bottom-0 left-0 right-0 h-[calc(3.5rem+env(safe-area-inset-bottom,0px))] z-40 bg-[#0B132B]/95 backdrop-blur-md border-t border-slate-800/90 px-1 pb-safe items-center justify-around shadow-2xl`}
         >
-          {/* 1. Agora (Cockpit Prioritário) */}
+          {/* 1. Atendimento (Fila Prioritária & Histórico Unificado) */}
           <button
             onClick={() => handleNavClick('agora')}
             className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
@@ -1296,47 +1285,31 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </span>
               )}
             </div>
-            <span className="text-[10px] mt-0.5 tracking-tight">Agora</span>
+            <span className="text-[10px] mt-0.5 tracking-tight">Atendimento</span>
             {activeTab === 'agora' && (
               <span className="w-1.5 h-1.5 rounded-full bg-[#00A884] absolute bottom-0.5" />
             )}
           </button>
 
-          {/* 2. Conversas (Chat 1:1) */}
-          <button
-            onClick={() => handleNavClick('conversas', 'list')}
-            className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
-              activeTab === 'conversas' && activeConversationsMode === 'list'
-                ? 'text-[#00A884] font-bold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <MessageSquare className={`w-5 h-5 transition-transform ${activeTab === 'conversas' && activeConversationsMode === 'list' ? 'scale-110 text-[#00A884]' : ''}`} />
-            <span className="text-[10px] mt-0.5 tracking-tight">Conversas</span>
-            {activeTab === 'conversas' && activeConversationsMode === 'list' && (
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00A884] absolute bottom-0.5" />
-            )}
-          </button>
-
-          {/* 3. Funil Kanban */}
+          {/* 2. Funil Kanban Comercial */}
           {showKanban && (
             <button
-              onClick={() => handleNavClick('conversas', 'kanban')}
+              onClick={() => handleNavClick('kanban')}
               className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
-                activeTab === 'conversas' && activeConversationsMode === 'kanban'
+                activeTab === 'kanban'
                   ? 'text-[#00A884] font-bold'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Columns3 className={`w-5 h-5 transition-transform ${activeTab === 'conversas' && activeConversationsMode === 'kanban' ? 'scale-110 text-[#00A884]' : ''}`} />
+              <Columns3 className={`w-5 h-5 transition-transform ${activeTab === 'kanban' ? 'scale-110 text-[#00A884]' : ''}`} />
               <span className="text-[10px] mt-0.5 tracking-tight">Funil</span>
-              {activeTab === 'conversas' && activeConversationsMode === 'kanban' && (
+              {activeTab === 'kanban' && (
                 <span className="w-1.5 h-1.5 rounded-full bg-[#00A884] absolute bottom-0.5" />
               )}
             </button>
           )}
 
-          {/* 4. IA / Conhecimento (ou Agenda) */}
+          {/* 3. IA & Inteligência */}
           <button
             onClick={() => handleNavClick('playbook')}
             className={`flex flex-col items-center justify-center min-w-[56px] py-1 px-2 rounded-xl transition-all relative ${
@@ -1352,7 +1325,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             )}
           </button>
 
-          {/* 5. Menu Completo (Abre Drawer Lateral) */}
+          {/* 4. Menu Completo (Abre Drawer Lateral Agrupado) */}
           <button
             id="mobile-nav-more-btn"
             onClick={() => setMobileDrawerOpen(true)}

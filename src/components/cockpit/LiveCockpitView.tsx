@@ -58,6 +58,7 @@ import { authenticatedFetch } from "../../services/authenticatedFetch";
 import { normalizeStage } from "../kanban/LiveCommercialKanbanView";
 import { MessageMediaRenderer, MessageMediaPayload } from "./MessageMediaRenderer";
 import { SalesMediaVaultModal } from "./SalesMediaVaultModal";
+import { useConversationDrafts } from "../../hooks/useConversationDrafts";
 import { SalesMediaResource } from "../../data/salesMediaVault";
 import { ContactAvatar } from "./ContactAvatar";
 import { ExternalAgendaDrawer, getExternalAgendaConfig } from "./ExternalAgendaDrawer";
@@ -77,6 +78,10 @@ interface LiveCockpitViewProps {
   selectedJourneyId?: string;
   onSelectedJourneyChange: (journeyId: string | undefined) => void;
   gateway: HttpSalesOsGateway;
+  initialQueueTab?: 'all' | 'priorities';
+  navigationOrigin?: 'queue' | 'kanban';
+  onReturnToOrigin?: () => void;
+  userId?: string;
 }
 
 type LoadState<T> =
@@ -334,7 +339,38 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   selectedJourneyId,
   onSelectedJourneyChange,
   gateway,
+  initialQueueTab = 'priorities',
+  navigationOrigin = 'queue',
+  onReturnToOrigin,
+  userId,
 }) => {
+  const cockpitContainerRef = React.useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = React.useState<number>(1200);
+
+  React.useEffect(() => {
+    if (!cockpitContainerRef.current) return;
+    const updateWidth = () => {
+      if (cockpitContainerRef.current) {
+        setContainerWidth(cockpitContainerRef.current.clientWidth);
+      }
+    };
+    updateWidth();
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(cockpitContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const isCompact = containerWidth < 760;
+  const isSplit = containerWidth >= 760 && containerWidth < 1120;
+  const isWide = containerWidth >= 1120;
+  const [dossierDrawerOpen, setDossierDrawerOpen] = React.useState(false);
+
+  const draftStore = useConversationDrafts({ userId, workspaceId });
+
   const [priorities, setPriorities] = React.useState<LoadState<ApiPriority[]>>({ state: "loading" });
   const [journeys, setJourneys] = React.useState<LoadState<ApiJourney[]>>({ state: "loading" });
   const [cockpit, setCockpit] = React.useState<LoadState<ApiCockpitView>>({ state: "loading" });
@@ -753,7 +789,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   };
 
   type QueueTabType = 'all' | 'priorities' | 'in_progress';
-  const [queueTab, setQueueTab] = React.useState<QueueTabType>('all');
+  const [queueTab, setQueueTab] = React.useState<QueueTabType>(initialQueueTab || 'priorities');
   const [customerFilter, setCustomerFilter] = React.useState<'all' | 'recurring' | 'new'>('all');
   const [queueSearch, setQueueSearch] = React.useState('');
 
@@ -912,13 +948,11 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   const [channelFilter, setChannelFilter] = React.useState<'all' | 'whatsapp' | 'instagram_direct' | 'instagram_comment'>('all');
 
   const rawQueue =
-    queueTab === 'priorities' && prioritiesList.length > 0
+    queueTab === 'priorities'
       ? prioritiesList
       : queueTab === 'in_progress'
         ? journeysList.filter((j) => (j as any).status === 'in_progress' || j.pipelineStage === 'QUALIFIED' || j.pipelineStage === 'PROPOSAL' || (j as any).priorityReason)
-        : journeysList.length > 0
-          ? journeysList
-          : prioritiesList;
+        : journeysList;
 
   const queue = React.useMemo(() => {
     let result: Array<ApiPriority | ApiJourney> = rawQueue;
@@ -1119,13 +1153,24 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         </div>
       </div>
 
-      {/* Main 2-Column Focus Layout (Master-Detail on Mobile) */}
-      <div className="flex-1 min-h-0 grid gap-0 md:gap-2.5 grid-cols-1 md:grid-cols-[290px_minmax(0,1fr)] overflow-hidden w-full">
+      {/* Main Responsive Grid Layout (Based on container width C) */}
+      <div
+        ref={cockpitContainerRef}
+        className={`flex-1 min-h-0 grid gap-0 md:gap-2.5 overflow-hidden w-full ${
+          isCompact
+            ? "grid-cols-1"
+            : isSplit
+              ? "grid-cols-[280px_minmax(0,1fr)]"
+              : isDossierCollapsed
+                ? "grid-cols-[280px_minmax(480px,1fr)_48px]"
+                : "grid-cols-[280px_minmax(480px,1fr)_340px]"
+        }`}
+      >
         {/* Priority / All Conversations Sidebar (Visible when no chat selected on mobile, always visible on desktop) */}
         <aside
           className={`${
             selectedJourneyId ? "hidden md:flex" : "flex"
-          } bg-white border-0 md:border md:border-slate-200 rounded-none md:rounded-2xl shadow-none md:shadow-xs flex-col h-full min-h-0 overflow-hidden`}
+          } bg-white border-0 md:border md:border-slate-200 rounded-none md:rounded-2xl shadow-none md:shadow-xs flex-col h-full min-h-0 overflow-hidden w-full md:w-[280px] shrink-0`}
         >
           <div className="border-b border-slate-100 bg-slate-50/70 p-2 space-y-1.5 shrink-0">
             {/* Tab switchers: Linha 1 (Fluxos de Atendimento) */}
@@ -1227,8 +1272,21 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               <p className="px-2 py-5 text-sm text-slate-500 text-center">Carregando contatos…</p>
             ) : null}
             {queue.length === 0 && (
-              <div className="p-6 text-center text-xs text-slate-400">
-                Nenhum contato encontrado com o filtro atual.
+              <div className="p-6 text-center text-xs text-slate-500 space-y-2">
+                <p className="font-semibold text-slate-700">
+                  {queueTab === 'priorities'
+                    ? 'Nenhuma prioridade pendente no momento.'
+                    : 'Nenhum contato encontrado com o filtro atual.'}
+                </p>
+                {queueTab === 'priorities' && journeysList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setQueueTab('all')}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-[#00A884] hover:underline cursor-pointer"
+                  >
+                    Ver todas as conversas ({journeysList.length})
+                  </button>
+                )}
               </div>
             )}
             {queue.map((item) => (
@@ -1274,7 +1332,15 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               onToggleLoyalty={handleToggleLoyalty}
               isDossierCollapsed={isDossierCollapsed}
               onToggleDossier={toggleDossierCollapse}
-              onOpenDossierFocus={() => setDossierFocusModalOpen(true)}
+              onOpenDossierFocus={() => {
+                if (isWide) {
+                  // In wide mode, focus can open modal or ensure dossier column is expanded
+                  setIsDossierCollapsed(false);
+                } else {
+                  // In compact or split mode, open drawer
+                  setDossierDrawerOpen(true);
+                }
+              }}
               onAcceptHandoff={handleAcceptHandoff}
               onResolveHandoff={handleResolveHandoff}
               onOpenReturnAiModal={() => setReturnAiModalOpen(true)}
@@ -1286,12 +1352,134 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               onCreateOutboundDraft={handleCreateOutboundDraft}
               onClearCurrentJourney={handleClearCurrentJourney}
               onUpdateContactName={handleUpdateContactName}
-              onBackToQueue={() => onSelectedJourneyChange(undefined)}
+              onBackToQueue={() => {
+                if (navigationOrigin === 'kanban' && onReturnToOrigin) {
+                  onReturnToOrigin();
+                } else {
+                  onSelectedJourneyChange(undefined);
+                }
+              }}
+              backButtonLabel={navigationOrigin === 'kanban' ? '← Funil' : '← Fila'}
               actionInProgress={actionInProgress}
+              draftStore={draftStore}
             />
           )}
         </section>
+
+        {/* 3rd Column: Dossier in Wide Mode (C >= 1120px) */}
+        {isWide && view && (
+          !isDossierCollapsed ? (
+            <aside className="bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col h-full min-h-0 overflow-hidden w-[340px] shrink-0">
+              <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-100 bg-slate-50/70 shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles size={15} className="text-[#7C3AED]" />
+                  <span className="font-heading font-bold text-xs text-slate-800">Dossiê do Lead & IA</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDossierFocusModalOpen(true)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+                    title="Expandir para tela cheia"
+                  >
+                    <Layers size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleDossierCollapse}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+                    title="Recolher dossiê para barra lateral"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 touch-scroll">
+                <LiveDossier
+                  view={view}
+                  workspaceId={workspaceId}
+                  onOpenFactModal={() => setFactModalOpen(true)}
+                  onOpenFollowUpModal={() => setFollowUpModalOpen(true)}
+                  onOpenOutcomeModal={() => setOutcomeModalOpen(true)}
+                />
+              </div>
+            </aside>
+          ) : (
+            <aside className="bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col items-center py-3 h-full min-h-0 w-[48px] shrink-0 justify-between">
+              <button
+                type="button"
+                onClick={toggleDossierCollapse}
+                className="p-2 rounded-xl text-purple-700 hover:bg-purple-50 transition cursor-pointer"
+                title="Expandir Dossiê"
+              >
+                <Sparkles size={18} />
+              </button>
+              <div
+                onClick={toggleDossierCollapse}
+                className="[writing-mode:vertical-lr] rotate-180 text-[11px] font-bold tracking-wider text-slate-500 hover:text-slate-800 cursor-pointer py-4 select-none"
+              >
+                DOSSIÊ IA
+              </div>
+              <button
+                type="button"
+                onClick={toggleDossierCollapse}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                title="Abrir painel"
+              >
+                <ChevronLeft size={16} />
+              </button>
+            </aside>
+          )
+        )}
       </div>
+
+      {/* Slide-over Drawer for Dossier in Compact or Split Mode */}
+      {!isWide && dossierDrawerOpen && view && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div
+            className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
+            onClick={() => setDossierDrawerOpen(false)}
+          />
+          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-right duration-200">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50 shrink-0">
+              <div className="flex items-center gap-2">
+                <Sparkles size={16} className="text-[#7C3AED]" />
+                <span className="font-heading font-bold text-sm text-slate-900">Dossiê do Lead & IA</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDossierDrawerOpen(false);
+                    setDossierFocusModalOpen(true);
+                  }}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition cursor-pointer"
+                  title="Modo Foco Tela Cheia"
+                >
+                  <Layers size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDossierDrawerOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition cursor-pointer"
+                  title="Fechar"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 touch-scroll">
+              <LiveDossier
+                view={view}
+                workspaceId={workspaceId}
+                onOpenFactModal={() => setFactModalOpen(true)}
+                onOpenFollowUpModal={() => setFollowUpModalOpen(true)}
+                onOpenOutcomeModal={() => setOutcomeModalOpen(true)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen Deep Focus Dossier Command Center */}
       {dossierFocusModalOpen && view && (
@@ -1434,9 +1622,11 @@ function LiveJourneyBody({
   onClearCurrentJourney,
   onUpdateContactName,
   onBackToQueue,
+  backButtonLabel,
+  actionInProgress,
+  draftStore,
   loyaltyMap,
   onToggleLoyalty,
-  actionInProgress,
 }: {
   view: ApiCockpitView;
   workspaceId: string;
@@ -1459,7 +1649,13 @@ function LiveJourneyBody({
   onClearCurrentJourney?: () => void;
   onUpdateContactName?: (newName: string) => void | Promise<void>;
   onBackToQueue?: () => void;
+  backButtonLabel?: string;
   actionInProgress: boolean;
+  draftStore?: {
+    getDraft: (journeyId: string) => string;
+    setDraft: (journeyId: string, text: string) => void;
+    clearDraft: (journeyId: string) => void;
+  };
 }) {
   const { journey, acquisitionContexts, messages, decisionState, recommendation, handoff, outcome, knownFacts } = view;
   const acquisition = acquisitionContexts[0] ?? null;
@@ -1487,6 +1683,24 @@ function LiveJourneyBody({
       }));
   }, [commercialConfig, contactFirstName, externalAgendaSlots]);
 
+  const [draftText, setDraftTextState] = React.useState(() => {
+    return draftStore ? draftStore.getDraft(journey.id) : "";
+  });
+
+  // Sync draftText when switching journey
+  React.useEffect(() => {
+    if (draftStore) {
+      setDraftTextState(draftStore.getDraft(journey.id));
+    }
+  }, [journey.id, draftStore]);
+
+  const setDraftText = React.useCallback((text: string) => {
+    setDraftTextState(text);
+    if (draftStore) {
+      draftStore.setDraft(journey.id, text);
+    }
+  }, [journey.id, draftStore]);
+
   const handleApplyMacro = (id: string, template: string) => {
     setDraftText(template);
     setMacroAppliedFeedback(id);
@@ -1496,7 +1710,6 @@ function LiveJourneyBody({
   };
 
   const loyalty = React.useMemo(() => detectCustomerLoyalty(journey as any, loyaltyMap), [journey, loyaltyMap]);
-  const [draftText, setDraftText] = React.useState("");
   const [isGeneratingCopilot, setIsGeneratingCopilot] = React.useState(false);
   const [copilotError, setCopilotError] = React.useState<string | null>(null);
   const [copilotPanelOpen, setCopilotPanelOpen] = React.useState(false);
@@ -1929,11 +2142,12 @@ function LiveJourneyBody({
               <button
                 type="button"
                 onClick={onBackToQueue}
-                className="md:hidden p-1.5 -ml-1 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition cursor-pointer shrink-0"
-                title="Voltar para a lista de conversas"
-                aria-label="Voltar para a fila"
+                className="md:hidden p-1.5 -ml-1 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition cursor-pointer shrink-0 inline-flex items-center gap-0.5"
+                title={backButtonLabel || "Voltar para a lista de conversas"}
+                aria-label={backButtonLabel || "Voltar para a fila"}
               >
                 <ChevronLeft size={20} />
+                <span className="text-[11px] font-bold sm:hidden">{backButtonLabel === '← Funil' ? 'Funil' : ''}</span>
               </button>
             )}
             <ContactAvatar
@@ -2428,10 +2642,12 @@ function LiveJourneyBody({
                     setDraftText(recommendation.suggestedDraftText);
                     return;
                   }
-                  if (e.key === "Enter" && draftText.trim()) {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && draftText.trim()) {
                     e.preventDefault();
-                    onCreateOutboundDraft(draftText.trim());
+                    const textToSend = draftText.trim();
+                    onCreateOutboundDraft(textToSend);
                     setDraftText("");
+                    if (draftStore) draftStore.clearDraft(journey.id);
                   }
                 }}
               />
@@ -2441,8 +2657,10 @@ function LiveJourneyBody({
                 type="button"
                 onClick={() => {
                   if (draftText.trim()) {
-                    onCreateOutboundDraft(draftText.trim());
+                    const textToSend = draftText.trim();
+                    onCreateOutboundDraft(textToSend);
                     setDraftText("");
+                    if (draftStore) draftStore.clearDraft(journey.id);
                   }
                 }}
                 disabled={actionInProgress || !draftText.trim()}
