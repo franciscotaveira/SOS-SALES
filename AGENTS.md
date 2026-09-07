@@ -15,10 +15,10 @@
 
 ---
 
-## 2. ESTADO ATUAL (06 Set 2026)
+## 2. ESTADO ATUAL (07 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `56abc49166e7434be00d09b388fb167858ffb4a9` (fix: auditoria gstack completa - gap de tipagem e integridade do QA Simulator View, suite 522/522 tests green, preflight e promote VPS)
+- Release ativa: `14ae5ba2651a7ae9cfe24bb7ab679455e4a37547` (feat: unificar Atendimento, proteger rascunhos no envio, WCAG a11y labels/zoom e layout canônico por largura útil)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Atendimento Único: "Agora" e "Conversas" consolidados em "Atendimento", com visualizações "Prioridades" e "Todas". Estado vazio honesto para prioridades zeradas ("Nenhuma prioridade pendente no momento" + botão "Ver todas").
