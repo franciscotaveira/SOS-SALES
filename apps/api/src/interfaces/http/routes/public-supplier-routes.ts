@@ -271,7 +271,7 @@ export async function publicSupplierRoutes(
            AND (
              public_config->>'sessionName' = $2
              OR public_config->>'session' = $2
-             OR ($3 IS NOT NULL AND $2 = $3 AND COALESCE(public_config->>'sessionName', '') = '')
+             OR ($3::text IS NOT NULL AND $2 = $3::text AND COALESCE(public_config->>'sessionName', '') = '')
            )
          ORDER BY updated_at DESC
          LIMIT 2`,
