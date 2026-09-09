@@ -399,6 +399,14 @@ export async function publicSupplierRoutes(
       if (fromMe) {
         try {
           await client.query(
+            `UPDATE public.commercial_journeys
+             SET bot_paused_at = NOW(),
+                 bot_pause_reason = 'human_operator_replied_on_device',
+                 updated_at = NOW()
+             WHERE id = $1 AND workspace_id = $2`,
+            [journeyId, workspaceId]
+          );
+          await client.query(
             `INSERT INTO public.known_facts (id, workspace_id, journey_id, key, value, confidence, confirmed_by_customer, source, observed_at)
              VALUES (gen_random_uuid(), $1, $2, 'operator.human_override', $3, 1.0, true, 'physical_device', NOW())
              ON CONFLICT (workspace_id, journey_id, key) 

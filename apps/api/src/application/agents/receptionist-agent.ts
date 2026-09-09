@@ -488,7 +488,14 @@ export class ReceptionistAgent {
       NVIDIA_MODEL
     );
     this.waba = dependencies.waba || new WabaClient();
-    this.waha = dependencies.waha;
+    this.waha = dependencies.waha || (
+      process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000'
+        ? new WahaOutboundAdapter({
+            endpoint: process.env.WAHA_BASE_URL || 'http://sos-sales-waha:3000',
+            apiKey: process.env.WAHA_API_KEY || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026'),
+          })
+        : undefined
+    );
     this.query = dependencies.query || dbPool.query.bind(dbPool);
   }
 
@@ -661,7 +668,7 @@ export class ReceptionistAgent {
       return bot_enabled === true
         && !bot_paused_at
         && runtime_enabled === true
-        && autonomy_mode === 'autonomous_24_7'
+        && (autonomy_mode === 'autonomous_24_7' || autonomy_mode === 'autonomous')
         && Boolean(published_at)
         && shouldSosSalesRespond({
           responderMode: responder_mode || 'sos_sales',
@@ -973,6 +980,27 @@ export class ReceptionistAgent {
     // Não responde a mensagens vazias, mídia sem texto, etc.
     if (!input.textContent || input.textContent.startsWith('[') || input.messageType === 'audio') {
       return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs: 0, model: '', skipped: 'no_text_content' };
+    }
+
+    // Verifica se a mensagem contém o gatilho de ativação ("sos")
+    const rawText = input.textContent.trim();
+    const isSosTrigger = /\b(sos)\b/i.test(rawText) || rawText.toLowerCase() === 'sos';
+
+    if (isSosTrigger) {
+      try {
+        await this.query(
+          `UPDATE public.commercial_journeys
+           SET bot_enabled = true,
+               bot_paused_at = NULL,
+               bot_pause_reason = NULL,
+               updated_at = NOW()
+           WHERE id = $1 AND workspace_id = $2`,
+          [input.journeyId, input.workspaceId]
+        );
+        console.log(`[ReceptionistAgent] Activated bot for journey ${input.journeyId} via trigger keyword "sos"`);
+      } catch (triggerErr) {
+        console.error('[ReceptionistAgent] Failed to auto-enable bot on SOS trigger:', triggerErr);
+      }
     }
 
     // Verifica se bot está ativo para esta jornada
@@ -1307,9 +1335,9 @@ export class ReceptionistAgent {
 
 // Singleton para reuso — evita criação repetida de clientes
 let _agentInstance: ReceptionistAgent | null = null;
-export function getReceptionistAgent(): ReceptionistAgent {
-  if (!_agentInstance) {
-    _agentInstance = new ReceptionistAgent();
+export function getReceptionistAgent(dependencies?: ReceptionistAgentDependencies): ReceptionistAgent {
+  if (!_agentInstance || dependencies) {
+    _agentInstance = new ReceptionistAgent(dependencies);
   }
   return _agentInstance;
 }

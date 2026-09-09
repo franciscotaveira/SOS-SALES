@@ -338,17 +338,20 @@ async function startComposedServer(
     appSecret: metaAppSecret,
   } : undefined;
 
+  const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim() || 'http://sos-sales-waha:3000';
+  const wahaApiKey = process.env.WAHA_API_KEY?.trim() || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
+  const outboundAdapter = new WahaOutboundAdapter({ endpoint: wahaBaseUrl, apiKey: wahaApiKey });
+
   let outboundWorker: WahaOutboundWorker | undefined;
   if (runtime.outboundDispatchGateway) {
-    const wahaBaseUrl = process.env.WAHA_BASE_URL?.trim() || 'http://sos-sales-waha:3000';
-    const wahaApiKey = process.env.WAHA_API_KEY?.trim() || (process.env.NODE_ENV === 'production' ? '' : 'mct_sos_waha_dev_secret_2026');
-    const outboundAdapter = new WahaOutboundAdapter({ endpoint: wahaBaseUrl, apiKey: wahaApiKey });
     outboundWorker = new WahaOutboundWorker({ dispatchGateway: runtime.outboundDispatchGateway, outboundAdapter });
   }
 
+  const receptionistAgent = runtime.receptionistAgent ?? getReceptionistAgent({ waha: outboundAdapter });
+
   const receptionistWorker = runtime.outboxGateway
     ? new ReceptionistInboundWorker({
-      receptionistAgent: runtime.receptionistAgent ?? getReceptionistAgent(),
+      receptionistAgent,
       outboxGateway: runtime.outboxGateway,
       burstDebounceMs: 1500,
     })
