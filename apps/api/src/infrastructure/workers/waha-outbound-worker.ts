@@ -94,11 +94,18 @@ export class WahaOutboundWorker {
       let processedCount = 0;
 
       for (const item of claimable) {
-        const claimed = await this.dispatchGateway.claimDispatch({
-          dispatchId: item.dispatchId,
-          workerId: this.workerId,
-          leaseSeconds: this.leaseSeconds,
-        });
+        let claimed: ClaimedOutboundDispatch | null = null;
+        try {
+          claimed = await this.dispatchGateway.claimDispatch({
+            dispatchId: item.dispatchId,
+            workerId: this.workerId,
+            leaseSeconds: this.leaseSeconds,
+          });
+        } catch (claimErr) {
+          // A dispatch that fails claim-time preconditions (e.g. channel outbound disabled)
+          // must not degrade the entire worker or block other dispatches.
+          continue;
+        }
 
         if (!claimed) {
           continue;
