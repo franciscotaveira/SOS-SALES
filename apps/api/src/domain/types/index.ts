@@ -426,3 +426,6 @@ export interface ConversationDecisionContext {
 
   lastUpdatedAt: Date;
 }
+
+export * from './governance.js';
+

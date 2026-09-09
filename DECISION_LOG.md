@@ -964,3 +964,34 @@
 - **Operational gate:** Testes unitários de frontend (21/21) e backend (522/522) passando com sucesso, zero erros de build TypeScript.
 - **Date:** 2026-09-07
 
+---
+
+## Task 41: Radar Meta / Muse — Governança de Dados, Revogação Efetiva de Capabilities e Contrato de Execução Confidencial
+- **Decision:** Estruturar a camada de isolamento do SOS Sales em três níveis canônicos (Storage Encryption, Tenant Isolation e Confidential Execution) e introduzir os contratos formais de Governança e Revogação no domínio do backend:
+  1. **Contrato de Isolamento de Runtime (`ExecutionEnvironment`):**
+     - Níveis: `LOGICAL`, `DEDICATED`, `CONFIDENTIAL`.
+     - Escopos de criptografia: `REST`, `TRANSIT`, `RUNTIME_CONFIDENTIAL`.
+     - Propriedade de chaves: `PLATFORM`, `TENANT`, `USER_HELD`.
+     - Auditoria: `AuditPolicy` com sentinel verification, human approval e trilha imutável.
+  2. **Contrato de Governança de Dados (`DataGovernancePolicy`):**
+     - Consentimento granular e finalidade (`purpose`).
+     - Opt-out explícito de uso de conversas e dados para treinamento de modelos (`trainingAllowed: false`).
+     - Isolamento contra ecossistemas de ad-tech (`adsEnrichmentAllowed: false`).
+     - Políticas de retenção e autorização de ferramentas externas.
+  3. **Motor de Revogação Efetiva de Capability (P1 - `CapabilityRevocationGateway`):**
+     - A desconexão de canais ou ferramentas externas (Google, Shopify, CRM, Meta Business Agent) aciona o ciclo real:
+       `permission revoked -> credential disabled -> pending tasks blocked -> tool unavailable -> agent context updated -> audit event generated`.
+     - Proíbe a prática superficial de apenas ocultar o botão na UI.
+- **Rationale:** Alinha a arquitetura de segurança do SOS Sales às diretrizes anunciadas pela Meta para o Muse e para a futura Business Agent Platform, preparando o SaaS para exigências de isolamento enterprise e soberania de dados do cliente sem quebrar contratos existentes.
+- **Scope:**
+  - `apps/api/src/domain/types/governance.ts`
+  - `apps/api/src/domain/types/index.ts`
+  - `apps/api/src/application/ports/capability-revocation-gateway.ts`
+  - `DECISION_LOG.md`
+  - `AGENTS.md`
+- **Roadmap:**
+  - P1: Capability Revocation Engine (desativação e bloqueio de tasks ativas)
+  - P2: Confidential Execution Adapter (contrato de execução criptografada com chave do tenant)
+- **Date:** 2026-09-09
+
+
