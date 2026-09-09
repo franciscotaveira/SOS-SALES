@@ -1000,5 +1000,5 @@
 - Decisão: remover chaves Pix predefinidas por marca. Perguntas explícitas sobre Pix usam somente a configuração operacional do workspace; ausência de chave pede confirmação da equipe, sem inferência pelo modelo ou pelo histórico. Pedidos de link informam a indisponibilidade da ferramenta.
 - Em falha dos dois provedores de IA, o simulador retorna uma mensagem de indisponibilidade, sem inserir preços ou checkout de outro negócio.
 - Escopo: rota do simulador. O Receptionist de WhatsApp usa outro construtor de contexto; este ajuste não é prova de correção do incidente original, cuja conversa não foi fornecida.
-- Validação: 13 testes de rota passaram, incluindo ausência de chave, dados inválidos, chave configurada, pedido de link e falha dos dois modelos. Publicação em produção permanece pendente da validação do Lab e do fluxo de release.
-
+- Validação: 13 testes de rota passaram, incluindo ausência de chave, dados inválidos, chave configurada, pedido de link e falha dos dois modelos. `git diff --check` passou. Build e inicialização da API no Docker Lab concluídos; `/health` retornou `ok` em ambiente `lab`. Isso não comprova o fluxo autenticado completo.
+- Bloqueio de release: `tsc --noEmit` reportou quatro erros em arquivos não alterados nesta correção: `keyRecord` em `public-supplier-routes.ts:126` e `routePool` em `whatsapp-channel-routes.ts:1676,1816,1840`. Produção não foi alterada; publicação depende de resolver a checagem e concluir o fluxo de release.
