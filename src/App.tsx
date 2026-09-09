@@ -278,6 +278,7 @@ function AppContent({
                 }
               }}
               userId={userEmail || 'current-operator'}
+              initialQueueTab="priorities"
             />
           ) : (
             <CockpitView

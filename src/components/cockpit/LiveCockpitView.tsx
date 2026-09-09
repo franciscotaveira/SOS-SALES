@@ -792,6 +792,12 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
 
   type QueueTabType = 'all' | 'priorities' | 'in_progress';
   const [queueTab, setQueueTab] = React.useState<QueueTabType>(initialQueueTab || 'priorities');
+
+  React.useEffect(() => {
+    if (initialQueueTab) {
+      setQueueTab(initialQueueTab);
+    }
+  }, [initialQueueTab]);
   const [customerFilter, setCustomerFilter] = React.useState<'all' | 'recurring' | 'new'>('all');
   const [queueSearch, setQueueSearch] = React.useState('');
 

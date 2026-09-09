@@ -383,6 +383,7 @@ async function startComposedServer(
     wabaChannelInfoGateway: runtime.wabaChannelInfoGateway,
     metaBusinessAgentGateway: runtime.metaBusinessAgentGateway,
     databasePool: runtime.databasePool,
+    lidIdentityResolver: runtime.lidIdentityResolver,
     receptionistAgent: runtime.receptionistAgent,
     wabaWebhook: wabaWebhookConfig,
     logger: runtime.logger ?? (process.env.NODE_ENV === 'production' ? productionLogger : { level: 'info' }),

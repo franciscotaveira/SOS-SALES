@@ -26,6 +26,7 @@ import { WorkspaceProvisioningGateway } from '../../application/ports/workspace-
 import { WabaChannelInfoGateway } from '../../application/ports/waba-channel-info-gateway.js';
 import { MetaBusinessAgentGateway } from '../../application/ports/meta-business-agent-gateway.js';
 import { WorkspaceMembershipGateway } from '../../application/ports/workspace-membership-gateway.js';
+import { LidIdentityResolver } from '../../application/ports/lid-identity-resolver.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { publicSupplierRoutes } from './routes/public-supplier-routes.js';
@@ -139,6 +140,8 @@ export interface AppDependencies {
   receptionistAgent?: { isEnabled(): boolean };
   /** Owner-governed member read/add/remove operations. */
   workspaceMembershipGateway?: WorkspaceMembershipGateway;
+  /** Optional WAHA LID identity resolver for webhook mirror. */
+  lidIdentityResolver?: LidIdentityResolver;
   logger?: boolean | Record<string, unknown>;
   /** Disable Fastify's automatic request/response logs when URLs may carry webhook secrets. */
   disableRequestLogging?: boolean;
@@ -359,6 +362,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
   app.register(publicSupplierRoutes, {
     databasePool,
     ingestionGateway,
+    lidIdentityResolver: dependencies.lidIdentityResolver,
   });
   app.register(caktoBillingRoutes, {
     databasePool,

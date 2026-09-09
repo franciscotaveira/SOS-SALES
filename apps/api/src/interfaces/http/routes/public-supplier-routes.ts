@@ -5,6 +5,7 @@ import { getSessionName, getWorkspaceIdFromSession, isEventReplayed, verifyWahaA
 import { dbPool } from '../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../application/services/attribution-service.js';
 import { InboundIngestionGateway } from '../../../application/ports/inbound-ingestion-gateway.js';
+import { LidIdentityResolver } from '../../../application/ports/lid-identity-resolver.js';
 
 export interface FlowRequestBody {
   encrypted_flow_data?: string;
@@ -17,6 +18,8 @@ export interface PublicSupplierRouteOptions {
   databasePool?: Pick<Pool, 'query' | 'connect'>;
   /** Durable raw-envelope ingestion used by the production WAHA path. */
   ingestionGateway?: InboundIngestionGateway;
+  /** WAHA LID resolver used to resolve linked-device identities to phone numbers for direct mirror. */
+  lidIdentityResolver?: LidIdentityResolver;
 }
 
 function extractWahaMessageId(payload: Record<string, unknown>): string {
@@ -188,11 +191,19 @@ export async function publicSupplierRoutes(
       return reply.code(200).send({ ignored: true, reason: 'unrecognized_or_unregistered_session' });
     }
 
-    const rawTarget = fromMe ? rawTo : rawFrom;
+    let rawTarget = fromMe ? rawTo : rawFrom;
     // A WAHA LID is an opaque linked-device identifier, not a phone number.
-    // The durable production worker resolves it through WAHA's explicit LID
-    // endpoint; the legacy direct mirror must fail closed instead of guessing
-    // from a display name.
+    // Resolve through WAHA's explicit LID endpoint before proceeding.
+    if (rawTarget.endsWith('@lid') && options.lidIdentityResolver) {
+      try {
+        const resolvedPhone = await options.lidIdentityResolver.resolvePhone({ session, lid: rawTarget });
+        if (resolvedPhone) {
+          rawTarget = resolvedPhone;
+        }
+      } catch (err) {
+        request.log.warn({ err, rawTarget, session }, '[WAHA Webhook] Failed to resolve LID identity');
+      }
+    }
     if (rawTarget.endsWith('@lid')) {
       return reply.code(200).send({ ignored: true, reason: 'unresolved_lid_identity' });
     }
