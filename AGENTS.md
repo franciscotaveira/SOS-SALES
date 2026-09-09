@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (09 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `147388905dbcfe6d8260eeec34dd03d41155bf0d` com fix do canal no Cockpit (`5384535`) e Dual-Engine Migration `20260909100000_allow_dual_engine_same_number.sql` 100% aplicada no banco remoto Supabase (relaxamento de constraint por provider permitindo WAHA + Meta Cloud simultâneos para o mesmo número).
+- Release ativa: `b8bfd7ed8d06e0909e0ac0eeab173d809a11aa4b` com resolução de WAHA `@lid` no espelho direto, sincronização de `initialQueueTab` e fix de canal no Cockpit.
 - Governança de Dados & Isolamento de Execução: Contratos de isolamento em 3 níveis (Storage Encryption, Tenant Isolation e Confidential Execution) e portas para `DataGovernancePolicy` e `CapabilityRevocationGateway` promovidos para produção.
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
