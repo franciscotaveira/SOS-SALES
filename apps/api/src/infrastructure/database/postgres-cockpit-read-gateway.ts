@@ -45,6 +45,9 @@ interface JourneyRow extends QueryResultRow {
   primary_service_or_product: string | null;
   started_at: Date;
   updated_at: Date;
+  channel_provider: string | null;
+  channel_name: string | null;
+  channel_phone_number: string | null;
 }
 
 interface MessageRow extends QueryResultRow {
@@ -152,9 +155,12 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
       const result = await client.query<JourneyRow>(`
         SELECT j.id, j.contact_id, c.name AS contact_name, c.phone AS contact_phone,
                j.status, j.pipeline_stage, j.primary_service_or_product,
-               j.started_at, j.updated_at
+               j.started_at, j.updated_at,
+               cc.provider AS channel_provider, cc.name AS channel_name,
+               cc.phone_number AS channel_phone_number
         FROM public.commercial_journeys j
         JOIN public.contacts c ON c.workspace_id = j.workspace_id AND c.id = j.contact_id
+        LEFT JOIN public.channel_connections cc ON cc.id = j.channel_connection_id
         WHERE j.workspace_id = $1
           AND ($2::timestamptz IS NULL OR (j.updated_at, j.id) < ($2::timestamptz, $3::uuid))
         ORDER BY j.updated_at DESC, j.id DESC
@@ -438,6 +444,11 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
         primaryServiceOrProduct: row.primary_service_or_product,
         startedAt: new Date(row.started_at).toISOString(),
         updatedAt: new Date(row.updated_at).toISOString(),
+        channel: row.channel_provider ? {
+          provider: row.channel_provider,
+          name: row.channel_name ?? undefined,
+          phoneNumber: row.channel_phone_number ?? undefined,
+        } : undefined,
       })),
       nextCursor: rows.length > limit && last
         ? encodeCursor({ at: new Date(last.updated_at).toISOString(), id: last.id })

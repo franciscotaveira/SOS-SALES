@@ -28,6 +28,12 @@ export interface CockpitJourney {
   primaryServiceOrProduct: string | null;
   startedAt: string;
   updatedAt: string;
+  /** Channel that originated this journey — provider identifies WhatsApp, Meta, etc. */
+  channel?: {
+    provider: string;
+    name?: string;
+    phoneNumber?: string;
+  };
 }
 
 export interface MessageMediaPayload {

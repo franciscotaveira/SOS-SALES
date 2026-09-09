@@ -1146,11 +1146,13 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
              ON CONFLICT (workspace_id) DO UPDATE SET bundle = $2::jsonb, updated_at = NOW()`,
             [workspaceId, JSON.stringify(bundle)]
           );
+          const wsRes = await query(`SELECT name FROM public.workspaces WHERE id = $1 LIMIT 1`, [workspaceId]);
+          const wsName = wsRes.rows[0]?.name || 'a empresa';
           return reply.status(200).send({
             success: true,
             isCommand: true,
             command: cmd,
-            agentResponse: `🛡️ Nova diretriz comercial assimilada com sucesso: "${arg}". A Sofia já utilizará essa regra nos próximos atendimentos.`,
+            agentResponse: `🛡️ Nova diretriz comercial assimilada com sucesso: "${arg}". O agente de ${wsName} já utilizará essa regra nos próximos atendimentos.`,
             updatedConfig: { field: 'directives', value: arg },
           });
         }
@@ -1519,7 +1521,14 @@ ${HUMANIZER_PROMPT_DIRECTIVES}`;
       );
 
       // 2. REGENERA A RESPOSTA COM A NOVA INSTRUÇÃO EMBARCADA
-      const systemPrompt = `Você é Sofia, especialista comercial do SOS Vendas.
+      const [agentConfigRes, wsRes] = await Promise.all([
+        query(`SELECT agent_name FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
+        query(`SELECT name FROM public.workspaces WHERE id = $1 LIMIT 1`, [workspaceId]),
+      ]);
+      const calibAgentName = (bundle as any).agentConfig?.name || (bundle as any).agentName || agentConfigRes.rows[0]?.agent_name || 'Assistente';
+      const calibWsName = (bundle as any).companyProfile?.tradeName || wsRes.rows[0]?.name || 'a empresa';
+
+      const systemPrompt = `Você é ${calibAgentName}, especialista de atendimento e vendas de "${calibWsName}".
 O gestor acabou de calibrar uma regra obrigatória que você DEVE seguir:
 "${instruction}"
 
