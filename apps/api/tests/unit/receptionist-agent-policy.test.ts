@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getReceptionistActionPolicy,
   parseReceptionistDecision,
+  partitionOutboundMessages,
   ReceptionistAgent,
 } from '../../src/application/agents/receptionist-agent.js';
 
@@ -52,6 +53,29 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
       escalate: false,
       sendBookingFlow: false,
       reply: 'Oi, João! Tudo bem?',
+    });
+  });
+
+  describe('partitionOutboundMessages — Envio Picado de WhatsApp', () => {
+    it('separa mensagens quando há quebra de linha dupla (\\n\\n)', () => {
+      const full = 'Oi, João! Tudo bem? 😊\nAqui é a Sofia da SOS Vendas.\n\nVocê já vende pelo WhatsApp?';
+      const { firstMessage, secondMessage } = partitionOutboundMessages(full);
+      expect(firstMessage).toBe('Oi, João! Tudo bem? 😊\nAqui é a Sofia da SOS Vendas.');
+      expect(secondMessage).toBe('Você já vende pelo WhatsApp?');
+    });
+
+    it('separa saudação curta e pergunta de condução quando não há quebra dupla', () => {
+      const full = 'Oi, João! Tudo bem? Aqui é a Sofia da SOS Vendas. 😊 Me conta: você já vende pelo WhatsApp?';
+      const { firstMessage, secondMessage } = partitionOutboundMessages(full);
+      expect(firstMessage).toBe('Oi, João! Tudo bem?');
+      expect(secondMessage).toBe('Aqui é a Sofia da SOS Vendas. 😊 Me conta: você já vende pelo WhatsApp?');
+    });
+
+    it('retorna mensagem única se não houver partes complementares', () => {
+      const full = 'Olá! Tudo bem?';
+      const { firstMessage, secondMessage } = partitionOutboundMessages(full);
+      expect(firstMessage).toBe('Olá! Tudo bem?');
+      expect(secondMessage).toBeNull();
     });
   });
 

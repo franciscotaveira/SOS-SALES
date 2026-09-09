@@ -306,6 +306,53 @@ export function parseReceptionistDecision(rawResponse: string): ReceptionistDeci
   }
 }
 
+/**
+ * Particiona o texto de resposta em mensagens de WhatsApp (micro-frases de até ~30 caracteres).
+ * Se houver uma segunda ideia ou pergunta complementar, separa em:
+ * - firstMessage: saudação/apresentação curta
+ * - secondMessage: pergunta de avanço ou complemento para envio em segundo balão
+ */
+export function partitionOutboundMessages(fullText: string): { firstMessage: string; secondMessage: string | null } {
+  if (!fullText || typeof fullText !== 'string') {
+    return { firstMessage: '', secondMessage: null };
+  }
+
+  const trimmed = fullText.trim();
+
+  // 1. Se o modelo separou explicitamente por quebra de linha dupla (\n\n)
+  const paragraphs = trimmed.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (paragraphs.length >= 2) {
+    return {
+      firstMessage: paragraphs[0],
+      secondMessage: paragraphs.slice(1).join('\n\n'),
+    };
+  }
+
+  // 2. Se for um bloco com saudação inicial seguida de pergunta
+  // Ex: "Oi, João! Tudo bem? Aqui é a Sofia da SOS Vendas. 😊 Me conta: você já vende pelo Whats hoje?"
+  const questionIndex = trimmed.indexOf('?');
+  if (questionIndex !== -1 && questionIndex < trimmed.length - 1) {
+    const rest = trimmed.slice(questionIndex + 1).trim();
+    if (rest.length > 3) {
+      return {
+        firstMessage: trimmed.slice(0, questionIndex + 1).trim(),
+        secondMessage: rest,
+      };
+    }
+  }
+
+  // 3. Se houver quebra de linha simples separando blocos
+  const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length >= 2) {
+    return {
+      firstMessage: lines[0],
+      secondMessage: lines.slice(1).join('\n'),
+    };
+  }
+
+  return { firstMessage: trimmed, secondMessage: null };
+}
+
 /** Applies the deterministic outbound policy; the model never chooses it. */
 export function getReceptionistActionPolicy(decision: ReceptionistDecision): ReceptionistActionPolicy {
   const mustEscalate = decision.escalate
@@ -1225,11 +1272,14 @@ export class ReceptionistAgent {
     // credentials para uma jornada WAHA nem a sessão WAHA de outra conexão.
     let providerId = '';
     if (replyText && replyText.length > 0) {
+      const { firstMessage, secondMessage } = partitionOutboundMessages(replyText);
+      const mainMessage = firstMessage || replyText;
+
       const replyReservation = await this.reserveOutbound(
         input,
         transport.provider,
         'TEXT',
-        replyText,
+        mainMessage,
       );
 
       if (!replyReservation.shouldSend) {
@@ -1275,7 +1325,7 @@ export class ReceptionistAgent {
           const sendResult = await this.waha.sendText({
             session: transport.sessionName,
             chatId: `${toNumber}@c.us`,
-            text: replyText,
+            text: mainMessage,
           });
           if (!sendResult.success) {
             throw new Error(`WAHA_${sendResult.kind}_${sendResult.failureCode}`);
@@ -1287,7 +1337,7 @@ export class ReceptionistAgent {
             phoneNumberId: creds.phoneNumberId,
             accessToken: creds.accessToken,
             recipientPhone: toNumber,
-            text: replyText,
+            text: mainMessage,
           });
           if (!sendResult.messageId) {
             throw new Error('WABA_PROVIDER_MESSAGE_ID_MISSING');
@@ -1302,9 +1352,50 @@ export class ReceptionistAgent {
         await this.completeOutbound(
           input,
           replyReservationId,
-          replyText,
+          mainMessage,
           providerId,
         );
+
+        // Se houver uma segunda mensagem complementar (ex: pergunta de avanço separada),
+        // envia no mesmo canal com intervalo humano de 1 segundo
+        if (secondMessage && secondMessage.length > 0) {
+          try {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            let secondProviderId = '';
+            if (transport.provider === 'waha') {
+              const sendResult2 = await this.waha.sendText({
+                session: transport.sessionName,
+                chatId: `${toNumber}@c.us`,
+                text: secondMessage,
+              });
+              if (sendResult2.success) {
+                secondProviderId = sendResult2.providerMessageId;
+              }
+            } else {
+              const creds = await this.resolveWabaCreds(input.workspaceId, input.channelConnectionId, input.phoneNumberId || transport.phoneNumberId || null);
+              const sendResult2 = await this.waba.sendText({
+                phoneNumberId: creds.phoneNumberId,
+                accessToken: creds.accessToken,
+                recipientPhone: toNumber,
+                text: secondMessage,
+              });
+              secondProviderId = sendResult2.messageId;
+            }
+
+            if (secondProviderId) {
+              await this.saveAgentReply(
+                input.workspaceId,
+                input.journeyId,
+                input.contactId,
+                input.channelConnectionId,
+                secondMessage,
+                secondProviderId,
+              );
+            }
+          } catch (secondMsgErr) {
+            console.warn('[ReceptionistAgent] Second complementary message failed to dispatch:', secondMsgErr);
+          }
+        }
       } catch (sendErr) {
         await this.markOutboundUnknown(
           replyReservationId,
