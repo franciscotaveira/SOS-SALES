@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (07 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `c85d262db1634a549b298ce3f6802775d9a83ce3` (fix: renderizador de mídias do Cockpit normaliza formatos WAHA/Meta para fotos com lightbox, áudios com waveform e vídeos sem cair em documento genérico)
+- Release ativa: `8f70c009d809a5fd5a921edc2c7f6f59289768f9` (fix: conexão WAHA via porta 6543 Transaction Pooler do Supabase para evitar exaustão de conexões + cast explícito $3::text no webhook WAHA eliminando erro PostgreSQL 42P08)
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Atendimento Único: "Agora" e "Conversas" consolidados em "Atendimento", com visualizações "Prioridades" e "Todas". Estado vazio honesto para prioridades zeradas ("Nenhuma prioridade pendente no momento" + botão "Ver todas").
