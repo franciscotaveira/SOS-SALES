@@ -590,4 +590,45 @@ describe('WahaWebhookAdapter — Pure Unit Tests (P0.3A-R2E Contract)', () => {
       expect(res.error).toMatch(/valid E\.164/i);
     }
   });
+
+  it('should extract contactName from _data.chat.name when pushName is missing', () => {
+    const payload = {
+      event: 'message',
+      payload: {
+        id: 'wamid_chat_name_01',
+        from: '5549999112233@c.us',
+        body: 'Olá',
+        _data: {
+          chat: {
+            name: 'Jussara Silva',
+          },
+        },
+      },
+    };
+
+    const res = adapter.parseInboundMessage(payload);
+    expect(res.kind).toBe('PARSED');
+    if (res.kind === 'PARSED') {
+      expect(res.message.contactName).toBe('Jussara Silva');
+    }
+  });
+
+  it('should sanitize operator business name or placeholder from contactName', () => {
+    const payload = {
+      event: 'message',
+      payload: {
+        id: 'wamid_operator_name_01',
+        from: '5549999112233@c.us',
+        pushName: 'Haven Escovaria',
+        body: 'Olá',
+      },
+    };
+
+    const res = adapter.parseInboundMessage(payload);
+    expect(res.kind).toBe('PARSED');
+    if (res.kind === 'PARSED') {
+      expect(res.message.contactName).toBeUndefined();
+    }
+  });
 });
+

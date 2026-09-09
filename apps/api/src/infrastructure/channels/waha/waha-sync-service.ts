@@ -33,7 +33,7 @@ export class WahaSyncService {
   /**
    * Syncs active chats and recent messages from WAHA session into PostgreSQL
    */
-  public static async syncWorkspaceChats(workspaceId: string, sessionName: string, maxChats = 40): Promise<{ syncedContacts: number; syncedMessages: number; channelConnectionId: string }> {
+  public static async syncWorkspaceChats(workspaceId: string, sessionName: string, maxChats = 100): Promise<{ syncedContacts: number; syncedMessages: number; channelConnectionId: string }> {
     const client = await dbPool.connect();
     let syncedContacts = 0;
     let syncedMessages = 0;
@@ -164,9 +164,17 @@ export class WahaSyncService {
           rawPhone = phoneJid.split('@')[0];
         }
 
+        const cleanDigits = rawPhone.replace(/\D/g, '');
+        const canonicalPhone = `+${cleanDigits}`;
+
         let contactName = chatName;
-        if (!contactName || contactName.replace(/\D/g, '') === rawPhone) {
-          contactName = `Contato +${rawPhone}`;
+        if (
+          !contactName ||
+          contactName.replace(/\D/g, '') === cleanDigits ||
+          contactName.toLowerCase() === 'haven escovaria' ||
+          contactName.toLowerCase().startsWith('haven escovaria')
+        ) {
+          contactName = `Contato ${canonicalPhone}`;
         }
 
         // Upsert contact
@@ -176,9 +184,16 @@ export class WahaSyncService {
           ) VALUES (
             gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW()
           )
-          ON CONFLICT (workspace_id, phone) DO UPDATE SET name = COALESCE(NULLIF(EXCLUDED.name, ''), public.contacts.name), updated_at = NOW()
+          ON CONFLICT (workspace_id, phone) DO UPDATE SET
+            name = CASE
+              WHEN EXCLUDED.name IS NOT NULL AND EXCLUDED.name NOT LIKE 'Contato +%' AND LOWER(EXCLUDED.name) NOT LIKE 'haven escovaria%'
+                THEN EXCLUDED.name
+              ELSE public.contacts.name
+            END,
+            whatsapp_id = COALESCE(EXCLUDED.whatsapp_id, public.contacts.whatsapp_id),
+            updated_at = NOW()
           RETURNING id
-        `, [workspaceId, rawPhone, chatId, contactName]);
+        `, [workspaceId, canonicalPhone, chatId, contactName]);
 
         const contactId = contactRes.rows[0].id;
         syncedContacts++;

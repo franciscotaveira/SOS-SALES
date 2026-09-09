@@ -274,11 +274,37 @@ export class WahaWebhookAdapter implements ChannelWebhookAdapter {
     const whatsappId = fromJid;
 
     // 9. Extract Contact Name
-    const contactName =
-      (data.pushName as string) ||
-      (data.notifyName as string) ||
-      ((data._data as Record<string, unknown>)?.notifyName as string) ||
+    const dData = (data._data as Record<string, unknown>) || {};
+    const dChat = (dData.chat as Record<string, unknown>) || {};
+    const dContact = (dData.contact as Record<string, unknown>) || {};
+    const sender = (data.sender as Record<string, unknown>) || {};
+
+    const rawContactName =
+      (typeof data.pushName === 'string' && data.pushName.trim()) ||
+      (typeof data.notifyName === 'string' && data.notifyName.trim()) ||
+      (typeof dData.notifyName === 'string' && dData.notifyName.trim()) ||
+      (typeof dData.verifiedName === 'string' && dData.verifiedName.trim()) ||
+      (typeof dChat.name === 'string' && dChat.name.trim()) ||
+      (typeof dContact.name === 'string' && dContact.name.trim()) ||
+      (typeof dContact.pushname === 'string' && dContact.pushname.trim()) ||
+      (typeof (data.chat as Record<string, unknown>)?.name === 'string' && ((data.chat as Record<string, unknown>).name as string).trim()) ||
+      (typeof sender.pushName === 'string' && sender.pushName.trim()) ||
+      (typeof sender.name === 'string' && sender.name.trim()) ||
+      (typeof data.name === 'string' && data.name.trim()) ||
       undefined;
+
+    let contactName = rawContactName;
+    if (
+      contactName &&
+      (
+        contactName.replace(/\D/g, '') === contactPhone.replace(/\D/g, '') ||
+        contactName.startsWith('Contato +') ||
+        contactName.toLowerCase() === 'haven escovaria' ||
+        contactName.toLowerCase().startsWith('haven escovaria')
+      )
+    ) {
+      contactName = undefined;
+    }
 
     // 10. Extract Text Content
     let textContent: string | undefined = undefined;

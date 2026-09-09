@@ -210,12 +210,26 @@ export async function publicSupplierRoutes(
     const rawId = rawTarget.split('@')[0];
     const whatsappId = rawTarget;
     const notifyName = (payload._data?.notifyName || payload.notifyName || '').trim();
-    const chatName = (payload._data?.chat?.name || '').trim();
-    let contactPhone = rawId;
+    const chatName = (payload._data?.chat?.name || payload.chat?.name || '').trim();
+    const cleanDigits = rawId.replace(/\D/g, '');
+    const contactPhone = `+${cleanDigits}`;
 
-    let contactName = notifyName || chatName;
-    if (!contactName || contactName === rawId || contactName.replace(/\D/g, '') === contactPhone) {
-      contactName = `Contato +${contactPhone}`;
+    let contactName = '';
+    if (fromMe) {
+      // NEVER use notifyName for outbound operator messages: notifyName is the operator's push name (e.g. 'Haven Escovaria')
+      contactName = chatName;
+    } else {
+      contactName = notifyName || chatName;
+    }
+    if (
+      !contactName ||
+      contactName === rawId ||
+      contactName.replace(/\D/g, '') === cleanDigits ||
+      contactName.toLowerCase() === 'haven escovaria' ||
+      contactName.toLowerCase().startsWith('haven escovaria') ||
+      contactName.startsWith('Contato +')
+    ) {
+      contactName = '';
     }
 
     let textContent = typeof payload.body === 'string' ? payload.body : (payload.caption || '');
@@ -263,8 +277,15 @@ export async function publicSupplierRoutes(
     try {
       const contactRes = await client.query(`
         INSERT INTO public.contacts (id, workspace_id, phone, whatsapp_id, name, created_at, updated_at)
-        VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
-        ON CONFLICT (workspace_id, phone) DO UPDATE SET name = COALESCE(NULLIF(EXCLUDED.name, ''), public.contacts.name), updated_at = NOW()
+        VALUES (gen_random_uuid(), $1, $2, $3, NULLIF($4, ''), NOW(), NOW())
+        ON CONFLICT (workspace_id, phone) DO UPDATE SET
+          name = CASE
+            WHEN EXCLUDED.name IS NOT NULL AND EXCLUDED.name != '' AND EXCLUDED.name NOT LIKE 'Contato +%' AND LOWER(EXCLUDED.name) NOT LIKE 'haven escovaria%'
+              THEN EXCLUDED.name
+            ELSE public.contacts.name
+          END,
+          whatsapp_id = COALESCE(EXCLUDED.whatsapp_id, public.contacts.whatsapp_id),
+          updated_at = NOW()
         RETURNING id
       `, [workspaceId, contactPhone, whatsappId, contactName]);
 

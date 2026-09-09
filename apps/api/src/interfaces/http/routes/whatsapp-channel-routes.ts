@@ -1912,6 +1912,7 @@ export async function whatsappChannelRoutes(
     if (cleanPhone.length === 10 || cleanPhone.length === 11) {
       cleanPhone = `55${cleanPhone}`;
     }
+    const canonicalPhone = `+${cleanPhone}`;
     const whatsappTarget = `${cleanPhone}@c.us`;
     const contactName = name?.trim() || `Lead ${cleanPhone.slice(-4)}`;
 
@@ -1941,9 +1942,14 @@ export async function whatsappChannelRoutes(
         INSERT INTO public.contacts (id, workspace_id, phone, name, whatsapp_id, created_at, updated_at)
         VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
         ON CONFLICT (workspace_id, phone) DO UPDATE 
-        SET name = COALESCE(NULLIF(EXCLUDED.name, ''), public.contacts.name), updated_at = NOW()
+        SET name = CASE
+          WHEN EXCLUDED.name IS NOT NULL AND EXCLUDED.name NOT LIKE 'Lead %' AND EXCLUDED.name NOT LIKE 'Contato +%' AND LOWER(EXCLUDED.name) NOT LIKE 'haven escovaria%'
+            THEN EXCLUDED.name
+          ELSE public.contacts.name
+        END,
+        updated_at = NOW()
         RETURNING id, phone, name
-      `, [workspaceId, cleanPhone, contactName, whatsappTarget]);
+      `, [workspaceId, canonicalPhone, contactName, whatsappTarget]);
 
       const contactId = contactRes.rows[0].id;
 
@@ -2518,13 +2524,15 @@ export async function whatsappChannelRoutes(
               ? pubCfg.trackingConfig.campaigns
               : [];
 
+      const canonicalSimPhone = phone.startsWith('+') ? phone : `+${phone.replace(/\D/g, '')}`;
+
       // 2. Upsert Contact
       const contactRes = await client.query(`
         INSERT INTO public.contacts (id, workspace_id, phone, whatsapp_id, name, created_at, updated_at)
         VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
         ON CONFLICT (workspace_id, phone) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()
         RETURNING id
-      `, [workspaceId, phone, `${phone}@s.whatsapp.net`, contactName]);
+      `, [workspaceId, canonicalSimPhone, `${canonicalSimPhone}@s.whatsapp.net`, contactName]);
       const contactId = contactRes.rows[0].id;
 
       // 3. Create or get Journey
