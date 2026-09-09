@@ -1363,13 +1363,15 @@ export class ReceptionistAgent {
             await new Promise((resolve) => setTimeout(resolve, 1000));
             let secondProviderId = '';
             if (transport.provider === 'waha') {
-              const sendResult2 = await this.waha.sendText({
-                session: transport.sessionName,
-                chatId: `${toNumber}@c.us`,
-                text: secondMessage,
-              });
-              if (sendResult2.success) {
-                secondProviderId = sendResult2.providerMessageId;
+              if (this.waha) {
+                const sendResult2 = await this.waha.sendText({
+                  session: transport.sessionName,
+                  chatId: `${toNumber}@c.us`,
+                  text: secondMessage,
+                });
+                if (sendResult2.success) {
+                  secondProviderId = sendResult2.providerMessageId;
+                }
               }
             } else {
               const creds = await this.resolveWabaCreds(input.workspaceId, input.channelConnectionId, input.phoneNumberId || transport.phoneNumberId || null);
