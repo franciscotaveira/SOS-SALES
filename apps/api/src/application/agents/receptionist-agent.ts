@@ -214,17 +214,14 @@ export function parseReceptionistDecision(rawResponse: string): ReceptionistDeci
     header = jsonBlockMatch[1].trim();
     restOfText = jsonBlockMatch[2].trim();
   } else {
-    const lines = cleaned.split('\n');
-    header = lines.shift()?.trim() || '';
-    restOfText = lines.join('\n').trim();
-  }
-
-  // If header didn't capture pure JSON, check if the first block matches {...}
-  if (!header.startsWith('{')) {
     const braceMatch = cleaned.match(/^\s*(\{[^}]+\})\s*([\s\S]*)$/);
     if (braceMatch) {
       header = braceMatch[1].trim();
       restOfText = braceMatch[2].trim();
+    } else {
+      const lines = cleaned.split('\n');
+      header = lines.shift()?.trim() || '';
+      restOfText = lines.join('\n').trim();
     }
   }
 
