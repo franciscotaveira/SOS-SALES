@@ -1029,6 +1029,11 @@ export class ReceptionistAgent {
       return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs: 0, model: '', skipped: 'agent_disabled' };
     }
 
+    // Nunca responde a grupos do WhatsApp (@g.us) a menos que explicitamente autorizado
+    if (input.fromPhone.endsWith('@g.us') || input.fromPhone.includes('@g.us')) {
+      return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs: 0, model: '', skipped: 'group_message_ignored' };
+    }
+
     // Não responde a mensagens vazias, mídia sem texto, etc.
     if (!input.textContent || input.textContent.startsWith('[') || input.messageType === 'audio') {
       return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs: 0, model: '', skipped: 'no_text_content' };
