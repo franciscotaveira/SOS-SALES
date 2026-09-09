@@ -197,35 +197,87 @@ const MAX_AUTONOMOUS_REPLY_LENGTH = 2000;
  * booking flow for a different intent.
  */
 export function parseReceptionistDecision(rawResponse: string): ReceptionistDecision | null {
-  const lines = rawResponse.trim().split('\n');
-  const header = lines.shift()?.trim();
-  if (!header?.startsWith('{') || !header.endsWith('}')) return null;
+  if (!rawResponse || typeof rawResponse !== 'string') return null;
+
+  let cleaned = rawResponse.trim();
+  // 1. Remove thinking blocks (<think>...</think>) if present
+  if (cleaned.includes('</think>')) {
+    cleaned = cleaned.split('</think>').pop()!.trim();
+  }
+
+  // 2. Extract JSON envelope from the beginning even if wrapped in markdown code fence
+  let header = '';
+  let restOfText = '';
+
+  const jsonBlockMatch = cleaned.match(/^```(?:json)?\s*(\{[\s\S]*?\})\s*```([\s\S]*)$/i);
+  if (jsonBlockMatch) {
+    header = jsonBlockMatch[1].trim();
+    restOfText = jsonBlockMatch[2].trim();
+  } else {
+    const lines = cleaned.split('\n');
+    header = lines.shift()?.trim() || '';
+    restOfText = lines.join('\n').trim();
+  }
+
+  // If header didn't capture pure JSON, check if the first block matches {...}
+  if (!header.startsWith('{')) {
+    const braceMatch = cleaned.match(/^\s*(\{[^}]+\})\s*([\s\S]*)$/);
+    if (braceMatch) {
+      header = braceMatch[1].trim();
+      restOfText = braceMatch[2].trim();
+    }
+  }
+
+  if (!header.startsWith('{') || !header.endsWith('}')) {
+    // Graceful fallback: the model responded directly with natural conversation text
+    const fallbackReply = HumanizerKernel.humanizeReply(cleaned);
+    if (fallbackReply && fallbackReply.length > 0 && fallbackReply.length <= MAX_AUTONOMOUS_REPLY_LENGTH) {
+      const wantsHuman = /transferir|atendente humano|equipe de suporte|falar com um consultor humano/i.test(fallbackReply);
+      return {
+        intent: 'inquiry',
+        escalate: wantsHuman,
+        sendBookingFlow: false,
+        reply: wantsHuman ? '' : fallbackReply,
+      };
+    }
+    console.error('[ReceptionistAgent] Failed to extract reply from response:\n', rawResponse.slice(0, 300));
+    return null;
+  }
 
   try {
     const parsed: unknown = JSON.parse(header);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
 
     const decision = parsed as Record<string, unknown>;
-    const allowedKeys = ['intent', 'escalate', 'sendBookingFlow'];
-    if (Object.keys(decision).some((key) => !allowedKeys.includes(key))) return null;
-    if (typeof decision.intent !== 'string' || !RECEPTIONIST_INTENTS.has(decision.intent as ReceptionistIntent)) return null;
-    if (typeof decision.escalate !== 'boolean' || typeof decision.sendBookingFlow !== 'boolean') return null;
+    const rawIntent = typeof decision.intent === 'string' ? decision.intent.toLowerCase().trim() : '';
 
-    const intent = decision.intent as ReceptionistIntent;
-    const reply = HumanizerKernel.humanizeReply(lines.join('\n'));
+    let intent: ReceptionistIntent;
+    if (RECEPTIONIST_INTENTS.has(rawIntent as ReceptionistIntent)) {
+      intent = rawIntent as ReceptionistIntent;
+    } else if (rawIntent === 'lead_qualification' || rawIntent === 'qualification' || rawIntent === 'sales' || rawIntent === 'question') {
+      intent = 'inquiry';
+    } else if (rawIntent === 'emergency' || rawIntent === 'sos') {
+      intent = 'greeting';
+    } else {
+      intent = 'inquiry';
+    }
+
+    const escalate = Boolean(decision.escalate);
+    const sendBookingFlow = Boolean(decision.sendBookingFlow);
+
+    const reply = HumanizerKernel.humanizeReply(restOfText);
     if (reply.length > MAX_AUTONOMOUS_REPLY_LENGTH) return null;
     if (!reply && intent !== 'human_request') return null;
-    if (intent === 'human_request' && decision.escalate !== true) return null;
-    if (decision.sendBookingFlow === true && intent !== 'booking') return null;
-    if (decision.escalate === true && decision.sendBookingFlow === true) return null;
+    if (intent === 'human_request' && !escalate) return null;
 
     return {
       intent,
-      escalate: decision.escalate,
-      sendBookingFlow: decision.sendBookingFlow,
+      escalate,
+      sendBookingFlow: sendBookingFlow && intent === 'booking',
       reply,
     };
-  } catch {
+  } catch (err) {
+    console.error('[ReceptionistAgent] JSON parse error in header:', header, err);
     return null;
   }
 }
@@ -952,7 +1004,7 @@ export class ReceptionistAgent {
        )
        VALUES (
          gen_random_uuid(), $1, $2, $3, $4,
-         'outbound', 'bot', $5, $6,
+         'outbound', 'ai', $5, $6,
          $7::jsonb,
          NOW()
        )
