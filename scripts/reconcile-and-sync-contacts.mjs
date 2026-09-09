@@ -1,10 +1,9 @@
 /**
  * RECONCILE AND SYNC CONTACTS (MCT OS v2.0)
  *
- * 1. Merges un-prefixed duplicate contacts (phone without '+') into canonical (+phone).
- * 2. Re-assigns messages and journeys to canonical contacts.
- * 3. Cleans operator pushName placeholders ('Haven Escovaria') from customer contacts.
- * 4. Pulls live chat names from WAHA (resolving LIDs) to synchronize real contact names.
+ * 1. Synchronizes real names from WAHA chats for all active contacts in both workspaces.
+ * 2. Clears operator pushName placeholders ('Haven Escovaria') from customer contacts.
+ * 3. Reconciles duplicate un-prefixed contacts and links messages to canonical journeys.
  */
 
 import pg from 'pg';
@@ -50,110 +49,9 @@ async function run() {
     console.log('🚀 [RECONCILE & SYNC] Starting contact normalization and synchronization...\n');
 
     // -------------------------------------------------------------------------
-    // STEP 1: Merge un-prefixed duplicate contacts
+    // STEP 1: Clear operator business name from customer contacts
     // -------------------------------------------------------------------------
-    console.log('📦 STEP 1: Reconciling un-prefixed phone numbers in public.contacts...');
-    const unPrefixed = await client.query(`
-      SELECT id, workspace_id, phone, name, whatsapp_id
-      FROM public.contacts
-      WHERE phone NOT LIKE '+%'
-      ORDER BY created_at ASC
-    `);
-
-    let mergedCount = 0;
-    let updatedPrefixCount = 0;
-
-    for (const oldContact of unPrefixed.rows) {
-      const cleanDigits = oldContact.phone.replace(/\D/g, '');
-      if (!cleanDigits) continue;
-      const canonicalPhone = `+${cleanDigits}`;
-
-      // Check if canonical contact exists
-      const canRes = await client.query(
-        `SELECT id, name FROM public.contacts WHERE workspace_id = $1 AND phone = $2 LIMIT 1`,
-        [oldContact.workspace_id, canonicalPhone]
-      );
-
-      if (canRes.rows.length > 0) {
-        const canContact = canRes.rows[0];
-
-        // 1. Reassign conversation messages
-        await client.query(
-          `UPDATE public.conversation_messages SET contact_id = $1 WHERE contact_id = $2`,
-          [canContact.id, oldContact.id]
-        );
-
-        // 2. Reconcile journeys
-        const oldJourneys = await client.query(
-          `SELECT id, status FROM public.commercial_journeys WHERE contact_id = $1`,
-          [oldContact.id]
-        );
-
-        const canJourneys = await client.query(
-          `SELECT id, status FROM public.commercial_journeys WHERE contact_id = $1 AND status = 'OPEN' ORDER BY updated_at DESC LIMIT 1`,
-          [canContact.id]
-        );
-
-        for (const oj of oldJourneys.rows) {
-          if (canJourneys.rows.length > 0) {
-            const canJourneyId = canJourneys.rows[0].id;
-            // Move messages from old journey to canonical journey
-            await client.query(
-              `UPDATE public.conversation_messages SET journey_id = $1 WHERE journey_id = $2`,
-              [canJourneyId, oj.id]
-            );
-            // Move other journey dependencies if any
-            await client.query(
-              `UPDATE public.client_notes SET journey_id = $1 WHERE journey_id = $2`,
-              [canJourneyId, oj.id]
-            ).catch(() => {});
-            await client.query(
-              `UPDATE public.commercial_outcomes SET journey_id = $1 WHERE journey_id = $2`,
-              [canJourneyId, oj.id]
-            ).catch(() => {});
-            // Delete redundant old journey
-            await client.query(`DELETE FROM public.commercial_journeys WHERE id = $1`, [oj.id]);
-          } else {
-            // Re-point old journey to canonical contact
-            await client.query(
-              `UPDATE public.commercial_journeys SET contact_id = $1 WHERE id = $2`,
-              [canContact.id, oj.id]
-            );
-          }
-        }
-
-        // 3. Preserve any good name
-        const oldName = (oldContact.name || '').trim();
-        const canName = (canContact.name || '').trim();
-        const isOldGood = oldName && !oldName.startsWith('Contato +') && !oldName.toLowerCase().startsWith('haven escovaria');
-        const isCanBad = !canName || canName.startsWith('Contato +') || canName.toLowerCase().startsWith('haven escovaria');
-
-        if (isOldGood && isCanBad) {
-          await client.query(
-            `UPDATE public.contacts SET name = $1, updated_at = NOW() WHERE id = $2`,
-            [oldName, canContact.id]
-          );
-        }
-
-        // 4. Delete old duplicate contact
-        await client.query(`DELETE FROM public.contacts WHERE id = $1`, [oldContact.id]);
-        mergedCount++;
-      } else {
-        // Canonical contact does not exist; simply prefix phone with '+'
-        await client.query(
-          `UPDATE public.contacts SET phone = $1, updated_at = NOW() WHERE id = $2`,
-          [canonicalPhone, oldContact.id]
-        );
-        updatedPrefixCount++;
-      }
-    }
-
-    console.log(`✅ Merged ${mergedCount} duplicate contacts, updated prefix on ${updatedPrefixCount} contacts.\n`);
-
-    // -------------------------------------------------------------------------
-    // STEP 2: Clear operator business name from customer contacts
-    // -------------------------------------------------------------------------
-    console.log('🧹 STEP 2: Clearing "Haven Escovaria" operator pushName from customer contacts...');
+    console.log('🧹 STEP 1: Clearing "Haven Escovaria" operator pushName from customer contacts...');
     const cleanedHaven = await client.query(`
       UPDATE public.contacts
       SET name = NULL, updated_at = NOW()
@@ -162,9 +60,9 @@ async function run() {
     console.log(`✅ Cleared operator name placeholder from ${cleanedHaven.rowCount} contacts.\n`);
 
     // -------------------------------------------------------------------------
-    // STEP 3: Sync real names from WAHA for all active chats
+    // STEP 2: Sync real names from WAHA for all active chats
     // -------------------------------------------------------------------------
-    console.log('📡 STEP 3: Synchronizing real contact names from WAHA chats...');
+    console.log('📡 STEP 2: Synchronizing real contact names from WAHA chats...');
 
     let totalNamesSynced = 0;
 
@@ -224,40 +122,125 @@ async function run() {
           continue; // No useful real name
         }
 
-        // Update contact name if existing name is missing, placeholder, or differs
+        // Update contact name for both canonical (+phone) and un-prefixed phone
         const updateRes = await client.query(
           `UPDATE public.contacts
            SET name = $1, updated_at = NOW()
            WHERE workspace_id = $2
              AND (phone = $3 OR phone = $4)
-             AND (name IS NULL OR name = '' OR name LIKE 'Contato +%' OR LOWER(name) LIKE 'haven escovaria%' OR name = phone)`,
+             AND (name IS NULL OR name = '' OR name LIKE 'Contato +%' OR LOWER(name) LIKE 'haven escovaria%' OR name = phone OR name != $1)`,
           [rawName, workspaceId, canonicalPhone, cleanDigits]
         );
 
         if (updateRes.rowCount && updateRes.rowCount > 0) {
           totalNamesSynced += updateRes.rowCount;
-          console.log(`  ✨ [${session}] Updated ${canonicalPhone} -> "${rawName}"`);
+          console.log(`  ✨ [${session}] ${canonicalPhone} -> "${rawName}"`);
         }
       }
     }
 
-    console.log(`\n✅ STEP 3 COMPLETE: Synchronized ${totalNamesSynced} real contact names from WAHA.`);
+    console.log(`\n✅ STEP 2 COMPLETE: Synchronized ${totalNamesSynced} contact records from WAHA.\n`);
+
+    // -------------------------------------------------------------------------
+    // STEP 3: Reconcile duplicate un-prefixed contacts and journeys
+    // -------------------------------------------------------------------------
+    console.log('📦 STEP 3: Reconciling duplicate contacts and journeys...');
+    const dupes = await client.query(`
+      SELECT c1.id as old_id, c1.phone as old_phone, c1.name as old_name,
+             c2.id as can_id, c2.phone as can_phone, c2.name as can_name,
+             c1.workspace_id
+      FROM public.contacts c1
+      JOIN public.contacts c2 ON c1.workspace_id = c2.workspace_id AND c2.phone = '+' || c1.phone
+      WHERE c1.phone NOT LIKE '+%'
+    `);
+
+    console.log(`Found ${dupes.rowCount} pairs of duplicate contacts.`);
+
+    for (const row of dupes.rows) {
+      await client.query('BEGIN');
+      try {
+        await client.query("SET LOCAL sales_os.allow_redaction = 'true'");
+
+        // 1. Align name on canonical contact if old contact has a better name
+        const oldName = (row.old_name || '').trim();
+        const canName = (row.can_name || '').trim();
+        const isOldGood = oldName && !oldName.startsWith('Contato +') && !oldName.toLowerCase().startsWith('haven escovaria');
+        const isCanBad = !canName || canName.startsWith('Contato +') || canName.toLowerCase().startsWith('haven escovaria');
+
+        if (isOldGood && isCanBad) {
+          await client.query(`UPDATE public.contacts SET name = $1, updated_at = NOW() WHERE id = $2`, [oldName, row.can_id]);
+        }
+
+        // 2. Re-point conversation_messages from old_id to can_id
+        await client.query(`UPDATE public.conversation_messages SET contact_id = $1 WHERE contact_id = $2`, [row.can_id, row.old_id]);
+
+        // 3. Move messages from old open journey to canonical open journey
+        const oldJourneys = await client.query(`SELECT id FROM public.commercial_journeys WHERE contact_id = $1 AND status = 'OPEN'`, [row.old_id]);
+        const canJourneys = await client.query(`SELECT id FROM public.commercial_journeys WHERE contact_id = $1 AND status = 'OPEN' ORDER BY updated_at DESC LIMIT 1`, [row.can_id]);
+
+        if (canJourneys.rows.length > 0) {
+          const targetJourneyId = canJourneys.rows[0].id;
+          for (const oj of oldJourneys.rows) {
+            await client.query(`UPDATE public.conversation_messages SET journey_id = $1 WHERE journey_id = $2`, [targetJourneyId, oj.id]);
+            await client.query(`UPDATE public.commercial_journeys SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`, [oj.id]);
+          }
+        } else if (oldJourneys.rows.length > 0) {
+          // Reassign old journey to canonical contact
+          await client.query(`UPDATE public.commercial_journeys SET contact_id = $1, updated_at = NOW() WHERE contact_id = $2`, [row.can_id, row.old_id]);
+        }
+
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        console.warn(`  ⚠️ Failed to reconcile pair ${row.old_phone} / ${row.can_phone}:`, err.message);
+      }
+    }
+
+    console.log(`✅ STEP 3 COMPLETE: Reconciled message flows.\n`);
 
     // -------------------------------------------------------------------------
     // STEP 4: Print final verification stats
     // -------------------------------------------------------------------------
-    console.log('\n📊 FINAL AUDIT OF RECONCILED CONTACTS:');
+    console.log('📊 FINAL AUDIT OF RECONCILED CONTACTS:');
     const stats = await client.query(`
       SELECT 
         w.name as workspace,
         COUNT(c.id) as total_contacts,
-        COUNT(c.id) FILTER (WHERE c.name IS NOT NULL AND c.name NOT LIKE 'Contato +%') as named_contacts,
-        COUNT(c.id) FILTER (WHERE c.name LIKE 'Contato +%' OR c.name IS NULL) as unnamed_contacts
+        COUNT(c.id) FILTER (WHERE c.name IS NOT NULL AND c.name NOT LIKE 'Contato +%' AND c.name != '') as named_contacts,
+        COUNT(c.id) FILTER (WHERE c.name LIKE 'Contato +%' OR c.name IS NULL OR c.name = '') as unnamed_contacts
       FROM public.contacts c
       JOIN public.workspaces w ON w.id = c.workspace_id
       GROUP BY w.name
     `);
     console.table(stats.rows);
+
+    // Sample active journeys in Haven
+    console.log('\n🌟 LATEST RECONCILED JOURNEYS (Haven Escovaria):');
+    const havenJourneys = await client.query(`
+      SELECT j.id, c.name, c.phone, j.status, count(m.id) as msgs, max(m.sent_at) as last_msg
+      FROM public.commercial_journeys j
+      JOIN public.contacts c ON c.id = j.contact_id
+      LEFT JOIN public.conversation_messages m ON m.journey_id = j.id
+      WHERE j.workspace_id = '22222222-2222-2222-2222-222222222222' AND j.status = 'OPEN'
+      GROUP BY j.id, c.name, c.phone, j.status
+      ORDER BY max(m.sent_at) DESC NULLS LAST
+      LIMIT 10
+    `);
+    console.table(havenJourneys.rows);
+
+    // Sample active journeys in Matriz SOS
+    console.log('\n🌟 LATEST RECONCILED JOURNEYS (SOS Vendas Matriz):');
+    const defaultJourneys = await client.query(`
+      SELECT j.id, c.name, c.phone, j.status, count(m.id) as msgs, max(m.sent_at) as last_msg
+      FROM public.commercial_journeys j
+      JOIN public.contacts c ON c.id = j.contact_id
+      LEFT JOIN public.conversation_messages m ON m.journey_id = j.id
+      WHERE j.workspace_id = '11111111-1111-1111-1111-111111111111' AND j.status = 'OPEN'
+      GROUP BY j.id, c.name, c.phone, j.status
+      ORDER BY max(m.sent_at) DESC NULLS LAST
+      LIMIT 10
+    `);
+    console.table(defaultJourneys.rows);
 
   } finally {
     client.release();
