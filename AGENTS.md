@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (09 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `b8bfd7ed8d06e0909e0ac0eeab173d809a11aa4b` com resolução de WAHA `@lid` no espelho direto, sincronização de `initialQueueTab` e fix de canal no Cockpit.
+- Release ativa: `db7ea1824da84f96361204ff8e9761018ef62fe9` com IA Receptionist Sofia (NVIDIA NIM), gatilho comercial "SOS" para ativação no WhatsApp pessoal do Francisco, conciliação e unificação de 80+ contatos duplicados LID e controle operacional de outbound ativo.
 - Governança de Dados & Isolamento de Execução: Contratos de isolamento em 3 níveis (Storage Encryption, Tenant Isolation e Confidential Execution) e portas para `DataGovernancePolicy` e `CapabilityRevocationGateway` promovidos para produção.
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
