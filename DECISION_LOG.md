@@ -994,4 +994,11 @@
   - P2: Confidential Execution Adapter (contrato de execução criptografada com chave do tenant)
 - **Date:** 2026-09-09
 
+## 2026-09-09 — Destino de pagamento no simulador
+
+- Evidência: no simulador da SORA, perguntar pela chave Pix retornou o endereço padrão de outro negócio e uma oferta de geração de link, sem ferramenta para executar essa ação.
+- Decisão: remover chaves Pix predefinidas por marca. Perguntas explícitas sobre Pix usam somente a configuração operacional do workspace; ausência de chave pede confirmação da equipe, sem inferência pelo modelo ou pelo histórico. Pedidos de link informam a indisponibilidade da ferramenta.
+- Em falha dos dois provedores de IA, o simulador retorna uma mensagem de indisponibilidade, sem inserir preços ou checkout de outro negócio.
+- Escopo: rota do simulador. O Receptionist de WhatsApp usa outro construtor de contexto; este ajuste não é prova de correção do incidente original, cuja conversa não foi fornecida.
+- Validação: 13 testes de rota passaram, incluindo ausência de chave, dados inválidos, chave configurada, pedido de link e falha dos dois modelos. Publicação em produção permanece pendente da validação do Lab e do fluxo de release.
 

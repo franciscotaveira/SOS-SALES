@@ -4,7 +4,7 @@ import { agentRoutes } from '../../src/interfaces/http/routes/agent-routes.js';
 
 const workspaceId = '10000000-0000-4000-8000-000000000001';
 
-function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>) {
+function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>, failModels = false) {
   const app = Fastify({ logger: false });
   const query = queryMock || vi.fn().mockImplementation((sql: string) => {
     if (sql.includes('workspace_intelligence_bundles')) {
@@ -42,20 +42,18 @@ function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>) {
     return Promise.resolve({ rowCount: 1, rows: [] });
   });
 
+  const generateChatCompletion = failModels
+    ? vi.fn().mockRejectedValue(new Error('Model unavailable'))
+    : vi.fn().mockResolvedValue({ content: 'Resposta final do simulador.', model: 'nvidia-test-model' });
   app.register(agentRoutes, {
     authenticator: { verifyAccessToken: vi.fn().mockResolvedValue({ userId: '30000000-0000-4000-8000-000000000003' }) },
     workspaceDirectory: { listForActor: vi.fn().mockResolvedValue([{ id: workspaceId, name: 'Workspace', slug: 'workspace', role: 'operator' }]) },
     query,
     nvidiaEngine: {
-      generateChatCompletion: vi.fn().mockResolvedValue({
-        content: 'Resposta final do simulador.',
-        text: 'Resposta final do simulador.',
-        model: 'nvidia-test-model',
-        latencyMs: 8,
-      }),
+      generateChatCompletion,
     },
     openRouterEngine: {
-      generateChatCompletion: vi.fn().mockResolvedValue({
+      generateChatCompletion: failModels ? vi.fn().mockRejectedValue(new Error('Fallback unavailable')) : vi.fn().mockResolvedValue({
         content: 'Resposta final do fallback.',
         model: 'openrouter-test-model',
         latencyMs: 12,
@@ -64,10 +62,62 @@ function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>) {
     },
   });
 
-  return { app, query };
+  return { app, query, generateChatCompletion };
 }
 
 describe('Agent Simulator Routes (Meta Business AI Pattern)', () => {
+  it.each([undefined, '', '   ', 123])('does not fabricate a Pix key when workspace config contains %s', async (pix) => {
+    const query = vi.fn().mockImplementation(async (sql: string) => ({ rows:
+      sql.includes('workspace_operational_settings') ? [{ commercial_config: { pix_key: pix } }] :
+      sql.includes('FROM public.workspaces') ? [{ name: 'Sora Ritual Spa' }] : [] }));
+    const { app, generateChatCompletion } = buildRouteApp(query);
+    const response = await app.inject({ method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/agent/simulator/chat`,
+      headers: { authorization: 'Bearer valid.jwt.token' },
+      payload: { message: 'Qual é a chave Pix oficial da SORA?', history: [
+        { role: 'assistant', content: 'Use contato@iaparavendas.tech' },
+      ] } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().agentResponse).toContain('Não tenho uma chave Pix cadastrada');
+    expect(response.json().agentResponse).not.toContain('iaparavendas.tech');
+    expect(generateChatCompletion).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('uses only the configured workspace payment recipient', async () => {
+    const query = vi.fn().mockImplementation(async (sql: string) => ({ rows:
+      sql.includes('workspace_operational_settings') ? [{ commercial_config: { pix_key: '  pagamento@example.test  ' } }] :
+      sql.includes('FROM public.workspaces') ? [{ name: 'Sora Ritual Spa' }] : [] }));
+    const { app, generateChatCompletion } = buildRouteApp(query);
+    const response = await app.inject({ method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/agent/simulator/chat`,
+      headers: { authorization: 'Bearer valid.jwt.token' }, payload: { message: 'Me passe o Pix' } });
+    expect(response.json().agentResponse).toContain('pagamento@example.test');
+    expect(response.json().agentResponse).toContain('Sora Ritual Spa');
+    expect(generateChatCompletion).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('does not offer to generate a payment link without a payment tool', async () => {
+    const { app, generateChatCompletion } = buildRouteApp();
+    const response = await app.inject({ method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/agent/simulator/chat`,
+      headers: { authorization: 'Bearer valid.jwt.token' }, payload: { message: 'Gera um link de pagamento' } });
+    expect(response.json().agentResponse).toContain('Não consigo gerar um link');
+    expect(generateChatCompletion).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('does not substitute another business offer when both models fail', async () => {
+    const { app } = buildRouteApp(undefined, true);
+    const response = await app.inject({ method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/agent/simulator/chat`,
+      headers: { authorization: 'Bearer valid.jwt.token' }, payload: { message: 'Quero agendar uma sessão no spa' } });
+    expect(response.json().agentResponse).toContain('Não consegui consultar');
+    expect(response.json().agentResponse).not.toMatch(/checkout|R\$/);
+    await app.close();
+  });
+
   it('intercepts /regra command and persists it in workspace intelligence directives', async () => {
     const { app, query } = buildRouteApp();
     const response = await app.inject({

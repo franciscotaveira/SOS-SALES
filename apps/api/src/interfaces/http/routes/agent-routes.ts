@@ -25,7 +25,7 @@ import {
 import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.js';
 import { analyzeConversationDossier, MessageLike } from '../../../application/services/cognitive-analyzer.js';
-import { SOS_SALES_DEFAULT_CATALOG_TEXT, SOS_SALES_DEFAULT_PRICE_SUMMARY } from '../../../application/services/commercial-offers.js';
+import { SOS_SALES_DEFAULT_CATALOG_TEXT } from '../../../application/services/commercial-offers.js';
 import { HumanizerKernel, HUMANIZER_PROMPT_DIRECTIVES } from '../../../infrastructure/ai/humanizer-kernel.js';
 
 interface BotParams {
@@ -1320,9 +1320,27 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         || (opRow as any).business_hours
         || (opConfig as any).business_hours
         || (isHaven ? 'Segunda a Sábado: 09h às 19h' : 'Segunda a Sexta: 08h às 20h | Sábado: 09h às 18h');
-      const pixKey = (opRow as any).pix_key
-        || (opConfig as any).pix_key
-        || (isHaven ? 'pix@havenescovaria.com.br' : 'contato@iaparavendas.tech');
+      const pixKey = [(opConfig as any).pix_key, (opRow as any).pix_key]
+        .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        ?.trim();
+
+      // Payment destinations must come from this workspace. Do not let history,
+      // brand defaults or a model supply a recipient or promise an unavailable tool.
+      if (/\bpix\b/i.test(userMessage) || /link\s+(?:de\s+)?pagamento/i.test(userMessage)) {
+        const asksForLink = /link\s+(?:de\s+)?pagamento/i.test(userMessage);
+        return reply.status(200).send({
+          success: true,
+          agentResponse: asksForLink
+            ? 'Não consigo gerar um link de pagamento por aqui. A equipe precisa confirmar e fornecer o link oficial.'
+            : pixKey
+              ? `A chave Pix cadastrada para ${wsName} é ${pixKey}. Confira o favorecido e o valor com a equipe antes de pagar.`
+              : 'Não tenho uma chave Pix cadastrada para este atendimento. Preciso que a equipe confirme os dados de pagamento.',
+          model: 'workspace-payment-guard',
+          latencyMs: 0,
+          dossier,
+          suggestedCalibrations: [],
+        });
+      }
 
       const rawDirectives = (Array.isArray(agentConfig.safetyGuardrails) && agentConfig.safetyGuardrails.length > 0)
         ? agentConfig.safetyGuardrails
@@ -1379,7 +1397,8 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       // 5. ENGENHARIA DE SYSTEM PROMPT COGNITIVO (Framework Francisco Rios)
       const systemPrompt = `Você é ${agentName}, a especialista comercial e de atendimento de alta performance da empresa "${wsName}" (${businessType}) localizada em ${city}.
 Horário de atendimento oficial: ${workingHours}.
-Chave Pix oficial da empresa: ${pixKey}.
+Chave Pix cadastrada para este workspace: ${pixKey || 'NÃO CONFIGURADA — solicitar confirmação à equipe; nunca inventar ou reutilizar chave de outro contexto'}.
+Não há ferramenta de geração de link de pagamento nesta conversa. Não ofereça gerar links nem alegue ter gerado uma cobrança.
 
 CATÁLOGO OFICIAL DE PRODUTOS/SERVIÇOS DE ${wsName.toUpperCase()}:
 ${catalogText}
@@ -1439,7 +1458,7 @@ ${HUMANIZER_PROMPT_DIRECTIVES}`;
           generatedReply = orResult.content || '';
           modelUsed = orResult.model || 'openrouter-default';
         } catch (orErr) {
-          generatedReply = dossier.smallestNextMove?.draftText || `Olá! ${SOS_SALES_DEFAULT_PRICE_SUMMARY} Quer que eu te envie o checkout da opção que faz mais sentido?`;
+          generatedReply = 'Não consegui consultar as informações necessárias agora. A equipe precisa confirmar os detalhes para dar continuidade ao atendimento.';
           modelUsed = 'sos-rule-engine-fallback';
         }
       }
