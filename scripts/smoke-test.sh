@@ -83,7 +83,7 @@ echo -e "${CYAN}── Phase 0: Static Checks ───────────�
 check "OpenAPI spec existe (openapi.yaml)" test -f "apps/api/openapi.yaml"
 check "OpenAPI JSON existe (openapi.json)"  test -f "apps/api/openapi.json"
 check "API_CONTRACT.md existe"             test -f "docs/API_CONTRACT.md"
-check "Runbook de produção existe"         test -f "docs/PRODUCTION_DEPLOYMENT_RUNBOOK.md"
+check "Runbook de produção existe"         test -f "docs/runbooks/PRODUCTION_DEPLOYMENT_RUNBOOK.md"
 check "DECISION_LOG.md existe"            test -f "DECISION_LOG.md"
 check "Smoke test script existe"          test -f "scripts/smoke-test.sh"
 echo ""
@@ -92,8 +92,9 @@ echo ""
 echo -e "${CYAN}── Phase 1: Build Verification ─────────────────${NC}"
 
 info "Compilando API (tsup)..."
-if npm --prefix apps/api run build > /dev/null 2>&1; then
+if APP_ENV="${APP_ENV:-production}" npm --prefix apps/api run build > /dev/null 2>&1; then
   pass "API production bundle compilado com sucesso"
+
   ((PASS_COUNT++)) || true
   check "dist/index.js existe" test -f "apps/api/dist/index.js"
 else
@@ -122,9 +123,18 @@ if [ "$API_UP" = true ]; then
   check "GET /health → status:ok" \
     bash -c "curl -sf '${BASE_API}/health' | grep -q 'ok'"
 
-  # OpenAPI Docs endpoint (swagger-ui faz redirect para /docs/)
-  check "GET /docs → Swagger UI (redirect)" \
-    bash -c "curl -sfL '${BASE_API}/docs' | grep -qi 'swagger\|redoc\|html\|swaggerui\|openapi'"
+  # OpenAPI Docs endpoint (swagger-ui em dev/lab, ou 404 desativado por design em produção)
+  DOCS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_API}/docs")
+  if [ "$DOCS_CODE" = "200" ] || [ "$DOCS_CODE" = "302" ] || [ "$DOCS_CODE" = "301" ]; then
+    pass "GET /docs → Swagger UI ativo ($DOCS_CODE)"
+    ((PASS_COUNT++)) || true
+  elif [ "$DOCS_CODE" = "404" ]; then
+    pass "GET /docs → Desativado em produção por design de segurança (404)"
+    ((PASS_COUNT++)) || true
+  else
+    echo -e "${RED}✗${NC} GET /docs → código inesperado $DOCS_CODE"
+    ((FAIL_COUNT++)) || true
+  fi
 
   # Readiness probe (pode estar degraded sem infra, mas deve responder)
   READY_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_API}/ready")
