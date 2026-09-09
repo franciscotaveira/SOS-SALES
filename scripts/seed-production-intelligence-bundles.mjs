@@ -322,8 +322,10 @@ async function main() {
       bundlesToInsert.push({ ...havenBundle, workspaceId: id });
     } else if (slug.includes('sora') || id === '33333333-3333-3333-3333-333333333333') {
       bundlesToInsert.push({ ...soraBundle, workspaceId: id });
-    } else {
+    } else if (slug.includes('sos') || id === '11111111-1111-1111-1111-111111111111') {
       bundlesToInsert.push({ ...sosBundle, workspaceId: id });
+    } else {
+      console.log(`ℹ️ Workspace customizado ${ws.name} (${id}) preservado sem sobrescrita.`);
     }
   }
 
