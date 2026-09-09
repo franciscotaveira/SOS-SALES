@@ -182,6 +182,42 @@ const RECEPTIONIST_INTENTS = new Set<ReceptionistIntent>([
   'other',
 ]);
 
+const INTENT_SYNONYMS: Record<string, ReceptionistIntent> = {
+  greeting: 'greeting',
+  saudacao: 'greeting',
+  saudação: 'greeting',
+  ola: 'greeting',
+  oi: 'greeting',
+  sos: 'greeting',
+  inquiry: 'inquiry',
+  duvida: 'inquiry',
+  dúvida: 'inquiry',
+  informacao: 'inquiry',
+  informação: 'inquiry',
+  servicos: 'inquiry',
+  serviços: 'inquiry',
+  preco: 'inquiry',
+  preço: 'inquiry',
+  booking: 'booking',
+  agendamento: 'booking',
+  agendar: 'booking',
+  objection: 'objection',
+  objecao: 'objection',
+  objeção: 'objection',
+  desconto: 'objection',
+  payment: 'payment',
+  pagamento: 'payment',
+  pix: 'payment',
+  oob_hours: 'oob_hours',
+  fora_horario: 'oob_hours',
+  human_request: 'human_request',
+  humano: 'human_request',
+  atendente: 'human_request',
+  other: 'other',
+  outro: 'other',
+  outros: 'other',
+};
+
 const AUTONOMOUS_REPLY_INTENTS = new Set<ReceptionistIntent>([
   'greeting',
   'inquiry',
@@ -237,9 +273,10 @@ export function parseReceptionistDecision(rawResponse: string): ReceptionistDeci
     const allowedKeys = ['intent', 'escalate', 'sendBookingFlow', 'reason'];
     if (Object.keys(decision).some((key) => !allowedKeys.includes(key))) return null;
 
-    const rawIntent = typeof decision.intent === 'string' ? decision.intent.trim() : '';
-    if (!RECEPTIONIST_INTENTS.has(rawIntent as ReceptionistIntent)) return null;
-    const intent = rawIntent as ReceptionistIntent;
+    const rawIntent = typeof decision.intent === 'string' ? decision.intent.trim().toLowerCase() : '';
+    const normalizedIntent = INTENT_SYNONYMS[rawIntent] || (RECEPTIONIST_INTENTS.has(rawIntent as ReceptionistIntent) ? rawIntent as ReceptionistIntent : null);
+    if (!normalizedIntent) return null;
+    const intent = normalizedIntent;
 
     if (typeof decision.escalate !== 'boolean' || typeof decision.sendBookingFlow !== 'boolean') return null;
     if (decision.sendBookingFlow === true && intent !== 'booking') return null;

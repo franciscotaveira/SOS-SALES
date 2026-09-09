@@ -44,6 +44,17 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
     });
   });
 
+  it('normalizes Portuguese intent synonyms such as saudacao and duvida', () => {
+    expect(parseReceptionistDecision(
+      '{"intent":"saudacao","escalate":false,"sendBookingFlow":false}\nOi, João! Tudo bem?'
+    )).toEqual({
+      intent: 'greeting',
+      escalate: false,
+      sendBookingFlow: false,
+      reply: 'Oi, João! Tudo bem?',
+    });
+  });
+
   it('rejects missing envelopes, unknown intents, unknown fields, and malformed action combinations', () => {
     expect(parseReceptionistDecision('Resposta sem envelope')).toBeNull();
     expect(parseReceptionistDecision('{"intent":"delete_customer","escalate":false,"sendBookingFlow":false}\nOi')).toBeNull();
