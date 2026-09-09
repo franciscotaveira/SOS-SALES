@@ -18,9 +18,8 @@
 ## 2. ESTADO ATUAL (09 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `8f70c009d809a5fd5a921edc2c7f6f59289768f9` + Dual-Engine Migration `20260909100000_allow_dual_engine_same_number.sql` (relaxamento de constraint por provider permitindo WAHA + Meta Cloud simultâneos para o mesmo número).
-- Workspace Haven (`22222222-2222-2222-2222-222222222222`) 100% sincronizado com 413 contatos, 412 jornadas e 4.482 mensagens ativas no Cockpit via Dual-Engine (WAHA + Meta WABA).
-- Governança de Dados & Isolamento de Execução (Radar Meta Muse / Task 41): Contratos de isolamento em 3 níveis (Storage Encryption, Tenant Isolation e Confidential Execution) e portas para `DataGovernancePolicy` e `CapabilityRevocationGateway` implementadas no backend.
+- Release ativa: `384e1a14031c105015879f93e6055afa3997e72a` com Dual-Engine Migration `20260909100000_allow_dual_engine_same_number.sql` 100% aplicada no banco remoto Supabase (relaxamento de constraint por provider permitindo WAHA + Meta Cloud simultâneos para o mesmo número).
+- Governança de Dados & Isolamento de Execução: Contratos de isolamento em 3 níveis (Storage Encryption, Tenant Isolation e Confidential Execution) e portas para `DataGovernancePolicy` e `CapabilityRevocationGateway` promovidos para produção.
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
   - Atendimento Único: "Agora" e "Conversas" consolidados em "Atendimento", com visualizações "Prioridades" e "Todas". Estado vazio honesto para prioridades zeradas ("Nenhuma prioridade pendente no momento" + botão "Ver todas").
