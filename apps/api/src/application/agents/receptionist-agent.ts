@@ -246,7 +246,15 @@ export function parseReceptionistDecision(rawResponse: string): ReceptionistDeci
     if (decision.escalate === true && decision.sendBookingFlow === true) return null;
     if (intent === 'human_request' && decision.escalate !== true) return null;
 
-    const reply = HumanizerKernel.humanizeReply(restOfText);
+    let cleanText = restOfText.trim();
+    // Limpa qualquer envelope JSON ou bloco de thinking residual
+    cleanText = cleanText.replace(/^\s*\{[^}]*\}\s*/g, '').trim();
+    cleanText = cleanText.replace(/^(?:Here's a thinking process:[\s\S]*?\n\n|Thinking Process:[\s\S]*?\n\n)/i, '').trim();
+
+    let reply = HumanizerKernel.humanizeReply(cleanText);
+    // Blindagem inegociável: NUNCA permitir chaves JSON vazadas na mensagem ao cliente
+    reply = reply.replace(/^\s*\{[^}]*\}\s*/g, '').trim();
+
     if (reply.length > MAX_AUTONOMOUS_REPLY_LENGTH) return null;
     if (!reply && intent !== 'human_request') return null;
 

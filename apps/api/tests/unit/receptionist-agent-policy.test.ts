@@ -33,6 +33,17 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
     });
   });
 
+  it('guarantees reply never leaks residual json or thinking process', () => {
+    expect(parseReceptionistDecision(
+      '{"intent":"greeting","escalate":false,"sendBookingFlow":false}\n{"intent":"greeting","escalate":false,"sendBookingFlow":false}Olá! Tudo bem?'
+    )).toEqual({
+      intent: 'greeting',
+      escalate: false,
+      sendBookingFlow: false,
+      reply: 'Olá! Tudo bem?',
+    });
+  });
+
   it('rejects missing envelopes, unknown intents, unknown fields, and malformed action combinations', () => {
     expect(parseReceptionistDecision('Resposta sem envelope')).toBeNull();
     expect(parseReceptionistDecision('{"intent":"delete_customer","escalate":false,"sendBookingFlow":false}\nOi')).toBeNull();

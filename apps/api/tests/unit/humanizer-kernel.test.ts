@@ -48,4 +48,19 @@ Certamente! O plano mensal custa R$ 97 — com ativação imediata.`;
     const result = HumanizerKernel.humanizeReply(raw);
     expect(result).not.toContain('Estamos à disposição para esclarecer qualquer dúvida');
   });
+
+  it('remove jargões forçados de abertura como "Aperto o play" e "Legal você mencionar o SOS"', () => {
+    const raw = 'Olá, João! Tudo bem? 😊Legal você mencionar o SOS. Aperto o play: qual é o segmento do seu negócio?';
+    const result = HumanizerKernel.humanizeReply(raw);
+    expect(result).not.toContain('Aperto o play');
+    expect(result).not.toContain('Legal você mencionar o SOS');
+    expect(result).toContain('qual é o segmento do seu negócio?');
+  });
+
+  it('remove preâmbulo de reasoning "Here\'s a thinking process:" caso vaze', () => {
+    const raw = "Here's a thinking process:\n1. Greet customer.\n\nOi, tudo bem? Como posso te ajudar?";
+    const result = HumanizerKernel.humanizeReply(raw);
+    expect(result).not.toContain("Here's a thinking process");
+    expect(result).toContain('Oi, tudo bem? Como posso te ajudar?');
+  });
 });
