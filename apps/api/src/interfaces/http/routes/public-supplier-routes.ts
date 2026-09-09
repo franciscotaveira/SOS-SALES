@@ -116,7 +116,14 @@ export async function publicSupplierRoutes(
     }
 
     // 2. Ignore WhatsApp Groups from 1:1 Commercial Journeys (handled separately in Group Hub)
-    const isGroup = rawFrom.endsWith('@g.us') || rawTo.endsWith('@g.us');
+    const isGroup =
+      Boolean(payloadRecord.isGroup) ||
+      rawFrom.endsWith('@g.us') ||
+      rawTo.endsWith('@g.us') ||
+      rawFrom.includes('@g.us') ||
+      rawTo.includes('@g.us') ||
+      String(payloadRecord.chatId || '').includes('@g.us') ||
+      String(keyRecord.remoteJid || '').includes('@g.us');
     if (isGroup) {
       return reply.code(200).send({ received: true, type: 'group_message_ignored_from_1to1' });
     }

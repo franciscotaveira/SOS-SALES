@@ -38,6 +38,30 @@ describe('WahaOutboundAdapter provider boundaries', () => {
     });
   });
 
+  it('extracts serialized provider id when WAHA returns id as an object', async () => {
+    const payload = {
+      id: {
+        fromMe: true,
+        remote: '726034075728@lid',
+        id: '3EB02FA3F6084C1B24F7B8',
+        _serialized: 'true_726034075728@lid_3EB02FA3F6084C1B24F7B8',
+      },
+    };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 201 }));
+    const adapter = new WahaOutboundAdapter({ endpoint: 'https://waha.example', fetchImpl });
+
+    const result = await adapter.sendText({
+      session: 'ws_haven',
+      chatId: '5511999998888@c.us',
+      text: 'Olá',
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      providerMessageId: 'true_726034075728@lid_3EB02FA3F6084C1B24F7B8',
+    });
+  });
+
   it('requires the session for media methods as well', async () => {
     const fetchImpl = vi.fn();
     const adapter = new WahaOutboundAdapter({ endpoint: 'https://waha.example', fetchImpl });

@@ -1672,6 +1672,18 @@ export async function whatsappChannelRoutes(
         return c.isGroup || id.endsWith('@g.us');
       });
 
+      // Fetch allowed groups from workspace_agent_config to flag which groups have AI enabled
+      const configRes = await routePool.query<{ behavior_config: Record<string, unknown> | null }>(
+        `SELECT behavior_config FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`,
+        [workspaceId]
+      ).catch(() => ({ rows: [] }));
+      const currentBehavior = (configRes.rows[0]?.behavior_config || {}) as Record<string, unknown>;
+      const allowedGroups: string[] = Array.isArray(currentBehavior.allowed_groups)
+        ? (currentBehavior.allowed_groups as string[])
+        : Array.isArray(currentBehavior.allowed_group_ids)
+          ? (currentBehavior.allowed_group_ids as string[])
+          : [];
+
       const groups = rawGroups.map((g, idx) => {
         const id = typeof g.id === 'string' ? g.id : (g.id?._serialized || `group_${idx}`);
         const groupName = g.name || `Grupo #${idx + 1}`;
@@ -1692,6 +1704,7 @@ export async function whatsappChannelRoutes(
           healthStatus: g.unreadCount && g.unreadCount > 0 ? 'pending_action' : 'active',
           participantCount: g.participants?.length || g.groupMetadata?.participants?.length || 12,
           unreadCount: g.unreadCount || 0,
+          aiEnabled: allowedGroups.includes(id),
           lastMessage: {
             sender: lastMsgSender,
             text: lastMsgText,
@@ -1788,6 +1801,57 @@ export async function whatsappChannelRoutes(
         resolvedAt: new Date().toISOString(),
         warning: err.message,
       });
+    }
+  });
+
+  // 15d. Toggle AI Authorization for a WhatsApp Group
+  app.post('/api/v1/workspaces/:workspaceId/groups/:groupId/ai-toggle', async (request: FastifyRequest<{
+    Params: { workspaceId: string; groupId: string };
+    Body: { enabled: boolean };
+  }>, reply: FastifyReply) => {
+    const { workspaceId, groupId } = request.params;
+    const { enabled = false } = (request.body || {}) as { enabled?: boolean };
+
+    try {
+      const configRes = await routePool.query<{ behavior_config: Record<string, unknown> | null }>(
+        `SELECT behavior_config FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`,
+        [workspaceId]
+      );
+      const currentBehavior = (configRes.rows[0]?.behavior_config || {}) as Record<string, unknown>;
+      let currentAllowed = Array.isArray(currentBehavior.allowed_groups)
+        ? [...(currentBehavior.allowed_groups as string[])]
+        : Array.isArray(currentBehavior.allowed_group_ids)
+          ? [...(currentBehavior.allowed_group_ids as string[])]
+          : [];
+
+      if (enabled) {
+        if (!currentAllowed.includes(groupId)) {
+          currentAllowed.push(groupId);
+        }
+      } else {
+        currentAllowed = currentAllowed.filter((id) => id !== groupId);
+      }
+
+      const updatedBehavior = {
+        ...currentBehavior,
+        allowed_groups: currentAllowed,
+      };
+
+      await routePool.query(
+        `UPDATE public.workspace_agent_config
+         SET behavior_config = $2::jsonb, updated_at = NOW()
+         WHERE workspace_id = $1`,
+        [workspaceId, JSON.stringify(updatedBehavior)]
+      );
+
+      return reply.code(200).send({
+        success: true,
+        groupId,
+        aiEnabled: enabled,
+        allowedGroups: currentAllowed,
+      });
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
     }
   });
 

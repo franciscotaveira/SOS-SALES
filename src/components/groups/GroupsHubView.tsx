@@ -11,6 +11,7 @@ import {
   Clock,
   Send,
   Sparkles,
+  Bot,
   Zap,
   Tag,
   Radio,
@@ -348,6 +349,41 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
       g.id === selectedGroup.id ? { ...g, engine: newEngine } : g
     );
     setGroups(updated);
+  };
+
+  const [aiTogglingGroupId, setAiTogglingGroupId] = React.useState<string | null>(null);
+
+  const handleToggleAiForGroup = async (groupId: string, currentEnabled: boolean) => {
+    const nextEnabled = !currentEnabled;
+    setAiTogglingGroupId(groupId);
+
+    setGroups((prev) =>
+      prev.map((g) => (g.id === groupId ? { ...g, aiEnabled: nextEnabled } : g))
+    );
+
+    try {
+      const wsId = workspaceId || (() => {
+        try {
+          return localStorage.getItem('sos_selected_workspace_id') || '22222222-2222-2222-2222-222222222222';
+        } catch {
+          return '22222222-2222-2222-2222-222222222222';
+        }
+      })();
+
+      await authenticatedFetch(`/api/v1/workspaces/${wsId}/groups/${encodeURIComponent(groupId)}/ai-toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
+    } catch (err) {
+      console.error('Falha ao alternar permissão de IA para grupo:', err);
+      // Revert on error
+      setGroups((prev) =>
+        prev.map((g) => (g.id === groupId ? { ...g, aiEnabled: currentEnabled } : g))
+      );
+    } finally {
+      setAiTogglingGroupId(null);
+    }
   };
 
   const handleExecuteBroadcast = () => {
@@ -847,6 +883,12 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                           {grp.engine ? grp.engine.toUpperCase() : 'WAHA'}
                         </span>
 
+                        {grp.aiEnabled && (
+                          <span className="text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded uppercase bg-purple-100 text-purple-800 border border-purple-300">
+                            IA
+                          </span>
+                        )}
+
                         {!isResolved && (grp.unreadCount || 0) > 0 && (
                           <span className="bg-[#25d366] text-white font-bold text-xs w-4.5 h-4.5 rounded-full flex items-center justify-center">
                             {grp.unreadCount}
@@ -1259,6 +1301,58 @@ export const GroupsHubView: React.FC<GroupsHubViewProps> = ({
                     <p className="text-[11.5px] text-[#54656f] leading-relaxed">
                       Ideal para gestão ágil de múltiplos grupos comunitários, squads internos e escuta de eventos em tempo real.
                     </p>
+                  </div>
+                </div>
+
+                {/* Bloqueio / Ativação de IA no Grupo */}
+                <div className="pt-3 border-t border-[#e2e8f0]">
+                  <div className="mb-2">
+                    <h3 className="font-bold text-sm text-[#111b21] flex items-center gap-1.5">
+                      <Bot className="w-4 h-4 text-purple-600" />
+                      Atendimento Automatizado por IA (Sofia)
+                    </h3>
+                    <p className="text-xs text-[#667781]">
+                      Regra de segurança: a IA fica 100% silenciada em grupos por padrão para evitar respostas acidentais.
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border border-[#e2e8f0] bg-slate-50 flex items-center justify-between">
+                    <div className="space-y-1 pr-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-xs text-[#111b21]">
+                          Permitir que a IA responda neste grupo
+                        </span>
+                        {selectedGroup.aiEnabled ? (
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-100 text-purple-700">
+                            IA Ativa
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">
+                            IA Bloqueada (Seguro)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11.5px] text-[#54656f] leading-relaxed">
+                        {selectedGroup.aiEnabled
+                          ? 'A IA Sofia responderá a mensagens e gatilhos ("SOS") enviados pelos membros deste grupo.'
+                          : 'A IA está estritamente bloqueada. Nenhuma mensagem ou gatilho neste grupo será respondido pela IA.'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={aiTogglingGroupId === selectedGroup.id}
+                      onClick={() => handleToggleAiForGroup(selectedGroup.id, Boolean(selectedGroup.aiEnabled))}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        selectedGroup.aiEnabled ? 'bg-purple-600' : 'bg-slate-300'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          selectedGroup.aiEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
               </div>

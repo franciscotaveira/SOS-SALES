@@ -26,6 +26,7 @@ export interface WhatsAppGroup {
   pinned: boolean;
   tags: string[];
   notes?: string;
+  aiEnabled?: boolean;
 }
 
 export interface EngineConfig {

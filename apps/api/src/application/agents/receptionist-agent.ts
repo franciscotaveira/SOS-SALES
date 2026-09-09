@@ -229,18 +229,6 @@ export function parseReceptionistDecision(rawResponse: string): ReceptionistDeci
   }
 
   if (!header.startsWith('{') || !header.endsWith('}')) {
-    // Graceful fallback: the model responded directly with natural conversation text
-    const fallbackReply = HumanizerKernel.humanizeReply(cleaned);
-    if (fallbackReply && fallbackReply.length > 0 && fallbackReply.length <= MAX_AUTONOMOUS_REPLY_LENGTH) {
-      const wantsHuman = /transferir|atendente humano|equipe de suporte|falar com um consultor humano/i.test(fallbackReply);
-      return {
-        intent: 'inquiry',
-        escalate: wantsHuman,
-        sendBookingFlow: false,
-        reply: wantsHuman ? '' : fallbackReply,
-      };
-    }
-    console.error('[ReceptionistAgent] Failed to extract reply from response:\n', rawResponse.slice(0, 300));
     return null;
   }
 
@@ -249,35 +237,29 @@ export function parseReceptionistDecision(rawResponse: string): ReceptionistDeci
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
 
     const decision = parsed as Record<string, unknown>;
-    const rawIntent = typeof decision.intent === 'string' ? decision.intent.toLowerCase().trim() : '';
+    const allowedKeys = ['intent', 'escalate', 'sendBookingFlow', 'reason'];
+    if (Object.keys(decision).some((key) => !allowedKeys.includes(key))) return null;
 
-    let intent: ReceptionistIntent;
-    if (RECEPTIONIST_INTENTS.has(rawIntent as ReceptionistIntent)) {
-      intent = rawIntent as ReceptionistIntent;
-    } else if (rawIntent === 'lead_qualification' || rawIntent === 'qualification' || rawIntent === 'sales' || rawIntent === 'question') {
-      intent = 'inquiry';
-    } else if (rawIntent === 'emergency' || rawIntent === 'sos') {
-      intent = 'greeting';
-    } else {
-      intent = 'inquiry';
-    }
+    const rawIntent = typeof decision.intent === 'string' ? decision.intent.trim() : '';
+    if (!RECEPTIONIST_INTENTS.has(rawIntent as ReceptionistIntent)) return null;
+    const intent = rawIntent as ReceptionistIntent;
 
-    const escalate = Boolean(decision.escalate);
-    const sendBookingFlow = Boolean(decision.sendBookingFlow);
+    if (typeof decision.escalate !== 'boolean' || typeof decision.sendBookingFlow !== 'boolean') return null;
+    if (decision.sendBookingFlow === true && intent !== 'booking') return null;
+    if (decision.escalate === true && decision.sendBookingFlow === true) return null;
+    if (intent === 'human_request' && decision.escalate !== true) return null;
 
     const reply = HumanizerKernel.humanizeReply(restOfText);
     if (reply.length > MAX_AUTONOMOUS_REPLY_LENGTH) return null;
     if (!reply && intent !== 'human_request') return null;
-    if (intent === 'human_request' && !escalate) return null;
 
     return {
       intent,
-      escalate,
-      sendBookingFlow: sendBookingFlow && intent === 'booking',
+      escalate: decision.escalate,
+      sendBookingFlow: decision.sendBookingFlow,
       reply,
     };
-  } catch (err) {
-    console.error('[ReceptionistAgent] JSON parse error in header:', header, err);
+  } catch {
     return null;
   }
 }
@@ -1030,8 +1012,35 @@ export class ReceptionistAgent {
     }
 
     // Nunca responde a grupos do WhatsApp (@g.us) a menos que explicitamente autorizado
-    if (input.fromPhone.endsWith('@g.us') || input.fromPhone.includes('@g.us')) {
-      return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs: 0, model: '', skipped: 'group_message_ignored' };
+    const isGroupMessage =
+      input.fromPhone.endsWith('@g.us') ||
+      input.fromPhone.includes('@g.us') ||
+      Boolean(input.journeyId && input.journeyId.includes('@g.us'));
+
+    if (isGroupMessage) {
+      const wsConfig = await this.loadWorkspaceConfig(input.workspaceId);
+      const allowedGroups: string[] = Array.isArray(wsConfig?.behavior?.allowed_groups)
+        ? (wsConfig!.behavior.allowed_groups as string[])
+        : Array.isArray(wsConfig?.behavior?.allowed_group_ids)
+          ? (wsConfig!.behavior.allowed_group_ids as string[])
+          : [];
+
+      const targetGroupId = input.fromPhone;
+      const isAuthorized = allowedGroups.some((gid) =>
+        targetGroupId.includes(gid) || gid.includes(targetGroupId)
+      );
+
+      if (!isAuthorized) {
+        return {
+          intent: 'other',
+          reply: '',
+          escalated: false,
+          bookingFlowSent: false,
+          latencyMs: 0,
+          model: '',
+          skipped: 'group_not_authorized_for_ai',
+        };
+      }
     }
 
     // Não responde a mensagens vazias, mídia sem texto, etc.

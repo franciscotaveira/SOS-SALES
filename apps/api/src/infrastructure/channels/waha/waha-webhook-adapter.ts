@@ -235,7 +235,7 @@ export class WahaWebhookAdapter implements ChannelWebhookAdapter {
 
     // 4. Filter out group chats, newsletter feeds and status broadcasts.
     // These are not 1:1 commercial journeys and must never become contacts.
-    if (fromJid.endsWith('@g.us') || data.isGroup) {
+    if (fromJid.endsWith('@g.us') || fromJid.includes('@g.us') || Boolean(data.isGroup) || String(data.chatId || '').includes('@g.us')) {
       return { kind: 'IGNORED', reason: 'group_message' };
     }
 

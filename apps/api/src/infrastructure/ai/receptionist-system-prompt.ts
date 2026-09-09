@@ -43,6 +43,8 @@ export interface WorkspaceAgentBehaviorConfig {
     descontoAlto: boolean;
   };
   typingDelaySeconds?: number;
+  allowed_groups?: string[];
+  allowed_group_ids?: string[];
 }
 
 /**

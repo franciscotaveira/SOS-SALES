@@ -60,13 +60,22 @@ export class WahaOutboundAdapter {
   }
 
   private providerMessageId(data: Record<string, unknown>): string | null {
-    const direct = typeof data.id === 'string' ? data.id.trim() : '';
-    if (direct) return direct;
+    const rawId = data.id;
+    if (typeof rawId === 'string' && rawId.trim()) return rawId.trim();
+    if (rawId && typeof rawId === 'object') {
+      const idRecord = rawId as Record<string, unknown>;
+      const serialized = typeof idRecord._serialized === 'string'
+        ? idRecord._serialized
+        : typeof idRecord.id === 'string' ? idRecord.id : '';
+      if (serialized.trim()) return serialized.trim();
+    }
     const nested = data.message && typeof data.message === 'object'
       ? (data.message as Record<string, unknown>)
       : null;
     const nestedId = nested && typeof nested.id === 'string' ? nested.id.trim() : '';
-    return nestedId || null;
+    if (nestedId) return nestedId;
+    if (typeof data._serialized === 'string' && data._serialized.trim()) return data._serialized.trim();
+    return null;
   }
 
   private missingProviderId(): WahaOutboundResult {
