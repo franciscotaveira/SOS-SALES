@@ -120,7 +120,7 @@ export class WahaInboundWorker {
               claimToken: event.claimToken,
               workerId: this.workerId,
               errorMessage,
-              maxAttempts: 5,
+              retryDelaySeconds: 5,
             });
           } catch {
             // failEvent itself failed — outbox lease will expire naturally

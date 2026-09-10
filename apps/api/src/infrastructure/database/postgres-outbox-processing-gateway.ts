@@ -137,7 +137,7 @@ export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway 
     claimToken: string;
     workerId: string;
     errorMessage: string;
-    maxAttempts: number;
+    retryDelaySeconds: number;
   }): Promise<void> {
     const client = await this.pool.connect();
     try {
@@ -147,9 +147,35 @@ export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway 
 
       await client.query(
         `SELECT public.fail_outbox_event($1, $2, $3, $4, $5)`,
-        [params.eventId, params.claimToken, params.workerId, params.errorMessage, params.maxAttempts]
+        [params.eventId, params.claimToken, params.workerId, params.errorMessage, params.retryDelaySeconds]
       );
 
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      await client.query('RESET ROLE').catch(() => {});
+      await client.query(`SELECT set_config('request.jwt.claim.role', '', false)`).catch(() => {});
+      client.release();
+    }
+  }
+
+  async deadLetterEvent(params: {
+    eventId: string;
+    claimToken: string;
+    workerId: string;
+    errorMessage: string;
+  }): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL ROLE service_role');
+      await client.query(`SELECT set_config('request.jwt.claim.role', 'service_role', true)`);
+      await client.query(
+        `SELECT public.dead_letter_outbox_event($1, $2, $3, $4)`,
+        [params.eventId, params.claimToken, params.workerId, params.errorMessage],
+      );
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});

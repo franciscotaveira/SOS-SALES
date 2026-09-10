@@ -83,13 +83,7 @@ export async function journeyOperationRoutes(
         headersError: headers.error?.issues,
         bodyError: body.error?.issues,
       }, 'Validation failure on follow-up creation');
-      return reply.code(422).send({
-        statusCode: 422,
-        error: 'Unprocessable Entity',
-        message: body.error?.issues?.[0]?.message
-          ? `Validação: ${body.error.issues[0].path.join('.')} - ${body.error.issues[0].message}`
-          : 'Invalid journey operation request',
-      });
+      return invalid(reply);
     }
     if (!dependencies.journeyOperationsGateway) return unavailable(reply);
 

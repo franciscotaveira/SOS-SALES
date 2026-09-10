@@ -76,7 +76,7 @@ export class PostgresHandoffOperationsGateway implements HandoffOperationsGatewa
               [input.workspaceId, input.handoffCaseId, input.reason, input.idempotencyKey],
             );
             // Ensure the associated commercial journey unpauses the AI receptionist immediately
-            await client.query(
+            const resumedJourney = await client.query(
               `UPDATE public.commercial_journeys
                SET bot_enabled = true,
                    bot_paused_at = NULL,
@@ -86,9 +86,13 @@ export class PostgresHandoffOperationsGateway implements HandoffOperationsGatewa
                    responder_change_reason = $3,
                    updated_at = NOW()
                WHERE id = (SELECT journey_id FROM public.handoff_cases WHERE id = $1 AND workspace_id = $2)
-                 AND workspace_id = $2`,
+                 AND workspace_id = $2
+                 AND status = 'OPEN'`,
               [input.handoffCaseId, input.workspaceId, input.reason || 'Devolvido para IA pelo operador'],
             );
+            if (resumedJourney.rowCount !== 1) {
+              throw new Error('Handoff transition conflict: associated journey is not open');
+            }
             break;
         }
         return normalizeResult(result.rows[0]?.result);

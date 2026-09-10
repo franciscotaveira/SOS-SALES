@@ -973,7 +973,7 @@ export class ReceptionistAgent {
   private outboundFingerprint(
     input: ReceptionistInput,
     provider: 'waha' | 'meta_cloud',
-    messageKind: 'TEXT' | 'FLOW',
+    messageKind: 'TEXT' | 'TEXT_SECONDARY' | 'FLOW',
     reply: string,
   ): string {
     return createHash('sha256')
@@ -998,7 +998,7 @@ export class ReceptionistAgent {
   private async reserveOutbound(
     input: ReceptionistInput,
     provider: 'waha' | 'meta_cloud',
-    messageKind: 'TEXT' | 'FLOW',
+    messageKind: 'TEXT' | 'TEXT_SECONDARY' | 'FLOW',
     reply: string,
   ): Promise<{
     reservationId: string | null;
@@ -1029,9 +1029,11 @@ export class ReceptionistAgent {
     const reservation = asJsonRecord(result.rows[0]?.reservation);
     const reservationId = nonEmptyString(reservation.reservationId);
     const status = nonEmptyString(reservation.status) || 'UNKNOWN';
-    if (!reservationId) throw new Error('RECEPTIONIST_OUTBOUND_RESERVATION_UNAVAILABLE');
+    if (!reservationId && status !== 'BLOCKED_JOURNEY') {
+      throw new Error('RECEPTIONIST_OUTBOUND_RESERVATION_UNAVAILABLE');
+    }
     return {
-      reservationId,
+      reservationId: reservationId ?? null,
       shouldSend: reservation.shouldSend === true,
       status,
       providerMessageId: nonEmptyString(reservation.providerMessageId),
@@ -1169,7 +1171,7 @@ export class ReceptionistAgent {
                bot_paused_at = NULL,
                bot_pause_reason = NULL,
                updated_at = NOW()
-           WHERE id = $1 AND workspace_id = $2`,
+           WHERE id = $1 AND workspace_id = $2 AND status = 'OPEN'`,
           [input.journeyId, input.workspaceId]
         );
         console.log(`[ReceptionistAgent] Activated bot for journey ${input.journeyId} via trigger keyword "sos"`);
@@ -1303,6 +1305,17 @@ export class ReceptionistAgent {
       );
 
       if (!replyReservation.shouldSend) {
+        if (replyReservation.status === 'BLOCKED_JOURNEY') {
+          return {
+            intent: decision.intent,
+            reply: '',
+            escalated: false,
+            bookingFlowSent: false,
+            latencyMs,
+            model: usedModel,
+            skipped: 'bot_paused_before_outbound',
+          };
+        }
         if (replyReservation.status === 'SENT') {
           // The provider action and local history were already committed by a
           // previous delivery attempt. A reclaimed outbox event must not send
@@ -1379,20 +1392,60 @@ export class ReceptionistAgent {
         // Se houver uma segunda mensagem complementar (ex: pergunta de avanço separada),
         // envia no mesmo canal com intervalo humano de 1 segundo
         if (secondMessage && secondMessage.length > 0) {
+          let secondReservationId: string | null = null;
           try {
             await new Promise((resolve) => setTimeout(resolve, 1000));
+            const secondReservation = await this.reserveOutbound(
+              input,
+              transport.provider,
+              'TEXT_SECONDARY',
+              secondMessage,
+            );
+            secondReservationId = secondReservation.reservationId;
+            if (!secondReservation.shouldSend) {
+              if (secondReservation.status === 'BLOCKED_JOURNEY') {
+                return {
+                  intent: decision.intent,
+                  reply: mainMessage,
+                  escalated: false,
+                  bookingFlowSent: false,
+                  latencyMs,
+                  model: usedModel,
+                  skipped: 'bot_paused_before_secondary_outbound',
+                };
+              }
+              if (secondReservation.status !== 'SENT') {
+                await this.ensureHumanHandoff(
+                  input.workspaceId,
+                  input.journeyId,
+                  `Segunda ação ${transportLabel} sem confirmação — reconciliação humana obrigatória`,
+                );
+              }
+              return {
+                intent: decision.intent,
+                reply: mainMessage,
+                escalated: secondReservation.status !== 'SENT',
+                bookingFlowSent: false,
+                latencyMs,
+                model: usedModel,
+                skipped: secondReservation.status === 'SENT'
+                  ? 'secondary_outbound_already_sent'
+                  : `${transportLabel}_secondary_outbound_reconciliation_required`,
+              };
+            }
+
             let secondProviderId = '';
             if (transport.provider === 'waha') {
-              if (this.waha) {
-                const sendResult2 = await this.waha.sendText({
-                  session: transport.sessionName,
-                  chatId: `${toNumber}@c.us`,
-                  text: secondMessage,
-                });
-                if (sendResult2.success) {
-                  secondProviderId = sendResult2.providerMessageId;
-                }
+              if (!this.waha) throw new Error('WAHA_OUTBOUND_ADAPTER_UNAVAILABLE');
+              const sendResult2 = await this.waha.sendText({
+                session: transport.sessionName,
+                chatId: `${toNumber}@c.us`,
+                text: secondMessage,
+              });
+              if (!sendResult2.success) {
+                throw new Error(`WAHA_${sendResult2.kind}_${sendResult2.failureCode}`);
               }
+              secondProviderId = sendResult2.providerMessageId;
             } else {
               const creds = await this.resolveWabaCreds(input.workspaceId, input.channelConnectionId, input.phoneNumberId || transport.phoneNumberId || null);
               const sendResult2 = await this.waba.sendText({
@@ -1401,20 +1454,23 @@ export class ReceptionistAgent {
                 recipientPhone: toNumber,
                 text: secondMessage,
               });
+              if (!sendResult2.messageId) throw new Error('WABA_PROVIDER_MESSAGE_ID_MISSING');
               secondProviderId = sendResult2.messageId;
             }
 
-            if (secondProviderId) {
-              await this.saveAgentReply(
-                input.workspaceId,
-                input.journeyId,
-                input.contactId,
-                input.channelConnectionId,
-                secondMessage,
-                secondProviderId,
-              );
-            }
+            await this.completeOutbound(
+              input,
+              secondReservationId,
+              secondMessage,
+              secondProviderId,
+            );
           } catch (secondMsgErr) {
+            await this.markOutboundUnknown(
+              secondReservationId,
+              secondMsgErr instanceof Error ? secondMsgErr.message : 'RECEPTIONIST_SECONDARY_OUTBOUND_UNKNOWN',
+            ).catch((reservationErr) => {
+              console.error('[ReceptionistAgent] Could not mark secondary outbound reservation unknown:', reservationErr);
+            });
             console.warn('[ReceptionistAgent] Second complementary message failed to dispatch:', secondMsgErr);
           }
         }
@@ -1455,6 +1511,17 @@ export class ReceptionistAgent {
     if (transport.provider === 'meta_cloud' && policy.allowBookingFlow && wsConfig.bookingFlowEnabled && GEMINI_BOOK_FLOW_ID) {
       const flowReservation = await this.reserveOutbound(input, 'meta_cloud', 'FLOW', '');
       if (!flowReservation.shouldSend) {
+        if (flowReservation.status === 'BLOCKED_JOURNEY') {
+          return {
+            intent: decision.intent,
+            reply: replyText,
+            escalated: false,
+            bookingFlowSent: false,
+            latencyMs,
+            model: usedModel,
+            skipped: 'bot_paused_before_booking_flow',
+          };
+        }
         if (flowReservation.status === 'SENT') {
           return {
             intent: decision.intent,
@@ -1485,9 +1552,6 @@ export class ReceptionistAgent {
 
       const flowReservationId = flowReservation.reservationId;
       try {
-        if (!await this.isBotActiveForJourney(input.workspaceId, input.journeyId)) {
-          return { intent: decision.intent, reply: replyText, escalated: false, bookingFlowSent: false, latencyMs, model: usedModel, skipped: 'bot_paused_before_booking_flow' };
-        }
         const toNumber = input.fromPhone.replace(/\D/g, '');
         const creds = await this.resolveWabaCreds(input.workspaceId, input.channelConnectionId, input.phoneNumberId);
         const flowResult = await this.waba.sendFlow({

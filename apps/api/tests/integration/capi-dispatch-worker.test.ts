@@ -197,4 +197,59 @@ describe('Meta Conversions API (CAPI) Dispatch Worker', () => {
       workerId: expect.any(String),
     });
   });
+
+  it('CAPI-05: sends fatal provider failures directly to the fenced DLQ transition', async () => {
+    const deadLetterEvent = vi.fn().mockResolvedValue(undefined);
+    const mockOutboxGateway = {
+      claimBatch: vi.fn().mockResolvedValue([{
+        id: 'evt30000-0000-4000-8000-000000000003',
+        workspaceId: 'w1000000-0000-4000-8000-000000000001',
+        eventName: 'commercial.outcome_recorded',
+        aggregateType: 'CommercialOutcome',
+        aggregateId: 'out30000-0000-4000-8000-000000000003',
+        payload: {
+          outcomeId: 'out30000-0000-4000-8000-000000000003',
+          journeyId: 'j3000000-0000-4000-8000-000000000003',
+          result: 'WON',
+          revenueMinor: 10000,
+        },
+        idempotencyKey: 'commercial.outcome:out3',
+        claimToken: 'tok30000-0000-4000-8000-000000000003',
+        attempts: 1,
+      }]),
+      completeEvent: vi.fn(),
+      failEvent: vi.fn(),
+      deadLetterEvent,
+      fetchInboundChannelEvent: vi.fn(),
+    };
+    const mockPoolClient = {
+      query: vi.fn().mockResolvedValue({ rows: [{
+        public_config: { metaDatasetId: '998877665544332', metaCapiEnabled: true },
+        secret_payload: { accessToken: 'test-workspace-token' },
+        occurred_at: '2026-09-01T12:00:00.000Z',
+        phone: '+5511999998888',
+        email: 'comprador@example.com',
+      }] }),
+      release: vi.fn(),
+    };
+    const worker = new CapiDispatchWorker({
+      outboxGateway: mockOutboxGateway as any,
+      capiGateway: { sendPurchaseEvent: vi.fn().mockResolvedValue({
+        success: false,
+        kind: 'FATAL',
+        errorCode: 'META_FORBIDDEN',
+      }) } as any,
+      pool: { connect: vi.fn().mockResolvedValue(mockPoolClient) } as any,
+      workerId: 'test-capi-worker',
+    });
+
+    expect(await worker.processSingleBatch()).toBe(1);
+    expect(deadLetterEvent).toHaveBeenCalledWith({
+      eventId: 'evt30000-0000-4000-8000-000000000003',
+      claimToken: 'tok30000-0000-4000-8000-000000000003',
+      workerId: 'test-capi-worker',
+      errorMessage: 'META_FORBIDDEN',
+    });
+    expect(mockOutboxGateway.failEvent).not.toHaveBeenCalled();
+  });
 });

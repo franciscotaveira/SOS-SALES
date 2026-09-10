@@ -22,7 +22,7 @@ interface CompleteCall {
 }
 interface FailCall extends CompleteCall {
   errorMessage: string;
-  maxAttempts: number;
+  retryDelaySeconds: number;
 }
 
 // Full implementation of the OutboxProcessingGateway port (all five methods). The
@@ -244,7 +244,7 @@ describe('ReceptionistInboundWorker — processSingleBatch', () => {
       eventId: event.id,
       claimToken: event.claimToken,
       workerId: 'test-worker',
-      maxAttempts: 5,
+      retryDelaySeconds: 5,
     });
     expect(gateway.failCalls[0].errorMessage).toContain('Invalid aggregate_type');
   });

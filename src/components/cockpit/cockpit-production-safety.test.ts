@@ -93,4 +93,15 @@ describe('cockpit production safety policy', () => {
     expect(source).not.toContain('Média por Lead</span>');
     expect(source).not.toContain('R$ {col.totalColValue}');
   });
+
+  it('guards cockpit submissions and exposes real queue pagination', () => {
+    const source = read('./LiveCockpitView.tsx');
+
+    expect(source).toContain('outboundSubmitLockRef.current');
+    expect(source).toContain('const [idempotencyKey] = React.useState(() => crypto.randomUUID())');
+    expect(source).toContain('submittingRef.current');
+    expect(source).toContain('gateway.createFollowUp(workspaceId, selectedJourneyId, dueAt, reason, idempotencyKey)');
+    expect(source).toContain('gateway.listJourneys(workspaceId, { limit: 20, cursor })');
+    expect(source).toContain('Carregar mais conversas');
+  });
 });

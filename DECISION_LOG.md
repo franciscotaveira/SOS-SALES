@@ -1022,3 +1022,17 @@
      - `FollowUpModal` agora valida localmente tamanho mínimo de motivo (>= 3 caracteres) e data futura, prevenindo submissões inválidas e instruindo o operador.
      - A rota de follow-ups retorna mensagem de validação clara em caso de erro 422.
 - **Validação:** 36 testes unitários em `receptionist-agent-policy.test.ts` (incluindo validação de rejeição em ABANDONED, WON, LOST), testes de API de commercial outcomes e frontend vitest 100% aprovados. Builds de frontend e API compilados com sucesso.
+
+## 2026-09-10 — Reserva transacional de outbound, CAPI observável e guardas do Cockpit
+
+- **Problema:** Uma consulta de status antes do envio não eliminava a corrida entre encerramento da jornada e chamada irreversível ao WhatsApp. A segunda mensagem não tinha reserva própria. CAPI podia ficar desligada ou falhar sem aparecer no `/ready`, e erro fatal usava o quinto argumento de `fail_outbox_event` como se fosse limite de tentativas, embora a função o interprete como atraso.
+- **Decisões:**
+  1. `reserve_receptionist_outbound` trava a jornada com `FOR UPDATE`, confirma workspace, contato, canal, status `OPEN`, bot ativo e titularidade antes de criar cada reserva.
+  2. Encerramento, pausa ou entrega ao humano são bloqueados enquanto houver reserva `SENDING`. A reserva deve terminar em `SENT` ou `UNKNOWN` antes da transição operacional, preservando uma ordem única entre banco e provedor.
+  3. A segunda mensagem usa o tipo `TEXT_SECONDARY`, fingerprint e reserva independentes.
+  4. CAPI fica habilitada por padrão nos dois composes de produção, participa do health/readiness, registra erro de loop e usa a RPC cercada `dead_letter_outbox_event` para falhas fatais.
+  5. Retorno de handoff e retomada da jornada permanecem na mesma transação e exigem jornada aberta; a UI propaga falhas.
+  6. Cockpit mantém chave de idempotência por abertura do follow-up, trava submissões sincronamente, preserva horário local do `datetime-local` e pagina a fila por cursor.
+- **Trade-off:** Uma tentativa de fechar, pausar ou assumir uma jornada durante uma chamada ao provedor é rejeitada e deve ser repetida após a confirmação ou reconciliação da reserva. Uma reserva que permaneça em `SENDING` após crash exige reconciliação antes da transição; não há expiração automática.
+- **Validação:** teste DB real comprova bloqueio durante `SENDING` e recusa de reserva após encerramento; suíte API 559/559 e frontend 24/24; Docker Lab com frontend e API saudáveis e `/ready` incluindo `capi-worker`.
+- **Produção:** não alterada. Promoção continua condicionada ao fluxo de release e aprovação humana.

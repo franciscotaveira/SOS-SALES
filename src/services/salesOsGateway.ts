@@ -1415,7 +1415,7 @@ export class HttpSalesOsGateway implements SalesOsGateway {
     journeyId: string,
     dueAt: string,
     reason: string,
-    idempotencyKey = crypto.randomUUID(),
+    idempotencyKey: string = crypto.randomUUID(),
   ): Promise<{ followUpId: string; journeyId: string; dueAt: string }> {
     const response = await this.request<ApiEnvelope<{ followUpId: string; journeyId: string; dueAt: string }>>(
       `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/follow-ups`,

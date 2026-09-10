@@ -40,6 +40,7 @@ services:
       - HOST=0.0.0.0
       - SOS_SALES_RUNTIME_FACTORY=/app/production-runtime.mjs
       - DATABASE_SSL_CA_FILE=/run/secrets/supabase-ca.crt
+      - META_CAPI_WORKER_ENABLED=${META_CAPI_WORKER_ENABLED:-true}
     networks:
       - sos-network
     depends_on:

@@ -202,7 +202,7 @@ describe('TX Commercial Core — P0.3B Production Runtime Contracts & Separation
 
       await gateway.completeEvent({ eventId: 'event-1', claimToken: 'claim-1', workerId: 'worker-1' });
       await gateway.failEvent({
-        eventId: 'event-2', claimToken: 'claim-2', workerId: 'worker-1', errorMessage: 'retry', maxAttempts: 3,
+        eventId: 'event-2', claimToken: 'claim-2', workerId: 'worker-1', errorMessage: 'retry', retryDelaySeconds: 3,
       });
       await gateway.fetchInboundChannelEvent({ inboundEventId: 'inbound-1', workspaceId: 'workspace-1', provider: 'waha' });
       await gateway.normalizeWahaInboundMessage({

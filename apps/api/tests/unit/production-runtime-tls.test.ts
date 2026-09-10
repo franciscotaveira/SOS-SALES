@@ -86,10 +86,12 @@ describe('production database TLS contract', () => {
     expect(buildReadinessStatuses(healthyWorker, {
       outbound: healthyWorker,
       receptionist: healthyWorker,
+      capi: healthyWorker,
     })).toEqual([
       { name: 'waha-inbound-worker', healthy: true },
       { name: 'outbound-worker', healthy: true },
       { name: 'receptionist-worker', healthy: true },
+      { name: 'capi-worker', healthy: true },
     ]);
   });
 
@@ -105,6 +107,7 @@ describe('production database TLS contract', () => {
       const compose = readFileSync(composePath, 'utf8');
 
       expect(compose).toContain('DATABASE_SSL_CA_FILE=/run/secrets/supabase-ca.crt');
+      expect(compose).toContain('META_CAPI_WORKER_ENABLED=${META_CAPI_WORKER_ENABLED:-true}');
       expect(compose).toContain('SOS_SALES_RUNTIME_FACTORY=');
       expect(compose).toContain('supabase-ca.crt:/run/secrets/supabase-ca.crt:ro');
     });

@@ -801,8 +801,9 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
                responder_changed_at = NOW(),
                responder_change_reason = 'Retomado pelo operador',
                updated_at = NOW()
-           WHERE id = $1 AND workspace_id = $2
-           RETURNING id, channel_connection_id, bot_enabled, responder_owner, responder_changed_at`,
+           WHERE id = $1 AND workspace_id = $2 AND status = 'OPEN'
+           RETURNING id, status, channel_connection_id, bot_enabled, responder_owner,
+                     responder_changed_at, responder_change_reason`,
           [journeyId, workspaceId]
         );
 
@@ -818,7 +819,9 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           : 'sos_sales';
         const responderChangedAt = result.rows[0].responder_changed_at || null;
         const responderChangeReason = result.rows[0].responder_change_reason || null;
-        const botActive = botEnabled && isJourneyRuntimeEffective(runtimeConfig, responderOwner, responderChangedAt, responderChangeReason, result.rows[0].channel_connection_id);
+        const botActive = result.rows[0].status === 'OPEN'
+          && botEnabled
+          && isJourneyRuntimeEffective(runtimeConfig, responderOwner, responderChangedAt, responderChangeReason, result.rows[0].channel_connection_id);
         return reply.status(200).send({
           journeyId,
           botEnabled,

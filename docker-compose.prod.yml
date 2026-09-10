@@ -73,6 +73,7 @@ services:
       - WAHA_WEBHOOK_SECRET=${WAHA_WEBHOOK_SECRET}
       - META_VERIFY_TOKEN=${META_VERIFY_TOKEN:?META_VERIFY_TOKEN is required}
       - META_APP_SECRET=${META_APP_SECRET:?META_APP_SECRET is required}
+      - META_CAPI_WORKER_ENABLED=${META_CAPI_WORKER_ENABLED:-true}
     volumes:
       - ./deploy/production-runtime.mjs:/app/deploy/production-runtime.mjs:ro
       - ./certs/supabase-ca.crt:/run/secrets/supabase-ca.crt:ro

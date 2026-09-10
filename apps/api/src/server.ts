@@ -63,7 +63,11 @@ export interface RuntimeDependencies {
   /** Created after the worker exists so readiness can always include it. */
   createHealthProvider: (
     worker: WahaInboundWorker,
-    workers?: { outbound?: WahaOutboundWorker; receptionist?: ReceptionistInboundWorker },
+    workers?: {
+      outbound?: WahaOutboundWorker;
+      receptionist?: ReceptionistInboundWorker;
+      capi?: CapiDispatchWorker;
+    },
   ) => DependencyHealthProvider;
   /** Optional only while operator API remains fail-closed (401) during bootstrap. */
   authenticator?: OperatorAuthenticator;
@@ -275,6 +279,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
       { name: 'waha-inbound-worker', check: async () => worker.isHealthy() },
       ...(workers?.outbound ? [{ name: 'outbound-worker', check: async () => workers.outbound!.isHealthy() }] : []),
       ...(workers?.receptionist ? [{ name: 'receptionist-worker', check: async () => workers.receptionist!.isHealthy() }] : []),
+      ...(workers?.capi ? [{ name: 'capi-worker', check: async () => workers.capi!.isHealthy() }] : []),
     ]),
     close: async () => {
       await redis.quit().catch(() => redis.disconnect());
@@ -366,13 +371,18 @@ async function startComposedServer(
     secretProvider: runtime.secretProvider,
     wahaAdapter: runtime.wahaAdapter,
     ingestionGateway: runtime.ingestionGateway,
-    healthProvider: runtime.createHealthProvider(worker, { outbound: outboundWorker, receptionist: receptionistWorker }),
+    healthProvider: runtime.createHealthProvider(worker, {
+      outbound: outboundWorker,
+      receptionist: receptionistWorker,
+      capi: capiWorker,
+    }),
     readinessDependencyNames: [
       'database',
       'redis',
       'waha-inbound-worker',
       ...(outboundWorker ? ['outbound-worker'] : []),
       ...(receptionistWorker ? ['receptionist-worker'] : []),
+      ...(capiWorker ? ['capi-worker'] : []),
     ],
     authenticator: runtime.authenticator,
     workspaceDirectory: runtime.workspaceDirectory,

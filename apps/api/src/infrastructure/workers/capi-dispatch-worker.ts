@@ -15,7 +15,7 @@ export interface CapiDispatchWorkerOptions {
   pollingIntervalMs?: number;
   batchSize?: number;
   leaseSeconds?: number;
-  maxAttempts?: number;
+  retryDelaySeconds?: number;
   workerId?: string;
 }
 
@@ -26,11 +26,12 @@ export class CapiDispatchWorker {
   private readonly pollingIntervalMs: number;
   private readonly batchSize: number;
   private readonly leaseSeconds: number;
-  private readonly maxAttempts: number;
+  private readonly retryDelaySeconds: number;
   private readonly workerId: string;
 
   private isRunning = false;
   private isProcessing = false;
+  private lastLoopError: Error | null = null;
   private timer: NodeJS.Timeout | null = null;
 
   constructor(options: CapiDispatchWorkerOptions) {
@@ -40,7 +41,7 @@ export class CapiDispatchWorker {
     this.pollingIntervalMs = options.pollingIntervalMs ?? 1000;
     this.batchSize = options.batchSize ?? 1;
     this.leaseSeconds = options.leaseSeconds ?? 120;
-    this.maxAttempts = options.maxAttempts ?? 5;
+    this.retryDelaySeconds = options.retryDelaySeconds ?? 5;
     this.workerId = options.workerId ?? `capi-worker-${randomUUID()}`;
   }
 
@@ -62,6 +63,10 @@ export class CapiDispatchWorker {
     }
   }
 
+  public isHealthy(): boolean {
+    return this.isRunning && this.lastLoopError === null;
+  }
+
   public async processSingleBatch(): Promise<number> {
     if (this.isProcessing) return 0;
     this.isProcessing = true;
@@ -73,6 +78,8 @@ export class CapiDispatchWorker {
         batchSize: this.batchSize,
         leaseSeconds: this.leaseSeconds,
       });
+
+      this.lastLoopError = null;
 
       if (!events || events.length === 0) {
         return 0;
@@ -112,7 +119,7 @@ export class CapiDispatchWorker {
         }
         if (!context?.pixelId || !context.accessToken) {
           await this.recordStatus(outcomeId, event.workspaceId, 'FAILED', 'MISSING_CAPI_CONFIGURATION');
-          await this.outboxGateway.failEvent({eventId:event.id, claimToken:event.claimToken, workerId:this.workerId, errorMessage:'MISSING_CAPI_CONFIGURATION', maxAttempts:this.maxAttempts});
+          await this.outboxGateway.failEvent({eventId:event.id, claimToken:event.claimToken, workerId:this.workerId, errorMessage:'MISSING_CAPI_CONFIGURATION', retryDelaySeconds:this.retryDelaySeconds});
           processed++; continue;
         }
         await this.recordStatus(outcomeId, event.workspaceId, 'QUEUED');
@@ -142,14 +149,24 @@ export class CapiDispatchWorker {
           });
         } else if (dispatchResult.kind === 'FATAL') {
           await this.recordStatus(outcomeId, event.workspaceId, 'FAILED', dispatchResult.errorCode);
-          // Fatal error (invalid payload or forbidden) -> complete outbox to prevent infinite loop
-          await this.outboxGateway.failEvent({
-            eventId: event.id,
-            claimToken: event.claimToken,
-            workerId: this.workerId,
-            errorMessage: dispatchResult.errorCode,
-            maxAttempts: 1, // Move to DLQ immediately
-          });
+          // Fatal provider failures have their own fenced transition and never
+          // depend on the event's current attempt count.
+          if (this.outboxGateway.deadLetterEvent) {
+            await this.outboxGateway.deadLetterEvent({
+              eventId: event.id,
+              claimToken: event.claimToken,
+              workerId: this.workerId,
+              errorMessage: dispatchResult.errorCode,
+            });
+          } else {
+            await this.outboxGateway.failEvent({
+              eventId: event.id,
+              claimToken: event.claimToken,
+              workerId: this.workerId,
+              errorMessage: dispatchResult.errorCode,
+              retryDelaySeconds: 0,
+            });
+          }
         } else {
           await this.recordStatus(outcomeId, event.workspaceId, 'FAILED', dispatchResult.errorCode);
           // Retryable error -> fail and reattempt
@@ -158,13 +175,14 @@ export class CapiDispatchWorker {
             claimToken: event.claimToken,
             workerId: this.workerId,
             errorMessage: dispatchResult.errorCode,
-            maxAttempts: this.maxAttempts,
+            retryDelaySeconds: this.retryDelaySeconds,
           });
         }
 
         processed++;
       }
 
+      this.lastLoopError = null;
       return processed;
     } finally {
       this.isProcessing = false;
@@ -219,7 +237,10 @@ export class CapiDispatchWorker {
     if (!this.isRunning) return;
     this.timer = setTimeout(async () => {
       if (!this.isRunning) return;
-      await this.processSingleBatch().catch(() => undefined);
+      await this.processSingleBatch().catch((error: unknown) => {
+        this.lastLoopError = error instanceof Error ? error : new Error(String(error));
+        console.error('[CapiDispatchWorker] processing loop failed', this.lastLoopError);
+      });
       this.scheduleNextTick(this.pollingIntervalMs);
     }, delayMs);
   }

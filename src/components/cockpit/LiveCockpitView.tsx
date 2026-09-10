@@ -60,6 +60,7 @@ import { normalizeStage } from "../kanban/LiveCommercialKanbanView";
 import { MessageMediaRenderer, MessageMediaPayload } from "./MessageMediaRenderer";
 import { SalesMediaVaultModal } from "./SalesMediaVaultModal";
 import { useConversationDrafts } from "../../hooks/useConversationDrafts";
+import { formatLocalDateTimeInput } from "../../utils/localDateTime";
 import { SalesMediaResource } from "../../data/salesMediaVault";
 import { ContactAvatar } from "./ContactAvatar";
 import { ExternalAgendaDrawer, getExternalAgendaConfig } from "./ExternalAgendaDrawer";
@@ -374,6 +375,12 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
 
   const [priorities, setPriorities] = React.useState<LoadState<ApiPriority[]>>({ state: "loading" });
   const [journeys, setJourneys] = React.useState<LoadState<ApiJourney[]>>({ state: "loading" });
+  const [nextJourneyCursor, setNextJourneyCursor] = React.useState<string | null>(null);
+  const [loadingMoreJourneys, setLoadingMoreJourneys] = React.useState(false);
+  const nextJourneyCursorRef = React.useRef<string | null>(null);
+  const queueRequestRef = React.useRef(0);
+  const loadedQueuePagesRef = React.useRef(1);
+  const queueLoadingRef = React.useRef(false);
   const [cockpit, setCockpit] = React.useState<LoadState<ApiCockpitView>>({ state: "loading" });
   const [refreshing, setRefreshing] = React.useState(false);
   const [syncError, setSyncError] = React.useState<string | null>(null);
@@ -539,7 +546,13 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   }, [selectedJourneyId]);
 
   const loadQueue = React.useCallback(async (silent = false) => {
+    if (silent && queueLoadingRef.current) return true;
+    const requestId = ++queueRequestRef.current;
+    queueLoadingRef.current = true;
     if (!silent) {
+      loadedQueuePagesRef.current = 1;
+      nextJourneyCursorRef.current = null;
+      setNextJourneyCursor(null);
       setPriorities({ state: "loading" });
       setJourneys({ state: "loading" });
     }
@@ -548,24 +561,70 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         gateway.listPriorities(workspaceId, 5),
         gateway.listJourneys(workspaceId, { limit: 20 }),
       ]);
+      const items = new Map(journeyPage.data.map((item) => [item.id, item]));
+      let cursor = journeyPage.nextCursor;
+      for (let pageIndex = 1; pageIndex < loadedQueuePagesRef.current && cursor; pageIndex++) {
+        const page = await gateway.listJourneys(workspaceId, { limit: 20, cursor });
+        for (const item of page.data) items.set(item.id, item);
+        cursor = page.nextCursor;
+      }
+      if (requestId !== queueRequestRef.current) return false;
       setPriorities(priorityData.length ? { state: "ready", value: priorityData } : { state: "empty" });
-      setJourneys(journeyPage.data.length ? { state: "ready", value: journeyPage.data } : { state: "empty" });
+      const value = Array.from(items.values());
+      setJourneys(value.length ? { state: "ready", value } : { state: "empty" });
+      nextJourneyCursorRef.current = cursor;
+      setNextJourneyCursor(cursor);
       const firstId = priorityData[0]?.journeyId || journeyPage.data[0]?.id;
       const isDesktop = typeof window !== 'undefined' ? window.innerWidth >= 760 : true;
       if (!selectedJourneyRef.current && firstId && isDesktop) onSelectedJourneyChange(firstId);
       return true;
     } catch (error) {
+      if (requestId !== queueRequestRef.current) return false;
       const message = error instanceof Error ? error.message : "Não foi possível carregar a fila autenticada.";
       if (!silent) {
         setPriorities({ state: "error", message });
         setJourneys({ state: "error", message });
       }
       return false;
+    } finally {
+      if (requestId === queueRequestRef.current) queueLoadingRef.current = false;
     }
   }, [gateway, onSelectedJourneyChange, workspaceId]);
 
+  const loadMoreJourneys = React.useCallback(async () => {
+    const cursor = nextJourneyCursorRef.current;
+    if (!cursor || queueLoadingRef.current) return;
+    const requestId = ++queueRequestRef.current;
+    queueLoadingRef.current = true;
+    setLoadingMoreJourneys(true);
+    try {
+      const page = await gateway.listJourneys(workspaceId, { limit: 20, cursor });
+      if (requestId !== queueRequestRef.current) return;
+      loadedQueuePagesRef.current += 1;
+      setJourneys((previous) => {
+        const current = previous.state === "ready" ? previous.value : [];
+        const merged = new Map(current.map((item) => [item.id, item]));
+        for (const item of page.data) merged.set(item.id, item);
+        const value = Array.from(merged.values());
+        return value.length ? { state: "ready", value } : { state: "empty" };
+      });
+      nextJourneyCursorRef.current = page.nextCursor;
+      setNextJourneyCursor(page.nextCursor);
+    } catch (error) {
+      if (requestId !== queueRequestRef.current) return;
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Não foi possível carregar mais conversas.",
+      });
+    } finally {
+      if (requestId === queueRequestRef.current) queueLoadingRef.current = false;
+      setLoadingMoreJourneys(false);
+    }
+  }, [gateway, workspaceId]);
+
   React.useEffect(() => {
     void loadQueue(false);
+    return () => { queueRequestRef.current += 1; queueLoadingRef.current = false; };
   }, [loadQueue]);
 
   React.useEffect(() => {
@@ -707,9 +766,6 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     setActionInProgress(true);
     try {
       await gateway.returnHandoffToAi(workspaceId, handoffCaseId, reason);
-      if (selectedJourneyId) {
-        await gateway.resumeBot(workspaceId, selectedJourneyId).catch(() => undefined);
-      }
       showNotification("success", "Conversa devolvida para a supervisão da IA.");
       setReturnAiModalOpen(false);
       await refresh();
@@ -725,9 +781,10 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     setActionInProgress(true);
     try {
       if (view?.handoff?.id && view.handoff.status === "ACCEPTED") {
-        await gateway.returnHandoffToAi(workspaceId, view.handoff.id, "Operador retomou IA").catch(() => undefined);
+        await gateway.returnHandoffToAi(workspaceId, view.handoff.id, "Operador retomou IA");
+      } else {
+        await gateway.resumeBot(workspaceId, selectedJourneyId);
       }
-      await gateway.resumeBot(workspaceId, selectedJourneyId);
       showNotification("success", "IA Receptionist reativada para esta conversa.");
       await refresh();
     } catch (err) {
@@ -751,11 +808,11 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     }
   };
 
-  const handleCreateFollowUp = async (dueAt: string, reason: string) => {
+  const handleCreateFollowUp = async (dueAt: string, reason: string, idempotencyKey: string) => {
     if (!selectedJourneyId) return;
     setActionInProgress(true);
     try {
-      await gateway.createFollowUp(workspaceId, selectedJourneyId, dueAt, reason);
+      await gateway.createFollowUp(workspaceId, selectedJourneyId, dueAt, reason, idempotencyKey);
       showNotification("success", "Follow-up agendado com sucesso.");
       setFollowUpModalOpen(false);
       await refresh();
@@ -1330,6 +1387,18 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
                 />
               </div>
             ))}
+            {queueTab !== 'priorities' && nextJourneyCursor && (
+              <div className="p-3">
+                <button
+                  type="button"
+                  onClick={() => void loadMoreJourneys()}
+                  disabled={loadingMoreJourneys}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {loadingMoreJourneys ? "Carregando…" : "Carregar mais conversas"}
+                </button>
+              </div>
+            )}
           </div>
         </aside>
 
@@ -1719,6 +1788,9 @@ function LiveJourneyBody({
   const [draftText, setDraftTextState] = React.useState(() => {
     return draftStore ? draftStore.getDraft(journey.id) : "";
   });
+  const outboundSubmitLockRef = React.useRef(false);
+  const visibleDraftRef = React.useRef({ journeyId: journey.id, text: draftText });
+  visibleDraftRef.current = { journeyId: journey.id, text: draftText };
 
   // Sync draftText when switching journey
   React.useEffect(() => {
@@ -1733,6 +1805,26 @@ function LiveJourneyBody({
       draftStore.setDraft(journey.id, text);
     }
   }, [journey.id, draftStore]);
+
+  const submitDraft = React.useCallback(async () => {
+    const textToSend = draftText.trim();
+    if (!textToSend || actionInProgress || outboundSubmitLockRef.current) return;
+    outboundSubmitLockRef.current = true;
+    try {
+      const result = await onCreateOutboundDraft(textToSend);
+      if (result !== false) {
+        if (visibleDraftRef.current.journeyId === journey.id
+          && visibleDraftRef.current.text === draftText) {
+          setDraftText("");
+          draftStore?.clearDraft(journey.id);
+        } else if (draftStore?.getDraft(journey.id) === draftText) {
+          draftStore.clearDraft(journey.id);
+        }
+      }
+    } finally {
+      outboundSubmitLockRef.current = false;
+    }
+  }, [actionInProgress, draftStore, draftText, journey.id, onCreateOutboundDraft, setDraftText]);
 
   const handleApplyMacro = (id: string, template: string) => {
     setDraftText(template);
@@ -2704,12 +2796,7 @@ function LiveJourneyBody({
                   }
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && draftText.trim()) {
                     e.preventDefault();
-                    const textToSend = draftText.trim();
-                    const res = await onCreateOutboundDraft(textToSend);
-                    if (res !== false) {
-                      setDraftText("");
-                      if (draftStore) draftStore.clearDraft(journey.id);
-                    }
+                    await submitDraft();
                   }
                 }}
               />
@@ -2717,16 +2804,7 @@ function LiveJourneyBody({
               {/* Botão Enviar (No mobile surge automaticamente ao digitar) */}
               <button
                 type="button"
-                onClick={async () => {
-                  if (draftText.trim()) {
-                    const textToSend = draftText.trim();
-                    const res = await onCreateOutboundDraft(textToSend);
-                    if (res !== false) {
-                      setDraftText("");
-                      if (draftStore) draftStore.clearDraft(journey.id);
-                    }
-                  }
-                }}
+                onClick={() => void submitDraft()}
                 disabled={actionInProgress || !draftText.trim()}
                 className={`${draftText.trim() ? "inline-flex" : "hidden sm:inline-flex"} items-center gap-1 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-40 transition shrink-0 shadow-2xs cursor-pointer`}
               >
@@ -3042,16 +3120,29 @@ function FollowUpModal({
   inProgress,
 }: {
   onClose: () => void;
-  onSubmit: (dueAt: string, reason: string) => void;
+  onSubmit: (dueAt: string, reason: string, idempotencyKey: string) => Promise<void>;
   inProgress: boolean;
 }) {
   const [dueAt, setDueAt] = React.useState(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(10, 0, 0, 0);
-    return tomorrow.toISOString().slice(0, 16);
+    return formatLocalDateTimeInput(tomorrow);
   });
   const [reason, setReason] = React.useState("");
+  const [idempotencyKey] = React.useState(() => crypto.randomUUID());
+  const submittingRef = React.useRef(false);
+
+  const submit = async () => {
+    if (submittingRef.current || inProgress) return;
+    if (reason.trim().length < 3 || !dueAt || new Date(dueAt).getTime() <= Date.now()) return;
+    submittingRef.current = true;
+    try {
+      await onSubmit(new Date(dueAt).toISOString(), reason.trim(), idempotencyKey);
+    } finally {
+      submittingRef.current = false;
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -3100,11 +3191,7 @@ function FollowUpModal({
           </button>
           <button
             type="button"
-            onClick={() => {
-              if (reason.trim().length >= 3 && dueAt && new Date(dueAt).getTime() > Date.now()) {
-                onSubmit(new Date(dueAt).toISOString(), reason.trim());
-              }
-            }}
+            onClick={() => void submit()}
             disabled={inProgress || reason.trim().length < 3 || !dueAt || new Date(dueAt).getTime() <= Date.now()}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
           >

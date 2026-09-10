@@ -62,7 +62,15 @@ export interface OutboxProcessingGateway {
     claimToken: string;
     workerId: string;
     errorMessage: string;
-    maxAttempts: number;
+    retryDelaySeconds: number;
+  }): Promise<void>;
+
+  /** Moves an irrecoverable claimed event directly to the DLQ. */
+  deadLetterEvent?(params: {
+    eventId: string;
+    claimToken: string;
+    workerId: string;
+    errorMessage: string;
   }): Promise<void>;
 
   /**

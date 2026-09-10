@@ -22,6 +22,7 @@ type HealthWorker = {
 type OptionalHealthWorkers = {
   outbound?: HealthWorker;
   receptionist?: HealthWorker;
+  capi?: HealthWorker;
 };
 
 export function normalizeDatabaseHostname(hostname: string) {
@@ -67,6 +68,9 @@ export function buildReadinessStatuses(
       : []),
     ...(workers.receptionist
       ? [{ name: 'receptionist-worker', healthy: workers.receptionist.isHealthy() }]
+      : []),
+    ...(workers.capi
+      ? [{ name: 'capi-worker', healthy: workers.capi.isHealthy() }]
       : []),
   ];
 }
