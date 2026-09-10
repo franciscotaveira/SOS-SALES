@@ -6,7 +6,6 @@ import {
   CommercialOutcomeRuleViolationError,
   COMMERCIAL_OUTCOME_RESULTS,
 } from '../../../application/ports/commercial-outcome-gateway.js';
-import { CapiClient } from '../../../infrastructure/channels/meta/capi-client.js';
 import { dbPool } from '../../../infrastructure/database/pool.js';
 import { PlaybookEvolutionEngine } from '../../../application/services/playbook-evolution-engine.js';
 import { canonicalUuid } from '../validation.js';
@@ -23,7 +22,7 @@ const bodySchema = z.object({
   revenueMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   // Currency is not caller-selectable in v1; all commercial values are BRL.
   currency: z.literal('BRL').optional(),
-  reason: z.string().trim().min(3).max(1000).optional(),
+  reason: z.string().trim().min(1).max(1000).optional(),
 });
 
 function actorOrUnauthorized(request: FastifyRequest, reply: FastifyReply) {
@@ -52,7 +51,14 @@ export async function commercialOutcomeRoutes(
     const params = paramsSchema.safeParse(request.params);
     const headers = idempotencySchema.safeParse(request.headers);
     const body = bodySchema.safeParse(request.body);
-    if (!params.success || !headers.success || !body.success) return invalid(reply);
+    if (!params.success || !headers.success || !body.success) {
+      request.log.warn({
+        paramsError: params.error?.issues,
+        headersError: headers.error?.issues,
+        bodyError: body.error?.issues,
+      }, 'Validation failure on commercial outcome request');
+      return invalid(reply);
+    }
     if (!dependencies.commercialOutcomeGateway) {
       return reply.code(503).send({ statusCode: 503, error: 'Service Unavailable', message: 'Commercial outcome service is unavailable' });
     }
@@ -68,117 +74,20 @@ export async function commercialOutcomeRoutes(
         idempotencyKey: headers.data['idempotency-key'],
       });
 
-      // Closed-Loop Meta CAPI Attribution Dispatch on WON.  The outcome RPC
-      // is idempotent, so a repeated HTTP request can return an existing
-      // outcome. Claim the CAPI transition first; only the request that moves
-      // PENDING -> QUEUED may call Meta, preventing duplicate Purchase events.
-      let capiClaimed = false;
+      // record_commercial_outcome atomically persists the sale and its outbox event.
+      // Only the CAPI worker sends conversions; never mutate immutable outcomes here.
       if (data && body.data.result === 'WON') {
-        try {
-          const claimRes = await dbPool.query(
-            `UPDATE public.commercial_outcomes
-             SET capi_status = 'QUEUED'
-             WHERE id = $1 AND workspace_id = $2 AND capi_status = 'PENDING'
-             RETURNING id`,
-            [data.outcomeId, params.data.workspaceId],
-          );
-          capiClaimed = (claimRes.rowCount ?? claimRes.rows.length) === 1;
-        } catch (claimError) {
-          request.log.warn({ claimError, workspaceId: params.data.workspaceId, outcomeId: data.outcomeId }, 'Could not claim CAPI dispatch; skipping to avoid duplicate event');
-        }
-      }
-
-      if (data && body.data.result === 'WON' && capiClaimed) {
-        void (async () => {
-          try {
-            const infoRes = await dbPool.query(
-              `SELECT j.contact_id, c.phone, c.name,
-                      cc.public_config,
-                      cs.secret_payload
-               FROM public.commercial_journeys j
-               JOIN public.contacts c ON c.id = j.contact_id
-               LEFT JOIN public.channel_connections cc ON cc.id = j.channel_connection_id
-               LEFT JOIN LATERAL (
-                 SELECT secret_payload
-                 FROM public.channel_connection_secrets
-                 WHERE channel_connection_id = cc.id
-                   AND secret_kind IN ('meta_capi_token', 'meta_bearer_token')
-                 ORDER BY CASE WHEN secret_kind = 'meta_capi_token' THEN 1 ELSE 2 END
-                 LIMIT 1
-               ) cs ON true
-               WHERE j.id = $1 AND j.workspace_id = $2
-               LIMIT 1`,
-              [params.data.journeyId, params.data.workspaceId]
-            );
-            if (infoRes.rows.length > 0) {
-              const row = infoRes.rows[0];
-              const pubConfig = row.public_config || {};
-              const secretPayload = row.secret_payload || {};
-              const pixelId = pubConfig?.metaPixelId
-                || pubConfig?.meta_capi_pixel_id
-                || pubConfig?.trackingConfig?.pixelId;
-              const accessToken = secretPayload?.accessToken;
-
-              if (pixelId && accessToken) {
-                const capi = new CapiClient();
-                const dispatchResult = await capi.sendPurchaseEvent(
-                  {
-                    outcomeId: data.outcomeId,
-                    workspaceId: params.data.workspaceId,
-                    journeyId: params.data.journeyId,
-                    pixelId,
-                    revenueMinor: body.data.revenueMinor,
-                    currency: 'BRL',
-                    phone: row.phone,
-                    occurredAt: new Date().toISOString(),
-                  },
-                  accessToken
-                );
-                if (dispatchResult.success) {
-                  await dbPool.query(
-                    `UPDATE public.commercial_outcomes
-                     SET capi_status = 'DISPATCHED', capi_event_id = $3
-                     WHERE id = $1 AND workspace_id = $2 AND capi_status = 'QUEUED'`,
-                    [data.outcomeId, params.data.workspaceId, dispatchResult.capiEventId],
-                  );
-                } else {
-                  await dbPool.query(
-                    `UPDATE public.commercial_outcomes
-                     SET capi_status = 'FAILED'
-                     WHERE id = $1 AND workspace_id = $2 AND capi_status = 'QUEUED'`,
-                    [data.outcomeId, params.data.workspaceId],
-                  );
-                }
-              } else {
-                await dbPool.query(
-                  `UPDATE public.commercial_outcomes
-                   SET capi_status = 'NOT_APPLICABLE'
-                   WHERE id = $1 AND workspace_id = $2 AND capi_status = 'QUEUED'`,
-                  [data.outcomeId, params.data.workspaceId],
-                );
-              }
-            } else {
-              await dbPool.query(
-                `UPDATE public.commercial_outcomes
-                 SET capi_status = 'NOT_APPLICABLE'
-                 WHERE id = $1 AND workspace_id = $2 AND capi_status = 'QUEUED'`,
-                [data.outcomeId, params.data.workspaceId],
-              );
-            }
-          } catch (capiErr) {
-            console.warn('[Meta CAPI Closed-Loop Dispatch Error]:', capiErr);
-            await dbPool.query(
-              `UPDATE public.commercial_outcomes
-               SET capi_status = 'FAILED'
-               WHERE id = $1 AND workspace_id = $2 AND capi_status = 'QUEUED'`,
-              [data.outcomeId, params.data.workspaceId],
-            ).catch(() => undefined);
-          }
-        })();
-
         // Level 5: Hive-Mind Playbook Evolution (Clonador de Melhores Práticas)
         void (async () => {
           try {
+            const learningClaim = await dbPool.query(
+              `INSERT INTO public.commercial_effect_claims(outcome_id,effect)
+               SELECT id,'playbook_learning' FROM public.commercial_outcomes
+               WHERE id=$1 AND workspace_id=$2
+               ON CONFLICT DO NOTHING RETURNING outcome_id`,
+              [data.outcomeId, params.data.workspaceId],
+            );
+            if (!learningClaim.rowCount) return;
             const msgRes = await dbPool.query(
               `SELECT id, direction, sender_type, text_content, sent_at
                FROM public.conversation_messages

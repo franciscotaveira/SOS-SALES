@@ -89,6 +89,10 @@ export interface CockpitJourneyDetail {
     name: string;
     status: string;
   } | null;
+  botEnabled?: boolean;
+  botPausedAt?: string | null;
+  botPauseReason?: string | null;
+  responderOwner?: string | null;
 }
 
 export interface CockpitAcquisitionContext {
@@ -155,7 +159,16 @@ export interface CockpitOutcome {
   currency: string;
   closedReason: string | null;
   capiStatus: string;
+  capiErrorCode?: string;
   occurredAt: string;
+}
+
+export interface CockpitFollowUp {
+  id: string;
+  dueAt: string;
+  reason: string;
+  status: string;
+  createdAt: string;
 }
 
 export interface CockpitJourneyView {
@@ -167,6 +180,7 @@ export interface CockpitJourneyView {
   recommendation: CockpitRecommendation | null;
   handoff: CockpitHandoff | null;
   outcome: CockpitOutcome | null;
+  followUp?: CockpitFollowUp | null;
 }
 
 /**

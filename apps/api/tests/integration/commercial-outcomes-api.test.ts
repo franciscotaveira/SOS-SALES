@@ -65,11 +65,11 @@ describe('Commercial outcome API — authenticated immutable journey closures', 
     await server.close();
   });
 
-  it('OUT-API-02: permits LOST, but rejects unsupported lifecycle values and invalid data before the gateway', async () => {
+  it('OUT-API-02: permits LOST, ABANDONED and UNRESPONSIVE, but rejects unsupported lifecycle values and invalid data before the gateway', async () => {
     let invoked = false;
     const server = app(testGateway(() => { invoked = true; return undefined; }));
     const cases = [
-      { headers: { authorization, 'idempotency-key': keyA }, payload: { result: 'UNRESPONSIVE', revenueMinor: 0 } },
+      { headers: { authorization, 'idempotency-key': keyA }, payload: { result: 'INVALID_STATUS', revenueMinor: 0 } },
       { headers: { authorization, 'idempotency-key': keyA }, payload: { result: 'LOST', revenueMinor: -1 } },
       { headers: { authorization, 'idempotency-key': 'not-a-uuid' }, payload: { result: 'LOST', revenueMinor: 0 } },
       { headers: { authorization, 'idempotency-key': keyA }, payload: { result: 'WON', revenueMinor: 1, currency: 'USD' } },
@@ -80,6 +80,25 @@ describe('Commercial outcome API — authenticated immutable journey closures', 
       expect(response.json()).toEqual({ statusCode: 422, error: 'Unprocessable Entity', message: 'Invalid commercial outcome request' });
     }
     expect(invoked).toBe(false);
+    await server.close();
+  });
+
+  it('OUT-API-02B: permits ABANDONED with reason and forwards to gateway', async () => {
+    let received: { actor: typeof verifiedActor; input: RecordCommercialOutcomeInput } | undefined;
+    const server = app(testGateway((actor, input) => {
+      received = { actor, input };
+      return { outcomeId: 'a5000000-0000-4000-8000-000000000002' };
+    }));
+    const response = await server.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceA}/journeys/${journeyA}/outcomes`,
+      headers: { authorization, 'idempotency-key': keyA },
+      payload: { result: 'ABANDONED', revenueMinor: 0, reason: 'Amigo' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: { outcomeId: 'a5000000-0000-4000-8000-000000000002' } });
+    expect(received?.input.result).toBe('ABANDONED');
+    expect(received?.input.reason).toBe('Amigo');
     await server.close();
   });
 

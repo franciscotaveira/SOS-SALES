@@ -1,3 +1,4 @@
+import { resolveCapiConfig } from '../../../infrastructure/channels/meta/capi-config.js';
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { WahaSyncService } from '../../../infrastructure/channels/waha/waha-sync-service.js';
 import { WabaClient } from '../../../infrastructure/channels/meta/waba-client.js';
@@ -22,6 +23,7 @@ const trackingSettingsBodySchema = z.object({
   metaDatasetId: z.string().trim().max(80).optional(),
   metaAccessToken: z.string().trim().max(4096).optional(),
   metaCapiEnabled: z.boolean().optional(),
+  metaCapiActionSource: z.enum(['system_generated','business_messaging','physical_store']).optional(),
   googleAdsCustomerId: z.string().trim().max(80).optional(),
   googleConversionId: z.string().trim().max(80).optional(),
   googleGclidTracking: z.boolean().optional(),
@@ -1673,7 +1675,7 @@ export async function whatsappChannelRoutes(
       });
 
       // Fetch allowed groups from workspace_agent_config to flag which groups have AI enabled
-      const configRes = await routePool.query<{ behavior_config: Record<string, unknown> | null }>(
+      const configRes = await dbPool.query<{ behavior_config: Record<string, unknown> | null }>(
         `SELECT behavior_config FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`,
         [workspaceId]
       ).catch(() => ({ rows: [] }));
@@ -1813,7 +1815,7 @@ export async function whatsappChannelRoutes(
     const { enabled = false } = (request.body || {}) as { enabled?: boolean };
 
     try {
-      const configRes = await routePool.query<{ behavior_config: Record<string, unknown> | null }>(
+      const configRes = await dbPool.query<{ behavior_config: Record<string, unknown> | null }>(
         `SELECT behavior_config FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`,
         [workspaceId]
       );
@@ -1837,7 +1839,7 @@ export async function whatsappChannelRoutes(
         allowed_groups: currentAllowed,
       };
 
-      await routePool.query(
+      await dbPool.query(
         `UPDATE public.workspace_agent_config
          SET behavior_config = $2::jsonb, updated_at = NOW()
          WHERE workspace_id = $1`,
@@ -2173,7 +2175,8 @@ export async function whatsappChannelRoutes(
             metaPixelId: cfg.metaPixelId || cfg.meta_capi_pixel_id || cfg.pixelId || '',
             metaDatasetId: cfg.metaDatasetId || cfg.meta_capi_dataset_id || cfg.datasetId || '',
             metaAccessTokenConfigured: Boolean(res.rows[0].meta_token_configured),
-            metaCapiEnabled: cfg.metaCapiEnabled !== false,
+            metaCapiEnabled: cfg.metaCapiEnabled === true,
+            metaCapiActionSource: cfg.metaCapiActionSource || 'system_generated',
             googleAdsCustomerId: cfg.googleAdsCustomerId || '',
             googleConversionId: cfg.googleConversionId || '',
             googleGclidTracking: cfg.googleGclidTracking !== false,
@@ -2201,6 +2204,7 @@ export async function whatsappChannelRoutes(
       metaDatasetId?: string;
       metaAccessToken?: string;
       metaCapiEnabled?: boolean;
+      metaCapiActionSource?: 'system_generated' | 'business_messaging' | 'physical_store';
       googleAdsCustomerId?: string;
       googleConversionId?: string;
       googleGclidTracking?: boolean;
@@ -2266,7 +2270,8 @@ export async function whatsappChannelRoutes(
         // at the wrong data source and is impossible to audit later.
         meta_capi_pixel_id: body.metaPixelId ?? safePublicConfig.meta_capi_pixel_id,
         meta_capi_dataset_id: body.metaDatasetId ?? safePublicConfig.meta_capi_dataset_id,
-        metaCapiEnabled: body.metaCapiEnabled ?? safePublicConfig.metaCapiEnabled ?? true,
+        metaCapiEnabled: body.metaCapiEnabled ?? safePublicConfig.metaCapiEnabled ?? false,
+        metaCapiActionSource: body.metaCapiActionSource ?? safePublicConfig.metaCapiActionSource ?? 'system_generated',
         googleAdsCustomerId: body.googleAdsCustomerId ?? safePublicConfig.googleAdsCustomerId,
         googleConversionId: body.googleConversionId ?? safePublicConfig.googleConversionId,
         googleGclidTracking: body.googleGclidTracking ?? safePublicConfig.googleGclidTracking ?? true,
@@ -2321,8 +2326,8 @@ export async function whatsappChannelRoutes(
     };
   }>, reply: FastifyReply) => {
     const { pixelId, datasetId, accessToken, testEventCode, eventName, phone } = request.body || {};
-    const targetPixelId = (pixelId || datasetId || '').trim();
-    const token = (accessToken || '').trim();
+    let targetPixelId = (datasetId || pixelId || '').trim();
+    let token = (accessToken || '').trim();
 
     // This endpoint sends a deliberately synthetic event directly to Meta.
     // Without a Test Events code it would become a real Lead/Purchase and
@@ -2334,6 +2339,23 @@ export async function whatsappChannelRoutes(
         code: 'CAPI_TEST_EVENT_CODE_REQUIRED',
         error: 'Informe o Test Event Code da Meta. Eventos de teste sem esse código poderiam contaminar a atribuição real.',
       });
+    }
+
+    if (!token || !targetPixelId) {
+      const saved = await dbPool.query(`SELECT cc.public_config, cs.secret_payload
+        FROM public.channel_connections cc
+        LEFT JOIN public.channel_connection_secrets cs ON cs.channel_connection_id=cc.id
+          AND cs.workspace_id=cc.workspace_id AND cs.secret_kind='meta_capi_token'
+        WHERE cc.workspace_id=$1 AND cc.provider IN ('meta_cloud','waha') AND cc.status='CONNECTED'
+          AND cc.phone_number <> 'Meta CAPI Tracking'
+        ORDER BY CASE WHEN cc.provider='meta_cloud' THEN 1 ELSE 2 END LIMIT 1`, [request.params.workspaceId]);
+      const config=resolveCapiConfig(saved.rows[0]?.public_config,saved.rows[0]?.secret_payload);
+      // A stored token is only used against its own configured destination.
+      if (!token && targetPixelId && targetPixelId !== config.datasetId) {
+        return reply.status(409).send({success:false,error:'Salve o novo destino antes de testar com a credencial protegida.'});
+      }
+      targetPixelId ||= config.datasetId;
+      token ||= config.accessToken;
     }
 
     if (!targetPixelId || !token) {
@@ -2364,6 +2386,7 @@ export async function whatsappChannelRoutes(
             ph: [phoneHash],
           },
           custom_data: {
+            ...(selectedEvent === 'Purchase' ? {currency:'BRL',value:1} : {}),
             content_name: `SOS Vendas CAPI test (${selectedEvent})`,
             content_category: 'whatsapp_crm_tracking',
           },
@@ -2374,17 +2397,18 @@ export async function whatsappChannelRoutes(
 
     try {
       const metaRes = await fetch(
-        `${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(targetPixelId)}/events?access_token=${encodeURIComponent(token)}`,
+        `${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(targetPixelId)}/events`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(20000),
           body: JSON.stringify(testPayload),
         }
       );
 
       const metaData = (await metaRes.json().catch(() => ({}))) as any;
 
-      if (!metaRes.ok || metaData?.error) {
+      if (!metaRes.ok || metaData?.error || metaData?.events_received !== 1) {
         return reply.status(400).send({
           success: false,
           error: metaData?.error?.message || 'Falha no disparo do evento CAPI para a Meta.',
@@ -2394,7 +2418,7 @@ export async function whatsappChannelRoutes(
 
       return {
         success: true,
-        eventsReceived: metaData?.events_received || 1,
+        eventsReceived: metaData.events_received,
         fbtraceId: metaData?.fbtrace_id,
         messages: metaData?.messages || [],
         raw: metaData,

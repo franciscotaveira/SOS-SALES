@@ -11,17 +11,22 @@ interface TrackingState {
   metaDatasetId: string;
   metaAccessTokenConfigured: boolean;
   metaCapiEnabled: boolean;
+  metaCapiActionSource: 'system_generated' | 'physical_store' | 'business_messaging';
 }
 
 const EMPTY_TRACKING: TrackingState = {
   metaPixelId: '',
   metaDatasetId: '',
   metaAccessTokenConfigured: false,
-  metaCapiEnabled: true,
+  metaCapiEnabled: false,
+  metaCapiActionSource: 'system_generated',
 };
 
 export const MetaTrackingSetupView: React.FC<MetaTrackingSetupViewProps> = ({ workspaceId }) => {
   const [tracking, setTracking] = React.useState<TrackingState>(EMPTY_TRACKING);
+  const [testCode, setTestCode] = React.useState('');
+  const [testPhone, setTestPhone] = React.useState('');
+  const [testing, setTesting] = React.useState(false);
   const [accessToken, setAccessToken] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -59,6 +64,7 @@ export const MetaTrackingSetupView: React.FC<MetaTrackingSetupViewProps> = ({ wo
           metaPixelId: tracking.metaPixelId.trim(),
           metaDatasetId: tracking.metaDatasetId.trim(),
           metaCapiEnabled: tracking.metaCapiEnabled,
+          metaCapiActionSource: tracking.metaCapiActionSource,
           ...(accessToken.trim() ? { metaAccessToken: accessToken.trim() } : {}),
         }),
       });
@@ -72,6 +78,19 @@ export const MetaTrackingSetupView: React.FC<MetaTrackingSetupViewProps> = ({ wo
     } finally {
       setSaving(false);
     }
+  };
+
+  const testConnection = async () => {
+    setTesting(true);setFeedback(null);
+    try {
+      const response=await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/tracking/test-capi`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({testEventCode:testCode.trim(),phone:testPhone,eventName:'Purchase'})});
+      const payload=await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.error||'A Meta não confirmou o teste.');
+      setFeedback({type:'success',message:'Meta aceitou o evento de teste. Confira-o em Testar eventos. Isso não comprova atribuição de vendas.'});
+    } catch(e) {setFeedback({type:'error',message:e instanceof Error?e.message:'Falha no teste.'});}
+    finally {setTesting(false);}
   };
 
   return (
@@ -129,6 +148,20 @@ export const MetaTrackingSetupView: React.FC<MetaTrackingSetupViewProps> = ({ wo
               <input type="checkbox" checked={tracking.metaCapiEnabled} onChange={(event) => setTracking((current) => ({ ...current, metaCapiEnabled: event.target.checked }))} className="h-4 w-4 accent-blue-600" />
             </label>
 
+            <label className="block text-xs font-bold text-slate-700">Onde a venda é concluída?
+              <select value={tracking.metaCapiActionSource} onChange={e=>setTracking(current=>({...current,metaCapiActionSource:e.target.value as TrackingState['metaCapiActionSource']}))} className="block w-full rounded border p-2">
+                <option value="system_generated">Registro automático pelo sistema</option>
+                <option value="physical_store">Presencialmente</option>
+                <option value="business_messaging">No WhatsApp (exige origem CTWA e WABA)</option>
+              </select>
+            </label>
+            <div className="rounded-xl border p-3 space-y-2">
+              <strong className="text-xs">Testar com a credencial salva</strong>
+              <label className="block text-xs">Código de Testar eventos<input value={testCode} onChange={e=>setTestCode(e.target.value)} placeholder="TEST…" className="block w-full border rounded p-2" /></label>
+              <label className="block text-xs">Telefone de teste com país e DDD<input value={testPhone} onChange={e=>setTestPhone(e.target.value)} placeholder="+55…" className="block w-full border rounded p-2" /></label>
+              <button type="button" onClick={()=>void testConnection()} disabled={testing||!tracking.metaAccessTokenConfigured||!testCode.trim()||testPhone.replace(/\D/g,'').length<8} className="rounded bg-blue-600 px-3 py-2 text-white disabled:opacity-50">{testing?'Testando…':'Enviar evento de teste'}</button>
+              <p className="text-xs text-slate-500">Usa a configuração salva, não os campos ainda não salvos. Compra sintética de R$ 1 em modo de teste; não comprova o vínculo WhatsApp.</p>
+            </div>
             <div className="flex justify-end">
               <button type="submit" disabled={saving || !tracking.metaDatasetId.trim()} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar conexão Meta

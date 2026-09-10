@@ -707,11 +707,31 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
     setActionInProgress(true);
     try {
       await gateway.returnHandoffToAi(workspaceId, handoffCaseId, reason);
+      if (selectedJourneyId) {
+        await gateway.resumeBot(workspaceId, selectedJourneyId).catch(() => undefined);
+      }
       showNotification("success", "Conversa devolvida para a supervisão da IA.");
       setReturnAiModalOpen(false);
       await refresh();
     } catch (err) {
       showNotification("error", err instanceof Error ? err.message : "Erro ao devolver para IA.");
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
+  const handleResumeBot = async () => {
+    if (!selectedJourneyId) return;
+    setActionInProgress(true);
+    try {
+      if (view?.handoff?.id && view.handoff.status === "ACCEPTED") {
+        await gateway.returnHandoffToAi(workspaceId, view.handoff.id, "Operador retomou IA").catch(() => undefined);
+      }
+      await gateway.resumeBot(workspaceId, selectedJourneyId);
+      showNotification("success", "IA Receptionist reativada para esta conversa.");
+      await refresh();
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Erro ao retomar IA.");
     } finally {
       setActionInProgress(false);
     }
@@ -1354,6 +1374,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               onAcceptHandoff={handleAcceptHandoff}
               onResolveHandoff={handleResolveHandoff}
               onOpenReturnAiModal={() => setReturnAiModalOpen(true)}
+              onResumeBot={handleResumeBot}
               onStageChange={handleStageChange}
               onOpenFollowUpModal={() => setFollowUpModalOpen(true)}
               onOpenOutcomeModal={() => setOutcomeModalOpen(true)}
@@ -1623,6 +1644,7 @@ function LiveJourneyBody({
   onAcceptHandoff,
   onResolveHandoff,
   onOpenReturnAiModal,
+  onResumeBot,
   onStageChange,
   onOpenFollowUpModal,
   onOpenOutcomeModal,
@@ -1650,6 +1672,7 @@ function LiveJourneyBody({
   onAcceptHandoff: (handoffCaseId: string) => void;
   onResolveHandoff: (handoffCaseId: string) => void;
   onOpenReturnAiModal: () => void;
+  onResumeBot?: () => void;
   onStageChange: (stage: string) => void;
   onOpenFollowUpModal: () => void;
   onOpenOutcomeModal: () => void;
@@ -1667,7 +1690,7 @@ function LiveJourneyBody({
     clearDraft: (journeyId: string) => void;
   };
 }) {
-  const { journey, acquisitionContexts, messages, decisionState, recommendation, handoff, outcome, knownFacts } = view;
+  const { journey, acquisitionContexts, messages, decisionState, recommendation, handoff, outcome, knownFacts, followUp } = view;
   const acquisition = acquisitionContexts[0] ?? null;
   const contactFirstName = (journey.contact.name || "Cliente").split(" ")[0];
   const externalAgendaConfig = React.useMemo(() => getExternalAgendaConfig(workspaceId), [workspaceId]);
@@ -2237,14 +2260,41 @@ function LiveJourneyBody({
               </button>
             )}
 
+            {/* Retomar IA (visível sempre que o bot estiver pausado ou desativado pelo atendimento humano) */}
+            {(!journey.botEnabled || Boolean(journey.botPausedAt)) && onResumeBot && (
+              <button
+                type="button"
+                onClick={onResumeBot}
+                disabled={actionInProgress}
+                className="inline-flex items-center gap-1 rounded-xl border border-purple-300 bg-purple-100 hover:bg-purple-200 text-purple-900 px-2 sm:px-2.5 py-1.5 sm:py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-2xs"
+                title={`IA pausada ou desativada (${journey.botPauseReason || (journey.botPausedAt ? 'atendimento humano' : 'manual')}). Clique para reativar respostas automáticas.`}
+              >
+                <Bot size={13} className="text-purple-700" /> <span className="hidden sm:inline">Retomar IA</span>
+              </button>
+            )}
+
             {/* Desktop-only: Follow-up */}
             <button
               type="button"
               onClick={onOpenFollowUpModal}
               disabled={actionInProgress}
-              className="hidden sm:inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer"
+              className={`hidden sm:inline-flex items-center gap-1 rounded-xl border px-2.5 py-1 text-xs font-bold transition disabled:opacity-60 cursor-pointer ${
+                followUp
+                  ? "border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 shadow-2xs"
+                  : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+              }`}
+              title={
+                followUp
+                  ? `Follow-up agendado para ${new Date(followUp.dueAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}: ${followUp.reason}`
+                  : "Agendar follow-up comercial"
+              }
             >
-              <Clock size={13} className="text-slate-500" /> <span>Follow-up</span>
+              <Clock size={13} className={followUp ? "text-blue-600" : "text-slate-500"} />
+              <span>
+                {followUp
+                  ? `Retorno: ${new Date(followUp.dueAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`
+                  : "Follow-up"}
+              </span>
             </button>
 
             {/* Desktop-only: Etapa do Funil */}
@@ -2767,6 +2817,12 @@ function LiveDossier({
 
   return (
     <div className="space-y-2">
+      {outcome && <section className="rounded-xl border p-3 text-xs" aria-label="Entrega da conversão Meta">
+        <strong>Conversão Meta: </strong>
+        {({PENDING:'Aguardando processamento',QUEUED:'Na fila de envio',DISPATCHED:'Aceita pela API Meta',FAILED:'Envio falhou; verificar conexão e fila',NOT_APPLICABLE:'Envio desativado ou não aplicável'} as Record<string,string>)[outcome.capiStatus] || outcome.capiStatus}
+        <p className="mt-1 text-slate-500">Recebimento pela API não comprova atribuição ao anúncio.</p>
+        {outcome.capiErrorCode && <p>Diagnóstico: {outcome.capiErrorCode}</p>}
+      </section>}
       {/* Super Autonomy & Human-in-the-Loop Monitor */}
       <AutonomousSupervisorPanel
         workspaceId={workspaceId}
@@ -3014,16 +3070,22 @@ function FollowUpModal({
               onChange={(e) => setDueAt(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm focus:ring-2 focus:ring-blue-500"
             />
+            {dueAt && new Date(dueAt).getTime() <= Date.now() && (
+              <p className="mt-1 text-xs text-rose-600 font-medium">A data/hora do retorno deve ser no futuro.</p>
+            )}
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-700">Motivo do Retorno</label>
+            <label className="block text-xs font-bold text-slate-700">Motivo do Retorno (mín. 3 letras)</label>
             <input
               type="text"
-              placeholder="ex: Cliente pediu para ligar após receber proposta"
+              placeholder="ex: Retornar com proposta ajustada"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm focus:ring-2 focus:ring-blue-500"
             />
+            {reason.trim().length > 0 && reason.trim().length < 3 && (
+              <p className="mt-1 text-xs text-amber-600 font-medium">O motivo precisa ter pelo menos 3 caracteres.</p>
+            )}
           </div>
         </div>
 
@@ -3039,11 +3101,11 @@ function FollowUpModal({
           <button
             type="button"
             onClick={() => {
-              if (reason.trim() && dueAt) {
+              if (reason.trim().length >= 3 && dueAt && new Date(dueAt).getTime() > Date.now()) {
                 onSubmit(new Date(dueAt).toISOString(), reason.trim());
               }
             }}
-            disabled={inProgress || !reason.trim() || !dueAt}
+            disabled={inProgress || reason.trim().length < 3 || !dueAt || new Date(dueAt).getTime() <= Date.now()}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
           >
             Agendar
@@ -3134,11 +3196,44 @@ function OutcomeModal({
             <label className="block text-xs font-bold text-slate-700">Motivo / Observação</label>
             <input
               type="text"
-              placeholder="ex: Fechamento plano anual via Pix"
+              placeholder={result === "ABANDONED" ? "ex: Amigo, contato pessoal ou sem retorno" : "ex: Fechamento plano anual via Pix"}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm focus:ring-2 focus:ring-blue-500"
             />
+            {/* Atalhos rápidos de motivo */}
+            {result !== "WON" && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setReason("Amigo / Contato Pessoal")}
+                  className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition"
+                >
+                  Amigo / Pessoal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReason("Sem interesse no momento")}
+                  className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition"
+                >
+                  Sem interesse
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReason("Parou de responder")}
+                  className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition"
+                >
+                  Parou de responder
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReason("Fora do perfil / desqualificado")}
+                  className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition"
+                >
+                  Desqualificado
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -3155,7 +3250,8 @@ function OutcomeModal({
             type="button"
             onClick={() => {
               const val = parseFloat(revenueBrl) || 0;
-              onSubmit(result, result === "WON" ? val : 0, reason.trim() || undefined);
+              const fallbackReason = result === "ABANDONED" ? "Contato pessoal ou encerrado" : (result === "LOST" ? "Não convertido" : undefined);
+              onSubmit(result, result === "WON" ? val : 0, reason.trim() || fallbackReason);
             }}
             disabled={inProgress}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"

@@ -77,7 +77,20 @@ export async function journeyOperationRoutes(
     const params = paramsSchema.safeParse(request.params);
     const headers = idempotencySchema.safeParse(request.headers);
     const body = followUpSchema.safeParse(request.body);
-    if (!params.success || !headers.success || !body.success) return invalid(reply);
+    if (!params.success || !headers.success || !body.success) {
+      request.log.warn({
+        paramsError: params.error?.issues,
+        headersError: headers.error?.issues,
+        bodyError: body.error?.issues,
+      }, 'Validation failure on follow-up creation');
+      return reply.code(422).send({
+        statusCode: 422,
+        error: 'Unprocessable Entity',
+        message: body.error?.issues?.[0]?.message
+          ? `Validação: ${body.error.issues[0].path.join('.')} - ${body.error.issues[0].message}`
+          : 'Invalid journey operation request',
+      });
+    }
     if (!dependencies.journeyOperationsGateway) return unavailable(reply);
 
     try {

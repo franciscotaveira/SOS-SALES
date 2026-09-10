@@ -1,6 +1,6 @@
 import { AuthenticatedActor } from './operator-authenticator.js';
 
-export const COMMERCIAL_OUTCOME_RESULTS = ['WON', 'LOST'] as const;
+export const COMMERCIAL_OUTCOME_RESULTS = ['WON', 'LOST', 'ABANDONED', 'UNRESPONSIVE'] as const;
 export type CommercialOutcomeResult = (typeof COMMERCIAL_OUTCOME_RESULTS)[number];
 
 export interface RecordCommercialOutcomeInput {

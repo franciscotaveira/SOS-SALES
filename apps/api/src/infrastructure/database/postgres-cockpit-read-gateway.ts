@@ -69,6 +69,10 @@ interface JourneyDetailRow extends QueryResultRow {
   started_at: Date;
   closed_at: Date | null;
   updated_at: Date;
+  bot_enabled?: boolean;
+  bot_paused_at?: Date | null;
+  bot_pause_reason?: string | null;
+  responder_owner?: string | null;
   contact_name: string | null;
   contact_phone: string;
   channel_id: string | null;
@@ -83,6 +87,7 @@ interface JourneyDetailRow extends QueryResultRow {
   recommendation: Record<string, unknown> | null;
   handoff: Record<string, unknown> | null;
   outcome: Record<string, unknown> | null;
+  follow_up: Record<string, unknown> | null;
 }
 
 function asIso(value: Date | string | null): string | null {
@@ -209,6 +214,7 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
           j.id, j.contact_id, j.status, j.pipeline_stage,
           j.primary_service_or_product, j.total_revenue_minor, j.currency,
           j.started_at, j.closed_at, j.updated_at,
+          j.bot_enabled, j.bot_paused_at, j.bot_pause_reason, j.responder_owner,
           c.name AS contact_name, c.phone AS contact_phone,
           cc.id AS channel_id, cc.provider AS channel_provider,
           cc.phone_number AS channel_phone_number, cc.name AS channel_name,
@@ -277,12 +283,24 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
             SELECT row_to_json(o)
             FROM (
               SELECT id, result, final_revenue_minor, currency, closed_reason,
-                     capi_status, occurred_at
+                     COALESCE((SELECT d.status FROM public.capi_deliveries d WHERE d.outcome_id=commercial_outcomes.id AND d.workspace_id=commercial_outcomes.workspace_id), capi_status) AS capi_status,
+                     (SELECT d.error_code FROM public.capi_deliveries d WHERE d.outcome_id=commercial_outcomes.id AND d.workspace_id=commercial_outcomes.workspace_id) AS capi_error_code, occurred_at
               FROM public.commercial_outcomes
               WHERE workspace_id = j.workspace_id AND journey_id = j.id
               LIMIT 1
             ) o
-          ) AS outcome
+          ) AS outcome,
+          (
+            SELECT row_to_json(fu)
+            FROM (
+              SELECT id, due_at, reason, status, created_at
+              FROM public.follow_up_tasks
+              WHERE workspace_id = j.workspace_id AND journey_id = j.id
+                AND status IN ('PENDING', 'DUE')
+              ORDER BY due_at ASC
+              LIMIT 1
+            ) fu
+          ) AS follow_up
         FROM public.commercial_journeys j
         JOIN public.contacts c
           ON c.workspace_id = j.workspace_id AND c.id = j.contact_id
@@ -346,6 +364,10 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
           startedAt: new Date(row.started_at).toISOString(),
           closedAt: asIso(row.closed_at),
           updatedAt: new Date(row.updated_at).toISOString(),
+          botEnabled: row.bot_enabled ?? true,
+          botPausedAt: asIso(row.bot_paused_at as Date | null),
+          botPauseReason: (row.bot_pause_reason as string | null) || null,
+          responderOwner: (row.responder_owner as string | null) || null,
           contact: { id: row.contact_id, name: row.contact_name, phone: row.contact_phone },
           channel: row.channel_id && row.channel_provider && row.channel_phone_number && row.channel_name && row.channel_status
             ? {
@@ -395,7 +417,14 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
           id: String(outcome.id), result: String(outcome.result),
           finalRevenueMinor: outcome.final_revenue_minor === null ? null : Number(outcome.final_revenue_minor),
           currency: String(outcome.currency), closedReason: outcome.closed_reason as string | null,
-          capiStatus: String(outcome.capi_status), occurredAt: new Date(outcome.occurred_at as Date).toISOString(),
+          capiStatus: String(outcome.capi_status), capiErrorCode: outcome.capi_error_code ? String(outcome.capi_error_code) : undefined, occurredAt: new Date(outcome.occurred_at as Date).toISOString(),
+        } : null,
+        followUp: row.follow_up ? {
+          id: String(row.follow_up.id),
+          dueAt: asIso(row.follow_up.due_at as Date | string)!,
+          reason: String(row.follow_up.reason),
+          status: String(row.follow_up.status),
+          createdAt: asIso(row.follow_up.created_at as Date | string) || new Date().toISOString(),
         } : null,
       };
     });

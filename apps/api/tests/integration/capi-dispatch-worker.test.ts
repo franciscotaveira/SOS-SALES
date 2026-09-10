@@ -109,7 +109,9 @@ describe('Meta Conversions API (CAPI) Dispatch Worker', () => {
       query: vi.fn().mockResolvedValue({
         rows: [
           {
-            pixel_id: '998877665544332',
+            public_config: {metaDatasetId:'998877665544332',metaCapiEnabled:true},
+            secret_payload: {accessToken:'test-workspace-token'},
+            occurred_at: '2026-09-01T12:00:00.000Z',
             phone: '+5511999998888',
             email: 'comprador@example.com',
           },
@@ -141,7 +143,9 @@ describe('Meta Conversions API (CAPI) Dispatch Worker', () => {
       pixelId: '998877665544332',
       phone: '+5511999998888',
       email: 'comprador@example.com',
-    });
+      occurredAt: '2026-09-01T12:00:00.000Z',
+      actionSource:'system_generated',ctwaClid:undefined,whatsappBusinessAccountId:undefined,
+    }, 'test-workspace-token');
     expect(completedEvent).toEqual({
       eventId: 'evt10000-0000-4000-8000-000000000001',
       claimToken: 'tok10000-0000-4000-8000-000000000001',

@@ -756,6 +756,7 @@ export class ReceptionistAgent {
     try {
       const result = await this.query(
         `SELECT
+           j.status,
            j.channel_connection_id,
            j.bot_enabled,
            j.bot_paused_at,
@@ -780,6 +781,7 @@ export class ReceptionistAgent {
       );
       if (result.rows.length !== 1) return false;
       const {
+        status,
         bot_enabled,
         channel_connection_id,
         bot_paused_at,
@@ -797,6 +799,8 @@ export class ReceptionistAgent {
         meta_agent_activation_status,
         published_at,
       } = result.rows[0];
+      // Se a jornada comercial não estiver ABERTA (ex: ABANDONED, WON, LOST), a IA receptora não deve responder
+      if (status && status !== 'OPEN') return false;
       const metaChannelMatches = Boolean(meta_agent_channel_connection_id)
         && Boolean(channel_connection_id)
         && meta_agent_channel_connection_id === channel_connection_id;

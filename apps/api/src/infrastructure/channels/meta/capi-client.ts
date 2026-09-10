@@ -38,7 +38,7 @@ export class CapiClient implements CapiDispatchGateway {
     this.defaultAccessToken = config?.defaultAccessToken;
     this.apiVersion = config?.apiVersion || DEFAULT_META_GRAPH_API_VERSION;
     this.baseUrl = config?.baseUrl || 'https://graph.facebook.com';
-    this.defaultTestEventCode = config?.defaultTestEventCode || process.env.META_TEST_EVENT_CODE;
+    this.defaultTestEventCode = config?.defaultTestEventCode;
   }
 
   async sendPurchaseEvent(
@@ -71,6 +71,10 @@ export class CapiClient implements CapiDispatchGateway {
       ? Math.floor(new Date(event.occurredAt).getTime() / 1000)
       : Math.floor(Date.now() / 1000);
 
+    if (!Number.isFinite(eventTime) || eventTime > Date.now()/1000 || !Number.isSafeInteger(event.revenueMinor) || event.revenueMinor <= 0) {
+      return {success:false,kind:'FATAL',errorCode:'INVALID_PURCHASE',errorMessage:'Purchase requires a valid occurrence time and positive value'};
+    }
+
     const hashedPhone = hashPhone(event.phone);
     const hashedEmail = hashPii(event.email);
 
@@ -84,13 +88,22 @@ export class CapiClient implements CapiDispatchGateway {
       event_name: 'Purchase',
       event_time: eventTime,
       event_id: event.outcomeId, // Primary deduplication key across Pixel & CAPI
-      action_source: 'system_generated',
+      action_source: event.actionSource || 'system_generated',
       user_data: userData,
       custom_data: {
         currency: event.currency || 'BRL',
         value: valueFloat,
       },
     };
+
+    if (event.actionSource === 'business_messaging') {
+      if (!event.ctwaClid || !event.whatsappBusinessAccountId) {
+        return { success: false, kind: 'FATAL', errorCode: 'MISSING_WHATSAPP_ATTRIBUTION', errorMessage: 'WhatsApp click and business account identifiers are required' };
+      }
+      eventData.messaging_channel = 'whatsapp';
+      userData.ctwa_clid = event.ctwaClid;
+      userData.whatsapp_business_account_id = event.whatsappBusinessAccountId;
+    }
 
     const payload: Record<string, unknown> = {
       data: [eventData],
@@ -110,11 +123,12 @@ export class CapiClient implements CapiDispatchGateway {
           Accept: 'application/json',
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20000),
       });
 
       const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
-      if (response.ok) {
+      if (response.ok && body.events_received === 1) {
         return {
           success: true,
           capiEventId: event.outcomeId,
@@ -128,7 +142,7 @@ export class CapiClient implements CapiDispatchGateway {
       const errorMessage = typeof errorObj.message === 'string' ? errorObj.message : `HTTP ${status}`;
       const errorCode = typeof errorObj.code === 'number' ? `META_${errorObj.code}` : `HTTP_${status}`;
 
-      if (status >= 400 && status < 500) {
+      if (status >= 400 && status < 500 && status !== 429 && errorObj.is_transient !== true) {
         return {
           success: false,
           kind: 'FATAL',

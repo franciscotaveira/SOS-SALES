@@ -42,12 +42,13 @@ export class PostgresCommercialOutcomeGateway implements CommercialOutcomeGatewa
   ): Promise<CommercialOutcomeResultRecord | null> {
     try {
       return await this.withActor(actor, async (client) => {
+        const dbResult = input.result === 'ABANDONED' ? 'UNRESPONSIVE' : input.result;
         const result = await client.query<{ outcome_id: string }>(
           `SELECT public.record_commercial_outcome($1, $2, $3, $4, $5, $6, '{}'::jsonb, $7) AS outcome_id`,
           [
             input.workspaceId,
             input.journeyId,
-            input.result,
+            dbResult,
             input.revenueMinor,
             input.currency,
             input.reason ?? null,
@@ -56,6 +57,18 @@ export class PostgresCommercialOutcomeGateway implements CommercialOutcomeGatewa
         );
         const outcomeId = result.rows[0]?.outcome_id;
         if (typeof outcomeId !== 'string') throw new Error('Unexpected commercial outcome result');
+
+        // Desativa explicitamente o bot para a jornada encerrada (WON, LOST, ABANDONED)
+        await client.query(
+          `UPDATE public.commercial_journeys
+           SET bot_enabled = false,
+               bot_paused_at = NOW(),
+               bot_pause_reason = $3,
+               updated_at = NOW()
+           WHERE id = $1 AND workspace_id = $2`,
+          [input.journeyId, input.workspaceId, `Desfecho registrado (${input.result})`],
+        );
+
         return { outcomeId };
       });
     } catch (error) {

@@ -75,6 +75,20 @@ export class PostgresHandoffOperationsGateway implements HandoffOperationsGatewa
               'SELECT public.return_handoff_to_ai($1, $2, $3, $4) AS result',
               [input.workspaceId, input.handoffCaseId, input.reason, input.idempotencyKey],
             );
+            // Ensure the associated commercial journey unpauses the AI receptionist immediately
+            await client.query(
+              `UPDATE public.commercial_journeys
+               SET bot_enabled = true,
+                   bot_paused_at = NULL,
+                   bot_pause_reason = NULL,
+                   responder_owner = 'sos_sales',
+                   responder_changed_at = NOW(),
+                   responder_change_reason = $3,
+                   updated_at = NOW()
+               WHERE id = (SELECT journey_id FROM public.handoff_cases WHERE id = $1 AND workspace_id = $2)
+                 AND workspace_id = $2`,
+              [input.handoffCaseId, input.workspaceId, input.reason || 'Devolvido para IA pelo operador'],
+            );
             break;
         }
         return normalizeResult(result.rows[0]?.result);

@@ -749,7 +749,12 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       try {
         const result = await query(
           `UPDATE public.commercial_journeys
-           SET bot_paused_at = NOW(), bot_pause_reason = $3, updated_at = NOW()
+           SET bot_paused_at = NOW(),
+               bot_pause_reason = $3,
+               responder_owner = 'human',
+               responder_changed_at = NOW(),
+               responder_change_reason = $3,
+               updated_at = NOW()
            WHERE id = $1 AND workspace_id = $2
            RETURNING id, bot_enabled, bot_paused_at, bot_pause_reason`,
           [journeyId, workspaceId, reason]
@@ -778,7 +783,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
   /**
    * POST /api/v1/workspaces/:workspaceId/journeys/:journeyId/bot/resume
    * Retoma o bot após pausa humana (freio secundário OFF).
-   * Só faz efeito se bot_enabled=true.
+   * Reativa o bot na jornada (bot_enabled=true) e devolve a titularidade para sos_sales.
    */
   app.post<{ Params: BotParams }>(
     '/api/v1/workspaces/:workspaceId/journeys/:journeyId/bot/resume',
@@ -789,7 +794,13 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       try {
         const result = await query(
           `UPDATE public.commercial_journeys
-           SET bot_paused_at = NULL, bot_pause_reason = NULL, updated_at = NOW()
+           SET bot_enabled = true,
+               bot_paused_at = NULL,
+               bot_pause_reason = NULL,
+               responder_owner = 'sos_sales',
+               responder_changed_at = NOW(),
+               responder_change_reason = 'Retomado pelo operador',
+               updated_at = NOW()
            WHERE id = $1 AND workspace_id = $2
            RETURNING id, channel_connection_id, bot_enabled, responder_owner, responder_changed_at`,
           [journeyId, workspaceId]

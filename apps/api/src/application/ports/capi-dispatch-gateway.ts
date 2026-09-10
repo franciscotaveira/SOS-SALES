@@ -16,6 +16,9 @@ export interface CapiPurchaseEventPayload {
   email?: string;
   occurredAt?: Date | string;
   testEventCode?: string;
+  actionSource?: 'system_generated' | 'business_messaging' | 'physical_store';
+  ctwaClid?: string;
+  whatsappBusinessAccountId?: string;
 }
 
 export type CapiDispatchResult =

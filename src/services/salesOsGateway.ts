@@ -177,6 +177,10 @@ export interface ApiCockpitView {
     updatedAt: string;
     contact: { id: string; name: string | null; phone: string };
     channel: { id: string; provider: string; phoneNumber: string; name: string; status: string } | null;
+    botEnabled?: boolean;
+    botPausedAt?: string | null;
+    botPauseReason?: string | null;
+    responderOwner?: string | null;
   };
   acquisitionContexts: Array<{
     id: string;
@@ -238,7 +242,15 @@ export interface ApiCockpitView {
     currency: string;
     closedReason: string | null;
     capiStatus: string;
+    capiErrorCode?: string;
     occurredAt: string;
+  } | null;
+  followUp?: {
+    id: string;
+    dueAt: string;
+    reason: string;
+    status: string;
+    createdAt?: string;
   } | null;
 }
 
@@ -1319,6 +1331,55 @@ export class HttpSalesOsGateway implements SalesOsGateway {
       },
     );
     return response.data;
+  }
+
+  async resumeBot(
+    workspaceId: string,
+    journeyId: string,
+  ): Promise<{
+    journeyId: string;
+    botEnabled: boolean;
+    botPaused: boolean;
+    botActive: boolean;
+    message?: string;
+  }> {
+    return this.request<{
+      journeyId: string;
+      botEnabled: boolean;
+      botPaused: boolean;
+      botActive: boolean;
+      message?: string;
+    }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/bot/resume`,
+      { method: 'POST' },
+    );
+  }
+
+  async pauseBot(
+    workspaceId: string,
+    journeyId: string,
+    reason?: string,
+  ): Promise<{
+    journeyId: string;
+    botEnabled: boolean;
+    botPaused: boolean;
+    botActive: boolean;
+    pausedAt?: string;
+    pauseReason?: string;
+    message?: string;
+  }> {
+    return this.request<{
+      journeyId: string;
+      botEnabled: boolean;
+      botPaused: boolean;
+      botActive: boolean;
+      pausedAt?: string;
+      pauseReason?: string;
+      message?: string;
+    }>(
+      `/workspaces/${encodeURIComponent(workspaceId)}/journeys/${encodeURIComponent(journeyId)}/bot/pause`,
+      { method: 'POST', body: { reason } },
+    );
   }
 
   async setJourneyStage(

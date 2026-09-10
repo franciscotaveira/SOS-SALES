@@ -173,6 +173,26 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
     await expect(agent.isBotActiveForJourney('workspace-a', 'journey-a')).resolves.toBe(true);
   });
 
+  it('rejects bot activity when journey status is ABANDONED, WON, or LOST', async () => {
+    for (const closedStatus of ['ABANDONED', 'WON', 'LOST']) {
+      const query = vi.fn().mockResolvedValue({
+        rows: [{
+          status: closedStatus,
+          bot_enabled: true,
+          bot_paused_at: null,
+          runtime_enabled: true,
+          autonomy_mode: 'autonomous_24_7',
+          published_at: new Date(),
+        }],
+        rowCount: 1,
+      }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
+      const agent = new ReceptionistAgent({ query }) as unknown as {
+        isBotActiveForJourney(workspaceId: string, journeyId: string): Promise<boolean>;
+      };
+      await expect(agent.isBotActiveForJourney('workspace-a', 'journey-a')).resolves.toBe(false);
+    }
+  });
+
   it('fails closed when the bot state cannot be read', async () => {
     const query = vi.fn().mockRejectedValue(new Error('database unavailable')) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);

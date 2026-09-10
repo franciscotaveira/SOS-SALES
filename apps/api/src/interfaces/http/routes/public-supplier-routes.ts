@@ -123,7 +123,7 @@ export async function publicSupplierRoutes(
       rawFrom.includes('@g.us') ||
       rawTo.includes('@g.us') ||
       String(payloadRecord.chatId || '').includes('@g.us') ||
-      String(keyRecord.remoteJid || '').includes('@g.us');
+      String(nestedKey?.remoteJid || '').includes('@g.us');
     if (isGroup) {
       return reply.code(200).send({ received: true, type: 'group_message_ignored_from_1to1' });
     }

@@ -5,6 +5,7 @@ import {
   CapiPurchaseEventPayload,
 } from '../../application/ports/capi-dispatch-gateway.js';
 import { OutboxProcessingGateway } from '../../application/ports/outbox-processing-gateway.js';
+import { resolveCapiConfig } from '../channels/meta/capi-config.js';
 import { dbPool } from '../database/pool.js';
 
 export interface CapiDispatchWorkerOptions {
@@ -37,8 +38,8 @@ export class CapiDispatchWorker {
     this.capiGateway = options.capiGateway;
     this.pool = options.pool || dbPool;
     this.pollingIntervalMs = options.pollingIntervalMs ?? 1000;
-    this.batchSize = options.batchSize ?? 10;
-    this.leaseSeconds = options.leaseSeconds ?? 60;
+    this.batchSize = options.batchSize ?? 1;
+    this.leaseSeconds = options.leaseSeconds ?? 120;
     this.maxAttempts = options.maxAttempts ?? 5;
     this.workerId = options.workerId ?? `capi-worker-${randomUUID()}`;
   }
@@ -98,19 +99,23 @@ export class CapiDispatchWorker {
         }
 
         // Fetch contact phone/email and workspace pixel_id
-        const context = await this.fetchOutcomeDispatchContext(event.workspaceId, journeyId);
+        const context = await this.fetchOutcomeDispatchContext(event.workspaceId, journeyId, outcomeId);
 
-        if (!context?.pixelId) {
-          // Pixel not configured for this workspace, mark as completed
-          await this.outboxGateway.completeEvent({
-            eventId: event.id,
-            claimToken: event.claimToken,
-            workerId: this.workerId,
-          });
-          processed++;
-          continue;
+        if (context?.status === 'DISPATCHED') {
+          await this.outboxGateway.completeEvent({eventId:event.id, claimToken:event.claimToken, workerId:this.workerId});
+          processed++; continue;
         }
-
+        if (context && !context.enabled) {
+          await this.recordStatus(outcomeId, event.workspaceId, 'NOT_APPLICABLE', 'CAPI_DISABLED');
+          await this.outboxGateway.completeEvent({eventId:event.id, claimToken:event.claimToken, workerId:this.workerId});
+          processed++; continue;
+        }
+        if (!context?.pixelId || !context.accessToken) {
+          await this.recordStatus(outcomeId, event.workspaceId, 'FAILED', 'MISSING_CAPI_CONFIGURATION');
+          await this.outboxGateway.failEvent({eventId:event.id, claimToken:event.claimToken, workerId:this.workerId, errorMessage:'MISSING_CAPI_CONFIGURATION', maxAttempts:this.maxAttempts});
+          processed++; continue;
+        }
+        await this.recordStatus(outcomeId, event.workspaceId, 'QUEUED');
         const purchaseEvent: CapiPurchaseEventPayload = {
           outcomeId,
           workspaceId: event.workspaceId,
@@ -120,32 +125,39 @@ export class CapiDispatchWorker {
           pixelId: context.pixelId,
           phone: context.phone,
           email: context.email,
+          occurredAt: context.occurredAt,
+          actionSource: context.actionSource,
+          ctwaClid: context.ctwaClid,
+          whatsappBusinessAccountId: context.wabaId,
         };
 
-        const dispatchResult = await this.capiGateway.sendPurchaseEvent(purchaseEvent);
+        const dispatchResult = await this.capiGateway.sendPurchaseEvent(purchaseEvent, context.accessToken);
 
         if (dispatchResult.success) {
+          await this.recordStatus(outcomeId, event.workspaceId, 'DISPATCHED', undefined, dispatchResult.fbtraceId);
           await this.outboxGateway.completeEvent({
             eventId: event.id,
             claimToken: event.claimToken,
             workerId: this.workerId,
           });
         } else if (dispatchResult.kind === 'FATAL') {
+          await this.recordStatus(outcomeId, event.workspaceId, 'FAILED', dispatchResult.errorCode);
           // Fatal error (invalid payload or forbidden) -> complete outbox to prevent infinite loop
           await this.outboxGateway.failEvent({
             eventId: event.id,
             claimToken: event.claimToken,
             workerId: this.workerId,
-            errorMessage: `${dispatchResult.errorCode}: ${dispatchResult.errorMessage}`,
+            errorMessage: dispatchResult.errorCode,
             maxAttempts: 1, // Move to DLQ immediately
           });
         } else {
+          await this.recordStatus(outcomeId, event.workspaceId, 'FAILED', dispatchResult.errorCode);
           // Retryable error -> fail and reattempt
           await this.outboxGateway.failEvent({
             eventId: event.id,
             claimToken: event.claimToken,
             workerId: this.workerId,
-            errorMessage: `${dispatchResult.errorCode}: ${dispatchResult.errorMessage}`,
+            errorMessage: dispatchResult.errorCode,
             maxAttempts: this.maxAttempts,
           });
         }
@@ -159,48 +171,48 @@ export class CapiDispatchWorker {
     }
   }
 
-  private async fetchOutcomeDispatchContext(
-    workspaceId: string,
-    journeyId: string,
-  ): Promise<{ pixelId?: string; phone?: string; email?: string } | null> {
+  private async recordStatus(outcomeId: string, workspaceId: string, status: string, errorCode?: string, trace?: string): Promise<void> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SET LOCAL ROLE service_role');
-
-      const result = await client.query<{
-        pixel_id: string | null;
-        phone: string | null;
-        email: string | null;
-      }>(
-        `SELECT
-           COALESCE(cc.public_config->>'meta_capi_pixel_id', cc.public_config->>'pixelId', '') as pixel_id,
-           c.phone,
-           c.email
-         FROM public.commercial_journeys j
-         JOIN public.contacts c ON c.id = j.contact_id
-         LEFT JOIN public.channel_connections cc ON cc.id = j.channel_connection_id
-         WHERE j.id = $1 AND j.workspace_id = $2
-         LIMIT 1`,
-        [journeyId, workspaceId],
-      );
-
+      await client.query(`INSERT INTO public.capi_deliveries(outcome_id,workspace_id,status,error_code,fbtrace_id)
+        SELECT id,workspace_id,$3,$4,$5 FROM public.commercial_outcomes WHERE id=$1 AND workspace_id=$2
+        ON CONFLICT(outcome_id) DO UPDATE SET status=EXCLUDED.status,error_code=EXCLUDED.error_code,
+        fbtrace_id=EXCLUDED.fbtrace_id,updated_at=now()`, [outcomeId,workspaceId,status,errorCode||null,trace||null]);
       await client.query('COMMIT');
-      const row = result.rows[0];
-      if (!row) return null;
+    } catch (e) { await client.query('ROLLBACK').catch(()=>undefined); throw e; }
+    finally { await client.query('RESET ROLE').catch(()=>undefined); client.release(); }
+  }
 
-      return {
-        pixelId: row.pixel_id || process.env.META_CAPI_PIXEL_ID || undefined,
-        phone: row.phone || undefined,
-        email: row.email || undefined,
-      };
-    } catch {
-      await client.query('ROLLBACK').catch(() => undefined);
-      return null;
-    } finally {
-      await client.query('RESET ROLE').catch(() => undefined);
-      client.release();
-    }
+  private async fetchOutcomeDispatchContext(workspaceId: string, journeyId: string, outcomeId: string) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL ROLE service_role');
+      const result = await client.query(`SELECT cc.public_config, cs.secret_payload, c.phone, c.email,
+        o.occurred_at, COALESCE(d.status,o.capi_status) AS status, ac.click_ids
+        FROM public.commercial_outcomes o
+        JOIN public.commercial_journeys j ON j.id=o.journey_id AND j.workspace_id=o.workspace_id
+        JOIN public.contacts c ON c.id=j.contact_id AND c.workspace_id=j.workspace_id
+        LEFT JOIN public.channel_connections cc ON cc.id=j.channel_connection_id AND cc.workspace_id=j.workspace_id
+        LEFT JOIN public.capi_deliveries d ON d.outcome_id=o.id AND d.workspace_id=o.workspace_id
+        LEFT JOIN LATERAL (SELECT secret_payload FROM public.channel_connection_secrets
+          WHERE channel_connection_id=cc.id AND workspace_id=j.workspace_id AND secret_kind='meta_capi_token' LIMIT 1) cs ON true
+        LEFT JOIN LATERAL (SELECT click_ids FROM public.acquisition_contexts
+          WHERE journey_id=j.id AND workspace_id=j.workspace_id ORDER BY occurred_at ASC LIMIT 1) ac ON true
+        WHERE j.id=$1 AND j.workspace_id=$2 AND o.id=$3 LIMIT 1`, [journeyId,workspaceId,outcomeId]);
+      await client.query('COMMIT');
+      const row=result.rows[0]; if (!row) return null;
+      const config=row.public_config||{};
+      const resolved=resolveCapiConfig(config,row.secret_payload||{});
+      const source=config.metaCapiActionSource;
+      return {pixelId:resolved.datasetId,accessToken:resolved.accessToken,enabled:resolved.enabled,
+        phone:row.phone||undefined,email:row.email||undefined,occurredAt:row.occurred_at,
+        status:row.status,ctwaClid:row.click_ids?.ctwaClid,wabaId:config.wabaId,
+        actionSource: (source==='business_messaging'||source==='physical_store'?source:'system_generated') as CapiPurchaseEventPayload['actionSource']};
+    } catch (e) { await client.query('ROLLBACK').catch(()=>undefined); throw e; }
+    finally { await client.query('RESET ROLE').catch(()=>undefined);client.release(); }
   }
 
   private scheduleNextTick(delayMs: number): void {

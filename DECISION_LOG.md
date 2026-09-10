@@ -1002,3 +1002,23 @@
 - Escopo: rota do simulador. O Receptionist de WhatsApp usa outro construtor de contexto; este ajuste não é prova de correção do incidente original, cuja conversa não foi fornecida.
 - Validação: 13 testes de rota passaram, incluindo ausência de chave, dados inválidos, chave configurada, pedido de link e falha dos dois modelos. `git diff --check` passou. Build e inicialização da API no Docker Lab concluídos; `/health` retornou `ok` em ambiente `lab`. Isso não comprova o fluxo autenticado completo.
 - Bloqueio de release: `tsc --noEmit` reportou quatro erros em arquivos não alterados nesta correção: `keyRecord` em `public-supplier-routes.ts:126` e `routePool` em `whatsapp-channel-routes.ts:1676,1816,1840`. Produção não foi alterada; publicação depende de resolver a checagem e concluir o fluxo de release.
+
+## 2026-09-10 — CAPI por outbox e entrega separada do fechamento
+
+- Dataset e token CAPI por conexão; teste usa credencial salva e exige código TEST.
+- Removido envio HTTP paralelo que tentava atualizar fato imutável. Worker usa a outbox transacional; status e diagnóstico em capi_deliveries.
+- Ativação explícita por META_CAPI_WORKER_ENABLED após auditoria de backlog; produção não alterada.
+- Validação e limites: apps/api/docs/CAPI-CLOSED-LOOP-VALIDATION.md.
+
+## 2026-09-10 — Inibição da IA em Jornadas Encerradas e Retomada Efetiva pelo Operador
+
+- **Problema:** A IA Receptionist continuava enviando mensagens mesmo após desfechos comerciais (ABANDONED, WON, LOST). Além disso, o botão de "Retomar IA" não ativava o bot se `bot_enabled` estivesse como falso, e follow-ups com motivo menor que 3 caracteres falhavam sem detalhamento amigável.
+- **Decisões:**
+  1. **Inibição estrita em jornadas encerradas:** `isBotActiveForJourney` agora verifica explicitamente se `status === 'OPEN'`. Em registros de desfecho (`record_commercial_outcome`), a jornada tem `bot_enabled = false`, `bot_paused_at = NOW()` e motivo associado gravados defensivamente.
+  2. **Retomada Efetiva (`/bot/resume`):** A rota agora atualiza atomicamente `bot_enabled = true`, `bot_paused_at = NULL`, `bot_pause_reason = NULL` e `responder_owner = 'sos_sales'`.
+  3. **Pausa Efetiva (`/bot/pause`):** Registra `bot_paused_at = NOW()`, motivo e `responder_owner = 'human'`.
+  4. **Validação e Visibilidade na UI:**
+     - O botão "Retomar IA" agora aparece tanto quando `botPausedAt` está preenchido quanto quando `bot_enabled === false`.
+     - `FollowUpModal` agora valida localmente tamanho mínimo de motivo (>= 3 caracteres) e data futura, prevenindo submissões inválidas e instruindo o operador.
+     - A rota de follow-ups retorna mensagem de validação clara em caso de erro 422.
+- **Validação:** 36 testes unitários em `receptionist-agent-policy.test.ts` (incluindo validação de rejeição em ABANDONED, WON, LOST), testes de API de commercial outcomes e frontend vitest 100% aprovados. Builds de frontend e API compilados com sucesso.

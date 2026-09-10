@@ -1,3 +1,5 @@
+import { CapiDispatchWorker } from './infrastructure/workers/capi-dispatch-worker.js';
+import { CapiClient } from './infrastructure/channels/meta/capi-client.js';
 /**
  * TX COMMERCIAL CORE — SERVER COMPOSITION ROOT
  *
@@ -357,6 +359,9 @@ async function startComposedServer(
     })
     : undefined;
 
+  const capiWorker = process.env.META_CAPI_WORKER_ENABLED === 'true' && runtime.databasePool
+    ? new CapiDispatchWorker({outboxGateway:runtime.outboxGateway,capiGateway:new CapiClient(),pool:runtime.databasePool}) : undefined;
+
   const app = buildApp({
     secretProvider: runtime.secretProvider,
     wahaAdapter: runtime.wahaAdapter,
@@ -397,6 +402,7 @@ async function startComposedServer(
   worker.start();
   outboundWorker?.start();
   receptionistWorker?.start();
+  capiWorker?.start();
 
   try {
     await app.listen({ port, host });
@@ -404,6 +410,7 @@ async function startComposedServer(
     await worker.stop();
     await outboundWorker?.stop();
     await receptionistWorker?.stop();
+    await capiWorker?.stop();
     await runtime.close?.();
     throw error;
   }
@@ -415,6 +422,7 @@ async function startComposedServer(
     await worker.stop();
     await outboundWorker?.stop();
     await receptionistWorker?.stop();
+    await capiWorker?.stop();
     await app.close();
     await runtime.close?.();
   };
