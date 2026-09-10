@@ -19,14 +19,17 @@ import { verifyOperatorAuth, assertTenantAccess, unauthorized } from '../helpers
 import {
   isMetaAgentReady as isMetaAgentReadyPolicy,
   shouldSosSalesRespond,
+  loadPublishedWorkspaceConfig,
+  parseReceptionistDecision,
+  getReceptionistActionPolicy,
+  getReceptionistInputDecision,
   type ResponderMode,
   type ResponderOwner,
 } from '../../../application/agents/receptionist-agent.js';
 import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.js';
 import { analyzeConversationDossier, MessageLike } from '../../../application/services/cognitive-analyzer.js';
-import { SOS_SALES_DEFAULT_CATALOG_TEXT } from '../../../application/services/commercial-offers.js';
-import { HumanizerKernel, HUMANIZER_PROMPT_DIRECTIVES } from '../../../infrastructure/ai/humanizer-kernel.js';
+import { buildSystemPrompt } from '../../../infrastructure/ai/receptionist-system-prompt.js';
 
 interface BotParams {
   workspaceId: string;
@@ -100,8 +103,19 @@ const defaultDatabaseQuery = dbPool.query.bind(dbPool) as DatabaseQuery;
 const MAX_SIMULATOR_MESSAGE_CHARS = 4_000;
 const MAX_SIMULATOR_HISTORY_MESSAGES = 24;
 const MAX_SIMULATOR_HISTORY_MESSAGE_CHARS = 4_000;
-const MAX_TRAINER_DIRECTIVES = 100;
 const MAX_TRAINER_DIRECTIVE_CHARS = 1_000;
+
+async function appendPublishedDirective(query: DatabaseQuery, workspaceId: string, directive: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE public.workspace_intelligence_bundles
+     SET bundle = jsonb_set(bundle, '{directives}', COALESCE(bundle->'directives', '[]'::jsonb) || jsonb_build_array($2::text)),
+         updated_at = NOW(), published_at = NOW()
+     WHERE workspace_id = $1 AND published_at IS NOT NULL
+       AND jsonb_typeof(COALESCE(bundle->'directives', '[]'::jsonb)) = 'array'
+       AND jsonb_array_length(COALESCE(bundle->'directives', '[]'::jsonb)) < 100
+     RETURNING workspace_id`, [workspaceId, directive]);
+  return result.rowCount === 1;
+}
 
 function asObject(value: unknown): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
@@ -382,7 +396,6 @@ export interface AgentRoutesOptions {
 export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: FastifyInstance, options = {}) => {
   const query = options.query ?? defaultDatabaseQuery;
   const nvidiaEngine = options.nvidiaEngine || new NvidiaNimEngine();
-  const openRouterEngine = options.openRouterEngine || new OpenRouterEngine();
   // Enforce JWT on all agent bot routes
   app.addHook('onRequest', async (request, reply) => {
     if (!options?.authenticator) {
@@ -464,6 +477,9 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       if (!actorId) return reply.status(401).send({ error: 'Unauthorized' });
 
       const { autonomyMode, runtimeEnabled, responderMode, behaviorConfig } = parsed.data;
+      if (process.env.META_BUSINESS_AGENT_ENABLED === 'false' && (responderMode === 'meta_business_agent' || responderMode === 'auto_fallback')) {
+        return reply.status(409).send({error:'O atendimento automático está configurado para o agente SOS Vendas.',code:'META_BUSINESS_AGENT_DISABLED'});
+      }
       try {
         const currentRuntime = await readWorkspaceAgentRuntimeConfig(workspaceId, query);
         const desiredAutonomyMode = autonomyMode ?? currentRuntime.autonomyMode;
@@ -1129,9 +1145,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         return reply.status(413).send({ error: `Mensagem excede o limite de ${MAX_SIMULATOR_MESSAGE_CHARS} caracteres` });
       }
 
-      const selectedTier = body.modelTier === 'reasoning' || body.modelTier === 'nemotron_super'
-        ? NVIDIA_MODEL_TIERS.REASONING
-        : NVIDIA_MODEL_TIERS.FAST;
+      const selectedTier = process.env.NVIDIA_NIM_MODEL || NVIDIA_MODEL_TIERS.NEMOTRON_REASONING;
 
       // 1. INTERCEPTAÇÃO DE COMANDOS DO TREINADOR (In-Chat Direct Tuning)
       if (userMessage.startsWith('/')) {
@@ -1144,22 +1158,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
 
         if (cmd === '/regra' || cmd === '/diretriz') {
           if (!arg) return reply.status(400).send({ error: 'Especifique a regra após o comando. Ex: /regra Não conceder desconto sem autorização' });
-          const bundleRes = await query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`, [workspaceId]);
-          const bundle = asObject(bundleRes.rows[0]?.bundle);
-          const currentDirectives = Array.isArray(bundle.directives)
-            ? bundle.directives
-              .filter((item): item is string => typeof item === 'string')
-              .map((item) => item.slice(0, MAX_TRAINER_DIRECTIVE_CHARS))
-              .slice(-MAX_TRAINER_DIRECTIVES + 1)
-            : [];
-          currentDirectives.push(arg.slice(0, MAX_TRAINER_DIRECTIVE_CHARS));
-          bundle.directives = currentDirectives;
-          await query(
-            `INSERT INTO public.workspace_intelligence_bundles (workspace_id, bundle, updated_at)
-             VALUES ($1, $2::jsonb, NOW())
-             ON CONFLICT (workspace_id) DO UPDATE SET bundle = $2::jsonb, updated_at = NOW()`,
-            [workspaceId, JSON.stringify(bundle)]
-          );
+          if (!await appendPublishedDirective(query, workspaceId, arg)) return reply.status(409).send({error:'Publique a configuração e mantenha menos de 100 correções para calibrar.',code:'AGENT_CALIBRATION_NOT_SAVED'});
           const wsRes = await query(`SELECT name FROM public.workspaces WHERE id = $1 LIMIT 1`, [workspaceId]);
           const wsName = wsRes.rows[0]?.name || 'a empresa';
           return reply.status(200).send({
@@ -1173,27 +1172,12 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
 
         if (cmd === '/preco' || cmd === '/valor') {
           if (!arg) return reply.status(400).send({ error: 'Especifique a política de preço. Ex: /preco Plano Anual no Pix por R$ 582 à vista' });
-          const bundleRes = await query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`, [workspaceId]);
-          const bundle = asObject(bundleRes.rows[0]?.bundle);
-          const currentDirectives = Array.isArray(bundle.directives)
-            ? bundle.directives
-              .filter((item): item is string => typeof item === 'string')
-              .map((item) => item.slice(0, MAX_TRAINER_DIRECTIVE_CHARS))
-              .slice(-MAX_TRAINER_DIRECTIVES + 1)
-            : [];
-          currentDirectives.push(`Política de Preço: ${arg}`.slice(0, MAX_TRAINER_DIRECTIVE_CHARS));
-          bundle.directives = currentDirectives;
-          await query(
-            `INSERT INTO public.workspace_intelligence_bundles (workspace_id, bundle, updated_at)
-             VALUES ($1, $2::jsonb, NOW())
-             ON CONFLICT (workspace_id) DO UPDATE SET bundle = $2::jsonb, updated_at = NOW()`,
-            [workspaceId, JSON.stringify(bundle)]
-          );
+          if (!await appendPublishedDirective(query, workspaceId, `Política de Preço: ${arg}`)) return reply.status(409).send({error:'Publique a configuração e mantenha menos de 100 correções para calibrar.',code:'AGENT_CALIBRATION_NOT_SAVED'});
           return reply.status(200).send({
             success: true,
             isCommand: true,
             command: cmd,
-            agentResponse: `💰 Tabela de preços atualizada: "${arg}". A IA responderá com essa condição imediatamente.`,
+            agentResponse: `💰 Orientação de preço salva: "${arg}". Valores precisam estar consistentes com o catálogo publicado.`,
             updatedConfig: { field: 'pricing', value: arg },
           });
         }
@@ -1212,6 +1196,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
                updated_at = NOW()`,
             [workspaceId, arg]
           ).catch((err) => request.log.warn({ err }, 'Failed to persist operational business_hours'));
+          await query(`UPDATE public.workspace_intelligence_bundles SET bundle=jsonb_set(bundle, '{workingHoursOverride}', to_jsonb($2::text)), updated_at=NOW(), published_at=NOW() WHERE workspace_id=$1 AND published_at IS NOT NULL`, [workspaceId,arg]);
           return reply.status(200).send({
             success: true,
             isCommand: true,
@@ -1254,6 +1239,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
              WHERE workspace_id = $1`,
             [workspaceId, normalizedTone]
           );
+          await query(`UPDATE public.workspace_intelligence_bundles SET bundle=jsonb_set(bundle, '{agentConfig}', COALESCE(bundle->'agentConfig','{}'::jsonb) || jsonb_build_object('toneOfVoice',$2::text)), updated_at=NOW(), published_at=NOW() WHERE workspace_id=$1 AND published_at IS NOT NULL`, [workspaceId,normalizedTone]);
           return reply.status(200).send({
             success: true,
             isCommand: true,
@@ -1293,146 +1279,10 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         : 'Lead Interessado';
       const dossier = analyzeConversationDossier(messagesForAnalysis, contactName);
 
-      // 4. CARREGA CONFIGURAÇÕES REAIS DO WORKSPACE
-      const [agentConfigRes, opSettingsRes, intelligenceRes, workspaceRes] = await Promise.all([
-        query(`SELECT agent_name, business_type, phone, city, working_hours, behavior_config FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
-        query(`SELECT commercial_config FROM public.workspace_operational_settings WHERE workspace_id = $1 LIMIT 1`, [workspaceId]).catch(() => ({ rows: [] })),
-        query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
-        query(`SELECT name, slug FROM public.workspaces WHERE id = $1 LIMIT 1`, [workspaceId]),
-      ]);
-
-      const agentRow = agentConfigRes.rows[0] || {};
-      const opRow = opSettingsRes.rows[0] || {};
-      const bundle = intelligenceRes.rows[0]?.bundle || {};
-      const wsRow = workspaceRes.rows[0] || {};
-
-      const profile = (bundle.companyProfile || {}) as Record<string, any>;
-      const agentConfig = (bundle.agentConfig || {}) as Record<string, any>;
-
-      const wsName = profile.tradeName || bundle.tradeName || wsRow.name || 'SOS Vendas';
-      const normWs = (wsName + ' ' + workspaceId).toLowerCase();
-
-      const isHaven = normWs.includes('haven') || normWs.includes('escovaria') || workspaceId === '22222222-2222-2222-2222-222222222222';
-      const isSora = normWs.includes('sora') || workspaceId === '33333333-3333-3333-3333-333333333333';
-      const isSos = normWs.includes('sos') || workspaceId === '11111111-1111-1111-1111-111111111111';
-
-      const agentName = agentConfig.name
-        || bundle.agentName
-        || (agentRow.agent_name && agentRow.agent_name !== 'Assistente'
-          ? agentRow.agent_name
-          : (isHaven ? 'Camila · Concierge Haven 24/7' : isSora ? 'Sora Concierge 24/7' : isSos ? 'Sofia · Consultora SOS Vendas' : `${wsName} · Atendente Virtual`));
-
-      const businessType = profile.segment
-        || bundle.businessType
-        || (agentRow.business_type && agentRow.business_type.trim()
-          ? agentRow.business_type
-          : (isHaven ? 'Escovaria e Salão de Beleza Premium' : isSora ? 'Headspa Japonês & Massagem Craniana' : isSos ? 'Software Comercial (SaaS) & Inteligência de Vendas no WhatsApp' : 'Prestação de Serviços'));
-
-      const city = profile.address?.city || bundle.city || agentRow.city || 'Chapecó, SC';
-      const opConfig = asObject(opRow.commercial_config);
-      const workingHours = agentRow.working_hours
-        || (opRow as any).business_hours
-        || (opConfig as any).business_hours
-        || (isHaven ? 'Segunda a Sábado: 09h às 19h' : 'Segunda a Sexta: 08h às 20h | Sábado: 09h às 18h');
-      const pixKey = [(opConfig as any).pix_key, (opRow as any).pix_key]
-        .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
-        ?.trim();
-
-      // Payment destinations must come from this workspace. Do not let history,
-      // brand defaults or a model supply a recipient or promise an unavailable tool.
-      if (/\bpix\b/i.test(userMessage) || /link\s+(?:de\s+)?pagamento/i.test(userMessage)) {
-        const asksForLink = /link\s+(?:de\s+)?pagamento/i.test(userMessage);
-        return reply.status(200).send({
-          success: true,
-          agentResponse: asksForLink
-            ? 'Não consigo gerar um link de pagamento por aqui. A equipe precisa confirmar e fornecer o link oficial.'
-            : pixKey
-              ? `A chave Pix cadastrada para ${wsName} é ${pixKey}. Confira o favorecido e o valor com a equipe antes de pagar.`
-              : 'Não tenho uma chave Pix cadastrada para este atendimento. Preciso que a equipe confirme os dados de pagamento.',
-          model: 'workspace-payment-guard',
-          latencyMs: 0,
-          dossier,
-          suggestedCalibrations: [],
-        });
-      }
-
-      const rawDirectives = (Array.isArray(agentConfig.safetyGuardrails) && agentConfig.safetyGuardrails.length > 0)
-        ? agentConfig.safetyGuardrails
-        : (Array.isArray(bundle.directives) && bundle.directives.length > 0)
-          ? bundle.directives
-          : null;
-
-      const directives = rawDirectives && rawDirectives.length > 0
-        ? rawDirectives
-        : (isHaven
-            ? ['Apresentar a Escova Express por R$ 59 com lavagem e ozônioterapia inclusas.', 'Agendamentos oficiais via link do Trinks: https://www.trinks.com/haven-escovaria', 'Cobrar sinal Pix de R$ 30 para sábado.']
-            : isSos
-              ? ['Apresentar plano mensal R$ 97/mês e anual por R$ 582 à vista no Pix (50% OFF) ou 12x de R$ 58,20.', 'Conduzir para escolha de plano (Menor Próximo Passo).', 'Destacar o Cockpit em < 30s e espelhamento de agenda.']
-              : ['Atendimento consultivo, acolhedor e direto ao ponto.', 'Propor sempre um próximo passo claro para o cliente.']
-          );
-
-      const catalog = Array.isArray(bundle.catalog) ? bundle.catalog : [];
-
-      let catalogText = '';
-      if (catalog.length > 0) {
-        catalogText = catalog.map((item: any) => {
-          const name = item.name || item.title || 'Item';
-          let priceFormatted = 'Sob consulta';
-          if (typeof item.basePrice === 'number' && item.basePrice > 0) {
-            priceFormatted = `R$ ${item.basePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-            if (typeof item.minPromoPrice === 'number' && item.minPromoPrice < item.basePrice && item.minPromoPrice > 0) {
-              priceFormatted += ` (Preço especial: R$ ${item.minPromoPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`;
-            }
-          } else if (item.price || item.value) {
-            priceFormatted = String(item.price || item.value);
-          }
-          const desc = item.description ? ` - ${item.description}` : '';
-          return `- ${name}: ${priceFormatted}${desc}`;
-        }).join('\n');
-      } else if (isHaven) {
-        catalogText = `- Escova Express: R$ 59,00 (Lavagem com produtos de alta performance + ozônioterapia + modelagem expressa)
-- Esmaltação em Gel Premium: R$ 150,00 (Dura até 21 dias sem lascar)
-- Spa dos Pés Relaxante: R$ 80,00 (Esfoliação, hidratação profunda e massagem)
-- Terapia Capilar: R$ 190,00 (Tratamento intensivo para fios danificados)`;
-      } else if (isSora) {
-        catalogText = `- Ritual Headspa Sensorial: R$ 290,00 (Diagnóstico por microcâmera + arco de água + massagem craniana)
-- Experiência Sora a Dois: R$ 580,00 (Headspa duplo com espumante)
-- Vale Presente dos Sonhos: R$ 290,00 (Caixa de cetim com vale presente)`;
-      } else if (isSos) {
-        catalogText = SOS_SALES_DEFAULT_CATALOG_TEXT;
-      } else {
-        catalogText = `- Atendimento e Serviços ${wsName}: Condições e valores sob consulta com a equipe.`;
-      }
-
-      const simTemperature = typeof agentConfig.creativityTemperature === 'number'
-        ? Math.max(0.1, Math.min(1.0, agentConfig.creativityTemperature))
-        : 0.6;
-
-      // 5. ENGENHARIA DE SYSTEM PROMPT COGNITIVO (Framework Francisco Rios)
-      const systemPrompt = `Você é ${agentName}, a especialista comercial e de atendimento de alta performance da empresa "${wsName}" (${businessType}) localizada em ${city}.
-Horário de atendimento oficial: ${workingHours}.
-Chave Pix cadastrada para este workspace: ${pixKey || 'NÃO CONFIGURADA — solicitar confirmação à equipe; nunca inventar ou reutilizar chave de outro contexto'}.
-Não há ferramenta de geração de link de pagamento nesta conversa. Não ofereça gerar links nem alegue ter gerado uma cobrança.
-
-CATÁLOGO OFICIAL DE PRODUTOS/SERVIÇOS DE ${wsName.toUpperCase()}:
-${catalogText}
-
-DIRETRIZES & REGRAS COMERCIAIS ATIVAS (Ensinadas pelo Gestor):
-${directives.map((d: string) => `• ${d}`).join('\n')}
-
-MINDSET DO PROCESSO DE VENDAS COGNITIVO (Inviolável):
-1. CONTINUIDADE COGNITIVA & NATURALIDADE:
-   - ${dossier.antiRegressionRule || 'Nunca pergunte o que o cliente já demonstrou ou decidiu.'}
-   - Se o cliente perguntou preço ou produto, entregue o valor imediatamente e com total transparência.
-   - Jamais reinicie o diálogo com perguntas genéricas vazias do tipo "Olá, como posso ajudar hoje?". Vá direto ao ponto de forma acolhedora.
-2. MOMENTUM DE COMPRA NO WHATSAPP:
-   - Responda em tom natural e humano de WhatsApp, parágrafos curtos e concisos (máximo 2 a 3 blocos ágeis).
-   - Apresente os preços e condições com segurança e clareza.
-3. MENOR PRÓXIMO PASSO (Microcompromisso Suave):
-   - Conduza a conversa propondo este próximo passo: "${dossier.smallestNextMove?.actionTitle || 'Avançar para decisão'}".
-   - Exemplo de condução: "${dossier.smallestNextMove?.draftText || 'Qual opção faz mais sentido para você?'}"
-
-${HUMANIZER_PROMPT_DIRECTIVES}`;
+      const publishedConfig = await loadPublishedWorkspaceConfig(query, workspaceId);
+      if (!publishedConfig) return reply.status(409).send({error:'Publique a configuração do agente antes de testar.', code:'AGENT_CONFIG_UNAVAILABLE'});
+      const systemPrompt = buildSystemPrompt(publishedConfig);
+      const simTemperature = publishedConfig.temperature ?? 0.25;
 
       // 6. PREPARAÇÃO DAS MENSAGENS PARA O LLM
       const llmMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -1452,39 +1302,34 @@ ${HUMANIZER_PROMPT_DIRECTIVES}`;
 
       llmMessages.push({ role: 'user', content: userMessage });
 
-      // 7. INFERÊNCIA VIA MOTOR SOBERANO (NVIDIA NIM com Fallback OpenRouter)
       const startTime = Date.now();
       let generatedReply = '';
       let modelUsed = selectedTier;
-
+      let decision;
       try {
-        const nimResult = await nvidiaEngine.generateChatCompletion(llmMessages, {
-          model: selectedTier,
-          temperature: simTemperature,
-          maxTokens: 450,
+        const inputDecision = getReceptionistInputDecision(userMessage);
+        if (inputDecision) { decision = inputDecision; } else {
+        const result = await nvidiaEngine.generateChatCompletion(llmMessages, {
+          model:selectedTier, temperature:simTemperature, maxTokens:512, topP:0.9,
         });
-        generatedReply = nimResult.content || nimResult.text || '';
-        modelUsed = nimResult.model || selectedTier;
-      } catch (nimErr) {
-        request.log.warn({ err: nimErr }, 'NVIDIA NIM indisponível no simulador, acionando OpenRouter fallback');
-        try {
-          const orResult = await openRouterEngine.generateChatCompletion(llmMessages);
-          generatedReply = orResult.content || '';
-          modelUsed = orResult.model || 'openrouter-default';
-        } catch (orErr) {
-          generatedReply = 'Não consegui consultar as informações necessárias agora. A equipe precisa confirmar os detalhes para dar continuidade ao atendimento.';
-          modelUsed = 'sos-rule-engine-fallback';
+        decision = parseReceptionistDecision(result.content || result.text || '');
+        if (!decision) return reply.status(502).send({error:'O modelo retornou uma resposta inválida.', code:'RECEPTIONIST_INVALID_MODEL_OUTPUT'});
+        generatedReply = decision.reply;
+        modelUsed = result.model || selectedTier;
         }
+      } catch (err) {
+        request.log.warn({err}, 'Falha no modelo do agente SOS');
+        return reply.status(503).send({error:'Não foi possível testar o agente agora.', code:'RECEPTIONIST_NIM_UNAVAILABLE'});
       }
-
-      // Aplicação do Banco Oculto de Humanização determinístico no pós-processamento
-      generatedReply = HumanizerKernel.humanizeReply(generatedReply);
+      const actionPolicy = getReceptionistActionPolicy(decision);
 
       const latencyMs = Date.now() - startTime;
 
       return reply.status(200).send({
         success: true,
-        agentResponse: generatedReply,
+        agentResponse: actionPolicy.shouldEscalate ? "Vou encaminhar seu atendimento à equipe responsável." : generatedReply,
+        executionMode: "simulation",
+        wouldEscalate: actionPolicy.shouldEscalate,
         model: modelUsed,
         latencyMs,
         dossier,
@@ -1535,57 +1380,30 @@ ${HUMANIZER_PROMPT_DIRECTIVES}`;
       if (instruction.length > MAX_TRAINER_DIRECTIVE_CHARS) {
         return reply.status(413).send({ error: `Instrução excede o limite de ${MAX_TRAINER_DIRECTIVE_CHARS} caracteres` });
       }
-      const bundleRes = await query(`SELECT bundle FROM public.workspace_intelligence_bundles WHERE workspace_id = $1`, [workspaceId]);
-      const bundle = asObject(bundleRes.rows[0]?.bundle);
-      const currentDirectives = Array.isArray(bundle.directives)
-        ? bundle.directives
-          .filter((item): item is string => typeof item === 'string')
-          .map((item) => item.slice(0, MAX_TRAINER_DIRECTIVE_CHARS))
-          .slice(-MAX_TRAINER_DIRECTIVES + 1)
-        : [];
-      currentDirectives.push(`Regra Corretiva: ${instruction}`.slice(0, MAX_TRAINER_DIRECTIVE_CHARS));
-      bundle.directives = currentDirectives;
+      if (!await appendPublishedDirective(query, workspaceId, `Regra Corretiva: ${instruction}`)) return reply.status(409).send({error:'Publique a configuração e mantenha menos de 100 correções para calibrar.',code:'AGENT_CALIBRATION_NOT_SAVED'});
 
-      await query(
-        `INSERT INTO public.workspace_intelligence_bundles (workspace_id, bundle, updated_at)
-         VALUES ($1, $2::jsonb, NOW())
-         ON CONFLICT (workspace_id) DO UPDATE SET bundle = $2::jsonb, updated_at = NOW()`,
-        [workspaceId, JSON.stringify(bundle)]
-      );
-
-      // 2. REGENERA A RESPOSTA COM A NOVA INSTRUÇÃO EMBARCADA
-      const [agentConfigRes, wsRes] = await Promise.all([
-        query(`SELECT agent_name FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`, [workspaceId]),
-        query(`SELECT name FROM public.workspaces WHERE id = $1 LIMIT 1`, [workspaceId]),
-      ]);
-      const calibAgentName = (bundle as any).agentConfig?.name || (bundle as any).agentName || agentConfigRes.rows[0]?.agent_name || 'Assistente';
-      const calibWsName = (bundle as any).companyProfile?.tradeName || wsRes.rows[0]?.name || 'a empresa';
-
-      const systemPrompt = `Você é ${calibAgentName}, especialista de atendimento e vendas de "${calibWsName}".
-O gestor acabou de calibrar uma regra obrigatória que você DEVE seguir:
-"${instruction}"
-
-Responda à última mensagem do cliente aplicando rigorosamente esta nova diretriz de forma persuasiva, empática e objetiva no WhatsApp.`;
-
-      const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: lastCustomerMessage || 'Quanto custa o serviço?' },
-      ];
-
+      const publishedConfig = await loadPublishedWorkspaceConfig(query, workspaceId);
       let calibratedReply = '';
-      try {
-        const nimResult = await nvidiaEngine.generateChatCompletion(messages, {
-          model: NVIDIA_MODEL_TIERS.FAST,
-          temperature: 0.2,
-        });
-        calibratedReply = HumanizerKernel.humanizeReply(nimResult.content || nimResult.text || '');
-      } catch (err) {
-        calibratedReply = `Entendido! Atualizei a regra: "${instruction}".`;
+      let generationSucceeded = false;
+      if (publishedConfig) {
+        try {
+          const inputDecision = getReceptionistInputDecision(lastCustomerMessage);
+          const result = inputDecision ? null : await nvidiaEngine.generateChatCompletion([
+            {role:'system', content:buildSystemPrompt(publishedConfig)},
+            {role:'user', content:lastCustomerMessage || 'Como funciona o atendimento?'},
+          ], {model:process.env.NVIDIA_NIM_MODEL || NVIDIA_MODEL_TIERS.NEMOTRON_REASONING, temperature:publishedConfig.temperature ?? 0.25, maxTokens:512, topP:0.9});
+          const decision = inputDecision || parseReceptionistDecision(result?.content || result?.text || '');
+          if (decision) {
+            calibratedReply = getReceptionistActionPolicy(decision).shouldEscalate ? 'Vou encaminhar seu atendimento à equipe responsável.' : decision.reply;
+            generationSucceeded = true;
+          }
+        } catch (err) { request.log.warn({err}, 'Correção salva, mas teste de geração falhou'); }
       }
 
       return reply.status(200).send({
         success: true,
-        message: 'Diretriz de calibração assimilada com sucesso!',
+        message: 'Diretriz salva. A resposta de teste não envia mensagens a clientes.',
+        generationSucceeded,
         savedDirective: instruction,
         calibratedResponse: calibratedReply,
       });

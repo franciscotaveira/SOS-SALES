@@ -34,6 +34,7 @@ services:
     env_file:
       - ${SOS_SALES_ENV_FILE:-/opt/sos-sales/.env.production}
     environment:
+      - META_BUSINESS_AGENT_ENABLED=false
       - APP_ENV=production
       - NODE_ENV=production
       - PORT=4334

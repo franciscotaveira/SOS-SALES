@@ -369,6 +369,16 @@ export function partitionOutboundMessages(fullText: string): { firstMessage: str
   return { firstMessage: trimmed, secondMessage: null };
 }
 
+export const HANDOFF_ACKNOWLEDGEMENT = 'Vou encaminhar seu atendimento à equipe responsável.';
+
+/** Financial destinations require operator confirmation, shared by live and preview. */
+export function getReceptionistInputDecision(text: string): ReceptionistDecision | null {
+  if (/chave\s+pix|(?:gera|gerar|gere|manda|envia|passe).{0,20}(?:link.{0,10}pagamento|pix)|link\s+(?:de\s+)?pagamento/i.test(text)) {
+    return {intent:'payment', escalate:true, sendBookingFlow:false, reply:HANDOFF_ACKNOWLEDGEMENT};
+  }
+  return null;
+}
+
 /** Applies the deterministic outbound policy; the model never chooses it. */
 export function getReceptionistActionPolicy(decision: ReceptionistDecision): ReceptionistActionPolicy {
   const mustEscalate = decision.escalate
@@ -572,15 +582,16 @@ function applyPublishedIntelligence(
     bundle.city,
   );
   const publishedPhone = nonEmptyString(profile.phone, bundle.phone);
-  const publishedHours = formatPublishedBusinessHours(profile);
+  const publishedHours = nonEmptyString(bundle.workingHoursOverride) || formatPublishedBusinessHours(profile);
   const persona = nonEmptyString(agentConfig.persona);
   const rawGuardrails = Array.isArray(agentConfig.safetyGuardrails) && agentConfig.safetyGuardrails.length > 0
     ? agentConfig.safetyGuardrails
     : bundle.directives;
   const guardrails = stringArray(rawGuardrails);
+  const corrections = stringArray(bundle.directives, 100);
   const escalationTriggers = stringArray(agentConfig.escalationTriggers);
-  const allowedPaymentMethods = stringArray(agentConfig.allowedPaymentMethods, 10);
-  const installmentLimit = finiteNumber(agentConfig.installmentLimitWithoutInterest);
+  const allowedPaymentMethods = stringArray(agentConfig.allowedPaymentMethods ?? agentConfig.paymentMethods, 10);
+  const installmentLimit = finiteNumber(agentConfig.installmentLimitWithoutInterest ?? agentConfig.maxInstallmentsWithoutInterest);
   const temperature = finiteNumber(agentConfig.creativityTemperature);
 
   const contextParts = [
@@ -605,6 +616,9 @@ function applyPublishedIntelligence(
     ...(catalogServices.length > 0 ? { services: catalogServices } : {}),
     ...(contextParts.length > 0 ? { extraContext: contextParts.join('\n') } : {}),
     ...(persona ? { persona } : {}),
+    correctiveDirectives: corrections,
+    businessHours: nonEmptyString(bundle.workingHoursOverride) ? undefined : profile.businessHours as WorkspaceConfig["businessHours"],
+    ...(typeof agentConfig.workingHoursOnly === "boolean" ? { workingHoursOnly: agentConfig.workingHoursOnly } : {}),
     ...(guardrails.length > 0 ? { safetyGuardrails: guardrails } : {}),
     ...(escalationTriggers.length > 0 ? { escalationTriggers } : {}),
     ...(allowedPaymentMethods.length > 0 ? { allowedPaymentMethods } : {}),
@@ -612,6 +626,100 @@ function applyPublishedIntelligence(
     ...(temperature !== undefined ? { temperature: Math.max(0, Math.min(1, temperature)) } : {}),
     behavior: mapPublishedBehavior(base.behavior, agentConfig),
   };
+}
+
+export async function loadPublishedWorkspaceConfig(query: typeof dbPool.query, workspaceId: string): Promise<WorkspaceConfig | null> {
+    try {
+      const result = await query(
+        `SELECT
+           wac.agent_name,
+           wac.business_type,
+           wac.services_json,
+           wac.working_hours,
+           wac.phone,
+           wac.city,
+           wac.booking_url,
+           wac.booking_flow_enabled,
+           wac.extra_context,
+           wac.behavior_config,
+           w.name AS workspace_name
+         FROM public.workspace_agent_config wac
+         JOIN public.workspaces w ON w.id = wac.workspace_id
+         WHERE wac.workspace_id = $1 AND wac.published_at IS NOT NULL`,
+        [workspaceId]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const row = result.rows[0];
+      const rawServices = row.services_json;
+      const services: WorkspaceConfig['services'] = Array.isArray(rawServices)
+        ? rawServices
+          .map((raw: unknown) => asJsonRecord(raw))
+          .map((s: JsonRecord) => ({
+              name: String(s.name || ''),
+              ...(s.duration ? { duration: String(s.duration) } : {}),
+              ...(s.price ? { price: String(s.price) } : {}),
+            }))
+          .filter((service) => service.name.trim().length > 0)
+        : [];
+
+      const baseConfig: WorkspaceConfig = {
+        name: String(row.workspace_name || row.agent_name || 'Empresa'),
+        agentName: String(row.agent_name || 'Assistente'),
+        businessType: String(row.business_type || 'Prestação de serviços'),
+        services,
+        workingHours: String(row.working_hours || 'Horário não informado'),
+        phone: String(row.phone || ''),
+        city: String(row.city || 'Brasil'),
+        bookingUrl: row.booking_url ? String(row.booking_url) : undefined,
+        bookingFlowEnabled: Boolean(row.booking_flow_enabled),
+        extraContext: row.extra_context ? String(row.extra_context) : undefined,
+        behavior: row.behavior_config && typeof row.behavior_config === 'object'
+          ? row.behavior_config
+          : {},
+      };
+
+      // Missing rows are allowed; failed reads must disable outbound rather than
+      // silently ignoring published instructions.
+      let bundle: unknown = null;
+      try {
+        const intelligenceResult = await query(
+          `SELECT bundle FROM public.workspace_intelligence_bundles
+           WHERE workspace_id = $1 AND published_at IS NOT NULL
+           ORDER BY published_at DESC
+           LIMIT 1`,
+          [workspaceId],
+        );
+        bundle = intelligenceResult.rows[0]?.bundle ?? null;
+      } catch (error) {
+        throw error;
+      }
+
+      // Documents are an independent published source. Do not make their
+      // inclusion depend on an optional intelligence bundle row existing.
+      let databaseDocuments: Array<{ title?: unknown; content?: unknown; status?: unknown }> = [];
+      try {
+        const documentsResult = await query(
+          `SELECT title, content, status
+           FROM public.workspace_knowledge_documents
+           WHERE workspace_id = $1 AND status = 'ready' AND content <> ''
+           ORDER BY updated_at DESC
+           LIMIT 20`,
+          [workspaceId],
+        );
+        databaseDocuments = documentsResult.rows;
+      } catch (error) {
+        throw error;
+      }
+
+      return applyPublishedIntelligence(baseConfig, bundle, databaseDocuments);
+    } catch (err) {
+      console.error('[ReceptionistAgent] Could not load published workspace config; outbound disabled', err);
+      return null;
+    }
 }
 
 export class ReceptionistAgent {
@@ -644,98 +752,7 @@ export class ReceptionistAgent {
    * falhas fechadas: configuração hardcoded nunca autoriza outbound autônomo.
    */
   private async loadWorkspaceConfig(workspaceId: string): Promise<WorkspaceConfig | null> {
-    try {
-      const result = await this.query(
-        `SELECT
-           wac.agent_name,
-           wac.business_type,
-           wac.services_json,
-           wac.working_hours,
-           wac.phone,
-           wac.city,
-           wac.booking_url,
-           wac.booking_flow_enabled,
-           wac.extra_context,
-           wac.behavior_config,
-           w.name AS workspace_name
-         FROM public.workspace_agent_config wac
-         JOIN public.workspaces w ON w.id = wac.workspace_id
-         WHERE wac.workspace_id = $1`,
-        [workspaceId]
-      );
-
-      if (result.rows.length === 0) {
-        return null;
-      }
-
-      const row = result.rows[0];
-      const rawServices = row.services_json;
-      const services: WorkspaceConfig['services'] = Array.isArray(rawServices)
-        ? rawServices
-          .map((raw: unknown) => asJsonRecord(raw))
-          .map((s: JsonRecord) => ({
-              name: String(s.name || ''),
-              ...(s.duration ? { duration: String(s.duration) } : {}),
-              ...(s.price ? { price: String(s.price) } : {}),
-            }))
-          .filter((service) => service.name.trim().length > 0)
-        : [];
-
-      const baseConfig: WorkspaceConfig = {
-        name: String(row.workspace_name || row.agent_name || 'Empresa'),
-        agentName: String(row.agent_name || 'Assistente'),
-        businessType: String(row.business_type || 'Prestação de serviços'),
-        services,
-        workingHours: String(row.working_hours || 'Segunda a Sexta, das 9h às 18h'),
-        phone: String(row.phone || ''),
-        city: String(row.city || 'Brasil'),
-        bookingUrl: row.booking_url ? String(row.booking_url) : undefined,
-        bookingFlowEnabled: Boolean(row.booking_flow_enabled),
-        extraContext: row.extra_context ? String(row.extra_context) : undefined,
-        behavior: row.behavior_config && typeof row.behavior_config === 'object'
-          ? row.behavior_config
-          : {},
-      };
-
-      // Intelligence is optional for backwards compatibility while the new
-      // migration rolls out. A missing/old table must never make a previously
-      // published workspace lose its base config; it only means no overlay.
-      let bundle: unknown = null;
-      try {
-        const intelligenceResult = await this.query(
-          `SELECT bundle FROM public.workspace_intelligence_bundles
-           WHERE workspace_id = $1 AND published_at IS NOT NULL
-           ORDER BY published_at DESC
-           LIMIT 1`,
-          [workspaceId],
-        );
-        bundle = intelligenceResult.rows[0]?.bundle ?? null;
-      } catch {
-        bundle = null;
-      }
-
-      // Documents are an independent published source. Do not make their
-      // inclusion depend on an optional intelligence bundle row existing.
-      let databaseDocuments: Array<{ title?: unknown; content?: unknown; status?: unknown }> = [];
-      try {
-        const documentsResult = await this.query(
-          `SELECT title, content, status
-           FROM public.workspace_knowledge_documents
-           WHERE workspace_id = $1 AND status = 'ready' AND content <> ''
-           ORDER BY updated_at DESC
-           LIMIT 20`,
-          [workspaceId],
-        );
-        databaseDocuments = documentsResult.rows;
-      } catch {
-        databaseDocuments = [];
-      }
-
-      return applyPublishedIntelligence(baseConfig, bundle, databaseDocuments);
-    } catch (err) {
-      console.error('[ReceptionistAgent] Could not load published workspace config; outbound disabled', err);
-      return null;
-    }
+    return loadPublishedWorkspaceConfig(this.query, workspaceId);
   }
 
   public isEnabled(): boolean {
@@ -1040,6 +1057,33 @@ export class ReceptionistAgent {
     };
   }
 
+  private async sendHandoffAcknowledgement(input: ReceptionistInput): Promise<void> {
+    if (!input.conversationMessageId) return;
+    const transport = await this.resolveChannelTransport(input.workspaceId, input.channelConnectionId);
+    if (!transport) return;
+    const reservation = await this.reserveOutbound(input, transport.provider, 'TEXT', HANDOFF_ACKNOWLEDGEMENT);
+    if (!reservation.shouldSend) return;
+    try {
+      const to = input.fromPhone.replace(/\D/g, '');
+      if (!/^\d{8,15}$/.test(to)) throw new Error('INVALID_RECIPIENT_PHONE');
+      let providerId: string;
+      if (transport.provider === 'waha') {
+        if (!this.waha) throw new Error('WAHA_OUTBOUND_ADAPTER_UNAVAILABLE');
+        const result = await this.waha.sendText({session:transport.sessionName,chatId:`${to}@c.us`,text:HANDOFF_ACKNOWLEDGEMENT});
+        if (!result.success) throw new Error('HANDOFF_ACK_DELIVERY_UNCONFIRMED');
+        providerId = result.providerMessageId;
+      } else {
+        const creds = await this.resolveWabaCreds(input.workspaceId, input.channelConnectionId, input.phoneNumberId || transport.phoneNumberId || null);
+        const result = await this.waba.sendText({phoneNumberId:creds.phoneNumberId,accessToken:creds.accessToken,recipientPhone:to,text:HANDOFF_ACKNOWLEDGEMENT});
+        if (!result.messageId) throw new Error('HANDOFF_ACK_DELIVERY_UNCONFIRMED');
+        providerId = result.messageId;
+      }
+      await this.completeOutbound(input, reservation.reservationId, HANDOFF_ACKNOWLEDGEMENT, providerId);
+    } catch {
+      await this.markOutboundUnknown(reservation.reservationId, 'HANDOFF_ACK_DELIVERY_UNCONFIRMED');
+    }
+  }
+
   private async completeOutbound(
     input: ReceptionistInput,
     reservationId: string | null,
@@ -1200,6 +1244,12 @@ export class ReceptionistAgent {
       };
     }
     const systemPrompt = buildSystemPrompt(wsConfig);
+    console.info('[ReceptionistAgent] prompt_contract', JSON.stringify({
+      workspaceId:input.workspaceId, conversationMessageId:input.conversationMessageId,
+      configHash:createHash('sha256').update(JSON.stringify(wsConfig)).digest('hex'),
+      promptHash:createHash('sha256').update(systemPrompt).digest('hex'),
+      contractVersion:'sos-agent-2026-09-10-v2',
+    }));
 
     // Busca histórico de contexto consolidado (Message Burst Consolidation)
     const history = await this.getConversationContext(input.workspaceId, input.journeyId, 8);
@@ -1226,6 +1276,10 @@ export class ReceptionistAgent {
     let latencyMs = 0;
 
     try {
+      const inputDecision = getReceptionistInputDecision(input.textContent);
+      if (inputDecision) {
+        rawResponse = JSON.stringify({intent:inputDecision.intent,escalate:true,sendBookingFlow:false}) + '\n' + inputDecision.reply;
+      } else {
       const result = await this.nim.generateChatCompletion(messages, {
         temperature: wsConfig.temperature ?? 0.25,
         maxTokens: 512,
@@ -1234,6 +1288,7 @@ export class ReceptionistAgent {
       rawResponse = result.content;
       usedModel = result.model;
       latencyMs = result.latencyMs;
+      }
     } catch (err) {
       console.error('[ReceptionistAgent] NVIDIA NIM error:', err);
       // Inference has not produced any irreversible external effect. Throwing
@@ -1249,7 +1304,11 @@ export class ReceptionistAgent {
     }
     const policy = getReceptionistActionPolicy(decision);
     if (policy.shouldEscalate) {
-      await this.ensureHumanHandoff(input.workspaceId, input.journeyId, `Intent: ${decision.intent} — escalado pelo agente IA`);
+      try {
+        await this.sendHandoffAcknowledgement(input);
+      } finally {
+        await this.ensureHumanHandoff(input.workspaceId, input.journeyId, `Intent: ${decision.intent} — escalado pelo agente IA`);
+      }
       return {
         intent: decision.intent,
         reply: '',
@@ -1294,7 +1353,9 @@ export class ReceptionistAgent {
     // credentials para uma jornada WAHA nem a sessão WAHA de outra conexão.
     let providerId = '';
     if (replyText && replyText.length > 0) {
-      const { firstMessage, secondMessage } = partitionOutboundMessages(replyText);
+      const { firstMessage, secondMessage } = wsConfig.behavior?.structure === "bloco_unico"
+        ? { firstMessage: replyText, secondMessage: null }
+        : partitionOutboundMessages(replyText);
       const mainMessage = firstMessage || replyText;
 
       const replyReservation = await this.reserveOutbound(

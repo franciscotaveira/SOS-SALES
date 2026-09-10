@@ -25,7 +25,7 @@ import { EmbeddedSignupModal } from './EmbeddedSignupModal';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
 import { WabaTemplatesTab } from '../campaigns/WabaTemplatesTab';
 import { AiRuntimeSettingsView } from './AiRuntimeSettingsView';
-import { MetaBusinessAgentSettingsView } from './MetaBusinessAgentSettingsView';
+
 
 interface LiveSettingsViewProps {
   workspace: Workspace;
@@ -410,7 +410,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
               </div>
             )}
 
-            <MetaBusinessAgentSettingsView workspaceId={workspace.id} canManage={workspace.operatorRole === 'owner'} />
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">O agente SOS Vendas conduz o atendimento. A API oficial do WhatsApp continua disponível para mensagens, templates e campanhas.</div>
 
             {!showWahaFallback ? (
               <button

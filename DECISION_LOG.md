@@ -1036,3 +1036,16 @@
 - **Trade-off:** Uma tentativa de fechar, pausar ou assumir uma jornada durante uma chamada ao provedor é rejeitada e deve ser repetida após a confirmação ou reconciliação da reserva. Uma reserva que permaneça em `SENDING` após crash exige reconciliação antes da transição; não há expiração automática.
 - **Validação:** teste DB real comprova bloqueio durante `SENDING` e recusa de reserva após encerramento; suíte API 559/559 e frontend 24/24; Docker Lab com frontend e API saudáveis e `/ready` incluindo `capi-worker`.
 - **Produção:** não alterada. Promoção continua condicionada ao fluxo de release e aprovação humana.
+
+## 2026-09-10 — Agente SOS como responsável pelo atendimento
+
+- Decisão explícita do Francisco: manter IA SOS/NVIDIA, deixar Meta Business Agent desativado e conservar Meta Cloud API para campanhas, templates e envios autorizados.
+- Quatro configurações observadas já usavam `sos_sales`, com Meta Agent desativado e nenhuma jornada sob sua titularidade. Não foi necessário excluir agentes, conexões ou credenciais na Meta.
+- UI deixa de oferecer onboarding Meta Agent; backend bloqueia onboarding e seleção Meta/auto_fallback quando `META_BUSINESS_AGENT_ENABLED=false`, fixado nos composes Lab/produção. Transportes Cloud API e WAHA permanecem.
+- Removidas ofertas SOS, identidades e perguntas comerciais injetadas pelo Humanizer. Prompt usa somente contexto da empresa, horários publicados, preferências e capacidades configuradas.
+- Worker, simulador e calibração compartilham configuração publicada, prompt e política de decisão. Correções são acrescentadas atomicamente ao bundle publicado, mesmo quando existem guardrails antigos. Horário e tom corrigidos também atualizam o bundle. Falhas de leitura de instruções impedem geração.
+- Campos legados de pagamento são aceitos e normalizados sem sobrescrever valores canônicos. Regra exata antiga da Sofia de sempre fechar com múltipla escolha é reconciliada com a orientação já publicada de uma pergunta necessária.
+- Handoff envia uma confirmação fixa usando reserva idempotente antes da pausa; entrega ambígua fica UNKNOWN para reconciliação. Pedidos de destino financeiro são encaminhados à equipe, sem gerar Pix/link por inferência.
+- Logs registram hashes do prompt/configuração e versão do contrato, sem registrar conteúdo do cliente nesse evento.
+- Validação: TypeScript e 570/570 testes API, 24/24 frontend; Docker Lab reconstruído e ready com seis dependências ok. Migração local preserva um bundle órfão preexistente. Retirado segredo literal de fallback do compose Lab; rotação de chave não executada.
+- Limites: testes de transporte usam dublês; nenhum disparo real a cliente faz parte desta validação. Saúde técnica não certifica adesão perfeita de todo diálogo do modelo.

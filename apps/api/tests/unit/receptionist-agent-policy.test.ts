@@ -420,6 +420,7 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
         if (sql.includes('INSERT INTO public.conversation_messages')) {
           return { rows: [], rowCount: 1 };
         }
+        if (sql.includes('FROM public.workspace_intelligence_bundles') || sql.includes('FROM public.workspace_knowledge_documents')) return {rows:[],rowCount:0};
         throw new Error(`Unexpected test SQL: ${sql}`);
       }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
     }

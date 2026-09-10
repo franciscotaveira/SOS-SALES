@@ -68,6 +68,7 @@ export async function metaBusinessAgentRoutes(
     request: FastifyRequest<{ Params: { workspaceId: string }; Body: { catalogId?: string; channelConnectionId?: string } }>,
     reply: FastifyReply,
   ) => {
+    if (process.env.META_BUSINESS_AGENT_ENABLED === 'false') return reply.status(409).send({error:'Agente Meta desativado nesta instalação; use o agente SOS.',code:'META_BUSINESS_AGENT_DISABLED'});
     const actor = request.operatorActor;
     if (!actor) return unauthorized(reply, 'Operador não autenticado');
     const allowed = await assertTenantAccess(request, reply, request.params.workspaceId, actor, dependencies.workspaceDirectory, 'owner');
