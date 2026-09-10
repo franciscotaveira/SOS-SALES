@@ -64,3 +64,17 @@ Evidência desta correção:
 Limites: não certifica todos os diálogos possíveis nem entrega externa de campanhas. Rastreabilidade por hash passa a existir para novas inferências; não reconstrói retrospectivamente prompts antigos. Reserva SENDING abandonada por crash ainda exige reconciliação antes de pausar/encerrar a jornada.
 
 Estado desta atualização antes da promoção: código e Lab validados; release será identificada pelos manifestos de build e pela verificação pós-promoção.
+
+
+## Verificação pós-promoção — 10/09/2026, 20h47 BRT
+
+- Release ativa: `acb2d931b651e122bb93550c4cb1e263b1cb54a8`; anterior preservada: `cc7df9e80003efd2ce2cabc64710f5d894c6abe1`.
+- API SHA-256: `746c93e13258d3e39fa0d353cac8d72b5d985057bb0274f65431dc70328e4bc1`.
+- Build isolado limpo, preflight e staging aprovados. Supabase CLI confirmou somente migração 20260910150000 pendente e a aplicou; ledger aprovado; gate conferiu 14 tabelas e 12 funções.
+- Promoção concluída após um 502 transitório durante inicialização. Consultas independentes posteriores confirmaram /health ok com commit acb2d931 e /ready com as seis dependências ok.
+- Runtime confirmou `META_BUSINESS_AGENT_ENABLED=false`, chave NVIDIA presente e modelo ativo `nvidia/nemotron-3.5-lightning-30b-a3b`. Esse modelo também passou os quatro cenários sintéticos (preço, gratuidade, despedida e humano), além dos quatro anteriores no 120B. Total: oito verificações de inferência reais sintéticas, sem WhatsApp externo.
+- Leitura posterior do banco: quatro configurações em sos_sales, Meta Agent false/NOT_STARTED; quatro bundles publicados, três com campos canônicos de pagamento/parcelas. Os campos não são inventados para o bundle sem origem correspondente.
+- Canais preservados: uma conexão meta_cloud CONNECTED, duas WAHA CONNECTED e três registros WAHA DISCONNECTED. Não se afirma conectividade de todos os registros históricos.
+- Navegador renderizou a tela pública “Acessar Cockpit” na URL de produção. Não foi executado fluxo autenticado ou envio real de campanha nesta etapa.
+
+**Estado final:** correção publicada e saúde técnica observada. Agente SOS mantido, Meta Business Agent desativado e Cloud API preservada. Não há certificação de perfeição do modelo nem de entrega a destinatários reais nesta validação.
