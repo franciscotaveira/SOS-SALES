@@ -9,7 +9,7 @@
  * 5. Operator reply (fromMe: true) pauses the bot for human takeover.
  */
 
-import pg from 'pg';
+import pg from '../apps/api/node_modules/pg/lib/index.js';
 
 const distPath = process.env.API_DIST_PATH || (process.cwd() === '/app' ? './dist/index.js' : '../apps/api/dist/index.js');
 const { ReceptionistAgent } = await import(distPath);

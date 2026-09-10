@@ -23,6 +23,17 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
     });
   });
 
+  it('accepts loose envelope with unquoted keys/values from lightweight models', () => {
+    expect(parseReceptionistDecision(
+      '{intent:greeting,escalate:false,sendBookingFlow:false}\nOlá! Como posso ajudar?'
+    )).toEqual({
+      intent: 'greeting',
+      escalate: false,
+      sendBookingFlow: false,
+      reply: 'Olá! Como posso ajudar?',
+    });
+  });
+
   it('extracts envelope even without newline between JSON and text', () => {
     expect(parseReceptionistDecision(
       '{"intent":"greeting","escalate":false,"sendBookingFlow":false}Olá, João! Tudo bem?'

@@ -265,8 +265,24 @@ export function parseReceptionistDecision(rawResponse: string): ReceptionistDeci
     return null;
   }
 
+  let parsed: unknown = null;
   try {
-    const parsed: unknown = JSON.parse(header);
+    parsed = JSON.parse(header);
+  } catch {
+    try {
+      const looseFixed = header
+        .replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":')
+        .replace(/:\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*([,}])/g, (_match, val, ending) => {
+          if (val === 'true' || val === 'false' || val === 'null') return `:${val}${ending}`;
+          return `:"${val}"${ending}`;
+        });
+      parsed = JSON.parse(looseFixed);
+    } catch {
+      return null;
+    }
+  }
+
+  try {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
 
     const decision = parsed as Record<string, unknown>;
