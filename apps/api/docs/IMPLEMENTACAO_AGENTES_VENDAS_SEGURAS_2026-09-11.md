@@ -47,3 +47,11 @@ A release foi preparada em pasta isolada no VPS. O dry-run identificou somente `
 Lab final: `/health` retornou `ok` e `/ready` retornou `ready`, com database, Redis, waha-inbound-worker, outbound-worker, receptionist-worker e capi-worker em `ok`. API e WAHA locais foram retomados.
 
 A aplicação da migração em produção foi bloqueada pela revisão automática de aprovação antes de executar. Foi solicitada autorização explícita para a migração `20260911120000_agent_sales_safety.sql` e a promoção da release `d55bace`. Até essa aprovação, o VPS continua no commit `acb2d931b651e122bb93550c4cb1e263b1cb54a8`.
+
+## Publicação concluída — 11/09/2026
+
+Após a autorização explícita do usuário (“pode subir para vps”), a migração `20260911120000_agent_sales_safety.sql` foi aplicada com exit code 0. O CLI apresentou timeout ao armazenar o cache do catálogo; a verificação posterior do ledger confirmou a migração aplicada, e o contrato de schema validou 18 tabelas e 16 funções com o papel runtime.
+
+A promoção ativou `d55baceab9c71acebe88eb79938b3e5dab07937b`, recriando API e Caddy. A conexão HTTPS falhou transitoriamente durante a inicialização e passou no retry do gate. Verificação pública independente: `/health` confirmou ambiente production e o commit exato em `2026-09-11T13:49:36.036Z`; `/ready` confirmou as seis dependências em `ok` em `2026-09-11T13:49:42.002Z`.
+
+Esta publicação entrega as proteções e a estrutura de piloto descritas acima. Não ativou novos contatos de piloto, não enviou mensagens de teste a clientes e não transforma a avaliação NVIDIA inconclusiva em aprovação comportamental ou comercial.
