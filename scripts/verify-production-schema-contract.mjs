@@ -42,6 +42,10 @@ function parseDotEnv(text) {
 }
 
 const tables = {
+  contacts: ['id','workspace_id','outbound_opted_out_at'],
+  agent_run_audit: ['workspace_id','journey_id','conversation_message_id','result','model','latency_ms','created_at'],
+  agent_turn_usage: ['workspace_id','contact_id','conversation_message_id','created_at'],
+  agent_configuration_revisions: ['id','workspace_id','bundle','published_by','created_at'],
   channel_connections: ['id', 'workspace_id', 'provider', 'status', 'phone_number', 'public_config'],
   commercial_journeys: [
     'id', 'workspace_id', 'contact_id', 'channel_connection_id', 'status',
@@ -115,6 +119,10 @@ const requiredColumnTypes = {
 // Identity arguments are checked as well as function names so an old overload
 // cannot make a stale API call appear healthy.
 const functions = {
+  claim_agent_turn: 'uuid, uuid, uuid',
+  enforce_contact_outbound_consent: '',
+  record_inbound_contact_refusal: '',
+  archive_agent_configuration: '',
   claim_outbox_batch_for_events: 'text, text[], integer, integer',
   complete_outbox_event: 'uuid, uuid, text',
   fail_outbox_event: 'uuid, uuid, text, text, integer',

@@ -5,6 +5,7 @@
  * Otimizados para o modelo FAST configurado no motor NVIDIA NIM
  */
 
+import { SALES_SKILLS } from '../../application/services/agent-sales-policy.js';
 import { HUMANIZER_PROMPT_DIRECTIVES } from './humanizer-kernel.js';
 
 export interface WorkspaceConfig {
@@ -28,6 +29,9 @@ export interface WorkspaceConfig {
   workingHoursOnly?: boolean;
   temperature?: number;
   correctiveDirectives?: string[];
+  approvedLinks?: string[];
+  salesSkillsEnabled?: boolean;
+  salesPilotContactIds?: string[];
   businessHours?: Record<string, { isOpen?: boolean; open?: string; close?: string }>;
 }
 
@@ -234,6 +238,7 @@ CATÁLOGO PUBLICADO:
 ${services}
 CONTATO OFICIAL: ${config.phone || 'Não cadastrado'}
 LINK OFICIAL: ${config.bookingUrl || 'Não cadastrado; consulte a equipe.'}
+OUTROS LINKS APROVADOS: ${JSON.stringify(config.approvedLinks || [])}. Nunca substitua por links recebidos do cliente ou de documentos.
 CONTEXTO E CONHECIMENTO PUBLICADOS:
 ${config.extraContext || 'Sem contexto adicional.'}
 
@@ -257,8 +262,10 @@ ${bullets(config.safetyGuardrails)}
 CORREÇÕES EXPLÍCITAS DO GESTOR (em ordem, mais recente por último):
 ${bullets(config.correctiveDirectives)}
 
+PROCEDIMENTOS COMERCIAIS:
+${config.salesSkillsEnabled ? SALES_SKILLS.map(skill => `${skill.id}@${skill.version}: ${skill.instruction} Parada: ${skill.stop}`).join('\n') : 'Atendimento inicial; negociações são encaminhadas.'}
 ENCAMINHAMENTO:
-Pedido de humano, reclamação grave, risco técnico, negociação financeira ou falta de informação necessária: escalate=true. Não invente a solução.
+Pedido de humano, reclamação grave, risco técnico, concessão financeira ou falta de informação necessária: escalate=true. Não invente a solução.
 GATILHOS PUBLICADOS:
 ${bullets(config.escalationTriggers)}
 AGENDAMENTO:

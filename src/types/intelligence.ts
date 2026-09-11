@@ -125,6 +125,9 @@ export interface ProductCatalogItem {
 }
 
 export interface AiAgentConfig {
+  salesSkillsEnabled?: boolean;
+  salesPilotContactIds?: string[];
+  approvedLinks?: string[];
   id: string;
   workspaceId: string;
   name: string;

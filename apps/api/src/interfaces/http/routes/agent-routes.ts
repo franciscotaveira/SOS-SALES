@@ -10,6 +10,8 @@
  */
 
 import { FastifyInstance, FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
+import {resolveSosCheckout,checkoutText} from '../../../application/services/sos-approved-checkout.js';
+import {moneyMinor,validateSalesReply,isContactRefusal} from '../../../application/services/agent-sales-policy.js';
 import { z } from 'zod';
 import { dbPool } from '../../../infrastructure/database/pool.js';
 import { normalizeWorkspaceUuid } from './whatsapp-channel-routes.js';
@@ -176,6 +178,14 @@ function validateIntelligenceBundle(value: unknown): { ok: true; bundle: Record<
   if (bundle.schemaVersion !== undefined
     && (typeof bundle.schemaVersion !== 'string' || bundle.schemaVersion.trim().length > 32)) {
     return { ok: false, error: 'schemaVersion inválido' };
+  }
+  const agent = asObject(bundle.agentConfig);
+  if (agent.salesSkillsEnabled !== undefined && typeof agent.salesSkillsEnabled !== 'boolean') return {ok:false,error:'salesSkillsEnabled deve ser booleano'};
+  if (agent.salesPilotContactIds !== undefined && (!Array.isArray(agent.salesPilotContactIds) || agent.salesPilotContactIds.length>50 || agent.salesPilotContactIds.some((id:unknown)=>typeof id!=='string' || !normalizeWorkspaceUuid(id)))) return {ok:false,error:'Selecione até 50 IDs válidos de contatos do piloto'};
+  if (agent.approvedLinks !== undefined && (!Array.isArray(agent.approvedLinks) || agent.approvedLinks.length>20 || agent.approvedLinks.some((link:unknown)=>{try {const url=new URL(String(link));return url.protocol!=='https:' || Boolean(url.username || url.password);}catch{return true;}}))) return {ok:false,error:'Links aprovados devem ser URLs HTTPS completas, sem credenciais'};
+  if (Array.isArray(bundle.catalog)) for(const raw of bundle.catalog){
+    const item=asObject(raw);const price=item.basePrice ?? item.price ?? item.value;
+    if(price!==undefined && price!==null && price!=='' && moneyMinor(price)===undefined)return {ok:false,error:'Preço inválido no catálogo. Use valor numérico ou valor monetário único como 1.234,56.'};
   }
   return { ok: true, bundle, bytes };
 }
@@ -414,6 +424,8 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
     if (targetWs && request.operatorActor) {
       const isOwnerMutation = (
         request.url.includes('/agent/config')
+        || request.url.includes('/simulator/calibrate')
+        || (request.url.includes('/simulator/chat') && /^\/(regra|preco|horario|pix|tom)\b/i.test(String((request.body as any)?.message || '').trim()))
         || request.url.includes('/intelligence')
         || request.url.includes('/knowledge-docs')
       ) && request.method !== 'GET' && request.method !== 'HEAD';
@@ -433,6 +445,18 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       if (!allowed) return;
     }
   });
+
+  app.get<{Params:{workspaceId:string}}>('/api/v1/workspaces/:workspaceId/intelligence/revisions',async(request)=>({data:(await query('SELECT id,published_by,created_at FROM public.agent_configuration_revisions WHERE workspace_id=$1 ORDER BY id DESC LIMIT 30',[request.params.workspaceId])).rows}));
+  app.post<{Params:{workspaceId:string;revisionId:string}}>('/api/v1/workspaces/:workspaceId/intelligence/revisions/:revisionId/restore',async(request,reply)=>{
+    if(!/^\d{1,18}$/.test(request.params.revisionId))return reply.code(400).send({error:'Revisão inválida'});
+    const saved=await query('SELECT bundle FROM public.agent_configuration_revisions WHERE workspace_id=$1 AND id=$2',[request.params.workspaceId,request.params.revisionId]);
+    if(!saved.rows[0])return reply.code(404).send({error:'Revisão não encontrada'});
+    const validation=validateIntelligenceBundle(saved.rows[0].bundle);if(!validation.ok)return reply.code(409).send({error:validation.error});
+    const restored=await query('UPDATE public.workspace_intelligence_bundles SET bundle=$2::jsonb,published_at=NOW(),updated_at=NOW(),published_by=$3 WHERE workspace_id=$1 RETURNING workspace_id',[request.params.workspaceId,JSON.stringify(validation.bundle),request.operatorActor!.userId]);
+    if(!restored.rows.length)return reply.code(409).send({error:'A publicação atual não existe; restauração não aplicada.'});
+    return {success:true};
+  });
+  app.get<{Params:{workspaceId:string}}>('/api/v1/workspaces/:workspaceId/agent/outcomes',async(request)=>({data:(await query("SELECT result,count(*)::int AS count,round(avg(latency_ms))::int AS average_latency_ms FROM public.agent_run_audit WHERE workspace_id=$1 AND created_at>=NOW()-interval '24 hours' GROUP BY result ORDER BY count(*) DESC",[request.params.workspaceId])).rows}));
 
   /**
    * Backend source of truth for the workspace-wide AI runtime switch and the
@@ -1145,6 +1169,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         return reply.status(413).send({ error: `Mensagem excede o limite de ${MAX_SIMULATOR_MESSAGE_CHARS} caracteres` });
       }
 
+      if (!userMessage.startsWith('/') && isContactRefusal(userMessage)) return reply.send({success:true,agentResponse:'',executionMode:'simulation',wouldOptOut:true,wouldEscalate:false,model:'policy'});
       const selectedTier = process.env.NVIDIA_NIM_MODEL || NVIDIA_MODEL_TIERS.NEMOTRON_REASONING;
 
       // 1. INTERCEPTAÇÃO DE COMANDOS DO TREINADOR (In-Chat Direct Tuning)
@@ -1307,8 +1332,10 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       let modelUsed = selectedTier;
       let decision;
       try {
-        const inputDecision = getReceptionistInputDecision(userMessage);
-        if (inputDecision) { decision = inputDecision; } else {
+        const checkout=publishedConfig.salesSkillsEnabled?await resolveSosCheckout(query,workspaceId,userMessage):null;
+        const inputDecision=checkout?{intent:'inquiry' as const,escalate:false,sendBookingFlow:false,reply:checkoutText(checkout)}:getReceptionistInputDecision(userMessage);
+        if(checkout){publishedConfig.approvedLinks=[...(publishedConfig.approvedLinks||[]),checkout.url];publishedConfig.services=[...publishedConfig.services,{name:checkout.name,price:(checkout.amountMinor/100).toFixed(2)}];}
+        if (inputDecision) { decision = inputDecision; generatedReply = decision.reply; } else {
         const result = await nvidiaEngine.generateChatCompletion(llmMessages, {
           model:selectedTier, temperature:simTemperature, maxTokens:512, topP:0.9,
         });
@@ -1321,7 +1348,8 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         request.log.warn({err}, 'Falha no modelo do agente SOS');
         return reply.status(503).send({error:'Não foi possível testar o agente agora.', code:'RECEPTIONIST_NIM_UNAVAILABLE'});
       }
-      const actionPolicy = getReceptionistActionPolicy(decision);
+      if (!validateSalesReply(decision.reply,publishedConfig).ok) decision.escalate=true;
+      const actionPolicy = getReceptionistActionPolicy(decision,publishedConfig.salesSkillsEnabled);
 
       const latencyMs = Date.now() - startTime;
 
@@ -1387,14 +1415,18 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       let generationSucceeded = false;
       if (publishedConfig) {
         try {
-          const inputDecision = getReceptionistInputDecision(lastCustomerMessage);
+          if(isContactRefusal(lastCustomerMessage)) return reply.send({success:true,savedDirective:instruction,generationSucceeded:true,calibratedResponse:'',wouldOptOut:true});
+          const checkout=publishedConfig.salesSkillsEnabled?await resolveSosCheckout(query,workspaceId,lastCustomerMessage):null;
+          if(checkout){publishedConfig.approvedLinks=[...(publishedConfig.approvedLinks||[]),checkout.url];publishedConfig.services.push({name:checkout.name,price:(checkout.amountMinor/100).toFixed(2)});}
+          const inputDecision = checkout?{intent:'inquiry' as const,escalate:false,sendBookingFlow:false,reply:checkoutText(checkout)}:getReceptionistInputDecision(lastCustomerMessage);
           const result = inputDecision ? null : await nvidiaEngine.generateChatCompletion([
             {role:'system', content:buildSystemPrompt(publishedConfig)},
             {role:'user', content:lastCustomerMessage || 'Como funciona o atendimento?'},
           ], {model:process.env.NVIDIA_NIM_MODEL || NVIDIA_MODEL_TIERS.NEMOTRON_REASONING, temperature:publishedConfig.temperature ?? 0.25, maxTokens:512, topP:0.9});
           const decision = inputDecision || parseReceptionistDecision(result?.content || result?.text || '');
           if (decision) {
-            calibratedReply = getReceptionistActionPolicy(decision).shouldEscalate ? 'Vou encaminhar seu atendimento à equipe responsável.' : decision.reply;
+            if(!validateSalesReply(decision.reply,publishedConfig).ok)decision.escalate=true;
+            calibratedReply = getReceptionistActionPolicy(decision,publishedConfig.salesSkillsEnabled).shouldEscalate ? 'Vou encaminhar seu atendimento à equipe responsável.' : decision.reply;
             generationSucceeded = true;
           }
         } catch (err) { request.log.warn({err}, 'Correção salva, mas teste de geração falhou'); }

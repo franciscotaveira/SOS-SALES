@@ -1,3 +1,4 @@
+import {PilotContacts,AgentGovernancePanel} from './AgentGovernancePanel';
 import React, { useState, useEffect } from 'react';
 import { AiAgentConfig, ToneOfVoice, AgentAutonomyMode } from '../../types/intelligence';
 import {
@@ -161,6 +162,18 @@ export const AgentSettingsSection: React.FC<AgentSettingsSectionProps> = ({
 
   return (
     <form onSubmit={handleSave} className="space-y-6 animate-in fade-in duration-200">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 mb-4 space-y-3">
+          <label className="flex items-start gap-3">
+            <input type="checkbox" checked={config.salesSkillsEnabled === true} disabled={!canManage} onChange={e=>setConfig({...config,salesSkillsEnabled:e.target.checked})} className="mt-1" />
+            <span><strong>Atendimento comercial com regras de segurança</strong><br/>Ativa os procedimentos no simulador e nos contatos do piloto. Permite esclarecer objeções comuns. Descontos e exceções continuam com a equipe. No SOS, planos elegíveis usam o checkout Cakto cadastrado.</span>
+          </label>
+          <label className="block text-sm">Links oficiais que a agente pode compartilhar (um por linha)
+            <textarea className="mt-1 w-full rounded-lg border p-2 text-base" disabled={!canManage} value={(config.approvedLinks||[]).join('\n')} onChange={e=>setConfig({...config,approvedLinks:e.target.value.split('\n').map(x=>x.trim()).filter(Boolean)})} placeholder="https://seusite.com/pagina-oficial" />
+          </label>
+          <PilotContacts workspaceId={config.workspaceId} selected={config.salesPilotContactIds||[]} disabled={!canManage} onChange={ids=>setConfig({...config,salesPilotContactIds:ids})} />
+          <p className="text-xs">Publique apenas links revisados. A agente não confirma pagamento ou reserva sem integração. Salvar publica estas alterações para o agente.</p>
+        </div>
+
       <fieldset disabled={!canManage} className="contents">
         {/* Header Banner */}
         <div className="bg-[var(--sos-surface)] border border-[var(--sos-border)] rounded-xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -173,7 +186,7 @@ export const AgentSettingsSection: React.FC<AgentSettingsSectionProps> = ({
                 <h2 className="text-base font-bold font-heading flex items-center gap-2 text-[var(--sos-ink)]">
                   <span>{config.name || 'Agente Comercial IA 24/7'}</span>
                   <span className="text-[9.5px] font-mono px-2 py-0.5 rounded-full bg-[var(--sos-ai-subtle)] text-[var(--sos-ai)] font-bold border border-[var(--sos-ai)]/30 flex items-center gap-1">
-                    <Sparkles className="w-2.5 h-2.5" /> Motor NVIDIA Nemotron Super 120B
+                    <Sparkles className="w-2.5 h-2.5" /> Motor NVIDIA
                   </span>
                 </h2>
                 <p className="text-xs text-[var(--sos-muted)]">
@@ -598,6 +611,7 @@ export const AgentSettingsSection: React.FC<AgentSettingsSectionProps> = ({
           </div>
         </div>
       </fieldset>
+      <AgentGovernancePanel workspaceId={config.workspaceId} canManage={canManage} />
     </form>
   );
 };

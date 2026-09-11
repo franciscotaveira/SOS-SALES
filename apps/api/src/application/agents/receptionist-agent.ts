@@ -10,6 +10,8 @@
  * - Escalável: pausa automaticamente quando humano é solicitado ou o envio fica incerto
  */
 
+import {resolveSosCheckout,checkoutText} from '../services/sos-approved-checkout.js';
+import {moneyMinor,validateSalesReply,isContactRefusal} from '../services/agent-sales-policy.js';
 import { createHash } from 'node:crypto';
 import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
 import { WabaClient } from '../../infrastructure/channels/meta/waba-client.js';
@@ -373,24 +375,24 @@ export const HANDOFF_ACKNOWLEDGEMENT = 'Vou encaminhar seu atendimento à equipe
 
 /** Financial destinations require operator confirmation, shared by live and preview. */
 export function getReceptionistInputDecision(text: string): ReceptionistDecision | null {
-  if (/chave\s+pix|(?:gera|gerar|gere|manda|envia|passe).{0,20}(?:link.{0,10}pagamento|pix)|link\s+(?:de\s+)?pagamento/i.test(text)) {
+  if (/(?:quero|me d[aá]|consegue|pode|liber|autoriza|conced|aplic).{0,45}(?:desconto|gr[aá]tis|gratuit)|chave\s+pix|(?:gera|gerar|gere|manda|envia|passe).{0,20}(?:link.{0,10}pagamento|pix)|link\s+(?:de\s+)?pagamento/i.test(text)) {
     return {intent:'payment', escalate:true, sendBookingFlow:false, reply:HANDOFF_ACKNOWLEDGEMENT};
   }
   return null;
 }
 
 /** Applies the deterministic outbound policy; the model never chooses it. */
-export function getReceptionistActionPolicy(decision: ReceptionistDecision): ReceptionistActionPolicy {
+export function getReceptionistActionPolicy(decision: ReceptionistDecision, salesSkillsEnabled = false): ReceptionistActionPolicy {
   const mustEscalate = decision.escalate
     || decision.intent === 'human_request'
-    || decision.intent === 'objection'
+    || (decision.intent === 'objection' && !salesSkillsEnabled)
     || decision.intent === 'payment';
 
   if (mustEscalate) {
     return { shouldEscalate: true, allowReply: false, allowBookingFlow: false, skipped: 'human_handoff_required' };
   }
 
-  if (!AUTONOMOUS_REPLY_INTENTS.has(decision.intent)) {
+  if (!AUTONOMOUS_REPLY_INTENTS.has(decision.intent) && !(salesSkillsEnabled && decision.intent === 'objection')) {
     return { shouldEscalate: false, allowReply: false, allowBookingFlow: false, skipped: 'intent_not_allowed_for_autonomous_outbound' };
   }
 
@@ -463,15 +465,8 @@ function formatPublishedBusinessHours(profile: JsonRecord): string | undefined {
 }
 
 function parsePublishedPrice(baseVal: unknown, fallbackVal: unknown): number | undefined {
-  const direct = finiteNumber(baseVal);
-  if (direct !== undefined && direct > 0) return direct;
-  if (typeof fallbackVal === 'number' && Number.isFinite(fallbackVal) && fallbackVal > 0) return fallbackVal;
-  if (typeof fallbackVal === 'string') {
-    const cleaned = fallbackVal.replace(/[^\d.,]/g, '').replace(',', '.');
-    const num = parseFloat(cleaned);
-    if (Number.isFinite(num) && num > 0) return num;
-  }
-  return undefined;
+  const minor = moneyMinor(baseVal) ?? moneyMinor(fallbackVal);
+  return minor === undefined ? undefined : minor / 100;
 }
 
 function mapPublishedCatalog(catalog: unknown): WorkspaceConfig['services'] {
@@ -521,7 +516,7 @@ function collectPublishedKnowledge(
     if (document.status && document.status !== 'ready') continue;
     add(document.title, document.content);
   }
-  return Array.from(new Set(snippets)).slice(0, 12);
+  return Array.from(new Set(snippets));
 }
 
 function mapPublishedBehavior(
@@ -613,10 +608,13 @@ function applyPublishedIntelligence(
     ...(publishedCity ? { city: publishedCity } : {}),
     ...(publishedPhone ? { phone: publishedPhone } : {}),
     ...(publishedHours ? { workingHours: publishedHours } : {}),
-    ...(catalogServices.length > 0 ? { services: catalogServices } : {}),
+    ...(Array.isArray(bundle.catalog) ? { services: catalogServices } : {}),
     ...(contextParts.length > 0 ? { extraContext: contextParts.join('\n') } : {}),
     ...(persona ? { persona } : {}),
     correctiveDirectives: corrections,
+    salesSkillsEnabled: agentConfig.salesSkillsEnabled === true,
+    salesPilotContactIds: stringArray(agentConfig.salesPilotContactIds, 50),
+    approvedLinks: stringArray(agentConfig.approvedLinks, 20),
     businessHours: nonEmptyString(bundle.workingHoursOverride) ? undefined : profile.businessHours as WorkspaceConfig["businessHours"],
     ...(typeof agentConfig.workingHoursOnly === "boolean" ? { workingHoursOnly: agentConfig.workingHoursOnly } : {}),
     ...(guardrails.length > 0 ? { safetyGuardrails: guardrails } : {}),
@@ -776,6 +774,7 @@ export class ReceptionistAgent {
            j.status,
            j.channel_connection_id,
            j.bot_enabled,
+           c.outbound_opted_out_at,
            j.bot_paused_at,
            j.responder_owner,
            j.responder_changed_at,
@@ -791,6 +790,7 @@ export class ReceptionistAgent {
            wac.meta_agent_activation_status,
            wac.published_at
          FROM public.commercial_journeys j
+         JOIN public.contacts c ON c.id=j.contact_id AND c.workspace_id=j.workspace_id
          LEFT JOIN public.workspace_agent_config wac
            ON wac.workspace_id = j.workspace_id
          WHERE j.id = $1 AND j.workspace_id = $2`,
@@ -817,6 +817,7 @@ export class ReceptionistAgent {
         published_at,
       } = result.rows[0];
       // Se a jornada comercial não estiver ABERTA (ex: ABANDONED, WON, LOST), a IA receptora não deve responder
+      if (result.rows[0].outbound_opted_out_at) return false;
       if (status && status !== 'OPEN') return false;
       const metaChannelMatches = Boolean(meta_agent_channel_connection_id)
         && Boolean(channel_connection_id)
@@ -1160,7 +1161,31 @@ export class ReceptionistAgent {
 
   /** Ponto de entrada principal — consumido pelo ReceptionistInboundWorker. */
   public async handleInbound(input: ReceptionistInput): Promise<ReceptionistOutput> {
+    const started = Date.now();
+    try {
+      const result = await this.processInbound(input);
+      await this.recordRun(input, result.skipped || (result.escalated ? 'handoff' : 'replied'), result.model, Date.now()-started);
+      return result;
+    } catch (error) {
+      await this.recordRun(input, 'processing_error', '', Date.now()-started);
+      throw error;
+    }
+  }
+
+  private async recordRun(input: ReceptionistInput, result: string, model: string, latency: number): Promise<void> {
+    console.info('[ReceptionistAgent] outcome', {workspaceId:input.workspaceId,journeyId:input.journeyId,result,latency});
+    if (!input.conversationMessageId) return;
+    try { await this.query('INSERT INTO public.agent_run_audit(workspace_id,journey_id,conversation_message_id,result,model,latency_ms) VALUES($1,$2,$3,$4,$5,$6)',[input.workspaceId,input.journeyId,input.conversationMessageId,result,model,latency]); }
+    catch { console.warn('[ReceptionistAgent] audit_write_failed'); }
+  }
+
+  private async processInbound(input: ReceptionistInput): Promise<ReceptionistOutput> {
     const start = Date.now();
+
+    if (!input.fromPhone.includes('@g.us') && isContactRefusal(input.textContent)) {
+      await this.query('UPDATE public.contacts SET outbound_opted_out_at=COALESCE(outbound_opted_out_at,NOW()) WHERE id=$1 AND workspace_id=$2',[input.contactId,input.workspaceId]);
+      return {intent:'other',reply:'',escalated:false,bookingFlowSent:false,latencyMs:0,model:'',skipped:'contact_opted_out'};
+    }
 
     if (!this.isEnabled()) {
       return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs: 0, model: '', skipped: 'agent_disabled' };
@@ -1203,6 +1228,7 @@ export class ReceptionistAgent {
       return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs: 0, model: '', skipped: 'no_text_content' };
     }
 
+
     // Verifica se a mensagem contém o gatilho de ativação ("sos")
     const rawText = input.textContent.trim();
     const isSosTrigger = /\b(sos)\b/i.test(rawText) || rawText.toLowerCase() === 'sos';
@@ -1215,7 +1241,7 @@ export class ReceptionistAgent {
                bot_paused_at = NULL,
                bot_pause_reason = NULL,
                updated_at = NOW()
-           WHERE id = $1 AND workspace_id = $2 AND status = 'OPEN'`,
+           WHERE id = $1 AND workspace_id = $2 AND status = 'OPEN' AND responder_owner = 'sos_sales' AND bot_pause_reason IS NULL AND EXISTS (SELECT 1 FROM public.contacts c WHERE c.id=contact_id AND c.workspace_id=$2 AND c.outbound_opted_out_at IS NULL)`,
           [input.journeyId, input.workspaceId]
         );
         console.log(`[ReceptionistAgent] Activated bot for journey ${input.journeyId} via trigger keyword "sos"`);
@@ -1243,12 +1269,16 @@ export class ReceptionistAgent {
         skipped: 'workspace_config_unavailable',
       };
     }
+    // New commercial autonomy is limited to explicitly selected pilot contacts.
+    wsConfig.salesSkillsEnabled = wsConfig.salesSkillsEnabled === true && (wsConfig.salesPilotContactIds || []).includes(input.contactId);
+    const remembered = await this.query("SELECT key,value,source,observed_at FROM public.known_facts WHERE workspace_id=$1 AND journey_id=$2 AND key LIKE 'customer.%' AND superseded_by IS NULL ORDER BY observed_at DESC LIMIT 12",[input.workspaceId,input.journeyId]);
+    if(remembered.rows.length)wsConfig.extraContext=(wsConfig.extraContext||'')+'\nMEMÓRIA DECLARADA (não comprova pagamento, preço ou autorização):\n'+JSON.stringify(remembered.rows).slice(0,6000);
     const systemPrompt = buildSystemPrompt(wsConfig);
     console.info('[ReceptionistAgent] prompt_contract', JSON.stringify({
       workspaceId:input.workspaceId, conversationMessageId:input.conversationMessageId,
       configHash:createHash('sha256').update(JSON.stringify(wsConfig)).digest('hex'),
       promptHash:createHash('sha256').update(systemPrompt).digest('hex'),
-      contractVersion:'sos-agent-2026-09-10-v2',
+      contractVersion:'sos-agent-2026-09-11-v3',
     }));
 
     // Busca histórico de contexto consolidado (Message Burst Consolidation)
@@ -1276,10 +1306,19 @@ export class ReceptionistAgent {
     let latencyMs = 0;
 
     try {
-      const inputDecision = getReceptionistInputDecision(input.textContent);
+      const checkout = wsConfig.salesSkillsEnabled ? await resolveSosCheckout(this.query,input.workspaceId,input.textContent) : null;
+      const inputDecision = checkout ? {intent:'inquiry' as const,escalate:false,sendBookingFlow:false,reply:checkoutText(checkout)} : getReceptionistInputDecision(input.textContent);
+      if(checkout){wsConfig.approvedLinks=[...(wsConfig.approvedLinks||[]),checkout.url];wsConfig.services=[...wsConfig.services,{name:checkout.name,price:(checkout.amountMinor/100).toFixed(2)}];}
       if (inputDecision) {
-        rawResponse = JSON.stringify({intent:inputDecision.intent,escalate:true,sendBookingFlow:false}) + '\n' + inputDecision.reply;
+        rawResponse = JSON.stringify({intent:inputDecision.intent,escalate:inputDecision.escalate,sendBookingFlow:false}) + '\n' + inputDecision.reply;
       } else {
+      if (input.conversationMessageId) {
+        const budget = await this.query('SELECT public.claim_agent_turn($1,$2,$3) AS allowed',[input.workspaceId,input.contactId,input.conversationMessageId]);
+        if (budget.rows[0]?.allowed !== true) {
+          await this.ensureHumanHandoff(input.workspaceId,input.journeyId,'Limite de uso do agente ou recusa de contato; revisão humana');
+          return {intent:'other',reply:'',escalated:true,bookingFlowSent:false,latencyMs:0,model:'',skipped:'agent_budget_or_consent_blocked'};
+        }
+      }
       const result = await this.nim.generateChatCompletion(messages, {
         temperature: wsConfig.temperature ?? 0.25,
         maxTokens: 512,
@@ -1302,7 +1341,9 @@ export class ReceptionistAgent {
       // Invalid model output is also safe to retry: no provider call happened.
       throw new Error('RECEPTIONIST_INVALID_MODEL_OUTPUT');
     }
-    const policy = getReceptionistActionPolicy(decision);
+    const validation = validateSalesReply(decision.reply, wsConfig);
+    if (!validation.ok) { decision.escalate = true; console.warn('[ReceptionistAgent] reply_blocked', {workspaceId:input.workspaceId,reason:validation.reason}); }
+    const policy = getReceptionistActionPolicy(decision, wsConfig.salesSkillsEnabled);
     if (policy.shouldEscalate) {
       try {
         await this.sendHandoffAcknowledgement(input);

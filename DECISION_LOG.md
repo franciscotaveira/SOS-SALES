@@ -1049,3 +1049,11 @@
 - Logs registram hashes do prompt/configuração e versão do contrato, sem registrar conteúdo do cliente nesse evento.
 - Validação: TypeScript e 570/570 testes API, 24/24 frontend; Docker Lab reconstruído e ready com seis dependências ok. Migração local preserva um bundle órfão preexistente. Retirado segredo literal de fallback do compose Lab; rotação de chave não executada.
 - Limites: testes de transporte usam dublês; nenhum disparo real a cliente faz parte desta validação. Saúde técnica não certifica adesão perfeita de todo diálogo do modelo.
+
+## 11/09/2026 — Agentes comerciais com piloto delimitado
+
+- Preços usam parser único em centavos no editor e na API; catálogo vazio é autoritativo. Respostas passam por validação de preço, URL aprovada e efeitos sem confirmação antes do envio.
+- Novas habilidades comerciais exigem flag publicada e contato explicitamente selecionado; sem lista, ficam no simulador. Checkout só reutiliza plano Cakto ativo/BRL do SOS; não constitui pagamento ou provisionamento.
+- Recusa é persistida na ingestão e verificada na reserva/dispatch. Limites atômicos de 60 inferências por contato e 1.000 por workspace em 24h incluem retries. Publicações são arquivadas e restauráveis por proprietário; comando de treinamento não dá poder de publicação ao operador.
+- Playbook exige origem literal e passa a candidato não confirmado. Retenção não infere ciclo biológico a partir da data de compra.
+- A avaliação NVIDIA ficou inconclusiva após três timeouts. Não ampliar piloto nem declarar blindagem com base em testes determinísticos. Estado detalhado: `apps/api/docs/IMPLEMENTACAO_AGENTES_VENDAS_SEGURAS_2026-09-11.md`.

@@ -43,7 +43,7 @@ export class GhostingResurrectionEngine {
        FROM public.commercial_journeys j
        JOIN public.contacts c ON c.id = j.contact_id
        LEFT JOIN public.acquisition_contexts ac ON ac.journey_id = j.id
-       WHERE j.id = $1 AND j.workspace_id = $2
+       WHERE j.id = $1 AND j.workspace_id = $2 AND c.outbound_opted_out_at IS NULL AND j.bot_paused_at IS NULL AND j.responder_owner = 'sos_sales'
        LIMIT 1`,
       [journeyId, workspaceId]
     );
@@ -52,7 +52,7 @@ export class GhostingResurrectionEngine {
     const row = journeyRes.rows[0];
 
     // Se a jornada já estiver encerrada (WON ou LOST), não ressuscitamos
-    if (row.status === 'WON' || row.status === 'LOST') return null;
+    if (row.status !== 'OPEN') return null;
 
     // Buscar mensagens recentes
     const msgRes = await dbPool.query(
@@ -146,7 +146,9 @@ Horas em silêncio: ${hoursSilent.toFixed(1)}h
       `SELECT j.id
        FROM public.commercial_journeys j
        WHERE j.workspace_id = $1
-         AND j.status NOT IN ('WON', 'LOST')
+         AND j.status = 'OPEN'
+         AND j.bot_paused_at IS NULL AND j.responder_owner = 'sos_sales'
+         AND EXISTS (SELECT 1 FROM public.contacts c WHERE c.id=j.contact_id AND c.workspace_id=j.workspace_id AND c.outbound_opted_out_at IS NULL)
          AND j.last_interaction_at <= NOW() - ($2 || ' hours')::interval
          AND j.last_interaction_at >= NOW() - ($3 || ' hours')::interval
        ORDER BY j.last_interaction_at DESC

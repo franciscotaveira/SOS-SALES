@@ -201,6 +201,11 @@ export async function whatsappChannelRoutes(
       if (!allowed) {
         return reply;
       }
+      const recipient = (request.body as any)?.recipientPhone;
+      if(isMutation && typeof recipient==='string'){
+        const blocked=await dbPool.query("SELECT 1 FROM public.contacts WHERE workspace_id=$1 AND regexp_replace(phone,'[^0-9]','','g')=$2 AND outbound_opted_out_at IS NOT NULL LIMIT 1",[targetWs,recipient.replace(/\D/g,'')]);
+        if(blocked.rows.length)return reply.code(409).send({error:'O contato recusou novos envios.',code:'CONTACT_OPTED_OUT'});
+      }
     }
   });
 
@@ -2078,6 +2083,7 @@ export async function whatsappChannelRoutes(
           JOIN public.channel_connections cc ON cc.id = j.channel_connection_id
           WHERE j.id = $1
             AND j.workspace_id = $2
+            AND EXISTS (SELECT 1 FROM public.contacts c WHERE c.id=j.contact_id AND c.workspace_id=j.workspace_id AND c.outbound_opted_out_at IS NULL)
             AND cc.workspace_id = $2
             AND cc.provider = 'meta_cloud'
             AND cc.status = 'CONNECTED'

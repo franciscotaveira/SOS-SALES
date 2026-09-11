@@ -1,4 +1,5 @@
 import React from 'react';
+import {moneyMinor} from '../../../apps/api/src/domain/sales-money';
 import { salesOsRuntimeConfig } from '../../config/runtime';
 import { Workspace } from '../../types/cockpit';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
@@ -428,15 +429,8 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
         }
       : null;
 
-    // Helper resiliente para conversão de preço (string monetária ou número)
-    const parsePrice = (val: unknown, fallbackNum = 0): number => {
-      if (typeof val === 'number' && Number.isFinite(val)) return val;
-      if (typeof val === 'string') {
-        const cleaned = val.replace(/[^\d.,]/g, '').replace(',', '.');
-        const parsed = parseFloat(cleaned);
-        if (Number.isFinite(parsed)) return parsed;
-      }
-      return fallbackNum;
+    const parsePrice = (value: unknown, fallbackNum = 0): number => {
+      const minor=moneyMinor(value);return minor===undefined?fallbackNum:minor/100;
     };
 
     // Normalização resiliente do Perfil da Empresa
@@ -506,7 +500,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
     };
 
     // Normalização resiliente do Catálogo & Preços
-    const rawCatalog = Array.isArray(existing?.catalog) && existing.catalog.length > 0
+    const rawCatalog = Array.isArray(existing?.catalog)
       ? existing.catalog
       : fallback.catalog;
 
@@ -529,7 +523,7 @@ export const ClientAgentHubView: React.FC<ClientAgentHubViewProps> = ({
       };
     });
 
-    const rawDocs = Array.isArray(existing?.documents) && existing.documents.length > 0
+    const rawDocs = Array.isArray(existing?.documents)
       ? existing.documents
       : fallback.documents;
 

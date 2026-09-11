@@ -331,6 +331,9 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
             rowCount: 1,
           };
         }
+        if (sql.includes('FROM public.known_facts')) return {rows:[],rowCount:0};
+        if (sql.includes('claim_agent_turn')) return {rows:[{allowed:true}],rowCount:1};
+        if (sql.includes('INSERT INTO public.agent_run_audit')) return {rows:[],rowCount:1};
         throw new Error(`Unexpected test SQL: ${sql}`);
       }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
 
@@ -421,9 +424,32 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
           return { rows: [], rowCount: 1 };
         }
         if (sql.includes('FROM public.workspace_intelligence_bundles') || sql.includes('FROM public.workspace_knowledge_documents')) return {rows:[],rowCount:0};
+        if (sql.includes('FROM public.known_facts')) return {rows:[],rowCount:0};
+        if (sql.includes('claim_agent_turn')) return {rows:[{allowed:true}],rowCount:1};
+        if (sql.includes('INSERT INTO public.agent_run_audit')) return {rows:[],rowCount:1};
         throw new Error(`Unexpected test SQL: ${sql}`);
       }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
     }
+
+    it.each(['O plano custa R$ 1,00.', 'Pague em https://evil.invalid/checkout', 'Sua conta foi ativada.'])('never sends an unsafe model response: %s', async unsafeReply => {
+      vi.stubEnv('RECEPTIONIST_ENABLED','true');
+      const query=runtimeQuery();
+      const nim={isConfigured:()=>true,generateChatCompletion:vi.fn().mockResolvedValue({content:JSON.stringify({intent:'inquiry',escalate:false,sendBookingFlow:false})+'\n'+unsafeReply,model:'test-model'})};
+      const waba={sendText:vi.fn().mockResolvedValue({messages:[{id:'ack'}]}),sendFlow:vi.fn()};
+      const result=await new ReceptionistAgent({query,nim:nim as any,waba:waba as any}).handleInbound(input);
+      expect(result.escalated).toBe(true);
+      expect(JSON.stringify(waba.sendText.mock.calls)).not.toContain(unsafeReply);
+      expect(waba.sendFlow).not.toHaveBeenCalled();
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('pause_receptionist_and_open_handoff'),expect.any(Array));
+    });
+
+    it('does not invoke the model when the turn budget is exhausted', async()=>{
+      vi.stubEnv('RECEPTIONIST_ENABLED','true');const base=runtimeQuery();
+      const query=vi.fn(async(sql:string,args:any)=>sql.includes('claim_agent_turn')?{rows:[{allowed:false}]}:base(sql,args)) as any;
+      const nim={isConfigured:()=>true,generateChatCompletion:vi.fn()};const waba={sendText:vi.fn()};
+      const result=await new ReceptionistAgent({query,nim:nim as any,waba:waba as any}).handleInbound({...input,conversationMessageId:'50000000-0000-4000-8000-000000000005'});
+      expect(result.skipped).toBeTruthy();expect(nim.generateChatCompletion).not.toHaveBeenCalled();expect(waba.sendText).not.toHaveBeenCalled();
+    });
 
     it('throws before any provider effect when NVIDIA inference is unavailable so the outbox can retry', async () => {
       vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
@@ -573,6 +599,9 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
           };
         }
         if (sql.includes('INSERT INTO public.conversation_messages')) return { rows: [], rowCount: 1 };
+        if (sql.includes('FROM public.known_facts')) return {rows:[],rowCount:0};
+        if (sql.includes('claim_agent_turn')) return {rows:[{allowed:true}],rowCount:1};
+        if (sql.includes('INSERT INTO public.agent_run_audit')) return {rows:[],rowCount:1};
         throw new Error(`Unexpected test SQL: ${sql}`);
       }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
       const nim = {
@@ -663,6 +692,9 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
           };
         }
         if (sql.includes('complete_receptionist_outbound')) return { rows: [{ ok: true }], rowCount: 1 };
+        if (sql.includes('FROM public.known_facts')) return {rows:[],rowCount:0};
+        if (sql.includes('claim_agent_turn')) return {rows:[{allowed:true}],rowCount:1};
+        if (sql.includes('INSERT INTO public.agent_run_audit')) return {rows:[],rowCount:1};
         throw new Error(`Unexpected test SQL: ${sql}`);
       }) as unknown as typeof import('../../src/infrastructure/database/pool.js').dbPool.query;
       const nim = {

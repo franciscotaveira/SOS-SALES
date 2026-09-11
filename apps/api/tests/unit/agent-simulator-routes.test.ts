@@ -4,7 +4,7 @@ import { agentRoutes } from '../../src/interfaces/http/routes/agent-routes.js';
 
 const workspaceId = '10000000-0000-4000-8000-000000000001';
 
-function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>, failModels = false) {
+function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>, failModels = false, role = 'owner') {
   const app = Fastify({ logger: false });
   const query = queryMock || vi.fn().mockImplementation((sql: string) => {
     if (sql.includes('workspace_intelligence_bundles')) {
@@ -47,7 +47,7 @@ function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>, failModels = false)
     : vi.fn().mockResolvedValue({ content: '{"intent":"inquiry","escalate":false,"sendBookingFlow":false}\nResposta final do simulador.', model: 'nvidia-test-model' });
   app.register(agentRoutes, {
     authenticator: { verifyAccessToken: vi.fn().mockResolvedValue({ userId: '30000000-0000-4000-8000-000000000003' }) },
-    workspaceDirectory: { listForActor: vi.fn().mockResolvedValue([{ id: workspaceId, name: 'Workspace', slug: 'workspace', role: 'operator' }]) },
+    workspaceDirectory: { listForActor: vi.fn().mockResolvedValue([{ id: workspaceId, name: 'Workspace', slug: 'workspace', role }]) },
     query,
     nvidiaEngine: {
       generateChatCompletion,
@@ -66,6 +66,15 @@ function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>, failModels = false)
 }
 
 describe('Agent Simulator Routes (Meta Business AI Pattern)', () => {
+  it.each(['  /regra Nova regra', '/regra Nova regra', '/pix nova@empresa.com', '/preco Plano 1'])('prevents an operator from publishing through %s', async (message) => {
+    const {app,query,generateChatCompletion}=buildRouteApp(undefined,false,'operator');
+    const response=await app.inject({method:'POST',url:`/api/v1/workspaces/${workspaceId}/agent/simulator/chat`,headers:{authorization:'Bearer valid.jwt.token'},payload:{message}});
+    expect(response.statusCode).toBe(403);
+    expect(query).not.toHaveBeenCalled();
+    expect(generateChatCompletion).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it.each([undefined, '', '   ', 123])('does not fabricate a Pix key when workspace config contains %s', async (pix) => {
     const query = vi.fn().mockImplementation(async (sql: string) => ({ rows:
       sql.includes('workspace_operational_settings') ? [{ commercial_config: { pix_key: pix } }] :

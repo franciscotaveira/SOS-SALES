@@ -1,6 +1,6 @@
 /**
  * SOS SALES - MOTOR DE LTV E RECORRÊNCIA PÓS-VENDA (Level 4)
- * Calcula ciclos biológicos e temporais de recompra para maximizar o LTV do cliente.
+ * Apresenta acompanhamento pós-compra sem inferir data de execução ou ciclo biológico.
  */
 
 import { NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
@@ -15,8 +15,8 @@ export interface RetentionOpportunity {
   lastService: string;
   lastWonAt: string;
   daysSinceLastService: number;
-  recommendedCycleDays: number;
-  retentionStatus: 'EARLY' | 'OPTIMAL_WINDOW' | 'OVERDUE_RISK';
+  recommendedCycleDays: number | null;
+  retentionStatus: 'UNVERIFIED' | 'EARLY' | 'OPTIMAL_WINDOW' | 'OVERDUE_RISK';
   suggestedRetentionMessage: string;
   estimatedLtvPotentialMinor: number | null;
 }
@@ -26,7 +26,7 @@ export function buildSafeRetentionMessage(
   service: string,
   daysSince: number,
 ): string {
-  return `Oi ${contactName}! Faz ${daysSince} dias desde o atendimento de ${service}. Como foi sua experiência? Se quiser continuar, posso pedir para a equipe confirmar as opções disponíveis.`;
+  return `Oi ${contactName}! Faz ${daysSince} dias desde a compra de ${service}. Como foi sua experiência? Se quiser continuar, posso pedir para a equipe confirmar as opções disponíveis.`;
 }
 
 export class LtvRetentionEngine {
@@ -36,15 +36,6 @@ export class LtvRetentionEngine {
     this.aiEngine = aiEngine || new NvidiaNimEngine();
   }
 
-  private getOptimalCycleDays(serviceName: string): number {
-    const s = serviceName.toLowerCase();
-    if (/unha|gel|manicure|pedicure|fibra|esmaltação/.test(s)) return 18;
-    if (/cronograma|tratamento|hidratação|nutrição|reconstrução|cauterização/.test(s)) return 21;
-    if (/sobrancelha|buço|henna|egípcia|micro|design/.test(s)) return 25;
-    if (/corte|escova|modelagem/.test(s)) return 14;
-    if (/limpeza de pele|peeling|massagem|facial/.test(s)) return 28;
-    return 30; // Padrão geral
-  }
 
   async listRetentionOpportunities(workspaceId: string): Promise<RetentionOpportunity[]> {
     // Buscar últimos outcomes WON por contato
@@ -60,7 +51,7 @@ export class LtvRetentionEngine {
        FROM public.commercial_outcomes co
        JOIN public.commercial_journeys j ON j.id = co.journey_id
        JOIN public.contacts c ON c.id = j.contact_id
-       WHERE co.workspace_id = $1 AND co.result = 'WON'
+       WHERE co.workspace_id = $1 AND co.result = 'WON' AND c.outbound_opted_out_at IS NULL
        ORDER BY j.contact_id, co.occurred_at DESC
        LIMIT 30`,
       [workspaceId]
@@ -72,13 +63,13 @@ export class LtvRetentionEngine {
       const wonAt = new Date(row.occurred_at || Date.now()).getTime();
       const daysSince = Math.floor((Date.now() - wonAt) / (1000 * 60 * 60 * 24));
       const service = row.primary_service_or_product || 'Atendimento Especializado';
-      const cycleDays = this.getOptimalCycleDays(service);
+      const cycleDays = 0; // Sem evento de execução/ciclo aprovado, não inferir janela de recompra.
 
       // Status do ciclo de retenção
-      let retentionStatus: RetentionOpportunity['retentionStatus'] = 'EARLY';
-      if (daysSince >= cycleDays - 3 && daysSince <= cycleDays + 7) {
+      let retentionStatus: RetentionOpportunity['retentionStatus'] = 'UNVERIFIED';
+      if (cycleDays > 0 && daysSince >= cycleDays - 3 && daysSince <= cycleDays + 7) {
         retentionStatus = 'OPTIMAL_WINDOW';
-      } else if (daysSince > cycleDays + 7) {
+      } else if (cycleDays > 0 && daysSince > cycleDays + 7) {
         retentionStatus = 'OVERDUE_RISK';
       }
 
@@ -96,7 +87,7 @@ export class LtvRetentionEngine {
         lastService: service,
         lastWonAt: row.occurred_at,
         daysSinceLastService: daysSince,
-        recommendedCycleDays: cycleDays,
+        recommendedCycleDays: null,
         retentionStatus,
         suggestedRetentionMessage,
         estimatedLtvPotentialMinor: row.final_revenue_minor === null || row.final_revenue_minor === undefined
