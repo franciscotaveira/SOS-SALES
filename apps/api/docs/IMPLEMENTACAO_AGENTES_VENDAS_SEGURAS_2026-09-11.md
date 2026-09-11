@@ -37,3 +37,13 @@ Meta Business Agent continua desativado. WAHA e Meta Cloud API permanecem como t
 A primeira construção integrada do Docker Lab concluiu. A reconstrução após os últimos ajustes foi interrompida por pressão de recursos no Docker. O daemon falhou ao encerrar o WAHA local (`did not receive an exit event`) e a repetição da suíte apresentou timeouts de conexão com o PostgreSQL. Essa rodada não é considerada aprovada e deve ser repetida após recuperar o Lab. Não houve publicação desta entrega no VPS enquanto esse gate permanece pendente.
 
 Frontend final: 25/25 testes passaram. A suíte completa anterior da API passou 626/626; duas novas variações de segurança passaram na execução direcionada (64/64). Isso não substitui a repetição integrada final.
+
+## Revalidação após recuperar o Docker
+
+O reinício do Docker Desktop foi autorizado pelo usuário. As imagens finais da API e do frontend foram construídas a partir do commit limpo `d55baceab9c71acebe88eb79938b3e5dab07937b`. Com os workers do Lab parados durante a suíte, **628/628 testes da API passaram**, e a limpeza dos dados sintéticos concluiu. **25/25 testes do frontend passaram**, assim como TypeScript, os dois builds de produção e o preflight. O alerta de chunk web acima de 500 kB permanece; não impediu a compilação.
+
+A release foi preparada em pasta isolada no VPS. O dry-run identificou somente `20260911120000_agent_sales_safety.sql` como migração pendente. A promoção será registrada após health/ready do Lab e de produção.
+
+Lab final: `/health` retornou `ok` e `/ready` retornou `ready`, com database, Redis, waha-inbound-worker, outbound-worker, receptionist-worker e capi-worker em `ok`. API e WAHA locais foram retomados.
+
+A aplicação da migração em produção foi bloqueada pela revisão automática de aprovação antes de executar. Foi solicitada autorização explícita para a migração `20260911120000_agent_sales_safety.sql` e a promoção da release `d55bace`. Até essa aprovação, o VPS continua no commit `acb2d931b651e122bb93550c4cb1e263b1cb54a8`.
