@@ -44,7 +44,16 @@ function WorkspaceSimulator({ currentWorkspace, onNavigateToTab }: QaSimulatorVi
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, history: messages.map(m => ({ role: m.role, content: m.text })), contactName: 'Contato de teste', modelTier: 'reasoning' }),
       });
-      if (!response.ok) throw new Error(`A IA não respondeu (HTTP ${response.status}). Tente novamente.`);
+      if (!response.ok) {
+        let errMessage = `A IA não respondeu (HTTP ${response.status}). Tente novamente.`;
+        try {
+          const errData = await response.json();
+          if (errData?.error) {
+            errMessage = errData.error;
+          }
+        } catch {}
+        throw new Error(errMessage);
+      }
       const data = await response.json();
       if (typeof data.agentResponse !== 'string' || !data.agentResponse.trim()) throw new Error('A API não retornou uma resposta válida. Tente novamente.');
       if (!alive.current) return;
@@ -80,7 +89,20 @@ function WorkspaceSimulator({ currentWorkspace, onNavigateToTab }: QaSimulatorVi
         </div>)}
         {busy && <p role="status" className="text-sm text-slate-500">Aguardando resposta da IA…</p>}
       </div>
-      {error && <p role="alert" className="my-3 rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
+      {error && (
+        <div role="alert" className="my-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-red-50 p-3 text-red-800">
+          <p className="text-sm">{error}</p>
+          {error.includes('Publique') && onNavigateToTab && (
+            <button
+              type="button"
+              onClick={() => onNavigateToTab('agent')}
+              className="rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-800 transition"
+            >
+              Publicar Configuração
+            </button>
+          )}
+        </div>
+      )}
       <form onSubmit={handleSendCustomMessage} className="mt-4 flex gap-2">
         <input aria-label="Mensagem de teste" value={input} onChange={e => setInput(e.target.value)} disabled={busy || !currentWorkspace?.id} placeholder="Digite uma mensagem para o agente" className="min-w-0 flex-1 rounded-xl border p-3 text-base" />
         <button disabled={busy || !input.trim() || !currentWorkspace?.id} className="rounded-xl bg-emerald-700 px-4 py-3 text-white disabled:opacity-50">Enviar</button>

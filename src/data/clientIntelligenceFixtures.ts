@@ -216,7 +216,7 @@ export const mockHavenIntelligence: ClientIntelligenceBundle = {
   companyProfile: {
     legalName: 'SUZANA RIOS BEAUTY STUDIO LTDA',
     tradeName: 'Haven Escovaria & Esmalteria',
-    taxId: '48.912.441/0001-89',
+    taxId: '36.474.280/0001-17',
     segment: 'Salão de Beleza · Escovaria Express · Esmalteria em Gel',
     tagline: 'A Haven nasceu para transformar pequenos momentos em experiências de autocuidado.',
     phone: '+55 49 98837-0054',
