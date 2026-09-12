@@ -1248,6 +1248,28 @@ export class ReceptionistAgent {
       } catch (triggerErr) {
         console.error('[ReceptionistAgent] Failed to auto-enable bot on SOS trigger:', triggerErr);
       }
+    } else if (input.workspaceId !== '11111111-1111-1111-1111-111111111111') {
+      // Workspaces comerciais de clientes (ex: Haven, Sora) em modo 24/7 autônomo respondem automaticamente a clientes
+      try {
+        await this.query(
+          `UPDATE public.commercial_journeys j
+           SET bot_enabled = true,
+               updated_at = NOW()
+           FROM public.workspace_agent_config wac
+           WHERE j.id = $1 AND j.workspace_id = $2 
+             AND wac.workspace_id = $2
+             AND wac.runtime_enabled = true
+             AND (wac.autonomy_mode = 'autonomous_24_7' OR wac.autonomy_mode = 'autonomous')
+             AND j.status = 'OPEN' 
+             AND j.responder_owner = 'sos_sales'
+             AND j.bot_paused_at IS NULL
+             AND j.bot_enabled = false
+             AND EXISTS (SELECT 1 FROM public.contacts c WHERE c.id = j.contact_id AND c.workspace_id = $2 AND c.outbound_opted_out_at IS NULL)`,
+          [input.journeyId, input.workspaceId]
+        );
+      } catch (autoErr) {
+        console.error('[ReceptionistAgent] Failed to auto-enable commercial 24/7 bot:', autoErr);
+      }
     }
 
     // Verifica se bot está ativo para esta jornada
