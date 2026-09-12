@@ -1057,3 +1057,8 @@
 - Recusa é persistida na ingestão e verificada na reserva/dispatch. Limites atômicos de 60 inferências por contato e 1.000 por workspace em 24h incluem retries. Publicações são arquivadas e restauráveis por proprietário; comando de treinamento não dá poder de publicação ao operador.
 - Playbook exige origem literal e passa a candidato não confirmado. Retenção não infere ciclo biológico a partir da data de compra.
 - A avaliação NVIDIA ficou inconclusiva após três timeouts. Não ampliar piloto nem declarar blindagem com base em testes determinísticos. Estado detalhado: `apps/api/docs/IMPLEMENTACAO_AGENTES_VENDAS_SEGURAS_2026-09-11.md`.
+
+
+## 2026-09-11 — Simulador de produção sem demonstrações nem publicação paralela
+
+O incidente de horários fictícios no workspace SOS revelou fallback local e exemplos apresentados como inferência. A release 5c4b72f remove esse caminho e o editor duplicado do simulador: somente respostas da API e configuração no painel canônico IA & Conhecimento. Erros não geram respostas, e cada workspace tem instância de histórico separada. Banco preservado; consolidação estrutural posterior não foi apresentada como concluída. Evidências em docs/audits/REDUNDANCIAS_2026-09-11.md.
