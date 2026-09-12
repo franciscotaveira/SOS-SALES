@@ -57,6 +57,7 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
   const [playbackRate, setPlaybackRate] = React.useState<number>(1);
   const [currentTime, setCurrentTime] = React.useState(0);
   const [lightboxOpen, setLightboxOpen] = React.useState(false);
+  const [docPreviewOpen, setDocPreviewOpen] = React.useState(false);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   // Inferred and normalized media payload.
@@ -122,13 +123,39 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
         detectedType = 'video';
       }
 
+      // Normalização resiliente da URL:
+      // Se a URL aponta para WAHA interno, localhost, 127.0.0.1, :3000 ou contém /api/files/,
+      // converte automaticamente para a rota segura de media-proxy do SOS Vendas.
+      let resolvedUrl: string | undefined = undefined;
+      if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim()) {
+        const trimmed = rawUrl.trim();
+        if (
+          trimmed.includes('/api/files/') ||
+          trimmed.includes('localhost') ||
+          trimmed.includes('127.0.0.1') ||
+          trimmed.includes(':3000') ||
+          trimmed.includes('waha:')
+        ) {
+          const filePartIdx = trimmed.indexOf('/api/files/');
+          if (filePartIdx !== -1) {
+            const filePart = trimmed.substring(filePartIdx);
+            resolvedUrl = `/api/v1/channels/waha/media-proxy?path=${encodeURIComponent(filePart)}`;
+          } else {
+            resolvedUrl = trimmed;
+          }
+        } else {
+          resolvedUrl = trimmed;
+        }
+      }
+
       // Build proxy URL if url is empty but providerMessageId is available
-      let resolvedUrl = rawUrl || undefined;
       if (!resolvedUrl && providerMessageId) {
         const extFromMime = mime.split('/')[1]?.split(';')[0] || '';
         const extMap: Record<string, string> = {
           'ogg': '.oga',
+          'opus': '.oga',
           'mpeg': '.mp3',
+          'mp3': '.mp3',
           'jpeg': '.jpg',
           'jpg': '.jpg',
           'png': '.png',
@@ -484,37 +511,159 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
   // ==========================================================================
   // 4. DOCUMENTOS / PDF
   // ==========================================================================
+  const docUrl = targetMedia.url || '';
+  const isPdf = targetMedia.fileName?.toLowerCase().endsWith('.pdf') || targetMedia.mimetype?.includes('pdf');
+  const fileExt = targetMedia.fileName?.split('.').pop()?.toUpperCase() || (isPdf ? 'PDF' : 'DOC');
+
   return (
-    <div className="py-1 min-w-[240px] max-w-[300px] space-y-1.5">
-      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xs">
-        <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
-          <FileText size={20} />
+    <div className="py-1 min-w-[250px] max-w-[320px] space-y-1.5">
+      <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xs hover:border-slate-300 transition-colors">
+        <div
+          onClick={() => docUrl && setDocPreviewOpen(true)}
+          className={`w-10 h-10 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 flex flex-col items-center justify-center shrink-0 ${docUrl ? 'cursor-pointer hover:bg-rose-100 transition-colors' : ''}`}
+          title={docUrl ? "Visualizar arquivo" : "Arquivo recebido"}
+        >
+          <FileText size={18} />
+          <span className="text-[7.5px] font-bold tracking-tight uppercase">{fileExt.slice(0, 4)}</span>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-bold text-xs text-slate-900 truncate" title={targetMedia.fileName || 'Documento'}>
+
+        <div
+          onClick={() => docUrl && setDocPreviewOpen(true)}
+          className={`flex-1 min-w-0 ${docUrl ? 'cursor-pointer' : ''}`}
+          title={docUrl ? "Clique para visualizar este documento" : targetMedia.fileName || 'Documento'}
+        >
+          <p className="font-bold text-xs text-slate-900 truncate hover:text-emerald-700 transition-colors">
             {targetMedia.fileName || 'Documento WhatsApp.pdf'}
           </p>
-          <p className="text-[10.5px] text-slate-500 font-mono">
-            {targetMedia.fileSize || targetMedia.fileSizeFormatted || 'Tamanho não informado'}
-          </p>
+          <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-mono">
+            <span>{targetMedia.fileSize || targetMedia.fileSizeFormatted || 'Documento'}</span>
+            {docUrl && (
+              <>
+                <span>•</span>
+                <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
+                  <Eye size={10} /> Ver
+                </span>
+              </>
+            )}
+          </div>
         </div>
-        <a
-          href={targetMedia.url || undefined}
-          target="_blank"
-          rel="noreferrer"
-          download
-          aria-disabled={!targetMedia.url}
-          className={`p-2 rounded-lg transition text-slate-600 shrink-0 ${targetMedia.url ? 'bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700' : 'bg-slate-100/60 cursor-not-allowed opacity-50'}`}
-          title="Baixar Documento"
-        >
-          <Download size={15} />
-        </a>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {docUrl && (
+            <button
+              type="button"
+              onClick={() => setDocPreviewOpen(true)}
+              className="p-1.5 rounded-lg transition text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+              title="Visualizar documento"
+            >
+              <Eye size={14} />
+            </button>
+          )}
+          <a
+            href={docUrl || undefined}
+            target="_blank"
+            rel="noreferrer"
+            download={targetMedia.fileName || 'documento'}
+            aria-disabled={!docUrl}
+            className={`p-1.5 rounded-lg transition text-slate-600 ${docUrl ? 'bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer' : 'bg-slate-100/60 cursor-not-allowed opacity-50'}`}
+            title="Baixar Documento"
+          >
+            <Download size={14} />
+          </a>
+        </div>
       </div>
 
       {targetMedia.caption && (
         <p className="text-[12px] text-slate-800 leading-snug px-0.5">
           {targetMedia.caption}
         </p>
+      )}
+
+      {/* Modal de Pré-visualização de Documento / PDF */}
+      {docPreviewOpen && docUrl && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3 bg-slate-50">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                  <FileText size={16} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-xs font-bold text-slate-900 truncate">
+                    {targetMedia.fileName || 'Documento do WhatsApp'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    {targetMedia.fileSize || targetMedia.fileSizeFormatted || 'Arquivo do cliente'} • {targetMedia.mimetype || 'Documento'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={docUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition"
+                  title="Abrir em nova aba do navegador"
+                >
+                  <ExternalLink size={13} />
+                  <span className="hidden sm:inline">Nova Aba</span>
+                </a>
+                <a
+                  href={docUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  download={targetMedia.fileName || 'documento'}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white shadow-xs transition"
+                  title="Baixar arquivo para o computador"
+                >
+                  <Download size={13} />
+                  <span>Baixar</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setDocPreviewOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+                  title="Fechar"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body / Viewer */}
+            <div className="flex-1 min-h-0 bg-slate-100 p-2 flex items-center justify-center">
+              {isPdf ? (
+                <iframe
+                  src={docUrl}
+                  className="w-full h-[75vh] rounded-lg bg-white border border-slate-200 shadow-inner"
+                  title={targetMedia.fileName || 'Pré-visualização do documento'}
+                />
+              ) : (
+                <div className="text-center p-8 max-w-md space-y-3 bg-white rounded-xl border border-slate-200 shadow-xs">
+                  <FileText size={48} className="mx-auto text-slate-400" />
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-900">{targetMedia.fileName || 'Arquivo Recebido'}</h4>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Este arquivo ({fileExt}) pode ser visualizado diretamente no seu navegador ou aberto em nova aba.
+                    </p>
+                  </div>
+                  <div className="pt-2 flex justify-center gap-2">
+                    <a
+                      href={docUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                    >
+                      <ExternalLink size={13} /> Abrir Arquivo
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -382,11 +382,30 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
         acquisitionContexts: finalAcquisitions,
         // Query is DESC for a bounded "latest N" read; reverse only for the
         // user-facing chronological conversation order.
-        messages: messagesList.reverse().map((message: any) => ({
-          id: message.id, direction: message.direction, senderType: message.sender_type,
-          textContent: message.text_content, mediaPayload: message.media_payload || null,
-          sentAt: new Date(message.sent_at).toISOString(),
-        })),
+        messages: messagesList.reverse().map((message: any) => {
+          let mediaPayload = message.media_payload || null;
+          if (mediaPayload && typeof mediaPayload === 'object' && typeof mediaPayload.url === 'string') {
+            const rawUrl = mediaPayload.url.trim();
+            if (
+              rawUrl.includes('/api/files/') &&
+              (rawUrl.includes('localhost') || rawUrl.includes(':3000') || rawUrl.includes('127.0.0.1') || rawUrl.includes('waha:'))
+            ) {
+              const filePartIdx = rawUrl.indexOf('/api/files/');
+              if (filePartIdx !== -1) {
+                const filePart = rawUrl.substring(filePartIdx);
+                mediaPayload = {
+                  ...mediaPayload,
+                  url: `/api/v1/channels/waha/media-proxy?path=${encodeURIComponent(filePart)}`,
+                };
+              }
+            }
+          }
+          return {
+            id: message.id, direction: message.direction, senderType: message.sender_type,
+            textContent: message.text_content, mediaPayload,
+            sentAt: new Date(message.sent_at).toISOString(),
+          };
+        }),
         knownFacts: finalFacts,
         decisionState: state ? {
           currentStage: String(state.current_stage), stageConfidence: Number(state.stage_confidence),

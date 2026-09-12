@@ -331,6 +331,8 @@ export const DossierFocusModal: React.FC<DossierFocusModalProps> = ({
                         textContent={message.textContent}
                         isOutbound={isOut}
                         senderName={isOut ? 'Você' : journey.contact.name || 'Cliente'}
+                        providerMessageId={(message as any).providerMessageId || (message as any).mediaPayload?.providerMessageId || null}
+                        session={(message as any).mediaPayload?.session || (journey.channel?.provider === 'waha' ? (journey.channel?.name || journey.channel?.id) : undefined) || 'default'}
                       />
                       <div className="mt-0.5 text-right text-[10px] text-slate-500 font-mono flex items-center justify-end gap-1">
                         <span>{new Date(message.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>

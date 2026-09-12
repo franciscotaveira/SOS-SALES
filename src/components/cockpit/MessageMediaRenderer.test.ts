@@ -27,4 +27,19 @@ describe('MessageMediaRenderer normalization and visual type discrimination', ()
     expect(source).toContain('togglePlayAudio');
     expect(source).toContain('handleSpeedToggle');
   });
+
+  it('normalizes internal WAHA and localhost urls into media-proxy and supports document modal preview', () => {
+    const source = read('./MessageMediaRenderer.tsx');
+
+    // Normalizes localhost:3000 and internal paths to media-proxy
+    expect(source).toContain('/api/v1/channels/waha/media-proxy?path=');
+    expect(source).toContain("trimmed.includes('/api/files/')");
+    expect(source).toContain("trimmed.includes('localhost')");
+
+    // Interactive document actions
+    expect(source).toContain('setDocPreviewOpen');
+    expect(source).toContain('Nova Aba');
+    expect(source).toContain('Baixar');
+    expect(source).toContain('Pré-visualização do documento');
+  });
 });
