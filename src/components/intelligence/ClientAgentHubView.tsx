@@ -4,6 +4,7 @@ import { salesOsRuntimeConfig } from '../../config/runtime';
 import { Workspace } from '../../types/cockpit';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
 import { ClientIntelligenceBundle } from '../../types/intelligence';
+import { mockHavenIntelligence } from '../../data/clientIntelligenceFixtures';
 import { CompanyProfileSection } from './CompanyProfileSection';
 import { AgentSettingsSection } from './AgentSettingsSection';
 import { ProductCatalogSection } from './ProductCatalogSection';
@@ -66,83 +67,8 @@ export function resolveWorkspaceIntelligenceBundle(wsId: string, wsName?: string
 
   if (isHaven) {
     return {
+      ...mockHavenIntelligence,
       workspaceId: wsId,
-      companyProfile: {
-        legalName: 'Haven Escovaria & Esmalteria LTDA',
-        tradeName: 'Haven Escovaria & Esmalteria',
-        taxId: '48.912.441/0001-89',
-        segment: 'Escovaria e Salão de Beleza Premium',
-        tagline: 'A beleza do seu momento sem hora marcada em Chapecó',
-        phone: '+55 49 8837-0054',
-        email: 'contato@havenescovaria.com.br',
-        website: 'https://www.trinks.com/haven-escovaria',
-        instagram: '@havenescovaria',
-        address: { street: 'Rua Benjamin Constant', number: '200 D', neighborhood: 'Centro', city: 'Chapecó', state: 'SC', postalCode: '89802-000' },
-        businessHours: {
-          seg: { open: '09:00', close: '19:00', isOpen: true },
-          ter: { open: '09:00', close: '19:00', isOpen: true },
-          qua: { open: '09:00', close: '19:00', isOpen: true },
-          qui: { open: '09:00', close: '19:00', isOpen: true },
-          sex: { open: '09:00', close: '19:00', isOpen: true },
-          sab: { open: '09:00', close: '19:00', isOpen: true },
-          dom: { open: '', close: '', isOpen: false },
-        },
-        wabaOfficialInfo: {
-          verifiedName: 'Haven Escovaria',
-          metaBusinessId: 'haven-meta-waba-official',
-          phoneId: 'haven-phone-id',
-          phoneNumber: '+55 49 8837-0054',
-          greenBadgeVerified: true,
-          qualityRating: 'GREEN',
-          messagingTier: '10k',
-          wabaCatalogSync: true,
-          metaFlowsEnabled: true,
-          businessAiEnabled: true,
-        },
-        valueProposition: 'Escovas expressas impecáveis com lavagem e ozônioterapia inclusas, sem fila e com agendamento direto pelo WhatsApp e Trinks.',
-        targetAudience: 'Mulheres que buscam praticidade, cuidado capilar e estética de alta performance em Chapecó.',
-        guaranteesAndPolicies: 'Sinal de R$ 30 via Pix para reserva exclusiva aos sábados. Reagendamento sem custo até 2 horas antes.',
-        acceptedPaymentMethods: ['Pix', 'Cartão de Crédito', 'Cartão de Débito'],
-      },
-      agentConfig: {
-        id: 'haven-agent',
-        workspaceId: wsId,
-        name: 'Camila · Concierge Haven 24/7',
-        persona: 'Concierge elegante, acolhedora e eficiente. Conduz agendamentos com rapidez e orienta os clientes com simpatia e requinte.',
-        toneOfVoice: 'elegante_acolhedor',
-        autonomyMode: 'autonomous_24_7',
-        creativityTemperature: 0.6,
-        maxDiscountPercent: 10,
-        installmentLimitWithoutInterest: 3,
-        allowedPaymentMethods: ['Pix', 'Cartão de Crédito', 'Cartão de Débito'],
-        escalationTriggers: [
-          'Cliente pede para falar com atendente humano ou recepcionista física',
-          'Dúvidas sobre procedimentos químicos sensíveis (coloração/luzes/progressiva)',
-          'Reclamação sobre atendimento ou insatisfação com horário',
-        ],
-        safetyGuardrails: [
-          'Apresentar a Escova Express por R$ 59 com lavagem e ozônioterapia inclusas.',
-          'Direcionar agendamentos e conferência de tabela atualizada para o link oficial do Trinks (https://www.trinks.com/haven-escovaria).',
-          'Cobrar sinal de R$ 30 via Pix para segurar vaga concorrida de sábado.',
-          'Tom de voz sempre caloroso, sofisticado, acolhedor e ágil.',
-          'Banco Oculto de Humanização: tom natural e humano de WhatsApp, sem clichês de IA e sem travessões tipográficos.',
-        ],
-        workingHoursOnly: false,
-        metaAiComparisonEnabled: false,
-        activeChannels: ['whatsapp_waba'],
-      },
-      catalog: [
-        { id: 'haven-escova-express', sku: 'ESC-EXP', name: 'Escova Express', category: 'Cabelo', description: 'Lavagem com produtos de alta performance + ozônioterapia + modelagem expressa.', basePrice: 59, minPromoPrice: 59, durationOrExecutionTime: '45-60 min', imageUrl: '', inStock: true, tags: ['Mais Pedida', 'Express', 'Lavagem Inclusa'] },
-        { id: 'haven-esmalte-gel', sku: 'ESM-GEL', name: 'Esmaltação em Gel Premium', category: 'Unhas', description: 'Dura até 21 dias sem lascar, acabamento impecável e brilho espelhado.', basePrice: 150, minPromoPrice: 150, durationOrExecutionTime: '60 min', imageUrl: '', inStock: true, tags: ['Unhas', 'Gel', 'Longa Duração'] },
-        { id: 'haven-spa-pes', sku: 'SPA-PES', name: 'Spa dos Pés Relaxante', category: 'Bem-estar', description: 'Esfoliação, hidratação profunda e massagem nos pés com produtos aromáticos.', basePrice: 80, minPromoPrice: 80, durationOrExecutionTime: '45 min', imageUrl: '', inStock: true, tags: ['Relaxamento', 'Pés'] },
-        { id: 'haven-terapia-capilar', sku: 'TER-CAP', name: 'Terapia Capilar Regenerativa', category: 'Tratamentos', description: 'Tratamento intensivo para fios danificados e couro cabeludo.', basePrice: 190, minPromoPrice: 190, durationOrExecutionTime: '90 min', imageUrl: '', inStock: true, tags: ['Tratamento', 'Recuperação'] },
-      ],
-      documents: [
-        { id: 'haven-doc-1', name: 'Tabela_Servicos_Trinks_Haven.pdf', fileType: 'pdf', fileSize: '340 KB', uploadedAt: new Date().toISOString(), uploadedBy: 'Haven Gestão', category: 'tabela_precos', status: 'indexed', extractedChunksCount: 6, tokenCount: 1200, summary: 'Tabela oficial de serviços da Haven sincronizada com Trinks.', isPrioritizedFact: true, factType: 'pricing' },
-      ],
-      learningRecords: [],
-      sources: [],
-      destinations: [],
     };
   }
 

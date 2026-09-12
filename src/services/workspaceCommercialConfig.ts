@@ -78,7 +78,7 @@ function demoConfig(workspaceId: string): WorkspaceCommercialConfig {
         {
           id: 'localizacao',
           label: '📍 Localização',
-          template: 'Ficamos localizados no centro de Chapecó, com estacionamento exclusivo para clientes. Quer que eu te envie a rota no Google Maps?',
+          template: 'Ficamos no Jardim Itália (Rua Mato Grosso - E, 837), com estacionamento exclusivo gratuito para você. Quer que eu te envie a rota no Google Maps?',
         },
       ],
     };

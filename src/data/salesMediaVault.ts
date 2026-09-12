@@ -43,7 +43,7 @@ export const defaultSalesMediaVault: SalesMediaResource[] = [
     title: 'Áudio Bia · Escova Express sem hora marcada',
     authorOrSpeaker: 'Bia (Concierge Haven)',
     category: 'Cortes & Escovas',
-    description: 'Explicação sobre a conveniência de chegar a qualquer momento no salão boutique no Centro de Chapecó com lavagem ozonizada inclusa.',
+    description: 'Explicação sobre a conveniência de chegar a qualquer momento no salão boutique no Jardim Itália em Chapecó com lavagem ozonizada inclusa.',
     url: 'https://assets.mixkit.co/active_storage/sfx/2874/2874-preview.mp3',
     durationSeconds: 34,
     fileSizeFormatted: '540 KB',

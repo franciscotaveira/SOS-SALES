@@ -64,7 +64,7 @@ export function resolveWorkspaceTrackingDefaults(wsId: string, wsName?: string):
           utmMedium: 'cpc',
           utmCampaign: 'escova_express_haven',
           defaultProduct: 'Escova Express (Lisa ou Modelada)',
-          hookPromise: 'Chegue a qualquer momento no Centro de Chapecó com lavagem ozonizada inclusa',
+          hookPromise: 'Chegue a qualquer momento no Jardim Itália em Chapecó com lavagem ozonizada inclusa',
           activeLeadsCount: 42,
         },
         {
