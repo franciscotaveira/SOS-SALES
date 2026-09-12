@@ -55,15 +55,15 @@ function demoConfig(workspaceId: string): WorkspaceCommercialConfig {
       businessType: 'hair_salon',
       agendaProviderType: 'trinks',
       agendaProviderName: 'Trinks (Haven)',
-      agendaUrl: 'https://www.trinks.com/havenescovaria/admin',
-      pixKey: 'pix@havenescovaria.com.br',
-      pixReceiverName: 'Haven Escovaria Eireli',
-      businessAddress: 'Chapecó, SC',
+      agendaUrl: 'https://www.trinks.com/haven-escovaria-e-esmalteria',
+      pixKey: '+554988370054',
+      pixReceiverName: 'Haven Escovaria & Esmalteria',
+      businessAddress: 'Rua Mato Grosso - E, 837, Jardim Itália, Chapecó - SC',
       customMacros: [
         {
           id: 'pix',
           label: '💰 Pix & Sinal',
-          template: 'Segue nossa chave Pix oficial para confirmação do seu horário na Haven: pix@havenescovaria.com.br. Assim que fizer o envio, me manda o comprovante aqui, {{nome}}! ✨',
+          template: 'Segue nossa chave Pix oficial para confirmação do seu horário na Haven: (49) 98837-0054 (Celular). Assim que fizer o envio, me manda o comprovante aqui, {{nome}}! ✨',
         },
         {
           id: 'horarios',
@@ -160,8 +160,8 @@ export const AGENDA_PROVIDER_PRESETS: Record<AgendaProviderType, { label: string
   },
   trinks: {
     label: 'Trinks',
-    defaultUrl: 'https://www.trinks.com/havenescovaria/admin',
-    placeholder: 'https://www.trinks.com/seusalao/admin',
+    defaultUrl: 'https://www.trinks.com/haven-escovaria-e-esmalteria',
+    placeholder: 'https://www.trinks.com/haven-escovaria-e-esmalteria',
   },
   calendly: {
     label: 'Calendly',
