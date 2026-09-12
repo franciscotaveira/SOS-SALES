@@ -406,6 +406,7 @@ export interface AgentRoutesOptions {
 export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: FastifyInstance, options = {}) => {
   const query = options.query ?? defaultDatabaseQuery;
   const nvidiaEngine = options.nvidiaEngine || new NvidiaNimEngine();
+  const openRouterEngine = options.openRouterEngine || new OpenRouterEngine();
   // Enforce JWT on all agent bot routes
   app.addHook('onRequest', async (request, reply) => {
     if (!options?.authenticator) {
@@ -1336,13 +1337,48 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
         const inputDecision=checkout?{intent:'inquiry' as const,escalate:false,sendBookingFlow:false,reply:checkoutText(checkout)}:getReceptionistInputDecision(userMessage);
         if(checkout){publishedConfig.approvedLinks=[...(publishedConfig.approvedLinks||[]),checkout.url];publishedConfig.services=[...publishedConfig.services,{name:checkout.name,price:(checkout.amountMinor/100).toFixed(2)}];}
         if (inputDecision) { decision = inputDecision; generatedReply = decision.reply; } else {
-        const result = await nvidiaEngine.generateChatCompletion(llmMessages, {
-          model:selectedTier, temperature:simTemperature, maxTokens:512, topP:0.9,
-        });
-        decision = parseReceptionistDecision(result.content || result.text || '');
-        if (!decision) return reply.status(502).send({error:'O modelo retornou uma resposta inválida.', code:'RECEPTIONIST_INVALID_MODEL_OUTPUT'});
-        generatedReply = decision.reply;
-        modelUsed = result.model || selectedTier;
+          let result: { content?: string; text?: string; model?: string } | null = null;
+          try {
+            result = await nvidiaEngine.generateChatCompletion(llmMessages, {
+              model: selectedTier, temperature: simTemperature, maxTokens: 512, topP: 0.9,
+            });
+          } catch (nimErr) {
+            request.log.warn({ nimErr }, 'NVIDIA NIM falhou no simulador; acionando fallback OpenRouter');
+            if (openRouterEngine) {
+              const fallbackRes = await openRouterEngine.generateChatCompletion(
+                llmMessages.map((m) => ({ role: m.role, content: m.content })),
+                { temperature: simTemperature, maxTokens: 512 }
+              );
+              result = {
+                content: fallbackRes.content,
+                text: fallbackRes.content,
+                model: fallbackRes.model,
+              };
+            } else {
+              throw nimErr;
+            }
+          }
+
+          const rawOutput = (result?.content || result?.text || '').trim();
+          decision = parseReceptionistDecision(rawOutput);
+          if (!decision) {
+            const cleanContent = rawOutput
+              .replace(/<think>[\s\S]*?<\/think>/gi, '')
+              .replace(/^(?:Here's a thinking process:[\s\S]*?\n\n|Thinking Process:[\s\S]*?\n\n)/i, '')
+              .trim();
+            if (cleanContent.length > 0) {
+              decision = {
+                intent: 'inquiry',
+                reply: HumanizerKernel.humanizeReply(cleanContent),
+                escalate: false,
+                sendBookingFlow: false,
+              };
+            } else {
+              return reply.status(502).send({ error: 'O modelo retornou uma resposta inválida.', code: 'RECEPTIONIST_INVALID_MODEL_OUTPUT' });
+            }
+          }
+          generatedReply = decision.reply;
+          modelUsed = result?.model || selectedTier;
         }
       } catch (err) {
         request.log.warn({err}, 'Falha no modelo do agente SOS');

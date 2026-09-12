@@ -404,7 +404,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           label: 'Anotações',
           icon: BookOpen,
           roleRequired: 'operator',
-          visible: true,
+          visible: false,
         },
       ],
     },
@@ -481,7 +481,6 @@ export const AppShell: React.FC<AppShellProps> = ({
     { id: 'agora', label: 'Atendimento (Prioridades e Fila)', icon: Flame, section: 'Operação', roleRequired: 'operator' },
     { id: 'kanban' as NavigationTab, label: 'Funil Kanban Comercial', icon: Columns3, section: 'Operação', roleRequired: 'operator' },
     { id: 'agenda' as NavigationTab, label: 'Agenda & Horários Comerciais', icon: CalendarDays, section: 'Operação', roleRequired: 'operator' as OperatorRole },
-    { id: 'anotacoes' as NavigationTab, label: 'Anotações & Scripts da Equipe', icon: BookOpen, section: 'Operação', roleRequired: 'operator' as OperatorRole },
     ...(showGroups ? [{ id: 'grupos' as NavigationTab, label: 'Grupos WhatsApp', icon: Users, section: 'Operação', roleRequired: 'operator' as OperatorRole }] : []),
     { id: 'clientes' as NavigationTab, label: 'Clientes e Sub-contas', icon: Building2, section: 'Sistema', roleRequired: 'owner' as OperatorRole },
     ...(showTrafficProof ? [
