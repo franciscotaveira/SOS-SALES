@@ -1241,7 +1241,7 @@ export class ReceptionistAgent {
                bot_paused_at = NULL,
                bot_pause_reason = NULL,
                updated_at = NOW()
-           WHERE id = $1 AND workspace_id = $2 AND status = 'OPEN' AND responder_owner = 'sos_sales' AND bot_pause_reason IS NULL AND EXISTS (SELECT 1 FROM public.contacts c WHERE c.id=contact_id AND c.workspace_id=$2 AND c.outbound_opted_out_at IS NULL)`,
+           WHERE id = $1 AND workspace_id = $2 AND status = 'OPEN' AND responder_owner = 'sos_sales' AND EXISTS (SELECT 1 FROM public.contacts c WHERE c.id=contact_id AND c.workspace_id=$2 AND c.outbound_opted_out_at IS NULL)`,
           [input.journeyId, input.workspaceId]
         );
         console.log(`[ReceptionistAgent] Activated bot for journey ${input.journeyId} via trigger keyword "sos"`);
