@@ -278,7 +278,7 @@ function AppContent({
                 }
               }}
               userId={userEmail || 'current-operator'}
-              initialQueueTab="priorities"
+              initialQueueTab="all"
             />
           ) : (
             <CockpitView
@@ -707,18 +707,19 @@ function OperationalApp({
         // not hide or reveal screens based on a local default role.
         if (defaultWs.operatorRole) setRole(defaultWs.operatorRole);
 
+        const isDesktop = typeof window !== 'undefined' ? window.innerWidth >= 760 : true;
         if (salesOsGateway instanceof HttpSalesOsGateway) {
           const page = await salesOsGateway.listJourneys(defaultWs.id, { limit: 20 });
           if (!isMounted) return;
           // `Journey` is a fixture-shaped type. Do not map authenticated
           // records into it with invented SLA, recommendation or outcome data.
           setJourneys([]);
-          if (page.data.length > 0) setSelectedJourneyId(page.data[0].id);
+          if (page.data.length > 0 && isDesktop) setSelectedJourneyId(page.data[0].id);
         } else {
           const jList = await salesOsGateway.getJourneys(defaultWs.id);
           if (!isMounted) return;
           setJourneys(jList);
-          if (jList.length > 0) setSelectedJourneyId(jList[0].id);
+          if (jList.length > 0 && isDesktop) setSelectedJourneyId(jList[0].id);
         }
       } catch (error) {
         if (!isMounted) return;
@@ -744,14 +745,15 @@ function OperationalApp({
     if (ws.operatorRole) setRole(ws.operatorRole);
     setIsLoading(true);
     try {
+      const isDesktop = typeof window !== 'undefined' ? window.innerWidth >= 760 : true;
       if (salesOsGateway instanceof HttpSalesOsGateway) {
         const page = await salesOsGateway.listJourneys(ws.id, { limit: 20 });
         setJourneys([]);
-        setSelectedJourneyId(page.data[0]?.id);
+        if (isDesktop) setSelectedJourneyId(page.data[0]?.id);
       } else {
         const list = await salesOsGateway.getJourneys(ws.id);
         setJourneys(list);
-        if (list.length > 0) {
+        if (list.length > 0 && isDesktop) {
           setSelectedJourneyId(list[0].id);
         }
       }

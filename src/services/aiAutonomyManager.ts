@@ -1,4 +1,5 @@
 import { authenticatedFetch } from './authenticatedFetch';
+import { salesOsRuntimeConfig } from '../config/runtime';
 
 export type GlobalAiAutonomyMode = 'copilot_supervised' | 'autonomous_24_7' | 'semi_autonomous';
 export type ResponderMode = 'sos_sales' | 'meta_business_agent' | 'auto_fallback' | 'manual';
@@ -106,6 +107,11 @@ export function getCachedWorkspaceAgentConfig(workspaceId: string): WorkspaceAge
 }
 
 export async function loadWorkspaceAgentConfig(workspaceId: string): Promise<WorkspaceAgentRuntimeConfig> {
+  if (salesOsRuntimeConfig.mode !== 'api') {
+    const cached = runtimeCache.get(workspaceId) || safeDefault;
+    return cached;
+  }
+
   const response = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/agent/config`);
   if (!response.ok) {
     runtimeCache.set(workspaceId, safeDefault);

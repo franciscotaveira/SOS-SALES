@@ -868,11 +868,29 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
   };
 
   type QueueTabType = 'all' | 'priorities' | 'in_progress';
-  const [queueTab, setQueueTab] = React.useState<QueueTabType>(initialQueueTab || 'priorities');
+  const [queueTab, setQueueTab] = React.useState<QueueTabType>(() => {
+    try {
+      const saved = localStorage.getItem('sos_queue_tab') as QueueTabType;
+      if (saved === 'all' || saved === 'priorities' || saved === 'in_progress') return saved;
+    } catch {}
+    return initialQueueTab || 'all';
+  });
+
+  const handleSelectQueueTab = React.useCallback((nextTab: QueueTabType) => {
+    setQueueTab(nextTab);
+    try {
+      localStorage.setItem('sos_queue_tab', nextTab);
+    } catch {}
+  }, []);
 
   React.useEffect(() => {
     if (initialQueueTab) {
-      setQueueTab(initialQueueTab);
+      try {
+        const saved = localStorage.getItem('sos_queue_tab') as QueueTabType;
+        if (!saved) setQueueTab(initialQueueTab);
+      } catch {
+        setQueueTab(initialQueueTab);
+      }
     }
   }, [initialQueueTab]);
   const [customerFilter, setCustomerFilter] = React.useState<'all' | 'recurring' | 'new'>('all');
@@ -1264,7 +1282,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
             <div className="grid grid-cols-3 gap-1 bg-slate-200/70 p-0.5 rounded-xl text-[10.5px] font-bold">
               <button
                 type="button"
-                onClick={() => setQueueTab('all')}
+                onClick={() => handleSelectQueueTab('all')}
                 className={`py-1 px-1 rounded-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
                   queueTab === 'all'
                     ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
@@ -1277,7 +1295,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setQueueTab('priorities')}
+                onClick={() => handleSelectQueueTab('priorities')}
                 className={`py-1 px-1 rounded-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
                   queueTab === 'priorities'
                     ? 'bg-white text-rose-800 shadow-2xs font-extrabold'
@@ -1290,7 +1308,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setQueueTab('in_progress')}
+                onClick={() => handleSelectQueueTab('in_progress')}
                 className={`py-1 px-1 rounded-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
                   queueTab === 'in_progress'
                     ? 'bg-white text-emerald-800 shadow-2xs font-extrabold'
@@ -1368,7 +1386,7 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
                 {queueTab === 'priorities' && journeysList.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setQueueTab('all')}
+                    onClick={() => handleSelectQueueTab('all')}
                     className="inline-flex items-center gap-1 text-xs font-bold text-[#00A884] hover:underline cursor-pointer"
                   >
                     Ver todas as conversas ({journeysList.length})

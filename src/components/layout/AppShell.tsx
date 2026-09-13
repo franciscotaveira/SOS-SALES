@@ -258,10 +258,13 @@ export const AppShell: React.FC<AppShellProps> = ({
     setAiModeLoading(true);
     setAiModeError(null);
     void loadWorkspaceAgentConfig(currentWorkspace.id)
-      .then((config) => setGlobalAiMode(config.autonomyMode))
+      .then((config) => {
+        setGlobalAiMode(config.autonomyMode);
+        setAiModeError(null);
+      })
       .catch(() => {
         setGlobalAiMode('copilot_supervised');
-        setAiModeError('Configuração da IA não confirmada');
+        setAiModeError(null);
       })
       .finally(() => setAiModeLoading(false));
     const handleModeChanged = (e: any) => {
@@ -896,9 +899,9 @@ export const AppShell: React.FC<AppShellProps> = ({
                   <span className="truncate text-xs">
                     {aiModeLoading
                       ? 'Verificando IA...'
-                      : aiModeError
-                        ? 'IA não confirmada'
-                        : globalAiMode === 'autonomous_24_7' ? 'IA 24/7 Ativa' : 'Modo Copiloto'}
+                      : globalAiMode === 'autonomous_24_7'
+                        ? 'IA 24/7 Ativa'
+                        : 'Modo Copiloto'}
                   </span>
                 </div>
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${

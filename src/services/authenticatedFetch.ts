@@ -1,4 +1,5 @@
 import { getSupabaseAccessToken } from './supabaseAuth';
+import { salesOsRuntimeConfig } from '../config/runtime';
 
 /**
  * Executes a fetch request with the Supabase JWT Bearer token automatically injected.
@@ -15,8 +16,22 @@ export async function authenticatedFetch(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  return fetch(input, {
+  let finalInput = input;
+  if (typeof input === 'string') {
+    const baseUrl = salesOsRuntimeConfig.apiUrl?.replace(/\/$/, '');
+    if (baseUrl) {
+      if (input.startsWith('/api/v1')) {
+        const pathSuffix = input.slice('/api/v1'.length);
+        finalInput = `${baseUrl}${pathSuffix}`;
+      } else if (input.startsWith('/') && !input.startsWith('//')) {
+        finalInput = `${baseUrl}${input}`;
+      }
+    }
+  }
+
+  return fetch(finalInput, {
     ...init,
     headers,
   });
 }
+

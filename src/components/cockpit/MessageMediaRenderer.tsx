@@ -372,6 +372,8 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
               {[40, 70, 90, 60, 30, 80, 100, 65, 45, 95, 75, 50, 85, 90, 40, 60, 75, 95, 30, 50, 80, 60].map((h, i) => {
                 const barProgress = (i / 22) * 100;
                 const isPlayed = progress >= barProgress;
+                const baseHeight = Math.max(4, Math.round(h * 0.16));
+                const subtleWave = isPlaying && isPlayed ? Math.sin(currentTime * 4 + i * 0.4) * 0.75 : 0;
                 return (
                   <span
                     key={i}
@@ -381,7 +383,7 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
                         : 'bg-slate-300 dark:bg-slate-600'
                     }`}
                     style={{
-                      height: isPlaying ? `${Math.max(4, (h * (0.6 + Math.sin(Date.now() / 200 + i) * 0.4)))}px` : `${Math.max(4, h * 0.2)}px`,
+                      height: `${Math.max(4, Math.min(16, Math.round(baseHeight + subtleWave)))}px`,
                     }}
                   />
                 );
