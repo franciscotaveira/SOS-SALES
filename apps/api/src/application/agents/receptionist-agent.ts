@@ -19,6 +19,7 @@ import { WahaOutboundAdapter } from '../../infrastructure/channels/waha/waha-out
 import { dbPool } from '../../infrastructure/database/pool.js';
 import { buildSystemPrompt, WorkspaceConfig } from '../../infrastructure/ai/receptionist-system-prompt.js';
 import { HumanizerKernel } from '../../infrastructure/ai/humanizer-kernel.js';
+import { PipelineAutoProgressionEngine } from '../services/pipeline-auto-progression-engine.js';
 
 export type ReceptionistIntent =
   | 'greeting'
@@ -1276,6 +1277,7 @@ export class ReceptionistAgent {
     // Verifica se bot está ativo para esta jornada
     const botActive = await this.isBotActiveForJourney(input.workspaceId, input.journeyId);
     if (!botActive) {
+      await PipelineAutoProgressionEngine.evaluateAndProgress(this.query, input.workspaceId, input.journeyId).catch(() => {});
       return { intent: 'other', reply: '', escalated: false, bookingFlowSent: false, latencyMs: 0, model: '', skipped: 'bot_paused_for_journey' };
     }
 
@@ -1774,6 +1776,15 @@ export class ReceptionistAgent {
         };
       }
     }
+
+    // Auto-evolução do funil comercial (estágios 1 a 4)
+    await PipelineAutoProgressionEngine.evaluateAndProgress(
+      this.query,
+      input.workspaceId,
+      input.journeyId,
+    ).catch((progErr) => {
+      console.warn('[ReceptionistAgent] Pipeline auto-progression non-fatal error:', progErr);
+    });
 
     return {
       intent: decision.intent,

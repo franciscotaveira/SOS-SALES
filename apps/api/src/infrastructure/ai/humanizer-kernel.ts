@@ -91,6 +91,25 @@ export class HumanizerKernel {
       text = text.replace(pattern, '').trim();
     }
 
+    // 4.2 Conversão determinística de perguntas fechadas de sim/não em perguntas abertas diagnósticas
+    const closedQuestionReplacements: Array<{ pattern: RegExp; replacement: string }> = [
+      {
+        pattern: /você já conhece nosso sistema(?:\s+para\s+organizar\s+vendas\s+pelo\s+whatsapp)?\??/gi,
+        replacement: 'Que tipo de produto ou serviço você vende hoje por aqui?',
+      },
+      {
+        pattern: /você já vende pelo whatsapp(?:\s+hoje)?\??/gi,
+        replacement: 'Que tipo de produto ou serviço você vende hoje por aqui?',
+      },
+      {
+        pattern: /já vende pelo whatsapp(?:\s+hoje)?\??/gi,
+        replacement: 'Que tipo de produto ou serviço você vende hoje por aqui?',
+      },
+    ];
+    for (const item of closedQuestionReplacements) {
+      text = text.replace(item.pattern, item.replacement);
+    }
+
     // Se o corte esvaziou a saudação inicial, garante um cumprimento amigável e natural
     if (!/^(olá|oi|bom dia|boa tarde|boa noite|opa)/i.test(text)) {
       // Deixa como está ou capitaliza a primeira letra

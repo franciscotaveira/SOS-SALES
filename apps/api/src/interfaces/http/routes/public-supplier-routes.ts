@@ -6,6 +6,7 @@ import { dbPool } from '../../../infrastructure/database/pool.js';
 import { AttributionService } from '../../../application/services/attribution-service.js';
 import { InboundIngestionGateway } from '../../../application/ports/inbound-ingestion-gateway.js';
 import { LidIdentityResolver } from '../../../application/ports/lid-identity-resolver.js';
+import { PipelineAutoProgressionEngine } from '../../../application/services/pipeline-auto-progression-engine.js';
 
 export interface FlowRequestBody {
   encrypted_flow_data?: string;
@@ -470,6 +471,15 @@ export async function publicSupplierRoutes(
           request.log.warn({ acqErr }, 'Failed to persist inbound message attribution');
         }
       }
+
+      // Auto-evolução autônoma do funil comercial (estágios 1 a 4)
+      await PipelineAutoProgressionEngine.evaluateAndProgress(
+        (sql, params) => client.query(sql, params),
+        workspaceId,
+        journeyId,
+      ).catch((progErr) => {
+        request.log.warn({ progErr }, 'Pipeline auto-progression non-fatal error');
+      });
 
       return reply.code(200).send({ success: true, journeyId, contactId, received: true, workspaceId });
     } catch (err: any) {

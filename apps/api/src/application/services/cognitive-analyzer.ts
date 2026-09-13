@@ -211,13 +211,14 @@ export function analyzeConversationDossier(
     'combinado então', 'até mais tarde', 'ate mais tarde'
   ];
   const negotiationKeywords = [
-    'horário', 'horario', 'vaga', 'quinta', 'sexta', 'sábado', 'sabado', 'amanhã',
-    'amanha', 'hoje', 'às 14', 'as 14', 'às 15', 'as 15', 'às 10', 'as 10', 'tem vaga',
-    'disponível', 'disponivel', 'desconto', 'parcela', 'cartão', 'qual dia'
+    'horário', 'horario', 'vaga', 'quinta', 'sexta', 'sábado', 'sabado',
+    'às 14', 'as 14', 'às 15', 'as 15', 'às 10', 'as 10', 'tem vaga',
+    'disponível', 'disponivel', 'desconto', 'parcela', 'parcelamento', 'parcelar', 'cartão', 'cartao',
+    'qual dia', 'formas de pagamento', 'forma de pagamento', 'aceita pix', 'chave pix', 'link de pagamento'
   ];
   const proposalKeywords = [
     'r$', 'reais', 'valor é', 'custa', 'tabela', 'pacote', 'combo', 'investimento',
-    'fica no valor', 'orçamento', 'orcamento'
+    'fica no valor', 'orçamento', 'orcamento', 'plano mensal', 'plano anual', '582', '97'
   ];
 
   const hasWonSignal = wonKeywords.some((w) => allTextLower.includes(w));
