@@ -877,6 +877,7 @@ export class ReceptionistAgent {
         const role = row.direction === 'inbound' ? ('user' as const) : ('assistant' as const);
         const text = String(row.text_content || '').trim();
         if (!text) continue;
+        if (text === HANDOFF_ACKNOWLEDGEMENT || text.includes('encaminhar seu atendimento')) continue;
 
         const last = consolidated[consolidated.length - 1];
         if (last && last.role === role) {
