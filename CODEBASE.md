@@ -315,3 +315,39 @@ apps/api/tests/unit/pipeline-auto-progression-engine.test.ts             ← 6 t
 - **Falso positivo por palavra genérica:** Palavras isoladas como `"hoje"` e `"amanhã"` foram removidas dos `negotiationKeywords` no `cognitive-analyzer`. Apenas expressões compostas específicas de intenção de compra permanecem (ex.: `"fechar hoje"`, `"vaga amanhã"`).
 - **Pergunta fechada viciosa:** O `HumanizerKernel.humanizeReply` possui regra determinística pós-LLM (passo 4.2) que intercepta frases do tipo *"Você já conhece nosso sistema?"* e converte em pergunta aberta diagnóstica: *"Que tipo de produto ou serviço você vende hoje por aqui?"*. Isso reduz a taxa de resposta `"não"` no primeiro turno e aumenta o engajamento.
 
+---
+
+## 9. Cadência Comercial Inteligente — FollowUpCadence & Anti-Ghosting (13 Set 2026)
+
+> **Release:** `68664732645c8b1a11a2467a48ba4f9382f0908f`
+
+### Como Funciona
+
+O sistema unifica a régua de 5 etapas do estudo oficial ([SOS_SALES_COMMERCIAL_PLAYBOOK.md](file:///Users/franciscotaveira.ads/Projetos/SOS-SALES/docs/SOS_SALES_COMMERCIAL_PLAYBOOK.md)) como **Padrão de Sistema (Default)**, permitindo **Personalização por Workspace** através de `workspace_agent_config.behavior_config.followUpCadence`.
+
+#### Régua Canônica de 3 Etapas de Reativação (48 Horas)
+
+| Passo | Timing Padrão | Modo Padrão | Objetivo & Instrução de Gancho |
+|---|---|---|---|
+| **Passo 1** | **+2 horas** | *Supervisionado (1-clique)* | Prova visual com vídeo curto de 45s do Cockpit funcionando ou dúvida sobre a proposta |
+| **Passo 2** | **+24 horas** | *Supervisionado (1-clique)* | Quebra de dúvida pontual dentro da janela da Meta e reapresentação do checkout |
+| **Passo 3** | **+48 horas** | *Supervisionado (1-clique)* | Break-up (desapego elegante) com porta aberta para não queimar o lead |
+
+#### Regras Invariantes (MCT OS P0)
+
+- **Cancelamento Imediato:** Qualquer mensagem recebida do cliente (`inbound`) encerra a cadência no ato.
+- **Respeito ao Horário:** Disparos automáticos e lembretes ocorrem estritamente no expediente comercial da empresa.
+- **Janela da Meta (24h):** Respeita o limite de envio de mensagens livres no WhatsApp Oficial da Meta.
+- **Fail-Closed:** Em ausência de configuração personalizada, o motor aplica o `DEFAULT_FOLLOW_UP_CADENCE` de forma determinística.
+
+### Arquivos Relevantes
+
+```
+apps/api/src/infrastructure/ai/receptionist-system-prompt.ts       ← Tipos FollowUpCadenceConfig e DEFAULT_FOLLOW_UP_CADENCE
+apps/api/src/application/services/ghosting-resurrection-engine.ts  ← Resolução de cadência e mapeamento de passo ativo
+src/types/intelligence.ts                                          ← Tipos TypeScript no frontend
+src/components/intelligence/FollowUpCadenceSection.tsx              ← Componente de personalização visual e reset para o estudo
+src/components/intelligence/AgentSettingsSection.tsx               ← Painel de IA com bloco de cadência integrado
+apps/api/tests/unit/follow-up-cadence.test.ts                      ← Testes unitários da cadência (4 cenários)
+```
+

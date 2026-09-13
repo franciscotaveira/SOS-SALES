@@ -1083,3 +1083,24 @@ O incidente de horários fictícios no workspace SOS revelou fallback local e ex
   - Build de frontend e API compilados e promovidos em produção no VPS via release `200739a47564e3206aa07f389101076b9aeeb61a`.
   - Health check (`/health`) e readiness check (`/ready`) operando com 6/6 dependências saudáveis.
 
+## 2026-09-13 — Cadência Comercial Inteligente (Padrão do Playbook + Personalização por Workspace)
+
+- **Contexto & Decisão:** Em vez de depender de follow-ups manuais isolados ou cadências genéricas de ciclo longo, adotou-se como padrão de sistema a régua oficial de 5 etapas (48h) do Playbook Soberano (`SOS_SALES_COMMERCIAL_PLAYBOOK.md`), combinada com flexibilidade de customização de passos, prazos e ganchos por workspace via `behavior_config.followUpCadence`.
+- **Princípio Soberano & Regras Invariantes (MCT OS P0):**
+  1. **Default Soberano:** 3 passos de reativação pós-apresentação (+2h prova visual com vídeo do Cockpit; +24h quebra de dúvida na janela da Meta; +48h break-up elegante com porta aberta).
+  2. **Cancelamento Imediato:** Qualquer mensagem inbound do lead aborta a cadência no ato para evitar mensagens redundantes ou invasivas.
+  3. **Janela da Meta (24h) & Expediente:** Disparos automáticos respeitam o limite de 24h e nunca ocorrem de madrugada ou fora do horário comercial configurado.
+  4. **Modo Duplo:** Suporte a disparo Supervisionado (alerta e rascunho com 1 clique no Cockpit) ou Autônomo.
+- **Escopo:**
+  - `apps/api/src/infrastructure/ai/receptionist-system-prompt.ts`
+  - `apps/api/src/application/services/ghosting-resurrection-engine.ts`
+  - `src/types/intelligence.ts`
+  - `src/components/intelligence/FollowUpCadenceSection.tsx`
+  - `src/components/intelligence/AgentSettingsSection.tsx`
+  - `apps/api/tests/unit/follow-up-cadence.test.ts`
+- **Validação:**
+  - 4 testes unitários dedicados em `follow-up-cadence.test.ts` (resolução default, mapeamento por horas, respeito a flags desativadas e intervalos customizados).
+  - 91 arquivos de teste e 638 testes Vitest passando (100% verde).
+  - Builds de produção de frontend e API compilados com sucesso.
+  - Release `68664732645c8b1a11a2467a48ba4f9382f0908f` promovida no VPS com health e ready operando normalmente.
+
