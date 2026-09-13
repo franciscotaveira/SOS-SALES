@@ -11,7 +11,7 @@
  */
 
 import {resolveSosCheckout,checkoutText} from '../services/sos-approved-checkout.js';
-import {moneyMinor,validateSalesReply,isContactRefusal} from '../services/agent-sales-policy.js';
+import {moneyMinor,validateSalesReply,isContactRefusal,links} from '../services/agent-sales-policy.js';
 import { createHash } from 'node:crypto';
 import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
 import { WabaClient } from '../../infrastructure/channels/meta/waba-client.js';
@@ -1380,8 +1380,34 @@ export class ReceptionistAgent {
         throw new Error('RECEPTIONIST_INVALID_MODEL_OUTPUT');
       }
     }
-    const validation = validateSalesReply(decision.reply, wsConfig);
-    if (!validation.ok) { decision.escalate = true; console.warn('[ReceptionistAgent] reply_blocked', {workspaceId:input.workspaceId,reason:validation.reason}); }
+    let validation = validateSalesReply(decision.reply, wsConfig);
+    if (!validation.ok && validation.reason === 'unapproved_link') {
+      const detected = links(decision.reply);
+      let sanitized = decision.reply;
+      for (const link of detected) {
+        sanitized = sanitized.replaceAll(link, '').trim();
+      }
+      sanitized = sanitized.replace(/\s{2,}/g, ' ').trim();
+      const recheck = validateSalesReply(sanitized, wsConfig);
+      if (recheck.ok && sanitized.length >= 10) {
+        console.warn('[ReceptionistAgent] reply_sanitized_unapproved_link_removed', {
+          workspaceId: input.workspaceId,
+          original: decision.reply,
+          sanitized,
+          removedLinks: detected,
+        });
+        decision.reply = sanitized;
+        validation = recheck;
+      }
+    }
+    if (!validation.ok) {
+      decision.escalate = true;
+      console.warn('[ReceptionistAgent] reply_blocked', {
+        workspaceId: input.workspaceId,
+        reason: validation.reason,
+        reply: decision.reply,
+      });
+    }
     const policy = getReceptionistActionPolicy(decision, wsConfig.salesSkillsEnabled);
     if (policy.shouldEscalate) {
       try {
