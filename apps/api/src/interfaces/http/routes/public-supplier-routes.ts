@@ -413,28 +413,39 @@ export async function publicSupplierRoutes(
 
       if (fromMe) {
         try {
-          await client.query(
-            `UPDATE public.commercial_journeys
-             SET bot_paused_at = NOW(),
-                 bot_pause_reason = 'human_operator_replied_on_device',
-                 updated_at = NOW()
-             WHERE id = $1 AND workspace_id = $2`,
-            [journeyId, workspaceId]
+          const isSystemMessage = await client.query(
+            `SELECT 1 FROM public.receptionist_outbound_reservations WHERE channel_connection_id = $1 AND provider_message_id = $2
+             UNION ALL
+             SELECT 1 FROM public.outbound_dispatches WHERE channel_connection_id = $1 AND provider_message_id = $2
+             UNION ALL
+             SELECT 1 FROM public.conversation_messages WHERE channel_connection_id = $1 AND provider_message_id = $2 AND sender_type = 'ai'
+             LIMIT 1`,
+            [channelConnectionId, providerMsgId]
           );
-          await client.query(
-            `INSERT INTO public.known_facts (id, workspace_id, journey_id, key, value, confidence, confirmed_by_customer, source, observed_at)
-             VALUES (gen_random_uuid(), $1, $2, 'operator.human_override', $3, 1.0, true, 'physical_device', NOW())
-             ON CONFLICT (workspace_id, journey_id, key) 
-             DO UPDATE SET value = EXCLUDED.value, observed_at = NOW()`,
-            [
-              workspaceId,
-              journeyId,
-              JSON.stringify({
-                activeUntil: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-                lastHumanMessage: textContent,
-              }),
-            ]
-          );
+          if (isSystemMessage.rowCount === 0) {
+            await client.query(
+              `UPDATE public.commercial_journeys
+               SET bot_paused_at = NOW(),
+                   bot_pause_reason = 'human_operator_replied_on_device',
+                   updated_at = NOW()
+               WHERE id = $1 AND workspace_id = $2`,
+              [journeyId, workspaceId]
+            );
+            await client.query(
+              `INSERT INTO public.known_facts (id, workspace_id, journey_id, key, value, confidence, confirmed_by_customer, source, observed_at)
+               VALUES (gen_random_uuid(), $1, $2, 'operator.human_override', $3, 1.0, true, 'physical_device', NOW())
+               ON CONFLICT (workspace_id, journey_id, key) 
+               DO UPDATE SET value = EXCLUDED.value, observed_at = NOW()`,
+              [
+                workspaceId,
+                journeyId,
+                JSON.stringify({
+                  activeUntil: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+                  lastHumanMessage: textContent,
+                }),
+              ]
+            );
+          }
         } catch {}
       }
 
