@@ -1059,6 +1059,27 @@
 - A avaliação NVIDIA ficou inconclusiva após três timeouts. Não ampliar piloto nem declarar blindagem com base em testes determinísticos. Estado detalhado: `apps/api/docs/IMPLEMENTACAO_AGENTES_VENDAS_SEGURAS_2026-09-11.md`.
 
 
-## 2026-09-11 — Simulador de produção sem demonstrações nem publicação paralela
-
 O incidente de horários fictícios no workspace SOS revelou fallback local e exemplos apresentados como inferência. A release 5c4b72f remove esse caminho e o editor duplicado do simulador: somente respostas da API e configuração no painel canônico IA & Conhecimento. Erros não geram respostas, e cada workspace tem instância de histórico separada. Banco preservado; consolidação estrutural posterior não foi apresentada como concluída. Evidências em docs/audits/REDUNDANCIAS_2026-09-11.md.
+
+## 2026-09-13 — Classificação e Progressão Automática do Funil Comercial (Etapas 1 a 4)
+
+- **Contexto & Decisão:** O usuário determinou que as conversas do WhatsApp devem progredir automaticamente as etapas comerciais da jornada no Kanban (`NEW` -> `QUALIFIED` -> `PROPOSAL` -> `NEGOTIATION`), dispensando arrasto manual pelo operador para o avanço natural do diálogo.
+- **Princípio Soberano (MCT OS P0 - Truth in Data):**
+  1. A progressão é **estritamente monotônica**: a jornada nunca regride de etapa via IA (ex: de `PROPOSAL` para `NEW`), evitando sobrescrever avaliações humanas ou avanços já consolidados.
+  2. A progressão é **estritamente limitada ao teto de `NEGOTIATION`**: a IA nunca move automaticamente para `WON` (Ganho). O fechamento financeiro é reservado exclusivamente para confirmações reais de pagamento (webhook Cakto, confirmação de Pix autenticada ou desfecho deliberado pelo operador).
+  3. Todo avanço gera registro imutável em `pipeline_stage_events` auditando a transição com ator de sistema `00000000-0000-0000-0000-000000000000`.
+- **Refinamentos Cognitivos & Sanitização Determinística:**
+  1. Corrigida falha no `cognitive-analyzer.ts` onde palavras genéricas isoladas (`'hoje'`, `'amanhã'`) causavam saltos falsos-positivos prematuros para `NEGOTIATION` logo no primeiro turno.
+  2. Implementada regra determinística pós-LLM no `HumanizerKernel` para converter qualquer vício de perguntas fechadas ("Você já conhece nosso sistema...?") em perguntas abertas diagnósticas ("Que tipo de produto ou serviço você vende hoje por aqui?"), elevando o engajamento e a taxa de resposta.
+- **Escopo:**
+  - `apps/api/src/application/services/pipeline-auto-progression-engine.ts`
+  - `apps/api/src/application/services/cognitive-analyzer.ts` & `src/utils/cognitiveAnalyzer.ts`
+  - `apps/api/src/infrastructure/ai/humanizer-kernel.ts`
+  - `apps/api/src/application/agents/receptionist-agent.ts` & `apps/api/src/interfaces/http/routes/public-supplier-routes.ts`
+  - `apps/api/tests/unit/pipeline-auto-progression-engine.test.ts`
+- **Validação:**
+  - 6 novos testes unitários dedicados em `pipeline-auto-progression-engine.test.ts`.
+  - 90 arquivos de teste e 634 testes Vitest passando (100% verde).
+  - Build de frontend e API compilados e promovidos em produção no VPS via release `200739a47564e3206aa07f389101076b9aeeb61a`.
+  - Health check (`/health`) e readiness check (`/ready`) operando com 6/6 dependências saudáveis.
+
