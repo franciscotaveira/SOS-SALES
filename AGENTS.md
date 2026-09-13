@@ -15,10 +15,10 @@
 
 ---
 
-## 2. ESTADO ATUAL (09 Set 2026)
+## 2. ESTADO ATUAL (13 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `db7ea1824da84f96361204ff8e9761018ef62fe9` com IA Receptionist Sofia (NVIDIA NIM), gatilho comercial "SOS" para ativação no WhatsApp pessoal do Francisco, conciliação e unificação de 80+ contatos duplicados LID e controle operacional de outbound ativo.
+- Release ativa: `f7572e1f93440d02beba235e8172e744f387a1e4` com **EKO v2.0 (Protocolo de Blindagem Comercial de IA para WhatsApp)**: Gerador Interativo de System Prompt Blindado (1 Clique), 4 Playbooks por nicho (Clínica, Infoproduto, E-commerce, B2B) e Bateria Oficial de 10 Testes de Ataque (Simulador PROCON & Red Teaming). IA Receptionist Sofia ativa em NVIDIA NIM (`nemotron-3-super-120b-a12b`).
 - Governança de Dados & Isolamento de Execução: Contratos de isolamento em 3 níveis (Storage Encryption, Tenant Isolation e Confidential Execution) e portas para `DataGovernancePolicy` e `CapabilityRevocationGateway` promovidos para produção.
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
