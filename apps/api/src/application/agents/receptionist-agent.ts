@@ -1358,10 +1358,27 @@ export class ReceptionistAgent {
       throw new Error('RECEPTIONIST_NIM_UNAVAILABLE');
     }
 
-    const decision = parseReceptionistDecision(rawResponse);
+    let decision = parseReceptionistDecision(rawResponse);
     if (!decision) {
-      // Invalid model output is also safe to retry: no provider call happened.
-      throw new Error('RECEPTIONIST_INVALID_MODEL_OUTPUT');
+      const cleanContent = (rawResponse || '')
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/^(?:Here's a thinking process:[\s\S]*?\n\n|Thinking Process:[\s\S]*?\n\n)/i, '')
+        .trim();
+      if (cleanContent.length > 0 && !cleanContent.startsWith('{') && cleanContent.length <= MAX_AUTONOMOUS_REPLY_LENGTH) {
+        decision = {
+          intent: 'greeting',
+          reply: HumanizerKernel.humanizeReply(cleanContent),
+          escalate: false,
+          sendBookingFlow: false,
+        };
+        console.info('[ReceptionistAgent] recovered_conversational_reply_without_envelope', {
+          workspaceId: input.workspaceId,
+          journeyId: input.journeyId,
+        });
+      } else {
+        // Invalid model output is also safe to retry: no provider call happened.
+        throw new Error('RECEPTIONIST_INVALID_MODEL_OUTPUT');
+      }
     }
     const validation = validateSalesReply(decision.reply, wsConfig);
     if (!validation.ok) { decision.escalate = true; console.warn('[ReceptionistAgent] reply_blocked', {workspaceId:input.workspaceId,reason:validation.reason}); }
