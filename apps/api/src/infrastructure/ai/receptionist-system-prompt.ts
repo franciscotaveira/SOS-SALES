@@ -51,7 +51,60 @@ export interface WorkspaceAgentBehaviorConfig {
   typingDelaySeconds?: number;
   allowed_groups?: string[];
   allowed_group_ids?: string[];
+  followUpCadence?: FollowUpCadenceConfig;
 }
+
+export interface FollowUpCadenceStep {
+  stepNumber: number;
+  delayHours: number;
+  label: string;
+  goal: string;
+  copyPrompt: string;
+  executionMode: 'supervised' | 'autonomous';
+  enabled: boolean;
+}
+
+export interface FollowUpCadenceConfig {
+  enabled: boolean;
+  steps: FollowUpCadenceStep[];
+}
+
+/**
+ * Cadência Canônica do Estudo Oficial (SOS_SALES_COMMERCIAL_PLAYBOOK.md)
+ * Régua padrão de 3 etapas de reativação pós-apresentação comercial no WhatsApp.
+ */
+export const DEFAULT_FOLLOW_UP_CADENCE: FollowUpCadenceConfig = {
+  enabled: true,
+  steps: [
+    {
+      stepNumber: 1,
+      delayHours: 2,
+      label: 'Toque 1 — Prova Visual (+2h)',
+      goal: 'Quebra de inércia com demonstração em vídeo do Cockpit em 45s',
+      copyPrompt: 'Vídeo curto de 45s mostrando o Cockpit funcionando ou pergunta rápida se conseguiu ver a proposta.',
+      executionMode: 'supervised',
+      enabled: true,
+    },
+    {
+      stepNumber: 2,
+      delayHours: 24,
+      label: 'Toque 2 — Quebra de Dúvida (+24h)',
+      goal: 'Retomada de decisão dentro da janela gratuita da Meta',
+      copyPrompt: 'Perguntar se restou alguma dúvida pontual sobre o plano e reapresentar o checkout correspondente.',
+      executionMode: 'supervised',
+      enabled: true,
+    },
+    {
+      stepNumber: 3,
+      delayHours: 48,
+      label: 'Toque 3 — Break-up & Desapego (+48h)',
+      goal: 'Fechamento por desapego ou desqualificação limpa com porta aberta',
+      copyPrompt: 'Avisar educadamente que está pausando os contatos para não incomodar, deixando os links e porta aberta.',
+      executionMode: 'supervised',
+      enabled: true,
+    },
+  ],
+};
 
 /**
  * Configuração Haven Escovaria
@@ -144,6 +197,13 @@ export const SOS_SALES_CONFIG: WorkspaceConfig = {
   installmentLimitWithoutInterest: 12,
   workingHoursOnly: false,
   temperature: 0.25,
+  behavior: {
+    tone: 'comercial_fechador',
+    structure: 'picado_whatsapp',
+    emojis: 'delicado_pontual',
+    primaryGoal: 'qualificacao_vendedor',
+    followUpCadence: DEFAULT_FOLLOW_UP_CADENCE,
+  },
 };
 
 /**

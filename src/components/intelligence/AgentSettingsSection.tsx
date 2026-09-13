@@ -1,4 +1,5 @@
 import {PilotContacts,AgentGovernancePanel} from './AgentGovernancePanel';
+import { FollowUpCadenceSection } from './FollowUpCadenceSection';
 import React, { useState, useEffect } from 'react';
 import { AiAgentConfig, ToneOfVoice, AgentAutonomyMode } from '../../types/intelligence';
 import {
@@ -611,6 +612,13 @@ export const AgentSettingsSection: React.FC<AgentSettingsSectionProps> = ({
           </div>
         </div>
       </fieldset>
+
+      <FollowUpCadenceSection
+        cadenceConfig={config.followUpCadence}
+        onChange={(cadence) => setConfig({ ...config, followUpCadence: cadence })}
+        canManage={canManage}
+      />
+
       <AgentGovernancePanel workspaceId={config.workspaceId} canManage={canManage} />
     </form>
   );

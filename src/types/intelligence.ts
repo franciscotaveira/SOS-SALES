@@ -144,6 +144,22 @@ export interface AiAgentConfig {
   workingHoursOnly: boolean;
   metaAiComparisonEnabled: boolean;
   activeChannels: string[];
+  followUpCadence?: FollowUpCadenceConfig;
+}
+
+export interface FollowUpCadenceStep {
+  stepNumber: number;
+  delayHours: number;
+  label: string;
+  goal: string;
+  copyPrompt: string;
+  executionMode: 'supervised' | 'autonomous';
+  enabled: boolean;
+}
+
+export interface FollowUpCadenceConfig {
+  enabled: boolean;
+  steps: FollowUpCadenceStep[];
 }
 
 export type ContinuousLearningType =
