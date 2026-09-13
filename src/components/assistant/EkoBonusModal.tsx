@@ -4,6 +4,7 @@ import {
   Check,
   CheckCircle2,
   Clipboard,
+  Copy,
   Download,
   ExternalLink,
   Gift,
@@ -11,6 +12,8 @@ import {
   Loader2,
   LockKeyhole,
   RefreshCw,
+  ShieldCheck,
+  Sparkles,
   X,
 } from 'lucide-react';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
@@ -38,6 +41,53 @@ interface EkoBonusModalProps {
   workspaceId: string;
   isOpen: boolean;
   onClose: () => void;
+}
+
+function generateSystemPrompt(fields: {
+  businessName: string;
+  offer: string;
+  price: string;
+  discountLimit: string;
+  checkoutUrl: string;
+  supportPhone: string;
+}): string {
+  const name = fields.businessName.trim() || '[NOME DA SUA EMPRESA]';
+  const offer = fields.offer.trim() || '[PRODUTO OU SERVIÇO PRINCIPAL]';
+  const price = fields.price.trim() || '[VALOR OFICIAL / TABELA]';
+  const discount = fields.discountLimit.trim() || 'Nenhum desconto autorizado além das condições publicadas';
+  const checkout = fields.checkoutUrl.trim() || '[LINK_OFICIAL_CHECKOUT]';
+  const support = fields.supportPhone.trim() || '[WHATSAPP_SUPORTE_HUMANO]';
+
+  return `# SYSTEM PROMPT SOBERANO — BLINDAGEM COMERCIAL EKO v2.0
+# Empresa: ${name}
+# Protocolo de Governança: MCT OS / SOS Vendas
+
+Você é o Assistente Comercial Oficial da ${name}. Seu objetivo é qualificar o cliente, esclarecer dúvidas com verdade factual estrita e conduzir com elegância para o próximo passo comercial seguro.
+
+## 1. DADOS FUNDAMENTAIS DO NEGÓCIO
+- Empresa: ${name}
+- Oferta Principal: ${offer}
+- Preço Oficial: ${price}
+- Teto Máximo de Desconto: ${discount}
+- Link Oficial de Pagamento: ${checkout}
+- Canal de Escalação Humana: ${support}
+
+## 2. REGRAS INQUEBRÁVEIS DE COMPLIANCE & CDC (ART. 49)
+1. GARANTIA LEGAL INCONDICIONAL (Art. 49 do CDC): Para compras online, o cliente tem direito a 7 dias corridos de arrependimento com 100% de devolução sem perguntas ou exigência de tarefas/metas. NUNCA diga que a garantia nos primeiros 7 dias depende de comprovação.
+2. ALÇADA FINANCEIRA: NUNCA peça dados de cartão de crédito no chat. NUNCA passe chave PIX pessoal ou conta bancária em texto puro. Pagamentos são realizados exclusivamente pelo checkout oficial criptografado: ${checkout}.
+3. TETO DE DESCONTO: Respeite rigorosamente a alçada: ${discount}. Jamais ceda a ofertas abaixo deste limite.
+
+## 3. PROTOCOLO ANTI-GHOSTING & GRACEFUL HANDOFF (NUNCA SILENCIAR)
+Se o cliente reclamar com veemência, citar o PROCON, ameaçar processo judicial ou demonstrar insatisfação grave:
+- NUNCA fique em silêncio e NUNCA congele sem responder.
+- Responda imediatamente com empatia:
+  "Compreendo perfeitamente sua colocação e preocupação. Para garantir que seu caso seja tratado com a máxima prioridade e o respeito que você merece, estou abrindo um protocolo de atendimento imediato e transferindo nossa conversa para nossa gerência humana agora mesmo."
+- Encaminhe para o canal humano: ${support}.
+
+## 4. TOM DE VOZ E COMUNICAÇÃO
+- Fale como um consultor sênior educado, prestativo e seguro.
+- Faça uma pergunta de avanço por vez para não sobrecarregar o cliente.
+- Nunca revele provedores técnicos de inteligência artificial (OpenAI, Claude, NVIDIA). Apresente-se unicamente como assistente comercial da ${name}.`;
 }
 
 function buildDownloadMarkdown(data: EkoBonusPayload): string {
@@ -72,6 +122,16 @@ export function EkoBonusModal({ workspaceId, isOpen, onClose }: EkoBonusModalPro
   const [claimMessage, setClaimMessage] = React.useState<string | null>(null);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
 
+  // Tab State & Interactive Prompt Generator State
+  const [activeTab, setActiveTab] = React.useState<'generator' | 'modules'>('generator');
+  const [businessName, setBusinessName] = React.useState('');
+  const [offer, setOffer] = React.useState('');
+  const [price, setPrice] = React.useState('');
+  const [discountLimit, setDiscountLimit] = React.useState('Máximo 10% no PIX');
+  const [checkoutUrl, setCheckoutUrl] = React.useState('');
+  const [supportPhone, setSupportPhone] = React.useState('');
+  const [copiedPrompt, setCopiedPrompt] = React.useState(false);
+
   const loadBonus = React.useCallback(async () => {
     if (!workspaceId) return;
     setIsLoading(true);
@@ -94,6 +154,7 @@ export function EkoBonusModal({ workspaceId, isOpen, onClose }: EkoBonusModalPro
     if (!isOpen) return;
     setClaimMessage(null);
     setCopiedId(null);
+    setCopiedPrompt(false);
     void loadBonus();
   }, [isOpen, loadBonus]);
 
@@ -102,6 +163,12 @@ export function EkoBonusModal({ workspaceId, isOpen, onClose }: EkoBonusModalPro
     const timeout = window.setTimeout(() => setCopiedId(null), 1800);
     return () => window.clearTimeout(timeout);
   }, [copiedId]);
+
+  React.useEffect(() => {
+    if (!copiedPrompt) return;
+    const timeout = window.setTimeout(() => setCopiedPrompt(false), 2000);
+    return () => window.clearTimeout(timeout);
+  }, [copiedPrompt]);
 
   const handleClaim = async () => {
     setIsClaiming(true);
@@ -137,13 +204,33 @@ export function EkoBonusModal({ workspaceId, isOpen, onClose }: EkoBonusModalPro
     }
   };
 
+  const currentGeneratedPrompt = React.useMemo(() => {
+    return generateSystemPrompt({
+      businessName,
+      offer,
+      price,
+      discountLimit,
+      checkoutUrl,
+      supportPhone,
+    });
+  }, [businessName, offer, price, discountLimit, checkoutUrl, supportPhone]);
+
+  const copyGeneratedPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(currentGeneratedPrompt);
+      setCopiedPrompt(true);
+    } catch {
+      setClaimMessage('O navegador bloqueou a cópia automática. Selecione o texto e copie manualmente.');
+    }
+  };
+
   const downloadKit = () => {
     if (!data?.eligible) return;
     const blob = new Blob([buildDownloadMarkdown(data)], { type: 'text/markdown;charset=utf-8' });
     const href = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = href;
-    anchor.download = `eko-kit-configuracao-${data.version}.md`;
+    anchor.download = `eko-blindagem-comercial-${data.version}.md`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -162,15 +249,15 @@ export function EkoBonusModal({ workspaceId, isOpen, onClose }: EkoBonusModalPro
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl sm:max-h-[850px] sm:rounded-3xl">
+      <section className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl sm:max-h-[880px] sm:rounded-3xl">
         <header className="flex shrink-0 items-center justify-between border-b border-emerald-900/20 bg-[#0B132B] px-4 py-3.5 text-white sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-300">
-              <Gift className="h-5 w-5" />
+              <ShieldCheck className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">Bônus de implantação</p>
-              <h2 id="eko-bonus-title" className="truncate text-base font-bold sm:text-lg">EKO · Kit de Configuração Comercial</h2>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">Blindagem Comercial de IA</p>
+              <h2 id="eko-bonus-title" className="truncate text-base font-bold sm:text-lg">EKO · Protocolo Anti-Processo & Governança</h2>
             </div>
           </div>
           <button
@@ -187,7 +274,7 @@ export function EkoBonusModal({ workspaceId, isOpen, onClose }: EkoBonusModalPro
           {isLoading && (
             <div className="flex min-h-56 flex-col items-center justify-center gap-3 text-sm text-slate-500">
               <Loader2 className="h-7 w-7 animate-spin text-emerald-600" />
-              Verificando a assinatura e preparando o material…
+              Verificando a assinatura e preparando a blindagem…
             </div>
           )}
 
@@ -207,9 +294,9 @@ export function EkoBonusModal({ workspaceId, isOpen, onClose }: EkoBonusModalPro
                 <div className="flex items-start gap-3">
                   <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
                   <div>
-                    <h3 className="font-bold">O bônus ainda não está vinculado a este workspace</h3>
+                    <h3 className="font-bold">A Blindagem EKO ainda não está vinculada a este workspace</h3>
                     <p className="mt-1 text-sm leading-relaxed text-amber-900/80">
-                      Depois da aprovação do pagamento, o mesmo e-mail usado na Cakto precisa ser vinculado ao workspace do CRM. O conteúdo só é liberado para uma assinatura vigente.
+                      O EKO é liberado automaticamente para assinantes ativos do SOS Vendas. Se você comprou pela Cakto, vincule seu e-mail abaixo para liberar acesso vitalício.
                     </p>
                   </div>
                 </div>
@@ -245,59 +332,205 @@ export function EkoBonusModal({ workspaceId, isOpen, onClose }: EkoBonusModalPro
 
           {!isLoading && !error && data?.eligible && (
             <div className="space-y-5">
+              {/* Header Status Bar */}
               <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
                   <div>
-                    <h3 className="font-bold text-emerald-950">Bônus liberado para este workspace</h3>
-                    <p className="mt-1 text-sm leading-relaxed text-emerald-900/80">Use os modelos abaixo para organizar a base antes de publicar ou otimizar qualquer agente.</p>
+                    <h3 className="font-bold text-emerald-950">Blindagem EKO Ativa & Liberada</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-emerald-900/80">
+                      Gere seu System Prompt blindado em 1 clique ou consulte os playbooks completos por nicho e a bateria de testes de ataque.
+                    </p>
                   </div>
                 </div>
-                <button type="button" onClick={downloadKit} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-3 py-2.5 text-xs font-bold text-white hover:bg-emerald-800">
-                  <Download className="h-4 w-4" /> Baixar kit (.md)
+                <button type="button" onClick={downloadKit} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-3.5 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 transition-colors">
+                  <Download className="h-4 w-4" /> Baixar Playbooks (.md)
+                </button>
+              </div>
+
+              {/* Navigation Tabs */}
+              <div className="flex border-b border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('generator')}
+                  className={`flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-bold transition-colors ${
+                    activeTab === 'generator'
+                      ? 'border-emerald-600 text-emerald-700'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <Sparkles className="h-4 w-4 text-emerald-600" />
+                  Gerador de Prompt Blindado (1 Clique)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('modules')}
+                  className={`flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-bold transition-colors ${
+                    activeTab === 'modules'
+                      ? 'border-emerald-600 text-emerald-700'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <Gift className="h-4 w-4 text-slate-400" />
+                  6 Playbooks & Testes de Ataque
                 </button>
               </div>
 
               {claimMessage && <p className="rounded-xl border border-emerald-200 bg-white p-3 text-sm text-emerald-800">{claimMessage}</p>}
 
-              <div className="grid gap-3 lg:grid-cols-2">
-                {data.modules.map((module, index) => (
-                  <article key={module.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">Módulo {index + 1}</p>
-                        <h3 className="mt-1 text-sm font-bold text-slate-900">{module.title}</h3>
+              {/* TAB 1: INTERACTIVE PROMPT GENERATOR */}
+              {activeTab === 'generator' && (
+                <div className="grid gap-6 lg:grid-cols-12">
+                  <div className="space-y-4 lg:col-span-5">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">Dados do seu Negócio</h4>
+                      <p className="mt-1 text-xs text-slate-500">Preencha 5 campos para embutir as travas de CDC e anti-fraude no seu prompt:</p>
+
+                      <div className="mt-4 space-y-3">
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700">Nome da Empresa / Negócio</label>
+                          <input
+                            type="text"
+                            value={businessName}
+                            onChange={(e) => setBusinessName(e.target.value)}
+                            placeholder="Ex: Clínica Dra. Ana Silva ou Bella Moda"
+                            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700">Oferta Principal & Preço</label>
+                          <input
+                            type="text"
+                            value={offer}
+                            onChange={(e) => setOffer(e.target.value)}
+                            placeholder="Ex: Harmonização Facial / Avaliação R$ 250"
+                            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700">Preço / Condição</label>
+                            <input
+                              type="text"
+                              value={price}
+                              onChange={(e) => setPrice(e.target.value)}
+                              placeholder="Ex: R$ 1.800 em 6x"
+                              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700">Teto de Desconto</label>
+                            <input
+                              type="text"
+                              value={discountLimit}
+                              onChange={(e) => setDiscountLimit(e.target.value)}
+                              placeholder="Ex: 10% no Pix ou Sem desconto"
+                              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700">Link Oficial de Checkout / Agenda</label>
+                          <input
+                            type="text"
+                            value={checkoutUrl}
+                            onChange={(e) => setCheckoutUrl(e.target.value)}
+                            placeholder="Ex: https://pay.cakto.com.br/suaoferta"
+                            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700">WhatsApp de Atendimento Humano (Handoff)</label>
+                          <input
+                            type="text"
+                            value={supportPhone}
+                            onChange={(e) => setSupportPhone(e.target.value)}
+                            placeholder="Ex: (49) 99999-9999"
+                            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none"
+                          />
+                        </div>
                       </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 text-xs leading-relaxed text-emerald-900">
+                      <p className="font-bold text-emerald-950">🛡️ O que este gerador embute automaticamente:</p>
+                      <ul className="mt-2 space-y-1 list-disc list-inside text-[11px] text-emerald-900/90">
+                        <li>Garantia Incondicional de 7 dias (Art. 49 CDC);</li>
+                        <li>Proibição expressa de chaves PIX em texto no chat;</li>
+                        <li>Protocolo Anti-Ghosting em conflitos judiciais;</li>
+                        <li>Trava contra jailbreak e injeção de prompt.</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 lg:col-span-7">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700">System Prompt Blindado (Pronto para Uso)</span>
                       <button
                         type="button"
-                        onClick={() => void copyTemplate(module)}
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700"
-                        title={`Copiar modelo de ${module.title}`}
+                        onClick={copyGeneratedPrompt}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-colors"
                       >
-                        {copiedId === module.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Clipboard className="h-3.5 w-3.5" />}
-                        {copiedId === module.id ? 'Copiado' : 'Copiar'}
+                        {copiedPrompt ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                        {copiedPrompt ? 'Prompt Copiado!' : 'Copiar Prompt Blindado'}
                       </button>
                     </div>
-                    <div className="space-y-3 p-4">
-                      <p className="text-xs leading-relaxed text-slate-600">{module.purpose}</p>
-                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-200">{module.template}</pre>
-                      <div>
-                        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Pronto quando…</p>
-                        <ul className="space-y-1">
-                          {module.checklist.map((item) => (
-                            <li key={item} className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-600">
-                              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                              <span>{item}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
+                    <pre className="h-[440px] overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-950 p-4 text-[11px] font-mono leading-relaxed text-slate-200 border border-slate-800 shadow-inner">
+                      {currentGeneratedPrompt}
+                    </pre>
+                  </div>
+                </div>
+              )}
 
-              <p className="text-center text-xs leading-relaxed text-slate-500">O EKO organiza a decisão. A configuração técnica, as integrações e a validação final continuam sob responsabilidade do operador.</p>
+              {/* TAB 2: COMPLETE 6 PLAYBOOKS & ATTACK TESTS */}
+              {activeTab === 'modules' && (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {data.modules.map((module, index) => (
+                    <article key={module.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">Módulo {index + 1}</p>
+                            <h3 className="mt-1 text-sm font-bold text-slate-900">{module.title}</h3>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void copyTemplate(module)}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:text-emerald-700"
+                            title={`Copiar modelo de ${module.title}`}
+                          >
+                            {copiedId === module.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Clipboard className="h-3.5 w-3.5" />}
+                            {copiedId === module.id ? 'Copiado' : 'Copiar'}
+                          </button>
+                        </div>
+                        <div className="space-y-3 p-4">
+                          <p className="text-xs leading-relaxed text-slate-600">{module.purpose}</p>
+                          <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-200">{module.template}</pre>
+                          <div>
+                            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Pronto quando…</p>
+                            <ul className="space-y-1">
+                              {module.checklist.map((item) => (
+                                <li key={item} className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-600">
+                                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                                  <span>{item}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+
+              <p className="text-center text-xs leading-relaxed text-slate-500">
+                O EKO v2.0 é o protocolo de blindagem operacional do MCT OS. Valide as alçadas com o responsável do negócio antes de publicar em canais de grande escala.
+              </p>
             </div>
           )}
         </div>
