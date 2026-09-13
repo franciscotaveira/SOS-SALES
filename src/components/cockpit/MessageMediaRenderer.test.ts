@@ -42,4 +42,11 @@ describe('MessageMediaRenderer normalization and visual type discrimination', ()
     expect(source).toContain('Baixar');
     expect(source).toContain('Pré-visualização do documento');
   });
+
+  it('rejects unrecognized types and non-media objects without falling back to document', () => {
+    const source = read('./MessageMediaRenderer.tsx');
+
+    // Asserts null return on non-media types to avoid phantom document cards for text
+    expect(source).toContain('Not a media item! Return null so text messages or unknown events are not rendered as bogus document attachments');
+  });
 });

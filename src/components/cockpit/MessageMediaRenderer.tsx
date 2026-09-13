@@ -76,7 +76,7 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
       const authorOrSpeaker = (raw.authorOrSpeaker || raw.speaker) as string | undefined;
 
       // Determine the real media type based on raw mediaType, mimetype, filename and url
-      let detectedType: MessageMediaPayload['mediaType'] = 'document';
+      let detectedType: MessageMediaPayload['mediaType'] | null = null;
       const rawType = String(raw.mediaType || raw.type || '').toLowerCase();
       const mime = mimetype.toLowerCase();
       const filenameLower = rawFileName.toLowerCase();
@@ -121,6 +121,27 @@ export const MessageMediaRenderer: React.FC<MessageMediaRendererProps> = ({
         urlLower.includes('.mp4')
       ) {
         detectedType = 'video';
+      } else if (
+        rawType === 'document' ||
+        mime.includes('pdf') ||
+        mime.includes('document') ||
+        mime.includes('msword') ||
+        mime.includes('sheet') ||
+        mime.includes('excel') ||
+        mime.includes('text/') ||
+        filenameLower.endsWith('.pdf') ||
+        filenameLower.endsWith('.doc') ||
+        filenameLower.endsWith('.docx') ||
+        filenameLower.endsWith('.xls') ||
+        filenameLower.endsWith('.xlsx') ||
+        filenameLower.endsWith('.csv') ||
+        filenameLower.endsWith('.txt') ||
+        filenameLower.endsWith('.zip')
+      ) {
+        detectedType = 'document';
+      } else {
+        // Not a media item! Return null so text messages or unknown events are not rendered as bogus document attachments
+        return null;
       }
 
       // Normalização resiliente da URL:

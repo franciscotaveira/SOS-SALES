@@ -242,8 +242,16 @@ export async function publicSupplierRoutes(
     let textContent = typeof payload.body === 'string' ? payload.body : (payload.caption || '');
     let mediaPayload: any = null;
 
-    if (payload.hasMedia || payload.media || payload.type !== 'chat') {
-      const mediaType = payload.type || 'mídia';
+    const recognizedMediaTypes = ['image', 'video', 'audio', 'ptt', 'voice', 'document', 'sticker'];
+    const rawType = typeof payload.type === 'string' ? payload.type.toLowerCase() : '';
+    const isActualMedia = Boolean(
+      payload.hasMedia ||
+      payload.media ||
+      (rawType && recognizedMediaTypes.includes(rawType))
+    );
+
+    if (isActualMedia) {
+      const mediaType = rawType || 'other';
       if (!textContent) {
         if (mediaType === 'image') textContent = payload.caption ? `📷 ${payload.caption}` : '📷 [Imagem]';
         else if (mediaType === 'audio' || mediaType === 'ptt' || mediaType === 'voice') textContent = '🎤 [Mensagem de Áudio]';

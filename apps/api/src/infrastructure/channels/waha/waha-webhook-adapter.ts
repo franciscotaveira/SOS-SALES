@@ -324,17 +324,18 @@ export class WahaWebhookAdapter implements ChannelWebhookAdapter {
 
     // 11. Extract Media Metadata (Without downloading binaries)
     let mediaPayload: Record<string, unknown> | undefined = undefined;
-    const mediaType = typeof data.type === 'string' ? data.type : '';
+    const recognizedMediaTypes = ['image', 'video', 'audio', 'ptt', 'voice', 'document', 'sticker'];
+    const mediaType = typeof data.type === 'string' ? data.type.toLowerCase() : '';
     const hasMedia = Boolean(
       data.hasMedia
       || data.media
       || data.mimetype
-      || (mediaType && mediaType !== 'chat'),
+      || (mediaType && recognizedMediaTypes.includes(mediaType)),
     );
     if (hasMedia) {
       const mediaData = (data.media as Record<string, unknown>) || data;
       mediaPayload = {
-        ...(mediaType && mediaType !== 'chat' ? { mediaType } : {}),
+        ...(mediaType && recognizedMediaTypes.includes(mediaType) ? { mediaType } : {}),
         mimetype: mediaData.mimetype || mediaData.mimeType || 'application/octet-stream',
         filename: mediaData.filename || undefined,
         filesize: mediaData.filesize || mediaData.fileLength || undefined,

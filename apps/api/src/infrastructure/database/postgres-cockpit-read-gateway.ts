@@ -384,19 +384,29 @@ export class PostgresCockpitReadGateway implements CockpitReadGateway {
         // user-facing chronological conversation order.
         messages: messagesList.reverse().map((message: any) => {
           let mediaPayload = message.media_payload || null;
-          if (mediaPayload && typeof mediaPayload === 'object' && typeof mediaPayload.url === 'string') {
-            const rawUrl = mediaPayload.url.trim();
+          if (mediaPayload && typeof mediaPayload === 'object') {
             if (
-              rawUrl.includes('/api/files/') &&
-              (rawUrl.includes('localhost') || rawUrl.includes(':3000') || rawUrl.includes('127.0.0.1') || rawUrl.includes('waha:'))
+              mediaPayload.mediaType === 'other' &&
+              !mediaPayload.mimetype &&
+              !mediaPayload.filename &&
+              !mediaPayload.fileName &&
+              message.text_content
             ) {
-              const filePartIdx = rawUrl.indexOf('/api/files/');
-              if (filePartIdx !== -1) {
-                const filePart = rawUrl.substring(filePartIdx);
-                mediaPayload = {
-                  ...mediaPayload,
-                  url: `/api/v1/channels/waha/media-proxy?path=${encodeURIComponent(filePart)}`,
-                };
+              mediaPayload = null;
+            } else if (typeof mediaPayload.url === 'string') {
+              const rawUrl = mediaPayload.url.trim();
+              if (
+                rawUrl.includes('/api/files/') &&
+                (rawUrl.includes('localhost') || rawUrl.includes(':3000') || rawUrl.includes('127.0.0.1') || rawUrl.includes('waha:'))
+              ) {
+                const filePartIdx = rawUrl.indexOf('/api/files/');
+                if (filePartIdx !== -1) {
+                  const filePart = rawUrl.substring(filePartIdx);
+                  mediaPayload = {
+                    ...mediaPayload,
+                    url: `/api/v1/channels/waha/media-proxy?path=${encodeURIComponent(filePart)}`,
+                  };
+                }
               }
             }
           }

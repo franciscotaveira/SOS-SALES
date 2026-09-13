@@ -86,6 +86,8 @@ services:
       # Webhook ACK timeout: aumentado de 5s (padrão) para 15s
       # evita reenvios duplicados enquanto a API processa o evento
       WHATSAPP_HOOK_TIMEOUT: "15000"
+      WHATSAPP_FILES_FOLDER: /app/.media
+      WHATSAPP_FILES_LIFETIME: "2592000"
     volumes:
       - /opt/sos-sales/waha_sessions:/app/.sessions
       - /opt/sos-sales/waha_media:/app/.media

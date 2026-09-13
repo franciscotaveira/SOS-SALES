@@ -108,6 +108,8 @@ services:
       - WAHA_WEBHOOK_CUSTOM_HEADERS=x-api-key:mct_sos_waha_lab_secret_2026
       - WAHA_WORKER_CONCURRENCY=5
       - WAHA_ZIP_LOGS=false
+      - WHATSAPP_FILES_FOLDER=/app/.media
+      - WHATSAPP_FILES_LIFETIME=2592000
     networks:
       - sos-lab-network
 
