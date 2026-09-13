@@ -7,6 +7,7 @@ import { NvidiaNimEngine } from '../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../infrastructure/ai/openrouter-engine.js';
 import { dbPool } from '../../infrastructure/database/pool.js';
 import { analyzeConversationDossier } from './cognitive-analyzer.js';
+import { HumanizerKernel } from '../../infrastructure/ai/humanizer-kernel.js';
 
 export interface GhostingAnalysis {
   journeyId: string;
@@ -37,7 +38,8 @@ export class GhostingResurrectionEngine {
    */
   async analyzeAndGenerate(workspaceId: string, journeyId: string): Promise<GhostingAnalysis | null> {
     const journeyRes = await dbPool.query(
-      `SELECT j.id, j.pipeline_stage, j.status, j.last_interaction_at,
+      `SELECT j.id, j.pipeline_stage, j.status,
+              COALESCE((SELECT MAX(sent_at) FROM public.conversation_messages cm WHERE cm.journey_id = j.id), j.updated_at) AS last_interaction_at,
               c.name AS contact_name, c.phone AS contact_phone,
               ac.offer_hook, ac.campaign_name, ac.entry_message
        FROM public.commercial_journeys j
@@ -116,7 +118,10 @@ Horas em silêncio: ${hoursSilent.toFixed(1)}h
         ],
         { tier: 'fast' }
       );
-      recommendedMessage = result.content;
+      let cleanText = (result.content || '').trim();
+      cleanText = cleanText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      cleanText = cleanText.replace(/^["']|["']$/g, '').trim();
+      recommendedMessage = HumanizerKernel.humanizeReply(cleanText);
     } catch {
       // Preserve a função sem transformar indisponibilidade do provedor em
       // uma afirmação comercial fabricada. O operador ainda revisa o rascunho.
@@ -149,9 +154,9 @@ Horas em silêncio: ${hoursSilent.toFixed(1)}h
          AND j.status = 'OPEN'
          AND j.bot_paused_at IS NULL AND j.responder_owner = 'sos_sales'
          AND EXISTS (SELECT 1 FROM public.contacts c WHERE c.id=j.contact_id AND c.workspace_id=j.workspace_id AND c.outbound_opted_out_at IS NULL)
-         AND j.last_interaction_at <= NOW() - ($2 || ' hours')::interval
-         AND j.last_interaction_at >= NOW() - ($3 || ' hours')::interval
-       ORDER BY j.last_interaction_at DESC
+         AND COALESCE((SELECT MAX(sent_at) FROM public.conversation_messages cm WHERE cm.journey_id = j.id), j.updated_at) <= NOW() - ($2 || ' hours')::interval
+         AND COALESCE((SELECT MAX(sent_at) FROM public.conversation_messages cm WHERE cm.journey_id = j.id), j.updated_at) >= NOW() - ($3 || ' hours')::interval
+       ORDER BY COALESCE((SELECT MAX(sent_at) FROM public.conversation_messages cm WHERE cm.journey_id = j.id), j.updated_at) DESC
        LIMIT 20`,
       [workspaceId, String(minHours), String(maxHours)]
     );

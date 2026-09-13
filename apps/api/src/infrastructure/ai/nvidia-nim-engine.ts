@@ -38,9 +38,9 @@ export interface NvidiaChatCompletionResult {
 }
 
 export const NVIDIA_MODEL_TIERS = {
-  FAST: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+  FAST: 'nvidia/nemotron-3-super-120b-a12b',
   REASONING: 'nvidia/nemotron-3-super-120b-a12b',
-  NEMOTRON: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+  NEMOTRON: 'nvidia/nemotron-3-super-120b-a12b',
   NEMOTRON_REASONING: 'nvidia/nemotron-3-super-120b-a12b',
   DEEPSEEK_R1: 'deepseek-ai/deepseek-r1',
   VISION: 'meta/llama-3.2-11b-vision-instruct',
