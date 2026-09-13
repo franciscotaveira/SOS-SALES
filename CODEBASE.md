@@ -270,3 +270,48 @@ ssh vps "docker logs sos-sales-api --tail 50"
 # Flush Redis (cache de idempotência)
 ssh vps "docker exec sos-sales-redis redis-cli FLUSHALL"
 ```
+
+---
+
+## 8. Funil Inteligente — Pipeline Auto-Progression Engine (13 Set 2026)
+
+> **Release:** `200739a47564e3206aa07f389101076b9aeeb61a`
+
+### Como Funciona
+
+O `PipelineAutoProgressionEngine` avalia o histórico completo de mensagens a cada turno do Receptionist (inbound e outbound) e avança a etapa comercial da jornada de forma automática e monotônica.
+
+#### Mapa de Etapas e Gatilhos Cognitivos
+
+| Etapa | `pipeline_stage` | Gatilho Principal |
+|---|---|---|
+| 1 — Novo | `NEW` | Estado inicial de toda jornada entrante |
+| 2 — Qualificado | `QUALIFIED` | Identificação de nicho, produto ou dor real do lead |
+| 3 — Proposta | `PROPOSAL` | Apresentação de valores, condições, plano ou serviço concreto |
+| 4 — Negociação | `NEGOTIATION` | Ajuste de data, condição especial, comparação de preço ou sinalização de decisão |
+| 5 — Ganho | `WON` | **Exclusivo para gateway real** (Cakto webhook / Pix autenticado / desfecho manual do operador) |
+
+#### Regras Invariantes (MCT OS P0)
+
+- **Monotônica:** a etapa nunca regride via IA (ex.: de `PROPOSAL` para `QUALIFIED`).
+- **Teto em `NEGOTIATION`:** a IA nunca auto-promove para `WON`. A etapa 5 exige confirmação financeira real.
+- **Auditável:** todo avanço grava um evento em `public.pipeline_stage_events` com ator `00000000-0000-0000-0000-000000000000`.
+- **Realtime no Kanban:** `LiveCommercialKanbanView.tsx` assina Supabase Realtime na tabela `commercial_journeys`; cards movem de coluna instantaneamente ao avançar a etapa no banco.
+
+### Arquivos Relevantes
+
+```
+apps/api/src/application/services/pipeline-auto-progression-engine.ts  ← motor principal
+apps/api/src/application/services/cognitive-analyzer.ts                 ← analisador semântico de turno
+src/utils/cognitiveAnalyzer.ts                                           ← variante de frontend
+apps/api/src/infrastructure/ai/humanizer-kernel.ts                       ← sanitização determinística de resposta
+apps/api/src/application/agents/receptionist-agent.ts                    ← hook no fluxo handleInbound
+apps/api/src/interfaces/http/routes/public-supplier-routes.ts            ← hook no webhook WAHA
+apps/api/tests/unit/pipeline-auto-progression-engine.test.ts             ← 6 testes unitários dedicados
+```
+
+### Armadilhas Conhecidas & Padrões de Correção
+
+- **Falso positivo por palavra genérica:** Palavras isoladas como `"hoje"` e `"amanhã"` foram removidas dos `negotiationKeywords` no `cognitive-analyzer`. Apenas expressões compostas específicas de intenção de compra permanecem (ex.: `"fechar hoje"`, `"vaga amanhã"`).
+- **Pergunta fechada viciosa:** O `HumanizerKernel.humanizeReply` possui regra determinística pós-LLM (passo 4.2) que intercepta frases do tipo *"Você já conhece nosso sistema?"* e converte em pergunta aberta diagnóstica: *"Que tipo de produto ou serviço você vende hoje por aqui?"*. Isso reduz a taxa de resposta `"não"` no primeiro turno e aumenta o engajamento.
+
