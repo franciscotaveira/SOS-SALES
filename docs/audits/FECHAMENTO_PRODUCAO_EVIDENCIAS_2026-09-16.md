@@ -2,7 +2,7 @@
 
 **Data:** 16 de setembro de 2026
 **Branch:** `codex/production-ca-fix`
-**SHA da última rodada de builds:** `4cde8b004dcf2171dd8828f81bbc6859261b3235` (manifesto gerado no build local; árvore continua suja por `AGENTS.md` pré-existente)
+**SHA do artefato API da última rodada de builds:** ver `commitSha` em `apps/api/dist/release-manifest.json` (atualmente `54e0ed65810d6f912607d9c592705b5037278ed7`; manifesto gerado no build local; árvore continua suja por `AGENTS.md` pré-existente)
 **Release ativa no VPS:** `68664732645c8b1a11a2467a48ba4f9382f0908f`
 
 Este registro acompanha o primeiro pacote de execução do plano de fechamento. Ele separa o que foi comprovado localmente do que continua bloqueado por ambiente, CI ou aprovação de promoção.
