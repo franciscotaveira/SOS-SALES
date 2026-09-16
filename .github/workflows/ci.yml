@@ -3,6 +3,7 @@ name: Quality gates
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -52,16 +53,30 @@ jobs:
       - name: Typecheck, test and build API
         run: npm run check && npm run build
 
+  ai-security-deterministic:
+    name: AI Security (deterministic)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Install API dependencies from lockfile
+        run: npm ci
+      - name: Run deterministic AI policy regression suite
+        run: npm run test:unit -- tests/unit/humanizer-kernel.test.ts tests/unit/agent-sales-safety.test.ts tests/unit/receptionist-agent-policy.test.ts
+
   ai-security:
     name: AI Security Gate
     runs-on: ubuntu-latest
-    # Only run when AI-related files change or on manual dispatch
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      contains(github.event.head_commit.message, '[ai-gate]') ||
-      contains(github.event.head_commit.modified, 'humanizer-kernel') ||
-      contains(github.event.head_commit.modified, 'receptionist') ||
-      contains(github.event.head_commit.modified, 'nvidia-nim')
+    # The live NIM battery is intentionally manual because it consumes an
+    # external provider. Deterministic policy tests run on every push/PR above.
+    if: github.event_name == 'workflow_dispatch'
     env:
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
     steps:

@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXPECTED_CA_FINGERPRINT="80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA"
+current_commit="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 
 # A release manifest contains the current Git SHA. Do not permit it to attest
 # uncommitted source or migration changes as if they belonged to that commit.
@@ -12,6 +13,8 @@ if ! git -C "${REPO_ROOT}" diff --quiet || ! git -C "${REPO_ROOT}" diff --cached
   echo "[preflight] working tree is not clean; commit or isolate the intended release before deployment" >&2
   exit 1
 fi
+
+node "${REPO_ROOT}/scripts/verify-ci-green.mjs" "${current_commit}"
 
 untracked_source="$(git -C "${REPO_ROOT}" ls-files --others --exclude-standard -- \
   . \
@@ -68,7 +71,6 @@ if ! openssl x509 -checkend 604800 -noout -in "${REPO_ROOT}/certs/supabase-ca.cr
 fi
 
 manifest_commit="$(node -p "JSON.parse(require('fs').readFileSync('${REPO_ROOT}/apps/api/dist/release-manifest.json', 'utf8')).commitSha")"
-current_commit="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 if [[ "${manifest_commit}" != "${current_commit}" ]]; then
   echo "[preflight] API manifest commit ${manifest_commit} does not match HEAD ${current_commit}" >&2
   exit 1
