@@ -37,6 +37,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 - Cliente Redis da API deixou de desabilitar reconexão após perda de socket; o Lab comprovou degradação 503 durante a parada e recuperação 200 sem reinício da API.
 - Reconciliador `ReceptionistOutboundReconciler` passou a executar a cada 30 segundos, selecionar reservas `SENDING` antigas com `FOR UPDATE SKIP LOCKED` e marcá-las `UNKNOWN` com código auditável, sem nova chamada ao provedor; a dependência aparece no `/ready`.
 - O helper do runtime de produção passou a publicar `receptionist-outbound-reconciler` no `/ready`, evitando que o candidato seja promovido com uma dependência exigida, mas ausente da lista de saúde.
+- Stage e promotion passaram a resolver a imagem do serviço API no compose do candidato, evitando instalar dependências Node 22 com a imagem Node 20 da release ativa.
 
 ## Validações executadas
 
@@ -68,6 +69,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 | reconciliador de outbound preso | `PASS — 2 testes unitários + 1 teste DB; SENDING antigo vira UNKNOWN, attempts incrementa e provider_message_id permanece nulo` |
 | alinhamento do readiness no runtime de produção | `PASS — teste de runtime 13/13, typecheck, build API e Lab /ready 200 com reconciliador ok` |
 | compatibilidade CSP com Supabase Realtime | `PASS — guard de edge e caddy validate na imagem fixada; wss://*.supabase.co permitido` |
+| imagem do runtime usada no stage/promotion | `PASS — scripts extraem node:22-alpine do compose candidato; não usam docker inspect da release ativa` |
 
 A auditoria de contratos ainda reporta achados existentes de escritas locais, imports de fixtures e resultados aleatórios. Eles não foram tratados como resolvidos por este pacote.
 

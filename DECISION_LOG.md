@@ -1122,3 +1122,9 @@ O incidente de horários fictícios no workspace SOS revelou fallback local e ex
 - **Problema:** A CSP adicionada ao Caddy permitia chamadas HTTPS ao Supabase, mas não declarava o endpoint `wss://` usado pelas assinaturas Realtime do Cockpit, Kanban, Agenda e demais telas ao vivo. O `/health` continuaria verde enquanto as atualizações em tempo real seriam bloqueadas pelo navegador.
 - **Decisão:** Adicionar `wss://*.supabase.co` ao `connect-src` nos blocos HTTPS e HTTP do Caddyfile e transformar essa origem em requisito do verificador de edge.
 - **Validação:** verificador de layout passou, `caddy validate` passou na imagem digest-pinned e o arquivo de produção não foi instalado no VPS. A release ativa continua inalterada.
+
+## 2026-09-16 — Stage e promotion usam a imagem do candidato
+
+- **Problema:** O staging instalava dependências com a imagem do container API ativo. Como o candidato troca Node 20 por Node 22, módulos opcionais nativos poderiam ser preparados para a ABI antiga e falhar depois da troca.
+- **Decisão:** Ler a imagem do serviço `sos-sales-api` diretamente do compose imutável do candidato em stage e promotion. O VPS não é usado como fonte da imagem do novo artefato.
+- **Validação:** `bash -n` dos três scripts, teste de contrato do runtime `13/13`, extração local `node:22-alpine` e suíte API `94/644`. Nenhuma release candidata foi criada no VPS.

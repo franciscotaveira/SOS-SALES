@@ -139,6 +139,10 @@ describe('production database TLS contract', () => {
     // and reintroduce the duplicate-secret contract this release removes.
     expect(stage).toContain("grep -Eq '^WAHA_API_KEY=[[:space:]]*[^[:space:]]'");
     expect(stage).not.toContain('WAHA_WEBHOOK_SECRET_[A-Za-z0-9_]');
+    expect(stage).toContain('candidate_node_image=\\$(awk');
+    expect(stage).not.toContain('docker inspect sos-sales-api --format');
+    expect(promote).toContain('node_image="$(awk');
+    expect(promote).not.toContain('docker inspect sos-sales-api --format');
     expect(promote).toContain('verify_active_release');
     expect(promote).toContain('require_base_release');
     expect(promote).toContain('verify_linked_schema_ledger');
