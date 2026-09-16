@@ -16,6 +16,7 @@ import { WahaWebhookAdapter } from './infrastructure/channels/waha/waha-webhook-
 import { WahaInboundWorker } from './infrastructure/workers/waha-inbound-worker.js';
 import { WahaOutboundWorker } from './infrastructure/workers/waha-outbound-worker.js';
 import { ReceptionistInboundWorker } from './infrastructure/workers/receptionist-inbound-worker.js';
+import { ReceptionistOutboundReconciler } from './infrastructure/workers/receptionist-outbound-reconciler.js';
 import type { ReceptionistHandler } from './infrastructure/workers/receptionist-inbound-worker.js';
 import { getReceptionistAgent } from './application/agents/receptionist-agent.js';
 import { WahaOutboundAdapter } from './infrastructure/channels/waha/waha-outbound-adapter.js';
@@ -66,6 +67,7 @@ export interface RuntimeDependencies {
     workers?: {
       outbound?: WahaOutboundWorker;
       receptionist?: ReceptionistInboundWorker;
+      receptionistReconciler?: ReceptionistOutboundReconciler;
       capi?: CapiDispatchWorker;
     },
   ) => DependencyHealthProvider;
@@ -283,6 +285,7 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
       { name: 'waha-inbound-worker', check: async () => worker.isHealthy() },
       ...(workers?.outbound ? [{ name: 'outbound-worker', check: async () => workers.outbound!.isHealthy() }] : []),
       ...(workers?.receptionist ? [{ name: 'receptionist-worker', check: async () => workers.receptionist!.isHealthy() }] : []),
+      ...(workers?.receptionistReconciler ? [{ name: 'receptionist-outbound-reconciler', check: async () => workers.receptionistReconciler!.isHealthy() }] : []),
       ...(workers?.capi ? [{ name: 'capi-worker', check: async () => workers.capi!.isHealthy() }] : []),
     ]),
     close: async () => {
@@ -368,6 +371,17 @@ async function startComposedServer(
     })
     : undefined;
 
+  const staleAfterSeconds = Number.parseInt(
+    process.env.RECEPTIONIST_OUTBOUND_STALE_AFTER_SECONDS || '180',
+    10,
+  );
+  const receptionistReconciler = runtime.databasePool
+    ? new ReceptionistOutboundReconciler({
+      pool: runtime.databasePool,
+      staleAfterSeconds: Number.isFinite(staleAfterSeconds) ? staleAfterSeconds : 180,
+    })
+    : undefined;
+
   const capiWorker = process.env.META_CAPI_WORKER_ENABLED === 'true' && runtime.databasePool
     ? new CapiDispatchWorker({outboxGateway:runtime.outboxGateway,capiGateway:new CapiClient(),pool:runtime.databasePool}) : undefined;
 
@@ -378,6 +392,7 @@ async function startComposedServer(
     healthProvider: runtime.createHealthProvider(worker, {
       outbound: outboundWorker,
       receptionist: receptionistWorker,
+      receptionistReconciler,
       capi: capiWorker,
     }),
     readinessDependencyNames: [
@@ -386,6 +401,7 @@ async function startComposedServer(
       'waha-inbound-worker',
       ...(outboundWorker ? ['outbound-worker'] : []),
       ...(receptionistWorker ? ['receptionist-worker'] : []),
+      ...(receptionistReconciler ? ['receptionist-outbound-reconciler'] : []),
       ...(capiWorker ? ['capi-worker'] : []),
     ],
     authenticator: runtime.authenticator,
@@ -416,6 +432,7 @@ async function startComposedServer(
   worker.start();
   outboundWorker?.start();
   receptionistWorker?.start();
+  receptionistReconciler?.start();
   capiWorker?.start();
 
   try {
@@ -424,6 +441,7 @@ async function startComposedServer(
     await worker.stop();
     await outboundWorker?.stop();
     await receptionistWorker?.stop();
+    await receptionistReconciler?.stop();
     await capiWorker?.stop();
     await runtime.close?.();
     throw error;
@@ -436,6 +454,7 @@ async function startComposedServer(
     await worker.stop();
     await outboundWorker?.stop();
     await receptionistWorker?.stop();
+    await receptionistReconciler?.stop();
     await capiWorker?.stop();
     await app.close();
     await runtime.close?.();
