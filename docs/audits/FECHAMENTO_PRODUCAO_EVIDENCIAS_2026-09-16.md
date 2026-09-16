@@ -2,7 +2,7 @@
 
 **Data:** 16 de setembro de 2026
 **Branch:** `codex/production-ca-fix`
-**SHA da última rodada de builds:** `c177e47bfcc582f1cbec00d4622f6c16da7b092d` (manifesto gerado no build local; árvore continua suja por `AGENTS.md` pré-existente)
+**SHA da última rodada de builds:** `ebff21d63438bf234f6a454fd2ee860c4c7f468f` (manifesto gerado no build local; árvore continua suja por `AGENTS.md` pré-existente)
 **Release ativa no VPS:** `68664732645c8b1a11a2467a48ba4f9382f0908f`
 
 Este registro acompanha o primeiro pacote de execução do plano de fechamento. Ele separa o que foi comprovado localmente do que continua bloqueado por ambiente, CI ou aprovação de promoção.
@@ -35,6 +35,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 - `scripts/verify-waha-webhook-e2e.mjs` alinhado ao contrato durável atual: valida 401 sem chave, persistência do envelope, deduplicação por `provider_event_id`, normalização e `outbox_events=PUBLISHED`, com limpeza segura dos fixtures.
 - Cliente Redis da API deixou de desabilitar reconexão após perda de socket; o Lab comprovou degradação 503 durante a parada e recuperação 200 sem reinício da API.
 - Reconciliador `ReceptionistOutboundReconciler` passou a executar a cada 30 segundos, selecionar reservas `SENDING` antigas com `FOR UPDATE SKIP LOCKED` e marcá-las `UNKNOWN` com código auditável, sem nova chamada ao provedor; a dependência aparece no `/ready`.
+- O helper do runtime de produção passou a publicar `receptionist-outbound-reconciler` no `/ready`, evitando que o candidato seja promovido com uma dependência exigida, mas ausente da lista de saúde.
 
 ## Validações executadas
 
@@ -64,6 +65,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 | perda/retorno do Redis no Lab | `PASS — readiness 503 durante parada e 200 após retorno, sem reiniciar a API` |
 | `caddy validate` no Caddyfile versionado | `PASS — configuração válida; digest af32e973...c262c17` |
 | reconciliador de outbound preso | `PASS — 2 testes unitários + 1 teste DB; SENDING antigo vira UNKNOWN, attempts incrementa e provider_message_id permanece nulo` |
+| alinhamento do readiness no runtime de produção | `PASS — teste de runtime 13/13, typecheck, build API e Lab /ready 200 com reconciliador ok` |
 
 A auditoria de contratos ainda reporta achados existentes de escritas locais, imports de fixtures e resultados aleatórios. Eles não foram tratados como resolvidos por este pacote.
 

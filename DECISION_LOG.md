@@ -1110,3 +1110,9 @@ O incidente de horários fictícios no workspace SOS revelou fallback local e ex
 - **Decisão:** Adicionar `ReceptionistOutboundReconciler` ao ciclo de vida da API. A cada 30 segundos ele seleciona reservas `SENDING` antigas com `FOR UPDATE SKIP LOCKED`, muda-as para `UNKNOWN`, incrementa `attempts` e registra `STALE_SENDING_RECONCILIATION`. O worker nunca chama o provedor e nunca transforma estado ambíguo em `SENT`.
 - **Governança:** O reconciliador entra no health/readiness como dependência `receptionist-outbound-reconciler`; `UNKNOWN` exige reconciliação humana antes de qualquer nova ação. O limiar padrão é 180 segundos e pode ser configurado por `RECEPTIONIST_OUTBOUND_STALE_AFTER_SECONDS`.
 - **Validação:** 2 testes unitários, 1 teste de banco real, suíte API `94/644`, readiness Lab `200` e auditoria de rotas `10/10`. Produção não alterada; promoção continua condicionada a CI verde, árvore limpa e aprovação humana.
+
+## 2026-09-16 — Readiness do runtime de produção alinhado ao reconciliador
+
+- **Problema:** O servidor passou a exigir `receptionist-outbound-reconciler` no readiness, mas o helper usado pelo runtime de produção ainda não o publicava na lista de dependências. Uma promoção com o reconciliador saudável poderia responder `/ready` como 503.
+- **Decisão:** Propagar o worker para `buildReadinessStatuses` e cobrir a linha de readiness no teste do runtime. A mudança é fail-closed: o candidato só fica pronto quando o reconciliador estiver presente e saudável.
+- **Validação:** teste de runtime `13/13`, typecheck da API, suíte API `94/644`, build de produção da API e `/ready` do Docker Lab `200` com `receptionist-outbound-reconciler=ok`. Produção não alterada; release ativa permanece `68664732645c8b1a11a2467a48ba4f9382f0908f`.
