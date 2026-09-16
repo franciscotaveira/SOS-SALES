@@ -27,9 +27,11 @@ import {
   getReceptionistInputDecision,
   type ResponderMode,
   type ResponderOwner,
+  type ReceptionistDecision,
 } from '../../../application/agents/receptionist-agent.js';
 import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.js';
+import { HumanizerKernel } from '../../../infrastructure/ai/humanizer-kernel.js';
 import { analyzeConversationDossier, MessageLike } from '../../../application/services/cognitive-analyzer.js';
 import { buildSystemPrompt } from '../../../infrastructure/ai/receptionist-system-prompt.js';
 
@@ -1331,7 +1333,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
       const startTime = Date.now();
       let generatedReply = '';
       let modelUsed = selectedTier;
-      let decision;
+      let decision: ReceptionistDecision;
       try {
         const checkout=publishedConfig.salesSkillsEnabled?await resolveSosCheckout(query,workspaceId,userMessage):null;
         const inputDecision=checkout?{intent:'inquiry' as const,escalate:false,sendBookingFlow:false,reply:checkoutText(checkout)}:getReceptionistInputDecision(userMessage);
@@ -1360,15 +1362,17 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           }
 
           const rawOutput = (result?.content || result?.text || '').trim();
-          decision = parseReceptionistDecision(rawOutput);
-          if (!decision) {
+          const parsedDecision = parseReceptionistDecision(rawOutput);
+          if (parsedDecision) {
+            decision = parsedDecision;
+          } else {
             const cleanContent = rawOutput
               .replace(/<think>[\s\S]*?<\/think>/gi, '')
               .replace(/^(?:Here's a thinking process:[\s\S]*?\n\n|Thinking Process:[\s\S]*?\n\n)/i, '')
               .trim();
             if (cleanContent.length > 0) {
               decision = {
-                intent: 'inquiry',
+                intent: 'inquiry' as const,
                 reply: HumanizerKernel.humanizeReply(cleanContent),
                 escalate: false,
                 sendBookingFlow: false,
