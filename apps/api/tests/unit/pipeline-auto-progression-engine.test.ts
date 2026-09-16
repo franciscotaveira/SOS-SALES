@@ -21,6 +21,12 @@ describe('PipelineAutoProgressionEngine', () => {
 
     const mockQuery = async (sql: string, params?: unknown[]) => {
       executedQueries.push({ sql, params });
+      if (sql.includes('WITH current_journey AS MATERIALIZED')) {
+        return {
+          rows: [{ from_stage: 'NEW', to_stage: 'QUALIFIED', advanced: true, audited: true }],
+          rowCount: 1,
+        };
+      }
       if (sql.includes('FROM public.commercial_journeys')) {
         return {
           rows: [
@@ -58,20 +64,25 @@ describe('PipelineAutoProgressionEngine', () => {
     expect(result.fromStage).toBe('NEW');
     expect(result.toStage).toBe('QUALIFIED');
 
-    const updateQuery = executedQueries.find((q) => q.sql.includes('UPDATE public.commercial_journeys'));
-    expect(updateQuery).toBeDefined();
-    expect(updateQuery?.params?.[0]).toBe('QUALIFIED');
-
-    const eventQuery = executedQueries.find((q) => q.sql.includes('INSERT INTO public.pipeline_stage_events'));
-    expect(eventQuery).toBeDefined();
-    expect(eventQuery?.params?.[2]).toBe('NEW');
-    expect(eventQuery?.params?.[3]).toBe('QUALIFIED');
+    const atomicTransitionQuery = executedQueries.find((q) => q.sql.includes('UPDATE public.commercial_journeys') && q.sql.includes('INSERT INTO public.pipeline_stage_events'));
+    expect(atomicTransitionQuery).toBeDefined();
+    expect(atomicTransitionQuery?.params?.[0]).toBe('QUALIFIED');
+    expect(atomicTransitionQuery?.params?.[4]).toBe(journeyId);
+    expect(atomicTransitionQuery?.params?.[5]).toBe(workspaceId);
+    expect(atomicTransitionQuery?.params?.[7]).toBe(`auto_${workspaceId}_${journeyId}_QUALIFIED`);
+    expect(atomicTransitionQuery?.sql).not.toContain('Date.now()');
   });
 
   it('advances journey from QUALIFIED to PROPOSAL when proposal/pricing is presented', async () => {
     const executedQueries: Array<{ sql: string; params?: unknown[] }> = [];
 
     const mockQuery = async (sql: string, params?: unknown[]) => {
+      if (sql.includes('WITH current_journey AS MATERIALIZED')) {
+        return {
+          rows: [{ from_stage: 'QUALIFIED', to_stage: 'PROPOSAL', advanced: true, audited: true }],
+          rowCount: 1,
+        };
+      }
       executedQueries.push({ sql, params });
       if (sql.includes('FROM public.commercial_journeys')) {
         return {
@@ -110,8 +121,56 @@ describe('PipelineAutoProgressionEngine', () => {
     expect(result.toStage).toBe('PROPOSAL');
   });
 
+  it('fails closed when the atomic stage guard loses a concurrent race', async () => {
+    const mockQuery = async (sql: string) => {
+      if (sql.includes('WITH current_journey AS MATERIALIZED')) {
+        return {
+          rows: [{ from_stage: 'QUALIFIED', to_stage: 'QUALIFIED', advanced: false, audited: true }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes('FROM public.commercial_journeys')) {
+        return {
+          rows: [{
+            id: journeyId,
+            workspace_id: workspaceId,
+            status: 'OPEN',
+            pipeline_stage: 'NEW',
+            primary_service_or_product: null,
+            contact_name: 'João',
+          }],
+        };
+      }
+      if (sql.includes('FROM public.conversation_messages')) {
+        return {
+          rows: [
+            { direction: 'inbound', sender_type: 'customer', text_content: 'Vendo roupas e calçados masculinos', sent_at: new Date() },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    };
+
+    const result = await PipelineAutoProgressionEngine.evaluateAndProgress(
+      mockQuery as any,
+      workspaceId,
+      journeyId,
+    );
+
+    expect(result.advanced).toBe(false);
+    expect(result.fromStage).toBe('QUALIFIED');
+    expect(result.toStage).toBe('QUALIFIED');
+    expect(result.reason).toBe('concurrent_transition_or_target_not_higher');
+  });
+
   it('advances journey from PROPOSAL to NEGOTIATION on scheduling or payment terms discussion', async () => {
     const mockQuery = async (sql: string) => {
+      if (sql.includes('WITH current_journey AS MATERIALIZED')) {
+        return {
+          rows: [{ from_stage: 'PROPOSAL', to_stage: 'NEGOTIATION', advanced: true, audited: true }],
+          rowCount: 1,
+        };
+      }
       if (sql.includes('FROM public.commercial_journeys')) {
         return {
           rows: [
@@ -152,6 +211,12 @@ describe('PipelineAutoProgressionEngine', () => {
 
   it('NEVER auto-promotes to WON/GANHO even if closure keywords are detected (Truth in Data)', async () => {
     const mockQuery = async (sql: string) => {
+      if (sql.includes('WITH current_journey AS MATERIALIZED')) {
+        return {
+          rows: [{ from_stage: 'PROPOSAL', to_stage: 'NEGOTIATION', advanced: true, audited: true }],
+          rowCount: 1,
+        };
+      }
       if (sql.includes('FROM public.commercial_journeys')) {
         return {
           rows: [
