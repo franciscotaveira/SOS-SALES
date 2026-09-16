@@ -111,7 +111,7 @@ services:
   # WAHA WHATSAPP ENGINE (PRIVATE CONTAINER)
   # ---------------------------------------------------------------------------
   waha:
-    image: devlikeapro/waha:latest
+    image: devlikeapro/waha@sha256:f3c33e8e70a78eb37af4f4e2eb655849d42d8ffdc4b8254f9de38069e906a146
     platform: linux/amd64
     container_name: sos-sales-waha
     restart: unless-stopped

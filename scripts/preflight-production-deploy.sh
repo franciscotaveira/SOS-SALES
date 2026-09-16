@@ -15,6 +15,7 @@ if ! git -C "${REPO_ROOT}" diff --quiet || ! git -C "${REPO_ROOT}" diff --cached
 fi
 
 node "${REPO_ROOT}/scripts/verify-edge-release-layout.mjs"
+node "${REPO_ROOT}/scripts/verify-runtime-image-pins.mjs"
 node "${REPO_ROOT}/scripts/verify-ci-green.mjs" "${current_commit}"
 
 untracked_source="$(git -C "${REPO_ROOT}" ls-files --others --exclude-standard -- \
