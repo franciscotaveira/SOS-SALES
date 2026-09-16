@@ -86,11 +86,13 @@ describe('production database TLS contract', () => {
     expect(buildReadinessStatuses(healthyWorker, {
       outbound: healthyWorker,
       receptionist: healthyWorker,
+      receptionistReconciler: healthyWorker,
       capi: healthyWorker,
     })).toEqual([
       { name: 'waha-inbound-worker', healthy: true },
       { name: 'outbound-worker', healthy: true },
       { name: 'receptionist-worker', healthy: true },
+      { name: 'receptionist-outbound-reconciler', healthy: true },
       { name: 'capi-worker', healthy: true },
     ]);
   });
