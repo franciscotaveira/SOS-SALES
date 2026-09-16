@@ -1,15 +1,17 @@
-import {afterEach,describe,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import Fastify from 'fastify';
 import {whatsappChannelRoutes} from '../../src/interfaces/http/routes/whatsapp-channel-routes.js';
 import {dbPool} from '../../src/infrastructure/database/pool.js';
 vi.mock('../../src/infrastructure/database/pool.js', async importOriginal => ({
   ...await importOriginal<Record<string,unknown>>(), dbPool:{query:vi.fn()},
 }));
+const query=vi.mocked(dbPool.query);
+beforeEach(()=>{vi.clearAllMocks();vi.unstubAllGlobals();});
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
 const workspace='11111111-1111-1111-1111-111111111111';
 describe('CAPI test with saved credentials',()=>{
   it.each(['accepted','zero_ack','different_dataset','missing_code'])('%s',async scenario=>{
-    const query=vi.spyOn(dbPool,'query').mockResolvedValue({rows:[{public_config:{metaDatasetId:'22222',metaPixelId:'11111'},secret_payload:{accessToken:'server-only-secret'}}]} as never);
+    query.mockResolvedValue({rows:[{public_config:{metaDatasetId:'22222',metaPixelId:'11111'},secret_payload:{accessToken:'server-only-secret'}}]} as never);
     const fetch=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({events_received:scenario==='zero_ack'?0:1})});vi.stubGlobal('fetch',fetch);
     const app=Fastify();await app.register(whatsappChannelRoutes,{
       authenticator:{verifyAccessToken:async()=>({userId:'owner'})},
