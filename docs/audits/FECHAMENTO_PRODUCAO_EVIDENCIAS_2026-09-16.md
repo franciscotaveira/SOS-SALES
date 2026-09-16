@@ -2,7 +2,7 @@
 
 **Data:** 16 de setembro de 2026
 **Branch:** `codex/production-ca-fix`
-**SHA da última rodada de builds:** `5d8b8c87152cfbffac5c3e73c2e028616207de32` (último build antes do patch de reconexão Redis; novo manifesto será gerado após o commit deste pacote)
+**SHA da última rodada de builds:** `6df8df3d69180e11ec26343a7b8e9da0d3a2c66e` (manifesto gerado no build local; árvore continua suja por `AGENTS.md` pré-existente)
 **Release ativa no VPS:** `68664732645c8b1a11a2467a48ba4f9382f0908f`
 
 Este registro acompanha o primeiro pacote de execução do plano de fechamento. Ele separa o que foi comprovado localmente do que continua bloqueado por ambiente, CI ou aprovação de promoção.
@@ -15,7 +15,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 | G1 — build e CI | `PARTIAL` | Typecheck, testes, builds, `bun install --frozen-lockfile` e simulação de `npm ci` passam localmente; guard de SHA verde foi adicionado ao preflight | A consulta do run exato falhou por indisponibilidade do GitHub API; não existe prova de CI verde e o SHA não pode ser promovido |
 | G2 — integridade e segurança | `PARTIAL` | Progressão automática agora atualiza etapa e auditoria em uma instrução atômica; CORS usa allowlist; headers/CSP e Caddyfile entraram no pacote de release; runtime API está em Node 22; WAHA e Redis usam digest revisado; cliente Redis reconecta com backoff após perda; dependência raiz `express` sem uso foi removida | Caddy ainda não foi validado pelo binário e segue com tag flutuante; reconciliador de estados presos, varredura de secrets/imagens e matriz de autorização ainda pendentes |
 | G3 — Docker Lab | `PASS (local Lab)` | Docker Lab reconstruído e saudável; `/health` e `/ready` 200; `APP_ENV=test npm --prefix apps/api run check` passou com `92 arquivos / 641 testes`; smoke Lab `13/13`; auditoria autenticada de rotas `10/10`; canário Receptionist `10/10`; WAHA E2E confirmou autenticação, envelope persistido, deduplicação e publicação do worker | Não prova provedor Meta/NVIDIA real, agenda externa real, volume de 50 conversas ou operação multi-tenant de produção |
-| G4 — release candidate | `NO-GO` | Build frontend/API e manifesto foram gerados localmente; o patch Redis ainda precisa ser fechado no SHA final, `AGENTS.md` já estava alterado fora deste pacote e o SHA ainda não tem CI verde confirmado | O artefato local é reproduzível, mas não é elegível para promoção |
+| G4 — release candidate | `NO-GO` | Build frontend/API e manifesto foram gerados no SHA `6df8df3`; `AGENTS.md` já estava alterado fora deste pacote e o SHA ainda não tem CI verde confirmado | O artefato local é reproduzível, mas não é elegível para promoção |
 | G5–G7 — promoção/canário/plena | `NOT RUN` | Nenhuma ação de VPS foi executada nesta etapa | Produção permanece na release ativa anterior |
 
 ## Alterações executadas
