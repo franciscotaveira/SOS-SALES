@@ -2,7 +2,7 @@
 
 **Data:** 16 de setembro de 2026
 **Branch:** `codex/production-ca-fix`
-**SHA local avaliado:** `9e1e290a7c130edba98f049a2c211e2d5b40f528`
+**SHA da última rodada de builds:** `7c2e799fea521fd94402c49584df5d91d808b42b`
 **Release ativa no VPS:** `68664732645c8b1a11a2467a48ba4f9382f0908f`
 
 Este registro acompanha o primeiro pacote de execução do plano de fechamento. Ele separa o que foi comprovado localmente do que continua bloqueado por ambiente, CI ou aprovação de promoção.
@@ -12,10 +12,10 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 | Gate | Estado | Evidência | Limite da afirmação |
 |---|---|---|---|
 | G0 — verdade do produto | `PASS (local)` | Drawer de agenda sem roster, horários, preços, sincronização ou inserção de slot; teste de segurança dedicado; bundle contém `Disponibilidade indisponível` e não contém `Vagas Disponíveis`, `computeSmartDetectedSlots`, `HAVEN_STAFF_ROSTER` ou `onInsertSlotToDraft` | A agenda real ainda não existe; o recurso permanece indisponível |
-| G1 — build e CI | `PARTIAL` | Typecheck, testes, builds e instalação frozen passam localmente; guard de SHA verde foi adicionado ao preflight | O SHA avaliado ainda tem execução CI vermelha e não pode ser promovido |
+| G1 — build e CI | `PARTIAL` | Typecheck, testes, builds e instalação frozen passam localmente; guard de SHA verde foi adicionado ao preflight | O SHA avaliado ainda não tem execução CI (`nenhuma execução de ci.yml`) e não pode ser promovido |
 | G2 — integridade e segurança | `PENDING` | Correção de tipagem do fallback do Receptionist concluída; endurecimentos P1 ainda não executados | Não declarar segurança de produção completa |
 | G3 — Docker Lab | `BLOCKED` | `docker info` não consegue acessar o socket local (`permission denied`) e o `APP_ENV=test npm --prefix apps/api run check` não consegue conectar ao banco de integração em `127.0.0.1:55432` | Nenhuma homologação integrada foi declarada |
-| G4 — release candidate | `NO-GO` | Manifesto de build foi gerado, mas a árvore ainda tem alterações e o SHA não tem CI verde | Não há candidato imutável elegível |
+| G4 — release candidate | `NO-GO` | Manifesto de build foi gerado, mas `AGENTS.md` já estava alterado fora deste pacote e o SHA não tem CI verde | Não há candidato imutável elegível |
 | G5–G7 — promoção/canário/plena | `NOT RUN` | Nenhuma ação de VPS foi executada nesta etapa | Produção permanece na release ativa anterior |
 
 ## Alterações executadas
@@ -41,7 +41,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 | `bun install --frozen-lockfile` | `PASS` |
 | auditoria de contratos | `PASS — 98 chamadas frontend mapeadas de 98` |
 | `git diff --check` | `PASS` |
-| verificação do CI do SHA local | `NO-GO` — run `34769492635` concluído com `failure` |
+| verificação do CI do SHA local | `NO-GO` — nenhuma execução de `ci.yml` encontrada para o SHA |
 
 A auditoria de contratos ainda reporta achados existentes de escritas locais, imports de fixtures e resultados aleatórios. Eles não foram tratados como resolvidos por este pacote.
 
