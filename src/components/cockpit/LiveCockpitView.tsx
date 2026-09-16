@@ -1690,19 +1690,12 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
         />
       )}
 
-      {/* External Agenda Drawer (Embedded Portal & Background AI Slots Sync) */}
+      {/* External Agenda Drawer (link-only until a provider-backed adapter exists) */}
       <ExternalAgendaDrawer
         isOpen={externalAgendaDrawerOpen}
         onClose={() => setExternalAgendaDrawerOpen(false)}
         workspaceId={workspaceId}
         workspaceName={cockpit.state === 'ready' ? cockpit.value.journey.contact.name : undefined}
-        conversationContext={
-          cockpit.state === 'ready' && cockpit.value.messages && cockpit.value.messages.length > 0
-            ? [...cockpit.value.messages].reverse().find((m) => m.direction === 'inbound')?.textContent ||
-              cockpit.value.messages[cockpit.value.messages.length - 1]?.textContent
-            : ''
-        }
-        onInsertSlotToDraft={(text) => handleCreateOutboundDraft(text)}
       />
 
       {/* Start Conversation Modal */}
