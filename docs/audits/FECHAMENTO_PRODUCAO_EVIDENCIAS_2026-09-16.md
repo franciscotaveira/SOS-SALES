@@ -2,7 +2,7 @@
 
 **Data:** 16 de setembro de 2026
 **Branch:** `codex/production-ca-fix`
-**SHA da última rodada de builds:** `8cfb42ce3acd3e1e96cf48749298b739462d8794`
+**SHA da última rodada de builds:** `1242b3e2daf7076e90cd4957438fc0a52ef5f518` (a atualização desta evidência é documental)
 **Release ativa no VPS:** `68664732645c8b1a11a2467a48ba4f9382f0908f`
 
 Este registro acompanha o primeiro pacote de execução do plano de fechamento. Ele separa o que foi comprovado localmente do que continua bloqueado por ambiente, CI ou aprovação de promoção.
@@ -12,8 +12,8 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 | Gate | Estado | Evidência | Limite da afirmação |
 |---|---|---|---|
 | G0 — verdade do produto | `PASS (local)` | Drawer de agenda sem roster, horários, preços, sincronização ou inserção de slot; teste de segurança dedicado; bundle contém `Disponibilidade indisponível` e não contém `Vagas Disponíveis`, `computeSmartDetectedSlots`, `HAVEN_STAFF_ROSTER` ou `onInsertSlotToDraft` | A agenda real ainda não existe; o recurso permanece indisponível |
-| G1 — build e CI | `PARTIAL` | Typecheck, testes, builds e instalação frozen passam localmente; guard de SHA verde foi adicionado ao preflight | O SHA avaliado ainda não tem execução CI (`nenhuma execução de ci.yml`) e não pode ser promovido |
-| G2 — integridade e segurança | `PARTIAL` | Progressão automática agora atualiza etapa e auditoria em uma instrução atômica; CORS usa allowlist; headers/CSP e Caddyfile entraram no pacote de release; runtime API da composição está em Node 22 | Supply chain, reconciliador de estados presos, varredura de secrets/imagens e matriz de autorização ainda pendentes |
+| G1 — build e CI | `PARTIAL` | Typecheck, testes, builds, `bun install --frozen-lockfile` e simulação de `npm ci` passam localmente; guard de SHA verde foi adicionado ao preflight | O SHA avaliado ainda não tem execução CI (`nenhuma execução de ci.yml`) e não pode ser promovido |
+| G2 — integridade e segurança | `PARTIAL` | Progressão automática agora atualiza etapa e auditoria em uma instrução atômica; CORS usa allowlist; headers/CSP e Caddyfile entraram no pacote de release; runtime API está em Node 22; WAHA usa digest revisado; dependência raiz `express` sem uso foi removida | Caddy ainda não foi validado pelo binário em ambiente local; Caddy/Redis seguem com tags flutuantes; reconciliador de estados presos, varredura de secrets/imagens e matriz de autorização ainda pendentes |
 | G3 — Docker Lab | `BLOCKED` | `docker info` não consegue acessar o socket local (`permission denied`) e o `APP_ENV=test npm --prefix apps/api run check` não consegue conectar ao banco de integração em `127.0.0.1:55432` | Nenhuma homologação integrada foi declarada |
 | G4 — release candidate | `NO-GO` | Manifesto de build foi gerado, mas `AGENTS.md` já estava alterado fora deste pacote e o SHA não tem CI verde | Não há candidato imutável elegível |
 | G5–G7 — promoção/canário/plena | `NOT RUN` | Nenhuma ação de VPS foi executada nesta etapa | Produção permanece na release ativa anterior |
@@ -28,6 +28,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 - CORS restrito às origens oficiais/configuradas e coberto por teste de origem permitida e arbitrária.
 - Headers de segurança/CSP versionados no `deploy/Caddyfile`; o arquivo passou a ser copiado e montado dentro do release imutável.
 - Runtime da API no compose de produção alinhado para Node 22, mesma major usada no CI.
+- Imagem WAHA fixada por digest nos três composes Lab/produção e dependência raiz `express` removida dos manifests/lockfiles.
 - Lockfile reconciliado para instalação raiz frozen.
 - CI ganhou suíte determinística de política de IA, dispatch manual para a bateria externa NIM e bloqueio de preflight para SHA sem run verde.
 - `scripts/verify-ci-green.mjs` criado para validar o SHA exato no GitHub Actions.
@@ -43,18 +44,20 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 | build frontend de produção | `PASS` |
 | build API de produção | `PASS` |
 | `bun install --frozen-lockfile` | `PASS` |
+| `npm ci --ignore-scripts --dry-run` | `PASS — lockfile reconciliado; remoção esperada do Express sem uso` |
 | auditoria de contratos | `PASS — 98 chamadas frontend mapeadas de 98` |
 | teste de CORS e progressão atômica | `PASS — allowlist e corrida concorrente cobertas` |
 | layout de release do edge | `PASS — Caddyfile, headers e montagem no release verificados por script` |
 | `git diff --check` | `PASS` |
 | verificação do CI do SHA local | `NO-GO` — nenhuma execução de `ci.yml` encontrada para o SHA |
+| `APP_ENV=test npm --prefix apps/api run check` | `BLOCKED` — typecheck inicia, mas as integrações falham sem PostgreSQL em `127.0.0.1:55432`; 68 arquivos passaram e 24 falharam por essa dependência de ambiente |
 
 A auditoria de contratos ainda reporta achados existentes de escritas locais, imports de fixtures e resultados aleatórios. Eles não foram tratados como resolvidos por este pacote.
 
 ## Próxima decisão operacional
 
 1. Disponibilizar o Docker daemon e subir o Docker Lab a partir do SHA candidato.
-2. Corrigir os testes de integração que dependem do banco/Redis do Lab e executar a matriz dos cinco pilares.
+2. Disponibilizar o banco/Redis do Lab e executar a matriz dos cinco pilares; os testes de integração não devem ser considerados defeitos de aplicação enquanto o serviço não estiver acessível.
 3. Publicar o branch para gerar um novo run CI; só aceitar o SHA quando o workflow completo estiver verde.
 4. Fechar os itens P1 de transação/idempotência, CORS/headers, supply chain e observabilidade.
 5. Gerar o release candidate e pedir a aprovação humana antes de qualquer promoção.
