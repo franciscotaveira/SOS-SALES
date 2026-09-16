@@ -210,7 +210,11 @@ async function createDevelopmentRuntime(): Promise<RuntimeDependencies> {
     lazyConnect: true,
     connectTimeout: 5_000,
     maxRetriesPerRequest: 0,
-    retryStrategy: () => null,
+    // Keep commands fail-fast while allowing the long-lived API process to
+    // recover readiness after a Redis restart. A null strategy permanently
+    // disables reconnects after the first socket loss and leaves /ready
+    // degraded until the API itself is restarted.
+    retryStrategy: (attempt) => Math.min(250 * 2 ** Math.min(attempt - 1, 4), 5_000),
   });
   const databaseHealth = new PostgresDependencyHealthProvider();
   const redisHealth = new RedisDependencyHealthProvider(redis);

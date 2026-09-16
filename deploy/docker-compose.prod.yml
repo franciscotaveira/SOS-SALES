@@ -49,7 +49,7 @@ services:
         condition: service_healthy
 
   sos-sales-redis:
-    image: redis:7-alpine
+    image: redis@sha256:ccd6aa8d45ff3f033d6fa15b8cc1a50579f65c89f38cf9bb607a954c4f2128ed
     container_name: sos-sales-redis
     restart: unless-stopped
     command: redis-server --appendonly yes

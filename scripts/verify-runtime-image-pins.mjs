@@ -15,6 +15,9 @@ for (const relativePath of files) {
   if (!/devlikeapro\/waha@sha256:[0-9a-f]{64}/.test(content)) {
     throw new Error(`${relativePath} does not pin WAHA by digest`);
   }
+  if (!/redis@sha256:[0-9a-f]{64}/.test(content)) {
+    throw new Error(`${relativePath} does not pin Redis by digest`);
+  }
 }
 
-console.log('[runtime-images] WAHA digest pins verified in Lab and production compose files');
+console.log('[runtime-images] WAHA and Redis digest pins verified in Lab and production compose files');

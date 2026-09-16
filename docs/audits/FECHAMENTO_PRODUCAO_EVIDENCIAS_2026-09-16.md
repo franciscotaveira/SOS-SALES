@@ -2,7 +2,7 @@
 
 **Data:** 16 de setembro de 2026
 **Branch:** `codex/production-ca-fix`
-**SHA da última rodada de builds:** `0850087f0a18075c227fe4d82dd3b2070d210369` (manifesto gerado no build local; árvore continua suja por `AGENTS.md` pré-existente)
+**SHA da última rodada de builds:** `5d8b8c87152cfbffac5c3e73c2e028616207de32` (último build antes do patch de reconexão Redis; novo manifesto será gerado após o commit deste pacote)
 **Release ativa no VPS:** `68664732645c8b1a11a2467a48ba4f9382f0908f`
 
 Este registro acompanha o primeiro pacote de execução do plano de fechamento. Ele separa o que foi comprovado localmente do que continua bloqueado por ambiente, CI ou aprovação de promoção.
@@ -13,9 +13,9 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 |---|---|---|---|
 | G0 — verdade do produto | `PASS (local)` | Drawer de agenda sem roster, horários, preços, sincronização ou inserção de slot; teste de segurança dedicado; bundle contém `Disponibilidade indisponível` e não contém `Vagas Disponíveis`, `computeSmartDetectedSlots`, `HAVEN_STAFF_ROSTER` ou `onInsertSlotToDraft` | A agenda real ainda não existe; o recurso permanece indisponível |
 | G1 — build e CI | `PARTIAL` | Typecheck, testes, builds, `bun install --frozen-lockfile` e simulação de `npm ci` passam localmente; guard de SHA verde foi adicionado ao preflight | A consulta do run exato falhou por indisponibilidade do GitHub API; não existe prova de CI verde e o SHA não pode ser promovido |
-| G2 — integridade e segurança | `PARTIAL` | Progressão automática agora atualiza etapa e auditoria em uma instrução atômica; CORS usa allowlist; headers/CSP e Caddyfile entraram no pacote de release; runtime API está em Node 22; WAHA usa digest revisado; dependência raiz `express` sem uso foi removida | Caddy ainda não foi validado pelo binário em ambiente local; Caddy/Redis seguem com tags flutuantes; reconciliador de estados presos, varredura de secrets/imagens e matriz de autorização ainda pendentes |
+| G2 — integridade e segurança | `PARTIAL` | Progressão automática agora atualiza etapa e auditoria em uma instrução atômica; CORS usa allowlist; headers/CSP e Caddyfile entraram no pacote de release; runtime API está em Node 22; WAHA e Redis usam digest revisado; cliente Redis reconecta com backoff após perda; dependência raiz `express` sem uso foi removida | Caddy ainda não foi validado pelo binário e segue com tag flutuante; reconciliador de estados presos, varredura de secrets/imagens e matriz de autorização ainda pendentes |
 | G3 — Docker Lab | `PASS (local Lab)` | Docker Lab reconstruído e saudável; `/health` e `/ready` 200; `APP_ENV=test npm --prefix apps/api run check` passou com `92 arquivos / 641 testes`; smoke Lab `13/13`; auditoria autenticada de rotas `10/10`; canário Receptionist `10/10`; WAHA E2E confirmou autenticação, envelope persistido, deduplicação e publicação do worker | Não prova provedor Meta/NVIDIA real, agenda externa real, volume de 50 conversas ou operação multi-tenant de produção |
-| G4 — release candidate | `NO-GO` | Build frontend/API e manifesto foram gerados no SHA `0850087`; `AGENTS.md` já estava alterado fora deste pacote e o SHA ainda não tem CI verde confirmado | O artefato local é reproduzível, mas não é elegível para promoção |
+| G4 — release candidate | `NO-GO` | Build frontend/API e manifesto foram gerados localmente; o patch Redis ainda precisa ser fechado no SHA final, `AGENTS.md` já estava alterado fora deste pacote e o SHA ainda não tem CI verde confirmado | O artefato local é reproduzível, mas não é elegível para promoção |
 | G5–G7 — promoção/canário/plena | `NOT RUN` | Nenhuma ação de VPS foi executada nesta etapa | Produção permanece na release ativa anterior |
 
 ## Alterações executadas
@@ -33,6 +33,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 - CI ganhou suíte determinística de política de IA, dispatch manual para a bateria externa NIM e bloqueio de preflight para SHA sem run verde.
 - `scripts/verify-ci-green.mjs` criado para validar o SHA exato no GitHub Actions.
 - `scripts/verify-waha-webhook-e2e.mjs` alinhado ao contrato durável atual: valida 401 sem chave, persistência do envelope, deduplicação por `provider_event_id`, normalização e `outbox_events=PUBLISHED`, com limpeza segura dos fixtures.
+- Cliente Redis da API deixou de desabilitar reconexão após perda de socket; o Lab comprovou degradação 503 durante a parada e recuperação 200 sem reinício da API.
 
 ## Validações executadas
 
@@ -59,6 +60,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 | CAPI/CTWA direcionado | `PASS — 23 testes em 3 arquivos (dispatch, atribuição CTWA e regressão de entrega)` |
 | WhatsApp Flows crypto (`scripts/test-flows-crypto.mjs`) | `PASS — round-trip RSA/AES-GCM e resposta bidirecional` |
 | arsenal WABA (`scripts/test-waba-arsenal.mjs`) | `PASS — contratos/payloads montados sob alvo Lab; sem envio Meta real` |
+| perda/retorno do Redis no Lab | `PASS — readiness 503 durante parada e 200 após retorno, sem reiniciar a API` |
 
 A auditoria de contratos ainda reporta achados existentes de escritas locais, imports de fixtures e resultados aleatórios. Eles não foram tratados como resolvidos por este pacote.
 

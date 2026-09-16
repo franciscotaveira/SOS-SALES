@@ -75,7 +75,7 @@ services:
   # REDIS LAB
   # ---------------------------------------------------------------------------
   redis-lab:
-    image: redis:7.2-alpine
+    image: redis@sha256:ccd6aa8d45ff3f033d6fa15b8cc1a50579f65c89f38cf9bb607a954c4f2128ed
     container_name: sos-sales-lab-redis
     restart: unless-stopped
     expose:
