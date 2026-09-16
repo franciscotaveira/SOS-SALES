@@ -5,7 +5,7 @@ services:
   # REVERSE PROXY & AUTOMATIC TLS (CADDY)
   # ---------------------------------------------------------------------------
   caddy:
-    image: caddy:2.8-alpine
+    image: caddy@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
     container_name: sos-sales-caddy
     restart: unless-stopped
     ports:
