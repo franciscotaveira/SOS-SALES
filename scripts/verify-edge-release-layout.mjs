@@ -32,6 +32,12 @@ for (const header of [
 }
 
 requireMatch(
+  caddyfile,
+  /connect-src[^\n]*wss:\/\/\*\.supabase\.co/,
+  'Supabase Realtime WebSocket origin',
+);
+
+requireMatch(
   compose,
   /\$\{SOS_SALES_RELEASE_ROOT:-\/opt\/sos-sales\/current\}\/Caddyfile:\/etc\/caddy\/Caddyfile:ro/,
   'release-local Caddyfile mount',

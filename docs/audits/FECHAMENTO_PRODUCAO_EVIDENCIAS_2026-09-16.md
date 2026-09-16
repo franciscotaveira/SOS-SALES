@@ -27,6 +27,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 - Progressão automática protegida por atualização monotônica, lock de linha e evento de auditoria na mesma instrução SQL em `apps/api/src/application/services/pipeline-auto-progression-engine.ts`.
 - CORS restrito às origens oficiais/configuradas e coberto por teste de origem permitida e arbitrária.
 - Headers de segurança/CSP versionados no `deploy/Caddyfile`; o arquivo passou a ser copiado e montado dentro do release imutável.
+- A CSP mantém `wss://*.supabase.co` em `connect-src`, preservando as assinaturas Supabase Realtime usadas pelas telas operacionais; o guard de edge cobre essa origem.
 - Runtime da API no compose de produção alinhado para Node 22, mesma major usada no CI.
 - Imagem WAHA fixada por digest nos três composes Lab/produção e dependência raiz `express` removida dos manifests/lockfiles.
 - Lockfile reconciliado para instalação raiz frozen.
@@ -66,6 +67,7 @@ Este registro acompanha o primeiro pacote de execução do plano de fechamento. 
 | `caddy validate` no Caddyfile versionado | `PASS — configuração válida; digest af32e973...c262c17` |
 | reconciliador de outbound preso | `PASS — 2 testes unitários + 1 teste DB; SENDING antigo vira UNKNOWN, attempts incrementa e provider_message_id permanece nulo` |
 | alinhamento do readiness no runtime de produção | `PASS — teste de runtime 13/13, typecheck, build API e Lab /ready 200 com reconciliador ok` |
+| compatibilidade CSP com Supabase Realtime | `PASS — guard de edge e caddy validate na imagem fixada; wss://*.supabase.co permitido` |
 
 A auditoria de contratos ainda reporta achados existentes de escritas locais, imports de fixtures e resultados aleatórios. Eles não foram tratados como resolvidos por este pacote.
 

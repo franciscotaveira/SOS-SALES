@@ -34,7 +34,7 @@ crm.iaparavendas.tech, sos.mct.com.br {
         Referrer-Policy "strict-origin-when-cross-origin"
         X-Frame-Options "DENY"
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
-        Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' https://connect.facebook.net; connect-src 'self' https://*.supabase.co https://*.facebook.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://www.facebook.com https://business.facebook.com; form-action 'self' https://business.facebook.com"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' https://connect.facebook.net; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.facebook.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://www.facebook.com https://business.facebook.com; form-action 'self' https://business.facebook.com"
     }
 
     route {
@@ -85,7 +85,7 @@ crm.iaparavendas.tech, sos.mct.com.br {
         Referrer-Policy "strict-origin-when-cross-origin"
         X-Frame-Options "DENY"
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
-        Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' https://connect.facebook.net; connect-src 'self' https://*.supabase.co https://*.facebook.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://www.facebook.com https://business.facebook.com; form-action 'self' https://business.facebook.com"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' https://connect.facebook.net; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.facebook.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://www.facebook.com https://business.facebook.com; form-action 'self' https://business.facebook.com"
     }
 
     route {

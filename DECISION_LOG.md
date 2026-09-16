@@ -1116,3 +1116,9 @@ O incidente de horários fictícios no workspace SOS revelou fallback local e ex
 - **Problema:** O servidor passou a exigir `receptionist-outbound-reconciler` no readiness, mas o helper usado pelo runtime de produção ainda não o publicava na lista de dependências. Uma promoção com o reconciliador saudável poderia responder `/ready` como 503.
 - **Decisão:** Propagar o worker para `buildReadinessStatuses` e cobrir a linha de readiness no teste do runtime. A mudança é fail-closed: o candidato só fica pronto quando o reconciliador estiver presente e saudável.
 - **Validação:** teste de runtime `13/13`, typecheck da API, suíte API `94/644`, build de produção da API e `/ready` do Docker Lab `200` com `receptionist-outbound-reconciler=ok`. Produção não alterada; release ativa permanece `68664732645c8b1a11a2467a48ba4f9382f0908f`.
+
+## 2026-09-16 — CSP compatível com Supabase Realtime
+
+- **Problema:** A CSP adicionada ao Caddy permitia chamadas HTTPS ao Supabase, mas não declarava o endpoint `wss://` usado pelas assinaturas Realtime do Cockpit, Kanban, Agenda e demais telas ao vivo. O `/health` continuaria verde enquanto as atualizações em tempo real seriam bloqueadas pelo navegador.
+- **Decisão:** Adicionar `wss://*.supabase.co` ao `connect-src` nos blocos HTTPS e HTTP do Caddyfile e transformar essa origem em requisito do verificador de edge.
+- **Validação:** verificador de layout passou, `caddy validate` passou na imagem digest-pinned e o arquivo de produção não foi instalado no VPS. A release ativa continua inalterada.
