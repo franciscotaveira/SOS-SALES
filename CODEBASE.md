@@ -317,6 +317,23 @@ apps/api/tests/unit/pipeline-auto-progression-engine.test.ts             ← 6 t
 
 ---
 
+## 10. Reconciliação de outbound do Receptionist — Reservas Presas (16 Set 2026)
+
+O fluxo do Receptionist grava uma reserva `SENDING` antes de chamar WAHA/WABA. Se o processo morrer depois dessa gravação, uma nova tentativa automática poderia duplicar a mensagem porque o provedor pode ter aceitado a primeira chamada. `ReceptionistOutboundReconciler` resolve esse estado sem repetir o provedor: a cada ciclo ele seleciona reservas antigas com `FOR UPDATE SKIP LOCKED`, muda o estado para `UNKNOWN`, incrementa `attempts` e registra `STALE_SENDING_RECONCILIATION`.
+
+O reconciliador é criado somente quando existe pool de banco, inicia e para junto com a API e participa do `/ready` como `receptionist-outbound-reconciler`. O estado `UNKNOWN` exige reconciliação humana antes de uma decisão comercial; não é tratado como entrega confirmada.
+
+Arquivos relevantes:
+
+```
+apps/api/src/infrastructure/workers/receptionist-outbound-reconciler.ts
+apps/api/src/server.ts
+apps/api/tests/unit/receptionist-outbound-reconciler.test.ts
+apps/api/tests/integration/receptionist-outbound-reconciler.db.test.ts
+```
+
+---
+
 ## 9. Cadência Comercial Inteligente — FollowUpCadence & Anti-Ghosting (13 Set 2026)
 
 > **Release:** `68664732645c8b1a11a2467a48ba4f9382f0908f`
@@ -350,4 +367,3 @@ src/components/intelligence/FollowUpCadenceSection.tsx              ← Componen
 src/components/intelligence/AgentSettingsSection.tsx               ← Painel de IA com bloco de cadência integrado
 apps/api/tests/unit/follow-up-cadence.test.ts                      ← Testes unitários da cadência (4 cenários)
 ```
-

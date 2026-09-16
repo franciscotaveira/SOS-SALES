@@ -1102,5 +1102,11 @@ O incidente de horários fictícios no workspace SOS revelou fallback local e ex
   - 4 testes unitários dedicados em `follow-up-cadence.test.ts` (resolução default, mapeamento por horas, respeito a flags desativadas e intervalos customizados).
   - 91 arquivos de teste e 638 testes Vitest passando (100% verde).
   - Builds de produção de frontend e API compilados com sucesso.
-  - Release `68664732645c8b1a11a2467a48ba4f9382f0908f` promovida no VPS com health e ready operando normalmente.
+- Release `68664732645c8b1a11a2467a48ba4f9382f0908f` promovida no VPS com health e ready operando normalmente.
 
+## 2026-09-16 — Reconciliação fail-closed de reservas outbound do Receptionist
+
+- **Problema:** A reserva transacional `receptionist_outbound_reservations` protege contra duplicidade durante a chamada ao provedor, mas um crash depois da gravação pode deixar uma linha em `SENDING` indefinidamente. Repetir automaticamente seria inseguro porque a chamada original pode ter sido aceita por WAHA/WABA.
+- **Decisão:** Adicionar `ReceptionistOutboundReconciler` ao ciclo de vida da API. A cada 30 segundos ele seleciona reservas `SENDING` antigas com `FOR UPDATE SKIP LOCKED`, muda-as para `UNKNOWN`, incrementa `attempts` e registra `STALE_SENDING_RECONCILIATION`. O worker nunca chama o provedor e nunca transforma estado ambíguo em `SENT`.
+- **Governança:** O reconciliador entra no health/readiness como dependência `receptionist-outbound-reconciler`; `UNKNOWN` exige reconciliação humana antes de qualquer nova ação. O limiar padrão é 180 segundos e pode ser configurado por `RECEPTIONIST_OUTBOUND_STALE_AFTER_SECONDS`.
+- **Validação:** 2 testes unitários, 1 teste de banco real, suíte API `94/644`, readiness Lab `200` e auditoria de rotas `10/10`. Produção não alterada; promoção continua condicionada a CI verde, árvore limpa e aprovação humana.
