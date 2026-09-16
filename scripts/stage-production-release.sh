@@ -14,6 +14,7 @@ ssh "${VPS_ALIAS}" \
   "test ! -e '${REMOTE_RELEASE}' && test ! -e '${REMOTE_STAGING}' && mkdir -p '${REMOTE_STAGING}/web/dist' '${REMOTE_STAGING}/api/dist' '${REMOTE_STAGING}/api/supabase/migrations' '${REMOTE_STAGING}/certs' '${REMOTE_STAGING}/scripts'"
 
 rsync -avz --delete "${REPO_ROOT}/dist/" "${VPS_ALIAS}:${REMOTE_STAGING}/web/dist/"
+rsync -avz "${REPO_ROOT}/deploy/Caddyfile" "${VPS_ALIAS}:${REMOTE_STAGING}/Caddyfile"
 rsync -avz --delete "${REPO_ROOT}/apps/api/dist/" "${VPS_ALIAS}:${REMOTE_STAGING}/api/dist/"
 rsync -avz "${REPO_ROOT}/apps/api/package.json" "${VPS_ALIAS}:${REMOTE_STAGING}/api/package.json"
 rsync -avz "${REPO_ROOT}/apps/api/package-lock.json" "${VPS_ALIAS}:${REMOTE_STAGING}/api/package-lock.json"

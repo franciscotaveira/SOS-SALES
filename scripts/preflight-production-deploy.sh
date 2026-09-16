@@ -14,6 +14,7 @@ if ! git -C "${REPO_ROOT}" diff --quiet || ! git -C "${REPO_ROOT}" diff --cached
   exit 1
 fi
 
+node "${REPO_ROOT}/scripts/verify-edge-release-layout.mjs"
 node "${REPO_ROOT}/scripts/verify-ci-green.mjs" "${current_commit}"
 
 untracked_source="$(git -C "${REPO_ROOT}" ls-files --others --exclude-standard -- \
@@ -41,6 +42,7 @@ required_artifacts=(
   "apps/api/package-lock.json"
   "docker-compose.prod.yml"
   "deploy/docker-compose.prod.yml"
+  "deploy/Caddyfile"
   "certs/supabase-ca.crt"
 )
 

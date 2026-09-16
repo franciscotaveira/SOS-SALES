@@ -90,6 +90,7 @@ require_base_release() {
   local candidate="$1"
   for artifact in \
     "${candidate}/web/dist/index.html" \
+    "${candidate}/Caddyfile" \
     "${candidate}/api/dist/index.js" \
     "${candidate}/api/node_modules/.package-lock.json" \
     "${candidate}/api/package.json" \
@@ -136,12 +137,20 @@ else
   old_release="${root}/releases/bootstrap-$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "${old_release}/web" "${old_release}/api" "${old_release}/certs"
   cp -a "${root}/dist" "${old_release}/web/dist"
+  cp "${root}/Caddyfile" "${old_release}/Caddyfile"
   cp -a "${root}/api/dist" "${old_release}/api/dist"
   cp -a "${root}/api/node_modules" "${old_release}/api/node_modules"
   cp "${root}/api/package.json" "${old_release}/api/package.json"
   cp "${root}/api/production-runtime.mjs" "${old_release}/api/production-runtime.mjs"
   cp "${root}/certs/supabase-ca.crt" "${old_release}/certs/supabase-ca.crt"
   cp "${root}/docker-compose.yml" "${old_release}/docker-compose.yml"
+fi
+
+# Releases created before the Caddyfile became part of the immutable package
+# are upgraded once from the operator-managed active config so rollback keeps
+# using the same edge policy as the release it restores.
+if [[ ! -f "${old_release}/Caddyfile" ]]; then
+  cp "${root}/Caddyfile" "${old_release}/Caddyfile"
 fi
 
 atomic_link "${old_release}" "${previous}"

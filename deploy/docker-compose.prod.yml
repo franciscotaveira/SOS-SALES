@@ -9,7 +9,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /opt/sos-sales/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${SOS_SALES_RELEASE_ROOT:-/opt/sos-sales/current}/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${SOS_SALES_RELEASE_ROOT:-/opt/sos-sales/current}/web/dist:/var/www/html:ro
       - /opt/sos-sales/landing:/var/www/landing:ro
       - /opt/sos-sales/caddy_data:/data
@@ -20,7 +20,7 @@ services:
       - sos-sales-api
 
   sos-sales-api:
-    image: node:20-alpine
+    image: node:22-alpine
     container_name: sos-sales-api
     restart: unless-stopped
     working_dir: /app

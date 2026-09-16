@@ -86,6 +86,29 @@ export interface RateLimitOptions {
  */
 export type TrustProxyOption = boolean | string | string[];
 const REQUIRED_READINESS_DEPENDENCIES = ['database', 'redis', 'worker'] as const;
+const PRODUCTION_CORS_ORIGINS = [
+  'https://crm.iaparavendas.tech',
+  'https://sos.mct.com.br',
+] as const;
+const LOCAL_CORS_ORIGINS = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3333',
+  'http://127.0.0.1:3333',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+] as const;
+
+function resolveCorsOrigins(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  const configured = (env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const defaults = (env.APP_ENV || env.NODE_ENV || '').trim().toLowerCase() === 'production'
+    ? PRODUCTION_CORS_ORIGINS
+    : LOCAL_CORS_ORIGINS;
+  return new Set(configured.length > 0 ? configured : defaults);
+}
 
 export interface AppDependencies {
   secretProvider: WebhookSecretProvider;
@@ -232,7 +255,12 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
 
   // Security Plugins
   app.register(helmet, { contentSecurityPolicy: false });
-  app.register(cors, { origin: true });
+  const corsOrigins = resolveCorsOrigins();
+  app.register(cors, {
+    // Webhooks and CLI health checks have no Origin header. Browser origins
+    // must be explicitly allowlisted; never reflect arbitrary caller input.
+    origin: (origin, callback) => callback(null, !origin || corsOrigins.has(origin)),
+  });
   app.register(sensible);
 
   // OpenAPI / Swagger
