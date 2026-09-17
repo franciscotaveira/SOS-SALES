@@ -79,6 +79,33 @@ if [[ "${manifest_commit}" != "${current_commit}" ]]; then
   exit 1
 fi
 
+manifest_environment="$(node -p "JSON.parse(require('fs').readFileSync('${REPO_ROOT}/apps/api/dist/release-manifest.json', 'utf8')).environment")"
+manifest_clean_tree="$(node -p "JSON.parse(require('fs').readFileSync('${REPO_ROOT}/apps/api/dist/release-manifest.json', 'utf8')).cleanTree")"
+if [[ "${manifest_environment}" != "production" || "${manifest_clean_tree}" != "true" ]]; then
+  echo "[preflight] API manifest must attest a clean production build (environment=${manifest_environment}, cleanTree=${manifest_clean_tree})" >&2
+  exit 1
+fi
+
+if [[ ! -f "${REPO_ROOT}/dist/release-manifest.json" ]]; then
+  echo "[preflight] frontend release manifest is missing" >&2
+  exit 1
+fi
+
+frontend_manifest_commit="$(node -p "JSON.parse(require('fs').readFileSync('${REPO_ROOT}/dist/release-manifest.json', 'utf8')).commitSha")"
+frontend_manifest_environment="$(node -p "JSON.parse(require('fs').readFileSync('${REPO_ROOT}/dist/release-manifest.json', 'utf8')).environment")"
+frontend_manifest_clean_tree="$(node -p "JSON.parse(require('fs').readFileSync('${REPO_ROOT}/dist/release-manifest.json', 'utf8')).cleanTree")"
+if [[ "${frontend_manifest_commit}" != "${current_commit}" || "${frontend_manifest_environment}" != "production" || "${frontend_manifest_clean_tree}" != "true" ]]; then
+  echo "[preflight] frontend manifest does not attest the same clean production commit" >&2
+  exit 1
+fi
+
+manifest_api_hash="$(node -p "JSON.parse(require('fs').readFileSync('${REPO_ROOT}/apps/api/dist/release-manifest.json', 'utf8')).artifacts.apiBundle.sha256")"
+actual_api_hash="sha256:$(openssl dgst -sha256 -r "${REPO_ROOT}/apps/api/dist/index.js" | awk '{print $1}')"
+if [[ "${manifest_api_hash}" != "${actual_api_hash}" ]]; then
+  echo "[preflight] API bundle hash does not match the manifest" >&2
+  exit 1
+fi
+
 # The browser bundle is fail-closed in production. A valid API release is not
 # sufficient if Vite was compiled without the public API and Supabase runtime
 # values: the customer would see the safe configuration screen instead of the

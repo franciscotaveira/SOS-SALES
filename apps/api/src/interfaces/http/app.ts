@@ -39,6 +39,7 @@ import { whatsappChannelRoutes } from './routes/whatsapp-channel-routes.js';
 import { agentRoutes } from './routes/agent-routes.js';
 import { metaPartnerRoutes } from './routes/meta-partner-routes.js';
 import { metaBusinessAgentRoutes } from './routes/meta-business-agent-routes.js';
+import { metaReadinessRoutes } from './routes/meta-readiness-routes.js';
 
 function loadReleaseManifest() {
   let manifest: Record<string, unknown> = {};
@@ -408,6 +409,7 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
 
   // ─── 2. Authenticated Operator Routes (Protected by Bearer JWT & Workspace Isolation) ───────────
   app.register(whatsappChannelRoutes, {
+    databasePool,
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
     wabaChannelInfoGateway: dependencies.wabaChannelInfoGateway,
@@ -434,6 +436,12 @@ export function buildApp(dependencies: AppDependencies): FastifyInstance {
     authenticator: dependencies.authenticator,
     workspaceDirectory: dependencies.workspaceDirectory,
     metaBusinessAgentGateway: dependencies.metaBusinessAgentGateway,
+    query: databasePool?.query.bind(databasePool),
+  });
+
+  app.register(metaReadinessRoutes, {
+    authenticator: dependencies.authenticator,
+    workspaceDirectory: dependencies.workspaceDirectory,
     query: databasePool?.query.bind(databasePool),
   });
 

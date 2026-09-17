@@ -104,7 +104,9 @@ export const FEATURE_FLAG_REGISTRY: Record<FeatureFlagKey, FeatureFlagDefinition
     description:
       'Monitoramento de SLA em grupos de suporte de clientes, avisos em lote, relatórios e governança multi-stakeholder.',
     level: 'P2_AGENCY',
-    defaultForStandard: true,
+    // The production Groups UI still has local-only actions. Keep it out of
+    // standard workspaces until every visible operation has a server contract.
+    defaultForStandard: false,
     defaultForAgency: true,
     defaultForEnterprise: true,
     tags: ['Grupos', 'Agência', 'P2'],

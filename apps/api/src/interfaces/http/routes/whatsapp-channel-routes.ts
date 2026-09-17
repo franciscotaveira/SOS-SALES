@@ -134,6 +134,8 @@ export function getWorkspaceIdFromSession(sessionName: string): string | null {
 }
 
 export interface WhatsappChannelRouteDependencies {
+  /** Deployment-owned pool. Falls back to the local pool only for local/test composition. */
+  databasePool?: Pick<typeof dbPool, 'query' | 'connect'>;
   authenticator?: OperatorAuthenticator;
   workspaceDirectory?: WorkspaceDirectory;
   wabaChannelInfoGateway?: WabaChannelInfoGateway;
@@ -153,6 +155,7 @@ export async function whatsappChannelRoutes(
   app: FastifyInstance,
   dependencies: WhatsappChannelRouteDependencies = {}
 ): Promise<void> {
+  const databasePool = dependencies.databasePool ?? dbPool;
   // Enforce JWT on all operational WhatsApp routes (allow media-proxy for public tag rendering)
   app.addHook('onRequest', async (request, reply) => {
     if (request.url.startsWith('/api/v1/channels/waha/media-proxy')) {
@@ -203,7 +206,7 @@ export async function whatsappChannelRoutes(
       }
       const recipient = (request.body as any)?.recipientPhone;
       if(isMutation && typeof recipient==='string'){
-        const blocked=await dbPool.query("SELECT 1 FROM public.contacts WHERE workspace_id=$1 AND regexp_replace(phone,'[^0-9]','','g')=$2 AND outbound_opted_out_at IS NOT NULL LIMIT 1",[targetWs,recipient.replace(/\D/g,'')]);
+        const blocked=await databasePool.query("SELECT 1 FROM public.contacts WHERE workspace_id=$1 AND regexp_replace(phone,'[^0-9]','','g')=$2 AND outbound_opted_out_at IS NOT NULL LIMIT 1",[targetWs,recipient.replace(/\D/g,'')]);
         if(blocked.rows.length)return reply.code(409).send({error:'O contato recusou novos envios.',code:'CONTACT_OPTED_OUT'});
       }
     }
@@ -411,7 +414,7 @@ export async function whatsappChannelRoutes(
       }
 
       // 3. Update database status
-      const client = await dbPool.connect();
+      const client = await databasePool.connect();
       try {
         await client.query(`
           UPDATE public.channel_connections
@@ -494,7 +497,7 @@ export async function whatsappChannelRoutes(
         message: 'Irreversible data deletion requires header x-confirm-destruction: CONFIRM_DATA_DELETION',
       });
     }
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       await client.query('BEGIN');
       await client.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'true', true)");
@@ -554,7 +557,7 @@ export async function whatsappChannelRoutes(
     if (!journeyId) {
       return reply.status(400).send({ error: 'journeyId is required in request body', statusCode: 400 });
     }
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       await client.query('BEGIN');
       await client.query("SELECT pg_catalog.set_config('sales_os.allow_redaction', 'true', true)");
@@ -655,7 +658,7 @@ export async function whatsappChannelRoutes(
         });
       }
 
-      const client = await dbPool.connect();
+      const client = await databasePool.connect();
     try {
       // A phone number has one authoritative responder. Do not let a WABA
       // configuration silently coexist with an active WAHA session for the
@@ -752,31 +755,46 @@ export async function whatsappChannelRoutes(
   // 6.1. Login Auth / OAuth Embedded Signup Auto-Connect
   app.post('/api/v1/workspaces/:workspaceId/channels/waba/oauth-connect', async (request: FastifyRequest<{
     Params: { workspaceId: string };
-    Body: { accessToken?: string; code?: string; wabaId?: string; phoneNumberId?: string; appId?: string; appSecret?: string };
+    Body: { accessToken?: string; code?: string; wabaId?: string; phoneNumberId?: string; appId?: string };
   }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
-    let { accessToken, code, wabaId, phoneNumberId, appId, appSecret } = request.body || {};
+    let { accessToken, code, wabaId, phoneNumberId, appId } = request.body || {};
+    const configuredAppId = process.env.META_ID_APP?.trim();
+    const configuredAppSecret = process.env.META_APP_SECRET?.trim();
+
+    // The browser may identify the app used to initiate Embedded Signup, but
+    // it must never supply an app secret or choose a different OAuth client.
+    if (configuredAppId && appId && configuredAppId !== appId.trim()) {
+      return reply.status(409).send({
+        error: 'O aplicativo Meta informado não corresponde ao aplicativo configurado neste ambiente.',
+        code: 'META_OAUTH_APP_MISMATCH',
+      });
+    }
 
     // 1. If authorization code is provided, exchange for access token
-    if (code && appId && appSecret) {
+    if (code) {
+      if (!configuredAppId || !configuredAppSecret) {
+        return reply.status(503).send({
+          error: 'O servidor não possui uma configuração OAuth Meta completa para trocar o código.',
+          code: 'META_OAUTH_SERVER_CONFIGURATION_REQUIRED',
+        });
+      }
       try {
         const tokenExchangeRes = await fetch(
-          `${DEFAULT_META_GRAPH_BASE_URL}/oauth/access_token?client_id=${encodeURIComponent(appId)}&client_secret=${encodeURIComponent(appSecret)}&code=${encodeURIComponent(code)}`
+          `${DEFAULT_META_GRAPH_BASE_URL}/oauth/access_token?client_id=${encodeURIComponent(configuredAppId)}&client_secret=${encodeURIComponent(configuredAppSecret)}&code=${encodeURIComponent(code)}`
         );
         if (tokenExchangeRes.ok) {
           const tokenData = (await tokenExchangeRes.json()) as any;
           accessToken = tokenData.access_token;
+        } else {
+          return reply.status(400).send({ error: 'A Meta recusou a troca do código de autorização.', code: 'META_OAUTH_CODE_EXCHANGE_FAILED' });
         }
-      } catch (err: any) {
-        return reply.status(400).send({ error: `Erro ao trocar código por token Meta: ${err.message}` });
+      } catch {
+        return reply.status(503).send({ error: 'Não foi possível trocar o código de autorização com a Meta.', code: 'META_OAUTH_CODE_EXCHANGE_UNAVAILABLE' });
       }
     }
 
     if (!accessToken || accessToken === 'use_server_default') {
-      accessToken = process.env.META_SYSTEM_USER_TOKEN || '';
-    }
-
-    if (!accessToken) {
       return reply.status(400).send({ error: 'Access Token ou Código de Autorização é obrigatório para o Login Auth Meta.' });
     }
 
@@ -859,7 +877,7 @@ export async function whatsappChannelRoutes(
 
 
       // 4. Persist in Database
-      const client = await dbPool.connect();
+      const client = await databasePool.connect();
       try {
         const wahaConflict = await client.query(
           `SELECT 1
@@ -1005,7 +1023,7 @@ export async function whatsappChannelRoutes(
       return dependencies.wabaCredentialsResolver(workspaceId);
     }
     const normWsId = normalizeWorkspaceUuid(workspaceId);
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       const res = await client.query(`
         SELECT cc.id, cc.public_config, cs.secret_payload
@@ -1126,26 +1144,6 @@ export async function whatsappChannelRoutes(
         }
       } catch {}
 
-      // Strategy 3: Probe known default WABAs if accounts array is still empty (common for System User tokens)
-      if (accounts.length === 0) {
-        const candidateWabaIds = ['1749193841879179'];
-        for (const candidateId of candidateWabaIds) {
-          if (!seenWabaIds.has(candidateId)) {
-            try {
-              const probeRes = await fetch(
-                `${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(candidateId)}?fields=id,name,phone_numbers{id,display_phone_number,verified_name}&access_token=${encodeURIComponent(token)}`
-              );
-              if (probeRes.ok) {
-                const probeData = (await probeRes.json()) as any;
-                seenWabaIds.add(candidateId);
-                const phoneNumbers = Array.isArray(probeData.phone_numbers?.data) ? probeData.phone_numbers.data : [];
-                accounts.push({ id: candidateId, name: probeData.name || `WABA ${candidateId}`, phoneNumbers });
-              }
-            } catch {}
-          }
-        }
-      }
-
       return { success: true, tokenValidated: true, accounts };
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });
@@ -1190,17 +1188,12 @@ export async function whatsappChannelRoutes(
     reply: FastifyReply
   ) => {
     const hasServerToken = Boolean(process.env.META_SYSTEM_USER_TOKEN);
-    const configuredAppId = process.env.META_ID_APP || '2294262161340902';
+    const configuredAppId = process.env.META_ID_APP;
 
     return reply.status(200).send({
       success: true,
       serverTokenAvailable: hasServerToken,
-      appId: configuredAppId,
-      appName: configuredAppId === '2294262161340902' ? 'CRM TX APP' : 'Meta Business App',
-      defaultWabaId: '1749193841879179',
-      defaultPhoneNumberId: '2498930403536552',
-      defaultDisplayPhone: '+55 49 8837-0054',
-      defaultVerifiedName: 'Haven Escovaria',
+      oauthAppConfigured: Boolean(configuredAppId && process.env.META_APP_SECRET),
       webhookUrl: 'https://crm.iaparavendas.tech/api/v1/channels/waba/webhook',
       webhookLegacyUrl: 'https://crm.iaparavendas.tech/api/meta/webhook',
     });
@@ -1335,176 +1328,19 @@ export async function whatsappChannelRoutes(
   });
 
 
-  // 8. WABA: Send Approved Template (HSM)
-  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-template', async (request: FastifyRequest<{
-    Params: { workspaceId: string };
-    Body: { recipientPhone: string; templateName: string; languageCode?: string; headerMediaUrl?: string; bodyParameters?: string[] };
-  }>, reply: FastifyReply) => {
-    const { workspaceId } = request.params;
-    const { recipientPhone, templateName, languageCode = 'pt_BR', headerMediaUrl, bodyParameters = [] } = request.body || {};
-    if (!recipientPhone || !templateName) {
-      return reply.status(400).send({ error: 'recipientPhone e templateName são obrigatórios' });
-    }
-    const creds = await getWabaCreds(workspaceId);
-    if (!creds || !creds.phoneNumberId || !creds.accessToken) {
-      return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
-    }
-    try {
-      const waba = new WabaClient();
-      const result = await waba.sendTemplate({
-        phoneNumberId: creds.phoneNumberId,
-        accessToken: creds.accessToken,
-        recipientPhone,
-        templateName,
-        languageCode,
-        headerMediaUrl,
-        bodyParameters,
-      });
-      return { success: true, ...result };
-    } catch (err: any) {
-      return reply.status(500).send({ error: err.message });
-    }
+  // Message sends must enter the durable draft/approval lifecycle. These
+  // legacy endpoints had no journey reservation, opt-out enforcement at the
+  // dispatch boundary, or provider reconciliation; retain the URL only as a
+  // fail-closed migration response for stale clients.
+  const retiredDirectWabaSend = async (_request: FastifyRequest, reply: FastifyReply) => reply.status(410).send({
+    error: 'Envio direto WABA foi desativado. Crie e aprove um rascunho supervisionado da jornada.',
+    code: 'WABA_DIRECT_SEND_RETIRED',
   });
-
-  // 9. WABA: Send Interactive Quick Reply Buttons
-  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-buttons', async (request: FastifyRequest<{
-    Params: { workspaceId: string };
-    Body: { recipientPhone: string; bodyText: string; headerText?: string; footerText?: string; buttons: Array<{ id: string; title: string }> };
-  }>, reply: FastifyReply) => {
-    const { workspaceId } = request.params;
-    const { recipientPhone, bodyText, headerText, footerText, buttons } = request.body || {};
-    if (!recipientPhone || !bodyText || !Array.isArray(buttons) || buttons.length === 0) {
-      return reply.status(400).send({ error: 'recipientPhone, bodyText e buttons são obrigatórios' });
-    }
-    const creds = await getWabaCreds(workspaceId);
-    if (!creds || !creds.phoneNumberId || !creds.accessToken) {
-      return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
-    }
-    try {
-      const waba = new WabaClient();
-      const result = await waba.sendInteractiveButtons({
-        phoneNumberId: creds.phoneNumberId,
-        accessToken: creds.accessToken,
-        recipientPhone,
-        bodyText,
-        headerText,
-        footerText,
-        buttons,
-      });
-      return { success: true, ...result };
-    } catch (err: any) {
-      return reply.status(500).send({ error: err.message });
-    }
-  });
-
-  // 10. WABA: Send Interactive List Menu
-  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-list', async (request: FastifyRequest<{
-    Params: { workspaceId: string };
-    Body: { recipientPhone: string; bodyText: string; buttonLabel: string; headerText?: string; footerText?: string; sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }> };
-  }>, reply: FastifyReply) => {
-    const { workspaceId } = request.params;
-    const { recipientPhone, bodyText, buttonLabel, headerText, footerText, sections } = request.body || {};
-    if (!recipientPhone || !bodyText || !buttonLabel || !Array.isArray(sections) || sections.length === 0) {
-      return reply.status(400).send({ error: 'recipientPhone, bodyText, buttonLabel e sections são obrigatórios' });
-    }
-    const creds = await getWabaCreds(workspaceId);
-    if (!creds || !creds.phoneNumberId || !creds.accessToken) {
-      return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
-    }
-    try {
-      const waba = new WabaClient();
-      const result = await waba.sendInteractiveList({
-        phoneNumberId: creds.phoneNumberId,
-        accessToken: creds.accessToken,
-        recipientPhone,
-        bodyText,
-        buttonLabel,
-        headerText,
-        footerText,
-        sections,
-      });
-      return { success: true, ...result };
-    } catch (err: any) {
-      return reply.status(500).send({ error: err.message });
-    }
-  });
-
-  // 11. WABA: Send Rich Media (Image, Audio PTT, Video, Document)
-  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-media', async (request: FastifyRequest<{
-    Params: { workspaceId: string };
-    Body: { recipientPhone: string; mediaType: 'image' | 'audio' | 'video' | 'document'; mediaUrl: string; caption?: string; filename?: string };
-  }>, reply: FastifyReply) => {
-    const { workspaceId } = request.params;
-    const { recipientPhone, mediaType, mediaUrl, caption, filename } = request.body || {};
-    if (!recipientPhone || !mediaType || !mediaUrl) {
-      return reply.status(400).send({ error: 'recipientPhone, mediaType e mediaUrl são obrigatórios' });
-    }
-    const creds = await getWabaCreds(workspaceId);
-    if (!creds || !creds.phoneNumberId || !creds.accessToken) {
-      return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
-    }
-    try {
-      const waba = new WabaClient();
-      const result = await waba.sendMedia({
-        phoneNumberId: creds.phoneNumberId,
-        accessToken: creds.accessToken,
-        recipientPhone,
-        mediaType,
-        mediaUrl,
-        caption,
-        filename,
-      });
-      return { success: true, ...result };
-    } catch (err: any) {
-      return reply.status(500).send({ error: err.message });
-    }
-  });
-
-  // 11.1. WABA: Send Interactive WhatsApp Flow (Native In-App Forms)
-  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-flow', async (request: FastifyRequest<{
-    Params: { workspaceId: string };
-    Body: {
-      recipientPhone: string;
-      flowId: string;
-      flowCta: string;
-      bodyText: string;
-      headerText?: string;
-      footerText?: string;
-      screenId?: string;
-      flowData?: Record<string, unknown>;
-    };
-  }>, reply: FastifyReply) => {
-    const { workspaceId } = request.params;
-    const { recipientPhone, flowId, flowCta, bodyText, headerText, footerText, screenId, flowData } = request.body || {};
-
-    if (!recipientPhone || !flowId || !flowCta || !bodyText) {
-      return reply.status(400).send({ error: 'Campos obrigatórios: recipientPhone, flowId, flowCta, bodyText' });
-    }
-
-    const creds = await getWabaCreds(workspaceId);
-    if (!creds || !creds.phoneNumberId || !creds.accessToken) {
-      return reply.status(404).send({ error: 'Canal WABA não configurado para este workspace' });
-    }
-
-    try {
-      const waba = new WabaClient();
-      const result = await waba.sendFlow({
-        phoneNumberId: creds.phoneNumberId,
-        accessToken: creds.accessToken,
-        recipientPhone,
-        flowId,
-        flowCta,
-        bodyText,
-        headerText,
-        footerText,
-        screenId,
-        flowData,
-      });
-      return { success: true, ...result, message: 'WhatsApp Flow disparado com sucesso!' };
-    } catch (err: any) {
-      return reply.status(500).send({ error: err.message });
-    }
-  });
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-template', retiredDirectWabaSend);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-buttons', retiredDirectWabaSend);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-list', retiredDirectWabaSend);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-media', retiredDirectWabaSend);
+  app.post('/api/v1/workspaces/:workspaceId/channels/waba/send-flow', retiredDirectWabaSend);
 
 
 
@@ -1680,7 +1516,7 @@ export async function whatsappChannelRoutes(
       });
 
       // Fetch allowed groups from workspace_agent_config to flag which groups have AI enabled
-      const configRes = await dbPool.query<{ behavior_config: Record<string, unknown> | null }>(
+      const configRes = await databasePool.query<{ behavior_config: Record<string, unknown> | null }>(
         `SELECT behavior_config FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`,
         [workspaceId]
       ).catch(() => ({ rows: [] }));
@@ -1820,7 +1656,7 @@ export async function whatsappChannelRoutes(
     const { enabled = false } = (request.body || {}) as { enabled?: boolean };
 
     try {
-      const configRes = await dbPool.query<{ behavior_config: Record<string, unknown> | null }>(
+      const configRes = await databasePool.query<{ behavior_config: Record<string, unknown> | null }>(
         `SELECT behavior_config FROM public.workspace_agent_config WHERE workspace_id = $1 LIMIT 1`,
         [workspaceId]
       );
@@ -1844,7 +1680,7 @@ export async function whatsappChannelRoutes(
         allowed_groups: currentAllowed,
       };
 
-      await dbPool.query(
+      await databasePool.query(
         `UPDATE public.workspace_agent_config
          SET behavior_config = $2::jsonb, updated_at = NOW()
          WHERE workspace_id = $1`,
@@ -1922,7 +1758,7 @@ export async function whatsappChannelRoutes(
   }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
     const { search = '', limit = '50' } = request.query || {};
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       const query = `
         SELECT 
@@ -1987,7 +1823,7 @@ export async function whatsappChannelRoutes(
     const whatsappTarget = `${cleanPhone}@c.us`;
     const contactName = name?.trim() || `Lead ${cleanPhone.slice(-4)}`;
 
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       // 1. Get channel connection
       const chRes = await client.query(`
@@ -2051,7 +1887,6 @@ export async function whatsappChannelRoutes(
       // the cockpit. The worker selects the journey's persisted channel; this
       // route never falls back across WABA/WAHA or manufactures a message ID.
       let dispatchId: string | null = null;
-      let templateMessageId: string | null = null;
       if (message && message.trim()) {
         const actor = request.operatorActor;
         if (!actor || !dependencies.outboundDispatchGateway) {
@@ -2073,54 +1908,35 @@ export async function whatsappChannelRoutes(
         dispatchId = approved.dispatchId;
       }
 
-      // Templates are an explicit Meta Cloud operation. They are never
-      // rerouted through WAHA, and the local message record is created only
-      // after Meta returns a provider message id.
+      // Templates follow the same durable lifecycle as text and interactive
+      // messages. The worker alone performs the irreversible Meta call after
+      // it has a persisted, approved dispatch for this journey.
       if (templateName) {
-        const selectedChannel = await client.query(`
-          SELECT cc.id
-          FROM public.commercial_journeys j
-          JOIN public.channel_connections cc ON cc.id = j.channel_connection_id
-          WHERE j.id = $1
-            AND j.workspace_id = $2
-            AND EXISTS (SELECT 1 FROM public.contacts c WHERE c.id=j.contact_id AND c.workspace_id=j.workspace_id AND c.outbound_opted_out_at IS NULL)
-            AND cc.workspace_id = $2
-            AND cc.provider = 'meta_cloud'
-            AND cc.status = 'CONNECTED'
-          LIMIT 1
-        `, [journeyId, workspaceId]);
-        if (!selectedChannel.rowCount) {
-          return reply.status(409).send({
-            error: 'Esta conversa não está vinculada a um canal Meta Cloud conectado para envio de template.',
-            statusCode: 409,
-          });
+        const actor = request.operatorActor;
+        if (!actor || !dependencies.outboundDispatchGateway?.createWabaDraft) {
+          return reply.status(503).send({ error: 'Fila segura de envio WABA indisponível.', statusCode: 503 });
         }
-        const creds = await getWabaCreds(workspaceId);
-        if (!creds?.phoneNumberId || !creds.accessToken) {
-          return reply.status(409).send({ error: 'Credenciais Meta Cloud indisponíveis para este workspace.', statusCode: 409 });
-        }
-        const result = await new WabaClient().sendTemplate({
-          phoneNumberId: creds.phoneNumberId,
-          accessToken: creds.accessToken,
-          recipientPhone: cleanPhone,
-          templateName,
-          languageCode: 'pt_BR',
-          bodyParameters: templateParams,
+        const draft = await dependencies.outboundDispatchGateway.createWabaDraft(actor, {
+          workspaceId,
+          journeyId,
+          messageKind: 'WABA_TEMPLATE',
+          textContent: `Template: ${templateName}`,
+          messagePayload: {
+            messageKind: 'WABA_TEMPLATE',
+            templateName,
+            languageCode: 'pt_BR',
+            bodyParameters: templateParams,
+          },
+          idempotencyKey: crypto.randomUUID(),
         });
-        templateMessageId = result?.messageId || null;
-        if (!templateMessageId) {
-          return reply.status(502).send({ error: 'A Meta não confirmou o envio do template.', statusCode: 502 });
-        }
-        await client.query(`
-          INSERT INTO public.conversation_messages (
-            id, workspace_id, channel_connection_id, journey_id, contact_id,
-            direction, sender_type, provider_message_id, text_content, sent_at
-          ) VALUES (
-            gen_random_uuid(), $1, $2, $3, $4,
-            'outbound', 'operator', $5, $6, NOW()
-          )
-          ON CONFLICT (channel_connection_id, provider_message_id) DO NOTHING
-        `, [workspaceId, selectedChannel.rows[0].id, journeyId, contactId, templateMessageId, `[Template] ${templateName}`]);
+        if (!draft) return reply.status(409).send({ error: 'Não foi possível preparar o template com segurança.', statusCode: 409 });
+        const approved = await dependencies.outboundDispatchGateway.approve(actor, {
+          workspaceId,
+          dispatchId: draft.dispatchId,
+          idempotencyKey: crypto.randomUUID(),
+        });
+        if (!approved) return reply.status(409).send({ error: 'Não foi possível liberar o template.', statusCode: 409 });
+        dispatchId = approved.dispatchId;
       }
 
       return {
@@ -2130,11 +1946,8 @@ export async function whatsappChannelRoutes(
         phone: cleanPhone,
         name: contactName,
         dispatchId,
-        templateMessageId,
         message: dispatchId
           ? 'Conversa criada e mensagem enfileirada para envio seguro.'
-          : templateMessageId
-            ? 'Conversa criada e template aceito pela Meta.'
           : 'Conversa iniciada com sucesso!',
       };
     } catch (err: any) {
@@ -2152,7 +1965,7 @@ export async function whatsappChannelRoutes(
   // 12.1. GET tracking settings for a workspace
   app.get('/api/v1/workspaces/:workspaceId/tracking', async (request: FastifyRequest<{ Params: { workspaceId: string } }>, reply: FastifyReply) => {
     const { workspaceId } = request.params;
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       const res = await client.query(`
         SELECT cc.public_config,
@@ -2228,7 +2041,7 @@ export async function whatsappChannelRoutes(
     }
     const body = parsedBody.data;
     const tokenToStore = body.metaAccessToken?.trim() || '';
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       // Tracking is metadata of a real messaging connection. Never create a
       // fake CONNECTED meta_cloud row: that makes the UI report a duplicated
@@ -2348,7 +2161,7 @@ export async function whatsappChannelRoutes(
     }
 
     if (!token || !targetPixelId) {
-      const saved = await dbPool.query(`SELECT cc.public_config, cs.secret_payload
+      const saved = await databasePool.query(`SELECT cc.public_config, cs.secret_payload
         FROM public.channel_connections cc
         LEFT JOIN public.channel_connection_secrets cs ON cs.channel_connection_id=cc.id
           AND cs.workspace_id=cc.workspace_id AND cs.secret_kind='meta_capi_token'
@@ -2588,7 +2401,7 @@ export async function whatsappChannelRoutes(
       });
     }
 
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       // 1. Fetch channel connection and campaigns
       let channelConnectionId: string;
@@ -2690,7 +2503,7 @@ export async function whatsappChannelRoutes(
     const { workspaceId } = request.params;
     const { limit = 200, forceRescan = false } = request.body || {};
 
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       // 1. Fetch campaigns config
       const chRes = await client.query(
@@ -2798,7 +2611,7 @@ export async function whatsappChannelRoutes(
     const { workspaceId } = request.params;
     const { period = '30d' } = request.query || {};
 
-    const client = await dbPool.connect();
+    const client = await databasePool.connect();
     try {
       const days = period === 'today' ? 1 : period === '7d' ? 7 : 30;
       const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);

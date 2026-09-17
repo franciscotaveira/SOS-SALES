@@ -1858,6 +1858,33 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/groups/{groupId}/ai-toggle": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "groupId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/journeys/{journeyId}/send-message": {
       "post": {
         "parameters": [
@@ -2070,6 +2097,7 @@
         ],
         "description": "Analisa comprovantes de PIX, fotos de cartão presente e referências de estética/produtos.",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -2089,8 +2117,7 @@
                 }
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -2106,6 +2133,7 @@
         ],
         "description": "Testa a conexão, modelos gratuitos e latência do OpenRouter.",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -2141,6 +2169,7 @@
         ],
         "description": "Testa a conexão e latência do modelo NVIDIA NIM.",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -2151,7 +2180,7 @@
                   },
                   "model": {
                     "type": "string",
-                    "default": "nvidia/nemotron-3.5-lightning-30b-a3b"
+                    "default": "nvidia/nemotron-3-super-120b-a12b"
                   },
                   "prompt": {
                     "type": "string",
@@ -2176,6 +2205,7 @@
         ],
         "description": "Gera sugestão contextual de resposta e ação comercial para o Copilot no Cockpit.",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -2212,6 +2242,71 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/intelligence/revisions": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/intelligence/revisions/{revisionId}/restore": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "revisionId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/agent/outcomes": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {
             "description": "Default Response"
@@ -2793,6 +2888,25 @@
     },
     "/api/v1/workspaces/{workspaceId}/meta-business-agent/thread-control": {
       "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "workspaceId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/meta-readiness": {
+      "get": {
         "parameters": [
           {
             "schema": {

@@ -161,7 +161,7 @@ function AppContent({
 
   const [conversationsMode, setConversationsMode] = React.useState<'list' | 'kanban' | 'wallboard'>('list');
   const [intelligenceSubTab, setIntelligenceSubTab] = React.useState<any>('knowledge');
-  const [settingsSubTab, setSettingsSubTab] = React.useState<any>('canais');
+  const [settingsSubTab, setSettingsSubTab] = React.useState<any>('readiness');
   const [groupSubTab, setGroupSubTab] = React.useState<any>('conversations');
   const [resultsSubTab, setResultsSubTab] = React.useState<ResultsSubTab>(
     isProductionMvp ? 'traffic_proof' : 'analytics',

@@ -8,6 +8,14 @@ const WS_HAVEN = '22222222-2222-2222-2222-222222222222'; // Haven Escovaria
 
 const proofs = [];
 
+// This script creates and approves real production records. It is deliberately
+// opt-in so an exploratory local command can never contact a customer or the
+// production database by accident.
+if (process.env.ALLOW_PRODUCTION_MUTATION_TESTS !== 'true') {
+  console.error('Refusing to run production mutation checks. Set ALLOW_PRODUCTION_MUTATION_TESTS=true after an approved maintenance window.');
+  process.exit(2);
+}
+
 function assertProof(pillar, check, passed, evidence) {
   proofs.push({ pillar, check, passed, evidence });
   const icon = passed ? '🛡️ [GARANTIA CONFIRMADA]' : '❌ [FALHA]';
@@ -53,6 +61,7 @@ async function runProductionGuarantee() {
   console.log('--- PILAR 2: AUTENTICAÇÃO OFICIAL & JWT ACTOR ---');
   let token = null;
   let operatorId = null;
+  try {
     const email = process.env.OPERATOR_EMAIL;
     const password = process.env.OPERATOR_PASSWORD;
     if (!email || !password) {

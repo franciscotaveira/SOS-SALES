@@ -25,6 +25,7 @@ import { EmbeddedSignupModal } from './EmbeddedSignupModal';
 import { authenticatedFetch } from '../../services/authenticatedFetch';
 import { WabaTemplatesTab } from '../campaigns/WabaTemplatesTab';
 import { AiRuntimeSettingsView } from './AiRuntimeSettingsView';
+import { MetaReadinessView } from './MetaReadinessView';
 
 
 interface LiveSettingsViewProps {
@@ -42,12 +43,13 @@ interface WorkspaceMember {
   email?: string | null;
 }
 
-function normalizeTab(tab: string): 'canais' | 'ia' | 'sla' | 'membros' {
+function normalizeTab(tab: string): 'readiness' | 'canais' | 'ia' | 'sla' | 'membros' {
+  if (tab === 'readiness' || tab === 'meta_readiness') return 'readiness';
   if (tab === 'channels' || tab === 'canais') return 'canais';
   if (tab === 'sla') return 'sla';
   if (tab === 'ia') return 'ia';
   if (tab === 'membros') return 'membros';
-  return 'canais';
+  return 'readiness';
 }
 
 const roleLabel: Record<WorkspaceMember['role'], string> = {
@@ -58,7 +60,7 @@ const roleLabel: Record<WorkspaceMember['role'], string> = {
 
 export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   workspace,
-  activeSubTab = 'canais',
+  activeSubTab = 'readiness',
   onChangeSubTab,
 }) => {
   const [currentTab, setCurrentTab] = useState(() => normalizeTab(activeSubTab));
@@ -308,6 +310,16 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
         {/* Sub-tabs pills */}
         <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-2xs overflow-x-auto touch-scroll max-w-full shrink-0">
           <button
+            onClick={() => handleTabChange('readiness')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+              currentTab === 'readiness'
+                ? 'bg-slate-900 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" /> Prontidão Meta
+          </button>
+          <button
             onClick={() => handleTabChange('canais')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               currentTab === 'canais'
@@ -352,6 +364,7 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
 
       {/* Main Content Area */}
       <div className="mt-5 flex-1">
+        {currentTab === 'readiness' && <MetaReadinessView workspaceId={workspace.id} />}
         {currentTab === 'ia' && <AiRuntimeSettingsView workspaceId={workspace.id} />}
         {currentTab === 'canais' && (
           <div className="max-w-4xl space-y-4">

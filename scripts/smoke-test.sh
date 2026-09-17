@@ -110,11 +110,15 @@ if curl -sf "${BASE_API}/health" > /dev/null 2>&1; then
   pass "API já está rodando em $BASE_API"
   API_UP=true
 else
-  info "API não detectada — iniciando servidor de smoke em background..."
-  (cd apps/api && npx tsx src/index.ts > /tmp/sos-api-smoke.log 2>&1) &
-  API_PID=$!
-  if wait_for "${BASE_API}/health" "API"; then
-    API_UP=true
+  if [ -n "${API_URL:-}" ]; then
+    warn "API_URL foi informado e não respondeu; o smoke test não iniciará uma API em outra porta."
+  else
+    info "API não detectada — iniciando servidor de smoke em background..."
+    (cd apps/api && npx tsx src/index.ts > /tmp/sos-api-smoke.log 2>&1) &
+    API_PID=$!
+    if wait_for "${BASE_API}/health" "API"; then
+      API_UP=true
+    fi
   fi
 fi
 
@@ -136,13 +140,15 @@ if [ "$API_UP" = true ]; then
     ((FAIL_COUNT++)) || true
   fi
 
-  # Readiness probe (pode estar degraded sem infra, mas deve responder)
+  # A smoke test is an availability gate. A degraded readiness response is
+  # useful diagnostic evidence, but must not turn a failed environment into a
+  # green result.
   READY_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_API}/ready")
-  if [ "$READY_STATUS" = "200" ] || [ "$READY_STATUS" = "503" ]; then
-    pass "GET /ready → responde ($READY_STATUS)"
+  if [ "$READY_STATUS" = "200" ]; then
+    pass "GET /ready → saudável (200)"
     ((PASS_COUNT++)) || true
   else
-    echo -e "${RED}✗${NC} GET /ready → código inesperado $READY_STATUS"
+    echo -e "${RED}✗${NC} GET /ready → ambiente degradado ou indisponível ($READY_STATUS)"
     ((FAIL_COUNT++)) || true
   fi
 

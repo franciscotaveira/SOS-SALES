@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-09-17 — Prontidão Meta baseada em evidência e conexão WABA sem defaults implícitos
+
+- **Problema:** A configuração WABA ainda podia exibir ou pré-selecionar identificadores de uma conta histórica, e a interface tratava qualidade e vínculo como confirmados sem evidência do workspace. Em paralelo, não havia uma leitura única para separar configuração local de validações que dependem da Meta.
+- **Decisões:**
+  1. Criar `GET /api/v1/workspaces/:workspaceId/meta-readiness`, autenticado e isolado por tenant, que expõe somente evidência local por controle e mantém itens não verificados como `UNKNOWN`.
+  2. Remover IDs, telefone, empresa e qualidade Meta predefinidos da interface e da descoberta de contas. Um token do runtime não pode selecionar automaticamente o número de um cliente.
+  3. A troca OAuth usa exclusivamente `META_ID_APP` e `META_APP_SECRET` no servidor; o navegador não envia segredo nem escolhe outro cliente OAuth.
+  4. Injetar no módulo de canais o pool criado pelo runtime ativo, eliminando a divergência entre a conexão usada pelo servidor e aquela aberta implicitamente pela rota.
+  5. Desativar endpoints WABA legados que enviavam diretamente ao provedor e encaminhar o início de conversa por template ao mesmo ciclo de rascunho, aprovação, worker e reconciliação usado pelo Cockpit.
+- **Trade-offs:** A conexão exige seleção explícita ou IDs fornecidos pelo operador, e a tela de prontidão não substitui testes autenticados de permissões, entrega de webhook, billing ou templates na Meta.
+- **Validação:** 403 testes unitários da API, 30 testes de frontend, typecheck, builds frontend/API, geração do OpenAPI e Docker Lab com `/health`, `/ready` e interface HTTP em 200. As rotas legadas WABA retornam 410 após autenticação; sem Bearer, a borda retorna 401.
+- **Produção:** não alterada. Promoção permanece condicionada à árvore limpa, preflight, staging e aprovação humana.
+
+---
+
 ## Task 1: WAHA Outbound Worker
 - **Decision:** Utilizar adapter HTTP com retries exponenciais, jitter e heartbeat assíncrono diretamente contra a API REST do WAHA em vez de SDK/biblioteca de terceiros.
 - **Rationale:** Elimina dependências externas pesadas que podem quebrar entre versões do WAHA; permite controle estrito sobre timeouts, idempotency-key por dispatch e tratamento de erros específicos do WhatsApp (422 invalid phone, 429 rate limit, 503 session dead).

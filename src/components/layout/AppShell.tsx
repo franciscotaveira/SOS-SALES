@@ -491,7 +491,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       { id: 'resultados' as NavigationTab, label: 'Conectar rastreamento Meta', icon: BarChart3, section: 'Gestão', subTab: 'tracking', roleRequired: 'owner' as OperatorRole },
     ] : []),
     { id: 'playbook' as NavigationTab, label: isProductionMvp ? 'IA & Conhecimento da empresa' : 'Sales AI Playbook & Inteligência', icon: Bot, section: 'Inteligência', roleRequired: 'operator' as OperatorRole },
-    { id: 'simulador' as NavigationTab, label: 'Simulador & Treinador IA', icon: Zap, section: 'Inteligência', roleRequired: 'operator' as OperatorRole },
+    ...(showQaSimulator ? [{ id: 'simulador' as NavigationTab, label: 'Simulador & Treinador IA', icon: Zap, section: 'Inteligência', roleRequired: 'operator' as OperatorRole }] : []),
     { id: 'configuracoes', label: 'Configurações do Workspace', icon: Settings, section: 'Sistema', roleRequired: 'owner' },
   ];
 
@@ -1170,7 +1170,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             )}
 
             {/* Direct Quick Access to Simulador IA (Desktop only - mobile accesses via IA/Mais) */}
-            <button
+            {showQaSimulator && <button
               id="topbar-simulador-btn"
               onClick={() => onChangeTab('simulador')}
               className={`hidden lg:flex h-8 sm:h-9 px-2.5 rounded-xl border transition-all items-center justify-center gap-1.5 text-xs font-bold shadow-2xs cursor-pointer active:scale-95 shrink-0 ${
@@ -1183,7 +1183,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             >
               <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
               <span className="inline font-bold">Simulador IA</span>
-            </button>
+            </button>}
 
             {/* Mobile Search Button */}
             <button

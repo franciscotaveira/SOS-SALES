@@ -120,23 +120,23 @@ export function AssistedTutorialModal({
         '• Recepção Noturna & Finais de Semana: Garante resposta imediata quando sua equipe física não estiver disponível.\n• Limites e Guardrails: Defina o teto máximo de desconto que a IA pode oferecer (ex: até 10%).\n• Handoff Humano: A IA transfere o lead imediatamente para o atendente quando ele pede para falar com humano.',
       actionLabel: 'Configurar Regras da IA',
       targetTab: 'configuracoes',
-      targetSubTab: 'ai_runtime',
+      targetSubTab: 'ia',
       proTip: 'No Playbook Comercial, defina as 3 principais objeções dos seus clientes e as respostas ideais que a IA deve usar.',
     },
     {
       id: 'step_agenda',
       badge: 'Etapa 4 de 6 · Agilidade Comercial',
       title: 'Espelhamento de Agenda Comercial',
-      subtitle: 'Consulte horários vagos e agende sem sair da tela do lead',
+      subtitle: 'Organize o próximo passo comercial sem sair do atendimento',
       icon: Calendar,
       accentColor: '#2563EB',
       description:
-        'Vendedor que troca de aplicativo perde o foco da venda. Com o espelhamento de agenda, você consulta a sua ferramenta de agendamento (Trinks, Google Calendar ou agendador próprio) direto no Cockpit.',
+        'Use a Agenda Comercial para organizar compromissos e retornos ligados ao atendimento. Integrações externas só aparecem como conectadas depois de uma sincronização homologada.',
       practicalValue:
-        '• Atalho Universal: Pressione Alt + A a qualquer momento no Cockpit para abrir a gaveta de horários.\n• Sem conflito de agenda: Vendedor vê os horários vagos em tempo real enquanto digita a resposta.\n• Envio com 1 clique: Insira as opções de horários na conversa do WhatsApp instantaneamente.',
+        '• Organização Comercial: Registre compromissos e próximos passos sem perder o contexto do lead.\n• Retorno Seguro: Use o atendimento para confirmar disponibilidade antes de prometer um horário.\n• Integrações: Horários externos exigem uma conexão homologada antes de serem usados no chat.',
       actionLabel: 'Ver Tela de Agenda',
       targetTab: 'agenda',
-      proTip: 'Configure o link da agenda web da sua empresa para que os atendentes nunca mais precisem conferir no celular.',
+      proTip: 'Não trate um link externo como agenda sincronizada: confirme a disponibilidade até a integração estar homologada.',
     },
     {
       id: 'step_kanban_capi',
@@ -163,7 +163,7 @@ export function AssistedTutorialModal({
       description:
         'Parabéns! Você concluiu a jornada de entendimento do SOS Vendas. Abaixo está o seu checklist de prontidão para abrir o tráfego e começar a fechar clientes no WhatsApp.',
       practicalValue:
-        '• [x] Cockpit dominado: Fila de prioridades e master-detail entendidos.\n• [x] Conexão WhatsApp: Número comercial ativo para troca de mensagens.\n• [x] IA Parametrizada: Guardrails de atendimento e horários ajustados.\n• [x] Agenda conectada: Consulta ágil de horários liberada.\n• [x] Funil & CAPI: Prontos para traquear compras no Meta Ads.',
+        '• Cockpit: Fila de prioridades e atendimento compreendidos.\n• WhatsApp: Número comercial conectado e testado.\n• IA: Guardrails e handoff configurados.\n• Agenda: Disponibilidade confirmada por uma fonte confiável.\n• Funil e CAPI: Eventos testados e comprovados antes de atribuir resultado.',
       actionLabel: 'Ir para o Cockpit e Começar a Vender',
       targetTab: 'agora',
       proTip: 'Você pode reabrir este Guia a qualquer momento clicando no botão "Guia de Início" no topo do sistema.',

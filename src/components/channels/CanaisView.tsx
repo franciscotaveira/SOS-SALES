@@ -53,16 +53,11 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
   const [accessToken, setAccessToken] = React.useState('');
   const [wabaSaving, setWabaSaving] = React.useState(false);
   const [wabaFeedback, setWabaFeedback] = React.useState<{ success?: boolean; message?: string } | null>(null);
-  const [wabaTab, setWabaTab] = React.useState<'simplified' | 'login_auth' | 'manual'>('simplified');
-  const [metaAppId, setMetaAppId] = React.useState('2294262161340902');
+  const [wabaTab, setWabaTab] = React.useState<'simplified' | 'login_auth' | 'manual'>('login_auth');
+  const [metaAppId, setMetaAppId] = React.useState('');
   const [serverWabaConfig, setServerWabaConfig] = React.useState<{
     serverTokenAvailable?: boolean;
-    appId?: string;
-    appName?: string;
-    defaultWabaId?: string;
-    defaultPhoneNumberId?: string;
-    defaultDisplayPhone?: string;
-    defaultVerifiedName?: string;
+    oauthAppConfigured?: boolean;
     webhookUrl?: string;
     webhookLegacyUrl?: string;
   } | null>(null);
@@ -126,9 +121,6 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
       if (res.ok) {
         const data = await res.json();
         setServerWabaConfig(data);
-        if (data.appId) setMetaAppId(data.appId);
-        if (!wabaId && data.defaultWabaId) setWabaId(data.defaultWabaId);
-        if (!phoneNumberId && data.defaultPhoneNumberId) setPhoneNumberId(data.defaultPhoneNumberId);
       }
     } catch {
       // ignore
@@ -377,48 +369,6 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
         }, 2000);
       } else {
         setWabaFeedback({ success: false, message: data.error || 'Erro na validação com a Meta.' });
-      }
-    } catch (err: any) {
-      setWabaFeedback({ success: false, message: err.message });
-    } finally {
-      setWabaSaving(false);
-    }
-  };
-
-  // Connect WABA via CRM TX APP (Configuração Simplificada 1-Clique)
-  const handleSimplifiedConnect = async () => {
-    setWabaSaving(true);
-    setWabaFeedback(null);
-    try {
-      const phoneIdToUse = phoneNumberId.trim() || serverWabaConfig?.defaultPhoneNumberId || '2498930403536552';
-      const wabaIdToUse = wabaId.trim() || serverWabaConfig?.defaultWabaId || '1749193841879179';
-
-      const res = await authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/waba/configure`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phoneNumberId: phoneIdToUse,
-          wabaId: wabaIdToUse,
-          accessToken: 'use_server_default',
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setWabaFeedback({
-          success: true,
-          message: `WhatsApp Oficial conectado com sucesso via CRM TX APP! Número: ${data.verifiedPhone} (${data.verifiedName})`,
-        });
-        fetchWabaChannelInfo();
-        fetchChannelStatus();
-        setTimeout(() => {
-          setWabaModalOpen(false);
-          setWabaFeedback(null);
-        }, 2000);
-      } else {
-        setWabaFeedback({
-          success: false,
-          message: data.error || 'Erro ao conectar via CRM TX APP.',
-        });
       }
     } catch (err: any) {
       setWabaFeedback({ success: false, message: err.message });
@@ -736,13 +686,13 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
                   onClick={() => {
-                    setWabaTab('simplified');
+                    setWabaTab('login_auth');
                     setWabaModalOpen(true);
                   }}
                   className="px-4 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                 >
                   <Zap className="w-3.5 h-3.5 text-emerald-200 fill-current" />
-                  <span>Conexão Simplificada (CRM TX APP)</span>
+                  <span>Conectar via Meta</span>
                 </button>
                 <button
                   onClick={() => {
@@ -1060,7 +1010,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                 }`}
               >
                 <Zap className="w-3.5 h-3.5 text-emerald-600" />
-                <span>🚀 Simplificada (CRM TX APP)</span>
+                <span>Servidor</span>
               </button>
               <button
                 type="button"
@@ -1098,15 +1048,14 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-emerald-950 flex items-center gap-1.5 text-xs">
                       <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                      CRM TX APP Homologado no Servidor
+                      Estado do runtime Meta
                     </span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-600 text-white shadow-3xs">
-                      App ID: {serverWabaConfig?.appId || metaAppId || '2294262161340902'}
+                      {serverWabaConfig?.serverTokenAvailable ? 'Token disponível' : 'Token não comprovado'}
                     </span>
                   </div>
                   <p className="text-[11px] text-emerald-900 leading-relaxed">
-                    O sistema já possui integração nativa autenticada via Token Permanente do Sistema com a Meta Cloud API v20.0.
-                    Não é necessário gerar tokens ou lidar com configurações manuais.
+                    Um token no runtime não identifica um número para este workspace. Use Popup Facebook ou o modo Manual para vincular um WABA e valide a conexão antes de operar.
                   </p>
                 </div>
 
@@ -1119,26 +1068,26 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                     <div className="p-2.5 bg-white rounded-lg border border-slate-200 space-y-0.5">
                       <span className="text-[10px] uppercase font-bold text-slate-400 block">WhatsApp Oficial</span>
                       <span className="font-mono font-bold text-emerald-700 block">
-                        {wabaChannelInfo?.phoneNumber || serverWabaConfig?.defaultDisplayPhone || '+55 49 8837-0054'}
+                        {wabaChannelInfo?.phoneNumber || 'Não conectado'}
                       </span>
                       <span className="text-[10px] text-slate-500 block truncate">
-                        {wabaChannelInfo?.verifiedName || serverWabaConfig?.defaultVerifiedName || 'Haven Escovaria'}
+                        {wabaChannelInfo?.verifiedName || 'Sem empresa confirmada'}
                       </span>
                     </div>
                     <div className="p-2.5 bg-white rounded-lg border border-slate-200 space-y-0.5">
                       <span className="text-[10px] uppercase font-bold text-slate-400 block">Qualidade Meta</span>
                       <span className="font-mono font-black text-emerald-600 block">
-                        {wabaChannelInfo?.qualityRating || 'GREEN (Alta)'}
+                        {wabaChannelInfo?.qualityRating || 'Não informada'}
                       </span>
                       <span className="text-[10px] text-slate-500 block">
-                        Cloud API Standard
+                        Exige consulta autenticada à Meta
                       </span>
                     </div>
                     <div className="p-2.5 bg-white rounded-lg border border-slate-200 space-y-1">
                       <span className="text-[10px] uppercase font-bold text-slate-400 block">WABA ID</span>
                       <input
                         type="text"
-                        value={wabaId || serverWabaConfig?.defaultWabaId || '1749193841879179'}
+                        value={wabaId}
                         onChange={(e) => setWabaId(e.target.value.trim())}
                         className="w-full font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded px-2 py-1 outline-none focus:border-emerald-500"
                       />
@@ -1147,7 +1096,7 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                       <span className="text-[10px] uppercase font-bold text-slate-400 block">Phone Number ID</span>
                       <input
                         type="text"
-                        value={phoneNumberId || serverWabaConfig?.defaultPhoneNumberId || '2498930403536552'}
+                        value={phoneNumberId}
                         onChange={(e) => setPhoneNumberId(e.target.value.trim())}
                         className="w-full font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded px-2 py-1 outline-none focus:border-emerald-500"
                       />
@@ -1155,24 +1104,14 @@ export const CanaisView: React.FC<CanaisViewProps> = ({ workspace, role = 'opera
                   </div>
                 </div>
 
-                {/* Primary 1-Click Connect Button */}
+                {/* A server token alone must not select or connect a customer number. */}
                 <button
                   type="button"
-                  disabled={wabaSaving}
-                  onClick={handleSimplifiedConnect}
-                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition cursor-pointer text-xs"
+                  onClick={() => setWabaTab('login_auth')}
+                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition cursor-pointer text-xs"
                 >
-                  {wabaSaving ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Validando e Conectando com a Meta...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4 text-emerald-200 fill-current" />
-                      <span>⚡ Ativar WhatsApp Oficial com 1-Clique</span>
-                    </>
-                  )}
+                  <Zap className="w-4 h-4 text-emerald-200 fill-current" />
+                  <span>Continuar com a Meta</span>
                 </button>
 
                 {/* Webhook Endpoints Info */}
