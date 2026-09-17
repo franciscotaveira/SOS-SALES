@@ -604,13 +604,14 @@ export async function whatsappChannelRoutes(
     const { workspaceId } = request.params;
     let { phoneNumberId, wabaId, accessToken } = request.body || {};
 
-    if (!accessToken || accessToken === 'use_server_default') {
-      accessToken = process.env.META_SYSTEM_USER_TOKEN || '';
+    if (typeof accessToken !== 'string' || !accessToken.trim() || accessToken.trim() === 'use_server_default') {
+      return reply.status(400).send({ error: 'Informe uma credencial Meta autorizada para este cliente.', code: 'META_TENANT_CREDENTIAL_REQUIRED' });
     }
+    accessToken = accessToken.trim();
 
     if (!phoneNumberId || !wabaId || !accessToken) {
       return reply.status(400).send({
-        error: 'Campos obrigatórios: phoneNumberId, wabaId e accessToken (ou configure META_SYSTEM_USER_TOKEN no servidor)',
+        error: 'Campos obrigatórios: phoneNumberId, wabaId e accessToken do cliente',
       });
     }
 
@@ -1029,7 +1030,7 @@ export async function whatsappChannelRoutes(
         SELECT cc.id, cc.public_config, cs.secret_payload
         FROM public.channel_connections cc
         LEFT JOIN public.channel_connection_secrets cs
-          ON cs.channel_connection_id = cc.id AND cs.secret_kind = 'meta_bearer_token'
+          ON cs.channel_connection_id = cc.id AND cs.workspace_id = cc.workspace_id AND cs.secret_kind = 'meta_bearer_token'
         WHERE cc.workspace_id = $1 AND cc.provider = 'meta_cloud' AND cc.status = 'CONNECTED'
         ORDER BY cc.created_at ASC
         LIMIT 2
@@ -1040,7 +1041,7 @@ export async function whatsappChannelRoutes(
       return {
         phoneNumberId: publicConfig?.phoneNumberId as string,
         wabaId: publicConfig?.wabaId as string,
-        accessToken: ((secretPayload?.accessToken || process.env.META_SYSTEM_USER_TOKEN || '') as string),
+        accessToken: typeof secretPayload?.accessToken === 'string' ? secretPayload.accessToken.trim() : '',
       };
     } finally {
       client.release();
@@ -1053,12 +1054,10 @@ export async function whatsappChannelRoutes(
     Body: { accessToken?: string };
   }>, reply: FastifyReply) => {
     let { accessToken } = request.body || {};
-    if (!accessToken || accessToken === 'use_server_default') {
-      accessToken = process.env.META_SYSTEM_USER_TOKEN || '';
+    if (typeof accessToken !== 'string' || !accessToken.trim() || accessToken.trim() === 'use_server_default') {
+      return reply.status(400).send({ error: 'Informe uma credencial Meta autorizada para este cliente.', code: 'META_TENANT_CREDENTIAL_REQUIRED' });
     }
-    if (!accessToken) {
-      return reply.status(400).send({ error: 'accessToken obrigatório ou configure META_SYSTEM_USER_TOKEN no servidor.' });
-    }
+    accessToken = accessToken.trim();
     const token = accessToken.trim();
     const accounts: Array<{ id: string; name: string; phoneNumbers?: Array<{ id: string; display_phone_number: string; verified_name: string }> }> = [];
     const seenWabaIds = new Set<string>();

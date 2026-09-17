@@ -29,28 +29,54 @@ const statusStyle: Record<Status, { label: string; className: string; Icon: type
   UNKNOWN: { label: 'Sem prova', className: 'border-slate-200 bg-slate-50 text-slate-700', Icon: CircleHelp },
 };
 
+export async function fetchMetaReadiness(workspaceId: string, signal: AbortSignal): Promise<ReadinessPayload | null> {
+  try {
+    const response = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/meta-readiness`, { signal });
+    const body = await response.json().catch(() => null);
+    if (signal.aborted) return null;
+    if (!response.ok || !body?.data) throw new Error(body?.error || 'Não foi possível consultar a prontidão Meta.');
+    return body.data as ReadinessPayload;
+  } catch (cause) {
+    if (signal.aborted) return null;
+    throw cause;
+  }
+}
+
 export function MetaReadinessView({ workspaceId }: { workspaceId: string }) {
+  // A workspace switch must also reset already-rendered state immediately.
+  return <WorkspaceMetaReadiness key={workspaceId} workspaceId={workspaceId} />;
+}
+
+function WorkspaceMetaReadiness({ workspaceId }: { workspaceId: string }) {
   const [payload, setPayload] = React.useState<ReadinessPayload | null>(null);
   const [state, setState] = React.useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = React.useState<string | null>(null);
 
+  const requestRef = React.useRef<AbortController | null>(null);
+
   const load = React.useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
     setState('loading');
     setError(null);
     try {
-      const response = await authenticatedFetch(`/api/v1/workspaces/${workspaceId}/meta-readiness`);
-      const body = await response.json().catch(() => null);
-      if (!response.ok || !body?.data) throw new Error(body?.error || 'Não foi possível consultar a prontidão Meta.');
-      setPayload(body.data as ReadinessPayload);
+      const result = await fetchMetaReadiness(workspaceId, controller.signal);
+      if (controller.signal.aborted || !result) return;
+      setPayload(result);
       setState('ready');
     } catch (cause) {
+      if (controller.signal.aborted) return;
       setPayload(null);
       setState('error');
       setError(cause instanceof Error ? cause.message : 'Não foi possível consultar a prontidão Meta.');
     }
   }, [workspaceId]);
 
-  React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => {
+    void load();
+    return () => requestRef.current?.abort();
+  }, [load]);
 
   if (state === 'loading') {
     return <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">Verificando a configuração Meta deste workspace…</div>;

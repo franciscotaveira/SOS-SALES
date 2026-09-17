@@ -1143,3 +1143,11 @@ O incidente de horários fictícios no workspace SOS revelou fallback local e ex
 - **Problema:** O staging instalava dependências com a imagem do container API ativo. Como o candidato troca Node 20 por Node 22, módulos opcionais nativos poderiam ser preparados para a ABI antiga e falhar depois da troca.
 - **Decisão:** Ler a imagem do serviço `sos-sales-api` diretamente do compose imutável do candidato em stage e promotion. O VPS não é usado como fonte da imagem do novo artefato.
 - **Validação:** `bash -n` dos três scripts, teste de contrato do runtime `13/13`, extração local `node:22-alpine` e suíte API `94/644`. Nenhuma release candidata foi criada no VPS.
+
+
+## 2026-09-17 — Correções da revisão de prontidão Meta e credenciais
+
+- **Segurança:** conexão manual e descoberta de contas exigem token explícito do cliente. Consultas de canais usam somente o segredo persistido no mesmo workspace; a ausência dele não permite fallback para `META_SYSTEM_USER_TOKEN`.
+- **Diagnóstico:** somente canais ativos contam para duplicidade. CAPI é avaliada por canal (Meta Cloud ou WAHA), com o mesmo resolvedor do worker, exigindo habilitação, Pixel/Dataset preenchido e token não vazio. Configuração parcial é apresentada como atenção com contagem por canal.
+- **Interface:** o diagnóstico tem estado próprio por workspace. Consultas substituídas ou desmontadas são canceladas e respostas tardias, inclusive erros, são descartadas.
+- **Validação:** regressões de fallback global, canal desconectado, CAPI WAHA, identificador vazio, CAPI desligada, ausência de token e respostas fora de ordem. Publicação segue Docker Lab, builds limpos, CI e promoção com rollback.

@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { resolveCapiConfig } from '../../../infrastructure/channels/meta/capi-config.js';
 import { dbPool } from '../../../infrastructure/database/pool.js';
 import { OperatorAuthenticator } from '../../../application/ports/operator-authenticator.js';
 import { WorkspaceDirectory } from '../../../application/ports/workspace-directory.js';
@@ -99,28 +100,32 @@ export async function metaReadinessRoutes(
       const [channelsResult, agentResult] = await Promise.all([
         query<{
           id: string;
+          provider: string;
           status: string | null;
           public_config: unknown;
           bearer_token_available: boolean;
           capi_token_available: boolean;
         }>(
-          `SELECT cc.id, cc.status, cc.public_config,
+          `SELECT cc.id, cc.provider, cc.status, cc.public_config,
                   EXISTS (
                     SELECT 1 FROM public.channel_connection_secrets cs
                     WHERE cs.channel_connection_id = cc.id
                       AND cs.workspace_id = cc.workspace_id
                       AND cs.secret_kind = 'meta_bearer_token'
+                      AND NULLIF(BTRIM(cs.secret_payload->>'accessToken'), '') IS NOT NULL
                   ) AS bearer_token_available,
                   EXISTS (
                     SELECT 1 FROM public.channel_connection_secrets cs
                     WHERE cs.channel_connection_id = cc.id
                       AND cs.workspace_id = cc.workspace_id
                       AND cs.secret_kind = 'meta_capi_token'
+                      AND NULLIF(BTRIM(cs.secret_payload->>'accessToken'), '') IS NOT NULL
                   ) AS capi_token_available
              FROM public.channel_connections cc
-            WHERE cc.workspace_id = $1 AND cc.provider = 'meta_cloud'
-            ORDER BY cc.created_at ASC
-            LIMIT 2`,
+            WHERE cc.workspace_id = $1 AND cc.provider IN ('meta_cloud', 'waha')
+              AND cc.status = 'CONNECTED'
+              AND cc.phone_number IS DISTINCT FROM 'Meta CAPI Tracking'
+            ORDER BY cc.created_at ASC, cc.id ASC`,
           [workspaceId],
         ),
         query<{
@@ -139,15 +144,19 @@ export async function metaReadinessRoutes(
         ),
       ]);
 
-      const channels = channelsResult.rows;
+      const activeChannels = channelsResult.rows.filter(channel => channel.status === 'CONNECTED');
+      const channels = activeChannels.filter(channel => channel.provider === 'meta_cloud');
       const onlyChannel = channels.length === 1 ? channels[0] : null;
       const config = asObject(onlyChannel?.public_config);
       const phoneNumberId = typeof config.phoneNumberId === 'string' ? config.phoneNumberId : config.phone_number_id;
       const wabaId = typeof config.wabaId === 'string' ? config.wabaId : config.waba_id;
-      const capiConfigured = Boolean(
-        onlyChannel?.capi_token_available
-        && (typeof config.metaPixelId === 'string' || typeof config.meta_capi_pixel_id === 'string' || typeof config.metaDatasetId === 'string' || typeof config.meta_capi_dataset_id === 'string'),
-      );
+      // CAPI dispatch reads configuration from each journey's own channel,
+      // including WAHA. Do not infer readiness from a different channel.
+      const capiReadyChannels = activeChannels.filter(channel => {
+        const resolved = resolveCapiConfig(asObject(channel.public_config));
+        return resolved.enabled && Boolean(resolved.datasetId) && channel.capi_token_available;
+      });
+      const capiConfigured = activeChannels.length > 0 && capiReadyChannels.length === activeChannels.length;
       const agent = agentResult.rows[0];
 
       const controls: ReadinessControl[] = [
@@ -187,9 +196,9 @@ export async function metaReadinessRoutes(
         control(
           'CAPI_CONFIGURATION',
           'Configuração CAPI disponível',
-          capiConfigured ? 'HEALTHY' : onlyChannel ? 'WARNING' : 'UNKNOWN',
+          capiConfigured ? 'HEALTHY' : activeChannels.length ? 'WARNING' : 'UNKNOWN',
           'OPERATIONAL',
-          capiConfigured ? 'Há identificador de Pixel/Dataset e credencial CAPI protegida.' : onlyChannel ? 'Não há evidência local suficiente de Pixel/Dataset e token CAPI no mesmo canal.' : 'Não há canal Meta Cloud para avaliar CAPI.',
+          activeChannels.length ? `${capiReadyChannels.length} de ${activeChannels.length} canais ativos possuem CAPI habilitada, Pixel/Dataset preenchido e credencial protegida no próprio canal.` : 'Não há canal WhatsApp ativo para avaliar CAPI.',
           'Configure Pixel ou Dataset e teste um evento em ambiente controlado.',
           observedAt,
         ),
