@@ -3,9 +3,5 @@ packages:
   - "packages/*"
 
 allowBuilds:
-  esbuild: set this to true or false
-  msgpackr-extract: set this to true or false
-
-onlyBuiltDependencies:
-  - esbuild
-  - msgpackr-extract
+  esbuild: true
+  msgpackr-extract: true

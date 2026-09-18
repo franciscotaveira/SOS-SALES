@@ -44,6 +44,9 @@ importers:
       fastify:
         specifier: ^5.2.1
         version: 5.12.5
+      ioredis:
+        specifier: ^5.6.0
+        version: 5.11.1
       zod:
         specifier: ^3.24.2
         version: 3.25.76
@@ -140,6 +143,22 @@ importers:
       '@sos-sales/domain':
         specifier: workspace:*
         version: link:../domain
+    devDependencies:
+      tsup:
+        specifier: ^8.4.0
+        version: 8.5.1(postcss@8.5.28)(tsx@4.23.13)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+
+  packages/auth:
+    dependencies:
+      '@sos-sales/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@sos-sales/observability':
+        specifier: workspace:*
+        version: link:../observability
     devDependencies:
       tsup:
         specifier: ^8.4.0

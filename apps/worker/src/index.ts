@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "node:fs";
 import { Worker, type Job } from "bullmq";
 import { Redis } from "ioredis";
 import { logger } from "@sos-sales/observability";
@@ -38,11 +39,36 @@ export const capiWorker = new Worker(
   { connection, concurrency: 3 }
 );
 
+const HEARTBEAT_FILE = "/tmp/worker-healthy";
+
+// Periodic heartbeat touch when Redis connection is alive
+const heartbeatInterval = setInterval(() => {
+  if (connection.status === "ready") {
+    try {
+      fs.writeFileSync(HEARTBEAT_FILE, new Date().toISOString(), "utf8");
+    } catch {
+      // ignore
+    }
+  } else {
+    try {
+      if (fs.existsSync(HEARTBEAT_FILE)) fs.unlinkSync(HEARTBEAT_FILE);
+    } catch {
+      // ignore
+    }
+  }
+}, 2000);
+
 logger.info("🚀 SOS Sales V3 BullMQ Worker engine running");
 
 // Graceful termination
 async function shutdown() {
   logger.info("Gracefully shutting down workers...");
+  clearInterval(heartbeatInterval);
+  try {
+    if (fs.existsSync(HEARTBEAT_FILE)) fs.unlinkSync(HEARTBEAT_FILE);
+  } catch {
+    // ignore
+  }
   await inboundWorker.close();
   await capiWorker.close();
   await connection.quit();

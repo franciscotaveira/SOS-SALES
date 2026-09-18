@@ -5,6 +5,36 @@ import { logger } from "@sos-sales/observability";
 import { checkDatabaseHealth } from "@sos-sales/database";
 import crypto from "node:crypto";
 
+import { Redis } from "ioredis";
+
+let redisClient: Redis | null = null;
+export function getRedisClient(): Redis {
+  if (!redisClient) {
+    const url = process.env.REDIS_URL || "redis://localhost:6389";
+    redisClient = new Redis(url, {
+      maxRetriesPerRequest: 1,
+      connectTimeout: 3000,
+      lazyConnect: true,
+    });
+  }
+  return redisClient;
+}
+
+export async function checkRedisHealth(): Promise<{ healthy: boolean; latencyMs: number }> {
+  const start = Date.now();
+  try {
+    const client = getRedisClient();
+    if (client.status === "wait") {
+      await client.connect();
+    }
+    const pong = await client.ping();
+    return { healthy: pong === "PONG", latencyMs: Date.now() - start };
+  } catch (error) {
+    logger.error({ error }, "Redis readiness check failed");
+    return { healthy: false, latencyMs: Date.now() - start };
+  }
+}
+
 export async function buildApp() {
   const app = Fastify({
     loggerInstance: logger as any,
@@ -43,11 +73,14 @@ export async function buildApp() {
     };
   });
 
-  // Readiness Check (Dependency Probes)
+  // Readiness Check (Dependency Probes for Postgres + Redis)
   app.get("/ready", async (_request, reply) => {
-    const dbHealth = await checkDatabaseHealth();
+    const [dbHealth, redisHealth] = await Promise.all([
+      checkDatabaseHealth(),
+      checkRedisHealth(),
+    ]);
 
-    const isReady = dbHealth.healthy;
+    const isReady = dbHealth.healthy && redisHealth.healthy;
     const responsePayload = {
       status: isReady ? "ready" : "degraded",
       service: "sos-sales-api",
@@ -55,6 +88,10 @@ export async function buildApp() {
         database: {
           healthy: dbHealth.healthy,
           latencyMs: dbHealth.latencyMs,
+        },
+        redis: {
+          healthy: redisHealth.healthy,
+          latencyMs: redisHealth.latencyMs,
         },
       },
       timestamp: new Date().toISOString(),
