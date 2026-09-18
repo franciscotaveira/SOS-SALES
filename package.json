@@ -1,0 +1,27 @@
+{
+  "name": "sos-sales-v3",
+  "version": "3.0.0-alpha.1",
+  "private": true,
+  "description": "SOS Sales V3 — Commercial Operating System (Greenfield Sovereign Architecture)",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "test": "vitest run",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:build": "docker compose build",
+    "docker:logs": "docker compose logs -f",
+    "clean": "pnpm -r exec rm -rf dist .turbo node_modules && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2",
+    "vitest": "^5.0.1"
+  }
+}

@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sos-v3-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sos_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sos_secret_lab_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-sos_sales_v3}
+    ports:
+      - "${PORT_POSTGRES:-55440}:5432"
+    volumes:
+      - sos_v3_pgdata:/var/lib/postgresql/data
+      - ./packages/database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sos_user} -d ${POSTGRES_DB:-sos_sales_v3}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sos-v3-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: sos-v3-redis
+    restart: unless-stopped
+    ports:
+      - "${PORT_REDIS:-6389}:6379"
+    volumes:
+      - sos_v3_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sos-v3-network
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: sos-v3-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT_API: 4400
+      API_HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sos_user}:${POSTGRES_PASSWORD:-sos_secret_lab_2026}@postgres:5432/${POSTGRES_DB:-sos_sales_v3}?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: info
+      OTEL_SERVICE_NAME: sos-sales-api
+    ports:
+      - "${PORT_API:-4400}:4400"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sos-v3-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: sos-v3-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sos_user}:${POSTGRES_PASSWORD:-sos_secret_lab_2026}@postgres:5432/${POSTGRES_DB:-sos_sales_v3}?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: info
+      OTEL_SERVICE_NAME: sos-sales-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sos-v3-network
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: sos-v3-web
+    restart: unless-stopped
+    ports:
+      - "${PORT_WEB:-3400}:80"
+    depends_on:
+      - api
+    networks:
+      - sos-v3-network
+
+networks:
+  sos-v3-network:
+    name: sos_v3_network
+    driver: bridge
+
+volumes:
+  sos_v3_pgdata:
+    name: sos_v3_pgdata
+  sos_v3_redisdata:
+    name: sos_v3_redisdata

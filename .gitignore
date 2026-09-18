@@ -1,0 +1,42 @@
+# Node & Package Managers
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Builds & Outputs
+dist/
+build/
+.turbo/
+out/
+*.tsbuildinfo
+
+# Environment & Secrets (NEVER COMMIT PRODUCTION OR REAL KEYS)
+.env
+.env.local
+.env.production
+!.env.example
+*.pem
+*.key
+
+# IDE & OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Docker Data Volumes
+sos_v3_pgdata/
+sos_v3_redisdata/
+sos_v3_miniodata/
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
