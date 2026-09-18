@@ -1,3 +1,5 @@
+import {queueCapiLead} from './queue-capi-lead.js';
+import {explicitCtwaClick} from '../channels/meta/explicit-ctwa-click.js';
 /**
  * TX COMMERCIAL CORE — POSTGRES OUTBOX PROCESSING GATEWAY
  * Development / test adapter for OutboxProcessingGateway.
@@ -248,7 +250,7 @@ export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway 
       await client.query('SET LOCAL ROLE service_role');
       await client.query(`SELECT set_config('request.jwt.claim.role', 'service_role', true)`);
 
-      await client.query(
+      const normalized = await client.query(
         `SELECT * FROM public.normalize_waha_inbound_message(
           $1, $2, $3, $4, $5, $6, $7, $8
         )`,
@@ -264,6 +266,17 @@ export class PostgresOutboxProcessingGateway implements OutboxProcessingGateway 
         ]
       );
 
+      const message = normalized.rows[0];
+      if (message?.journey_id && message.is_duplicate_message === false) {
+        const envelope = await client.query(`SELECT workspace_id, channel_connection_id, raw_payload
+          FROM public.inbound_channel_events WHERE id=$1 AND provider='waha'`, [params.inboundEventId]);
+        const row = envelope.rows[0];
+        const clickId = explicitCtwaClick(row?.raw_payload);
+        if (row && clickId) await queueCapiLead(client, {
+          workspaceId:row.workspace_id, channelId:row.channel_connection_id,
+          journeyId:message.journey_id, ctwaClid:clickId, occurredAt:params.sentAt,
+        });
+      }
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});

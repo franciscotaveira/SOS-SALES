@@ -42,6 +42,11 @@ function parseDotEnv(text) {
 }
 
 const tables = {
+  capi_lead_deliveries: [
+    'id', 'workspace_id', 'channel_connection_id', 'journey_id', 'click_key',
+    'ctwa_clid', 'dataset_id', 'waba_id', 'occurred_at', 'status',
+    'error_code', 'fbtrace_id', 'created_at', 'updated_at',
+  ],
   contacts: ['id','workspace_id','outbound_opted_out_at'],
   agent_run_audit: ['workspace_id','journey_id','conversation_message_id','result','model','latency_ms','created_at'],
   agent_turn_usage: ['workspace_id','contact_id','conversation_message_id','created_at'],
@@ -119,6 +124,7 @@ const requiredColumnTypes = {
 // Identity arguments are checked as well as function names so an old overload
 // cannot make a stale API call appear healthy.
 const functions = {
+  queue_capi_lead: 'uuid, uuid, uuid, text, text, timestamp with time zone',
   claim_agent_turn: 'uuid, uuid, uuid',
   enforce_contact_outbound_consent: '',
   record_inbound_contact_refusal: '',

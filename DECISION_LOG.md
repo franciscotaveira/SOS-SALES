@@ -1151,3 +1151,23 @@ O incidente de horários fictícios no workspace SOS revelou fallback local e ex
 - **Diagnóstico:** somente canais ativos contam para duplicidade. CAPI é avaliada por canal (Meta Cloud ou WAHA), com o mesmo resolvedor do worker, exigindo habilitação, Pixel/Dataset preenchido e token não vazio. Configuração parcial é apresentada como atenção com contagem por canal.
 - **Interface:** o diagnóstico tem estado próprio por workspace. Consultas substituídas ou desmontadas são canceladas e respostas tardias, inclusive erros, são descartadas.
 - **Validação:** regressões de fallback global, canal desconectado, CAPI WAHA, identificador vazio, CAPI desligada, ausência de token e respostas fora de ordem. Publicação segue Docker Lab, builds limpos, CI e promoção com rollback.
+
+## 2026-09-17 — Descoberta de dataset do WhatsApp
+
+- Consultar a aresta WABA/dataset das contas Meta cadastradas no workspace autenticado, incluindo canais desconectados para permitir configurar o rastreamento antes da reconexão.
+- IDs de permissões não são datasets. A descoberta exige retorno de uma aresta de recurso e deduplica os destinos.
+- Teste de rota validou descoberta do dataset de mensagens, filtro por workspace e deduplicação. Alteração local; homologação integrada e publicação pendentes.
+
+- Interface: descobrir não salva nem ativa automaticamente; vincular um destino desliga o envio até validação. O controle de ativação inicia desligado e carrega o valor persistido da API.
+- Teste CAPI na interface aceita credencial protegida já cadastrada; a API valida que o destino é o salvo antes de usar o segredo. TypeScript passou; build da interface no Lab executado.
+
+## 2026-09-17 — Persistência de Lead CAPI
+
+- Lead terá entrega independente de commercial_outcomes, com destino e WABA registrados no momento do enfileiramento.
+- Chave única por workspace, canal e hash do clique; FKs compostas impedem referências entre workspaces. Conversão e outbox são inseridos no mesmo comando SQL.
+- Migração aplicada apenas ao Supabase local; TypeScript validado. Faltam testes integrados de atomicidade e isolamento, integração com ingresso e worker, homologação e publicação.
+- Validação integrada no PostgreSQL local: enfileiramento idempotente, rejeição de workspace divergente, leitura de credencial do canal, persistência DISPATCHED/trace e segunda execução sem novo envio. Resposta da Meta simulada; fixture revertido integralmente. Ainda não comprova recebimento de webhook ou entrega externa.
+- Webhook Meta: enfileiramento de Lead integrado à transação de inserção de mensagem, somente para mensagem nova com referral.ctwa_clid explícito. A função de fila exige CAPI habilitada e destino business_messaging. Sem backfill; fluxo WAHA e teste integrado do webhook ainda pendentes.
+- WAHA: normalização enfileira conversão na mesma transação somente para mensagem nova e ctwa_clid explícito no payload. Sinais codificados e texto do contato não viram click ID. Testes do extrator passaram; falta validar normalização completa no banco e o payload real da Haven.
+- Gate de publicação passa a exigir capi_lead_deliveries e queue_capi_lead com assinatura exata. Sintaxe do verificador validada; migrações de produção ainda não executadas.
+- Seleção de destino na interface limpa o identificador alternativo anterior (pixel/dataset), evitando a precedência silenciosa do dataset antigo. Estado visual só muda após confirmação da API. TypeScript validado; rebuild visual pendente.

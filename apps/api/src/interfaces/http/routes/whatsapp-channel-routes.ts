@@ -2274,32 +2274,37 @@ export async function whatsappChannelRoutes(
       }> = [];
       const seenIds = new Set<string>();
 
-      // 1. Inspect token via debug_token
-      try {
-        const debugRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`);
-        if (debugRes.ok) {
-          const debugData = (await debugRes.json()) as any;
-          const granularScopes = debugData?.data?.granular_scopes;
-          const appName = debugData?.data?.application || 'Meta Application';
-          if (Array.isArray(granularScopes)) {
-            for (const scopeItem of granularScopes) {
-              if (Array.isArray(scopeItem.target_ids)) {
-                for (const targetId of scopeItem.target_ids) {
-                  if (!seenIds.has(targetId)) {
-                    seenIds.add(targetId);
-                    foundDatasets.push({
-                      id: targetId,
-                      name: `Conjunto de Dados / Pixel (${targetId})`,
-                      type: 'dataset',
-                      owner: appName || 'Meta Business',
-                    });
-                  }
-                }
-              }
-            }
+      // Permission target IDs can identify WABAs, pages or businesses.
+      // Only resource edges below establish that an asset is a pixel/dataset.
+
+      // Messaging datasets may not appear in the advertising pixel edges.
+      // Resolve only WABAs belonging to this authenticated workspace.
+      const channels = await databasePool.query(
+        `SELECT public_config FROM public.channel_connections
+         WHERE workspace_id=$1 AND provider='meta_cloud'`,
+        [request.params.workspaceId],
+      );
+      const wabaIds = new Set<string>();
+      for (const channel of channels.rows) {
+        const wabaId = channel.public_config?.wabaId;
+        if (typeof wabaId === 'string' && /^\d+$/.test(wabaId)) wabaIds.add(wabaId);
+      }
+      for (const wabaId of wabaIds) {
+        try {
+          const response = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${wabaId}/dataset`, {
+            headers: {Authorization: `Bearer ${token}`},
+          });
+          if (!response.ok) continue;
+          const result = await response.json() as {data?: Array<{id?: string; name?: string}>};
+          for (const dataset of Array.isArray(result.data) ? result.data : []) {
+            if (!dataset.id || seenIds.has(dataset.id)) continue;
+            seenIds.add(dataset.id);
+            foundDatasets.push({id: dataset.id, name: dataset.name || `Dataset WhatsApp ${dataset.id}`, type: 'dataset'});
           }
+        } catch {
+          // Other resource edges can still be available to this token.
         }
-      } catch {}
+      }
 
       // 2. Fetch Ad Accounts and Pixels / Datasets
       try {

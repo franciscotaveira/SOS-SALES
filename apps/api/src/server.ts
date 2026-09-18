@@ -383,7 +383,7 @@ async function startComposedServer(
     : undefined;
 
   const capiWorker = process.env.META_CAPI_WORKER_ENABLED === 'true' && runtime.databasePool
-    ? new CapiDispatchWorker({outboxGateway:runtime.outboxGateway,capiGateway:new CapiClient(),pool:runtime.databasePool}) : undefined;
+    ? new CapiDispatchWorker({outboxGateway:runtime.outboxGateway,capiGateway:new CapiClient(),leadGateway:new CapiClient(),pool:runtime.databasePool}) : undefined;
 
   const app = buildApp({
     secretProvider: runtime.secretProvider,

@@ -1,3 +1,5 @@
+import {dispatchCapiLead} from './dispatch-capi-lead.js';
+import type {CapiLeadDispatchGateway} from '../../application/ports/capi-dispatch-gateway.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import {
@@ -11,6 +13,7 @@ import { dbPool } from '../database/pool.js';
 export interface CapiDispatchWorkerOptions {
   outboxGateway: OutboxProcessingGateway;
   capiGateway: CapiDispatchGateway;
+  leadGateway?: CapiLeadDispatchGateway;
   pool?: Pick<Pool, 'connect'>;
   pollingIntervalMs?: number;
   batchSize?: number;
@@ -22,6 +25,7 @@ export interface CapiDispatchWorkerOptions {
 export class CapiDispatchWorker {
   private readonly outboxGateway: OutboxProcessingGateway;
   private readonly capiGateway: CapiDispatchGateway;
+  private readonly leadGateway?: CapiLeadDispatchGateway;
   private readonly pool: Pick<Pool, 'connect'>;
   private readonly pollingIntervalMs: number;
   private readonly batchSize: number;
@@ -37,6 +41,7 @@ export class CapiDispatchWorker {
   constructor(options: CapiDispatchWorkerOptions) {
     this.outboxGateway = options.outboxGateway;
     this.capiGateway = options.capiGateway;
+    this.leadGateway = options.leadGateway;
     this.pool = options.pool || dbPool;
     this.pollingIntervalMs = options.pollingIntervalMs ?? 1000;
     this.batchSize = options.batchSize ?? 1;
@@ -74,7 +79,7 @@ export class CapiDispatchWorker {
     try {
       const events = await this.outboxGateway.claimBatch({
         workerId: this.workerId,
-        eventNames: ['commercial.outcome_recorded', 'commercial_outcome.capi_queued'],
+        eventNames: ['commercial.outcome_recorded', 'commercial_outcome.capi_queued', ...(this.leadGateway ? ['commercial.lead_capi_queued'] : [])],
         batchSize: this.batchSize,
         leaseSeconds: this.leaseSeconds,
       });
@@ -88,6 +93,16 @@ export class CapiDispatchWorker {
       let processed = 0;
 
       for (const event of events) {
+        if (event.eventName === 'commercial.lead_capi_queued' && this.leadGateway) {
+          const delivery = await dispatchCapiLead(this.pool, this.leadGateway, event.workspaceId, event.aggregateId);
+          const claim = {eventId:event.id,claimToken:event.claimToken,workerId:this.workerId};
+          if (delivery.success) await this.outboxGateway.completeEvent(claim);
+          else if (delivery.kind === 'FATAL' && this.outboxGateway.deadLetterEvent)
+            await this.outboxGateway.deadLetterEvent({...claim,errorMessage:delivery.errorCode});
+          else await this.outboxGateway.failEvent({...claim,errorMessage:delivery.errorCode,retryDelaySeconds:this.retryDelaySeconds});
+          processed++;
+          continue;
+        }
         const payload = event.payload || {};
         const outcomeId = (payload.outcomeId as string) || event.aggregateId;
         const result = (payload.result as string) || '';

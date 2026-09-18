@@ -44,7 +44,9 @@ crm.iaparavendas.tech, sos.mct.com.br {
         respond @blocked_destructive "Forbidden: Destructive operation disabled during containment" 403
 
         # 2. Bloqueia endpoints com PII e configurações sensíveis para TODOS os métodos HTTP (inclui GET, HEAD, OPTIONS, POST, etc.)
-        @blocked_sensitive_pii path_regexp ^/api/v1/workspaces/[^/]+/(contacts|tracking|reports|channels/waba/channel-info|channels/whatsapp/status)
+        # Consultas de status WAHA/WABA passam pelas guardas JWT e membership
+        # da API. A contenção de dados e mutações permanece independente.
+        @blocked_sensitive_pii path_regexp ^/api/v1/workspaces/[^/]+/(contacts|tracking|reports)
         respond @blocked_sensitive_pii "Forbidden: Workspace endpoint disabled during containment" 403
 
         # 3. Bloqueia plugins mutáveis encontrados no bundle implantado sem JWT,

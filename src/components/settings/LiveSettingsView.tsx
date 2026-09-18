@@ -78,6 +78,8 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
   const [isQrLoading, setIsQrLoading] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [showWahaFallback, setShowWahaFallback] = useState(false);
+  const [wahaStatusRead, setWahaStatusRead] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [wahaStatusRetry, setWahaStatusRetry] = useState(0);
   const [showWabaTemplates, setShowWabaTemplates] = useState(false);
   const [wabaChannel, setWabaChannel] = useState<{
     state: 'loading' | 'connected' | 'unconfigured' | 'error';
@@ -235,15 +237,25 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
 
   useEffect(() => {
     if (!showWahaFallback) return;
+    let active = true;
+    setWahaStatusRead('loading');
+    setQrStatus('INITIAL');
     authenticatedFetch(`/api/v1/workspaces/${workspace.id}/channels/whatsapp/status`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.status) {
-          setQrStatus(data.status);
-        }
+      .then((res) => {
+        if (!res.ok) throw new Error('Consulta de status indisponível');
+        return res.json();
       })
-      .catch(() => undefined);
-  }, [workspace.id, showWahaFallback]);
+      .then((data) => {
+        if (!active) return;
+        if (!['STARTING', 'SCAN_QR_CODE', 'WORKING', 'FAILED', 'STOPPED'].includes(data.status)) {
+          throw new Error('Status desconhecido');
+        }
+        setQrStatus(data.status === 'STOPPED' ? 'INITIAL' : data.status);
+        setWahaStatusRead('ready');
+      })
+      .catch(() => { if (active) setWahaStatusRead('error'); });
+    return () => { active = false; };
+  }, [workspace.id, showWahaFallback, wahaStatusRetry]);
 
   const fetchQrCode = async () => {
     setIsQrLoading(true);
@@ -448,21 +460,23 @@ export const LiveSettingsView: React.FC<LiveSettingsViewProps> = ({
                         : 'bg-amber-50 text-amber-800 border-amber-200'
                     }`}>
                       {qrStatus === 'WORKING' ? <Wifi className="w-3 h-3 text-emerald-600" /> : <WifiOff className="w-3 h-3 text-amber-600" />}
-                      {qrStatus === 'WORKING' ? 'Conectado / Online' : 'Aguardando Pareamento'}
+                      {wahaStatusRead === 'loading' ? 'Consultando...' : wahaStatusRead === 'error' ? 'Status indisponível' : qrStatus === 'WORKING' ? 'Conectado / Online' : qrStatus === 'SCAN_QR_CODE' ? 'Aguardando Pareamento' : qrStatus === 'STARTING' ? 'Iniciando sessão' : 'Sessão indisponível'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
                     Instância multi-device para o workspace <strong className="text-slate-800">{workspace.name}</strong>.
                   </p>
+                  {wahaStatusRead === 'error' && <p role="alert" className="text-xs text-amber-800 mt-1">Não foi possível consultar a conexão. Isso não confirma que o WhatsApp esteja desconectado.</p>}
                 </div>
               </div>
 
               <button
-                onClick={() => setIsQrModalOpen(true)}
+                onClick={() => wahaStatusRead === 'error' ? setWahaStatusRetry((value) => value + 1) : setIsQrModalOpen(true)}
+                disabled={wahaStatusRead === 'loading'}
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
               >
                 <QrCode className="w-4 h-4" />
-                {qrStatus === 'WORKING' ? 'Reconectar / QR Code' : 'Conectar via QR Code'}
+                {wahaStatusRead === 'error' ? 'Consultar novamente' : wahaStatusRead === 'loading' ? 'Consultando...' : qrStatus === 'WORKING' ? 'Reconectar / QR Code' : 'Conectar via QR Code'}
               </button>
             </div>
             )}

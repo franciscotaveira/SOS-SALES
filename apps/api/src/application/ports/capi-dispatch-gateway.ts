@@ -32,3 +32,19 @@ export interface CapiDispatchGateway {
     accessToken?: string,
   ): Promise<CapiDispatchResult>;
 }
+
+/** A lead conversion is independent of a revenue outcome. */
+export interface CapiLeadEventPayload {
+  eventId: string;
+  workspaceId: string;
+  journeyId: string;
+  pixelId: string;
+  occurredAt: Date | string;
+  ctwaClid: string;
+  whatsappBusinessAccountId: string;
+  testEventCode?: string;
+}
+
+export interface CapiLeadDispatchGateway {
+  sendLeadEvent(event: CapiLeadEventPayload, accessToken: string): Promise<CapiDispatchResult>;
+}

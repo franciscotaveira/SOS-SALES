@@ -1,3 +1,4 @@
+import {queueCapiLead} from '../../../../infrastructure/database/queue-capi-lead.js';
 import { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Pool } from 'pg';
@@ -838,6 +839,17 @@ export const wabaWebhookPlugin: FastifyPluginAsync<WabaWebhookPluginOptions> = a
               );
 
               const conversationMessageId = insertedMessage.rows[0]?.id;
+
+              // Queue within the message transaction: rollback lets the provider retry
+              // without acknowledging a message whose conversion was lost.
+              const nativeClickId = typeof referral?.ctwa_clid === 'string' ? referral.ctwa_clid : '';
+              if (conversationMessageId && journeyId && nativeClickId.trim()) {
+                await queueCapiLead(ingestClient, {
+                  workspaceId: targetWorkspaceId, channelId: channelConnectionId,
+                  journeyId, ctwaClid: nativeClickId, occurredAt: new Date(timestamp),
+                });
+              }
+
 
               // ON CONFLICT DO NOTHING → empty RETURNING on duplicate delivery,
               // so we only enqueue the receptionist trigger for a fresh message.

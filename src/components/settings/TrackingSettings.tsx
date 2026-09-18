@@ -131,7 +131,8 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   const [metaPixelId, setMetaPixelId] = useState(defaults.pixelId);
   const [metaAccessToken, setMetaAccessToken] = useState(defaults.metaAccessToken || '');
   const [metaDatasetId, setMetaDatasetId] = useState(defaults.datasetId);
-  const [metaCapiEnabled, setMetaCapiEnabled] = useState(true);
+  const [metaAccessTokenConfigured, setMetaAccessTokenConfigured] = useState(false);
+  const [metaCapiEnabled, setMetaCapiEnabled] = useState(false);
 
   // Meta Login Auth States
   const [metaTab, setMetaTab] = useState<'login_auth' | 'manual'>('login_auth');
@@ -251,16 +252,10 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
       const data = await res.json();
       if (res.ok && data.success && Array.isArray(data.datasets) && data.datasets.length > 0) {
         setDiscoveredDatasets(data.datasets);
-        // If only 1 dataset found, auto-select and bind it
-        if (data.datasets.length === 1) {
-          const only = data.datasets[0];
-          selectAndBindDataset(only, token);
-        } else {
-          setFeedback({
-            success: true,
-            message: `🎉 ${data.datasets.length} conjunto(s) de dados/pixel encontrados na Meta! Escolha um abaixo para vincular:`,
-          });
-        }
+        setFeedback({
+          success: true,
+          message: `${data.datasets.length} conjunto(s) de dados encontrados. Selecione o destino que pertence a este cliente.`,
+        });
       } else {
         setDiscoveredDatasets([]);
         setFeedback({
@@ -320,9 +315,8 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
   // Select a discovered Dataset and Auto-Save
   const selectAndBindDataset = async (ds: { id: string; name: string; type?: 'dataset' | 'pixel' }, tokenToUse?: string) => {
     const token = tokenToUse || metaAccessToken;
-    setSelectedDatasetId(ds.id);
-    if (ds.type === 'pixel') setMetaPixelId(ds.id);
-    else setMetaDatasetId(ds.id);
+    const selectedPixelId = ds.type === 'pixel' ? ds.id : '';
+    const selectedDatasetId = ds.type === 'pixel' ? '' : ds.id;
 
     setSavingMeta(true);
     try {
@@ -330,18 +324,23 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          metaPixelId: ds.type === 'pixel' ? ds.id : metaPixelId,
-          metaDatasetId: ds.type === 'dataset' ? ds.id : metaDatasetId,
+          metaPixelId: selectedPixelId,
+          metaDatasetId: selectedDatasetId,
           metaAccessToken: token,
-          metaCapiEnabled: true,
+          metaCapiEnabled: false,
           campaignMappings,
         }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        setSelectedDatasetId(ds.id);
+        setMetaPixelId(selectedPixelId);
+        setMetaDatasetId(selectedDatasetId);
+        setMetaAccessTokenConfigured(Boolean(token.trim()) || metaAccessTokenConfigured);
+        setMetaCapiEnabled(false);
         setFeedback({
           success: true,
-          message: `✅ Conjunto de Dados "${ds.name}" (${ds.id}) vinculado e salvo com sucesso no SOS-SALES!`,
+          message: `✅ Conjunto de Dados "${ds.name}" (${ds.id}) salvo. O envio automático está desligado; valide o destino antes de ativar.`,
         });
       } else {
         setFeedback({
@@ -368,6 +367,8 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
       const data = await res.json();
       if (data?.tracking) {
         const t = data.tracking;
+        setMetaAccessTokenConfigured(t.metaAccessTokenConfigured === true);
+        setMetaCapiEnabled(t.metaCapiEnabled === true);
         setMetaPixelId(t.metaPixelId || '');
         setMetaDatasetId(t.metaDatasetId || '');
         setGoogleAdsCustomerId(t.googleAdsCustomerId || '');
@@ -375,6 +376,8 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
         setCampaignMappings(Array.isArray(t.campaignMappings) ? t.campaignMappings : []);
         return;
       }
+      setMetaAccessTokenConfigured(false);
+      setMetaCapiEnabled(false);
       setMetaPixelId('');
       setMetaDatasetId('');
       setGoogleAdsCustomerId('');
@@ -383,6 +386,8 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
       return;
     } catch (error) {
       if (salesOsRuntimeConfig.mode === 'api') {
+        setMetaAccessTokenConfigured(false);
+        setMetaCapiEnabled(false);
         setMetaPixelId('');
         setMetaDatasetId('');
         setGoogleAdsCustomerId('');
@@ -494,7 +499,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
       });
       return;
     }
-    if ((!metaDatasetId && !metaPixelId) || !metaAccessToken) {
+    if ((!metaDatasetId && !metaPixelId) || (!metaAccessToken && !metaAccessTokenConfigured)) {
       setCapiTestFeedback({
         success: false,
         message: 'Preencha o Dataset/Pixel ID e o CAPI Access Token antes de disparar o teste.',
@@ -887,7 +892,7 @@ export const TrackingSettings: React.FC<TrackingSettingsProps> = ({ workspace })
             <button
               type="button"
               onClick={handleTestCapiEvent}
-              disabled={testingCapi || !metaAccessToken || !metaDatasetId || !testEventCode.trim() || testPhone.replace(/\D/g, '').length < 8}
+              disabled={testingCapi || (!metaAccessToken && !metaAccessTokenConfigured) || (!metaDatasetId && !metaPixelId) || !testEventCode.trim() || testPhone.replace(/\D/g, '').length < 8}
               className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
             >
               {testingCapi ? (
