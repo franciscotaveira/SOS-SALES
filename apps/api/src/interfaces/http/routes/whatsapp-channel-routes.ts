@@ -619,17 +619,21 @@ export async function whatsappChannelRoutes(
       let displayPhone = phoneNumberId;
       let verifiedName = 'WhatsApp Business Oficial';
       let providerVerified = false;
+      let providerStatus: string | undefined;
+      let providerPlatformType: string | undefined;
 
       try {
-        const metaRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(phoneNumberId)}?access_token=${encodeURIComponent(accessToken)}`);
+        const metaRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name,status,platform_type&access_token=${encodeURIComponent(accessToken)}`);
 
 
       if (metaRes.ok) {
-        const metaData = (await metaRes.json()) as { display_phone_number?: string; verified_name?: string; id?: string };
+        const metaData = (await metaRes.json()) as { display_phone_number?: string; verified_name?: string; id?: string; status?: string; platform_type?: string };
         // A successful HTTP response alone is not proof that this token can
         // operate the requested number. Require Meta to echo the exact
         // Phone Number ID before persisting a connected channel.
         providerVerified = metaData.id === phoneNumberId;
+        providerStatus = metaData.status;
+        providerPlatformType = metaData.platform_type;
         displayPhone = metaData.display_phone_number || displayPhone;
         verifiedName = metaData.verified_name || verifiedName;
       } else {
@@ -642,6 +646,8 @@ export async function whatsappChannelRoutes(
             const match = wabaData.phone_numbers.data.find((p: any) => p.id === phoneNumberId);
             if (match) {
               providerVerified = true;
+              providerStatus = typeof match.status === 'string' ? match.status : undefined;
+              providerPlatformType = typeof match.platform_type === 'string' ? match.platform_type : undefined;
               displayPhone = match.display_phone_number || displayPhone;
               verifiedName = match.verified_name || verifiedName;
             }
@@ -656,6 +662,15 @@ export async function whatsappChannelRoutes(
         return reply.status(401).send({
           error: 'A Meta não confirmou este Phone Number ID com o token informado. A conexão não foi criada.',
           code: 'META_WABA_VALIDATION_FAILED',
+        });
+      }
+
+      if (providerStatus !== 'CONNECTED') {
+        return reply.status(409).send({
+          error: 'A Meta confirmou o número, mas ele ainda não está conectado à Cloud API. Conclua o registro ou a migração do telefone antes de ativar o canal.',
+          code: 'META_WABA_PHONE_NOT_CONNECTED',
+          providerStatus: providerStatus || 'UNKNOWN',
+          platformType: providerPlatformType || 'UNKNOWN',
         });
       }
 
@@ -832,12 +847,16 @@ export async function whatsappChannelRoutes(
       let displayPhone = phoneNumberId;
       let verifiedName = 'WhatsApp Business Oficial';
       let providerVerified = false;
+      let providerStatus: string | undefined;
+      let providerPlatformType: string | undefined;
 
       try {
-        const metaRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name,whatsapp_business_account&access_token=${encodeURIComponent(accessToken)}`);
+        const metaRes = await fetch(`${DEFAULT_META_GRAPH_BASE_URL}/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name,whatsapp_business_account,status,platform_type&access_token=${encodeURIComponent(accessToken)}`);
         if (metaRes.ok) {
-          const metaData = (await metaRes.json()) as { display_phone_number?: string; verified_name?: string; id?: string; whatsapp_business_account?: { id?: string } };
+          const metaData = (await metaRes.json()) as { display_phone_number?: string; verified_name?: string; id?: string; whatsapp_business_account?: { id?: string }; status?: string; platform_type?: string };
           providerVerified = metaData.id === phoneNumberId;
+          providerStatus = metaData.status;
+          providerPlatformType = metaData.platform_type;
           displayPhone = metaData.display_phone_number || displayPhone;
           verifiedName = metaData.verified_name || verifiedName;
           if (!wabaId && metaData.whatsapp_business_account?.id) {
@@ -852,6 +871,8 @@ export async function whatsappChannelRoutes(
               const match = wabaData.phone_numbers.data.find((p: any) => p.id === phoneNumberId);
               if (match) {
                 providerVerified = true;
+                providerStatus = typeof match.status === 'string' ? match.status : undefined;
+                providerPlatformType = typeof match.platform_type === 'string' ? match.platform_type : undefined;
                 displayPhone = match.display_phone_number || displayPhone;
                 verifiedName = match.verified_name || verifiedName;
               }
@@ -866,6 +887,16 @@ export async function whatsappChannelRoutes(
         return reply.status(401).send({
           error: 'A Meta não confirmou este Phone Number ID com o token informado. A conexão não foi criada.',
           code: 'META_WABA_VALIDATION_FAILED',
+        });
+      }
+
+
+      if (providerStatus !== 'CONNECTED') {
+        return reply.status(409).send({
+          error: 'A Meta confirmou o número, mas ele ainda não está conectado à Cloud API. Conclua o registro ou a migração do telefone antes de ativar o canal.',
+          code: 'META_WABA_PHONE_NOT_CONNECTED',
+          providerStatus: providerStatus || 'UNKNOWN',
+          platformType: providerPlatformType || 'UNKNOWN',
         });
       }
 

@@ -146,4 +146,69 @@ describe('WABA OAuth security boundary', () => {
     expect(fetch.mock.calls[0][0]).not.toContain('browser-secret');
     await app.close();
   });
+
+  it('does not persist a manually configured phone that Meta reports as disconnected', async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'phone-id',
+        display_phone_number: '+55 49 99999-9999',
+        verified_name: 'Cliente',
+        status: 'DISCONNECTED',
+        platform_type: 'ON_PREMISE',
+      }),
+    });
+    vi.stubGlobal('fetch', fetch);
+    const connect = vi.fn();
+    const app = await buildApp({ databasePool: { query: vi.fn(), connect } });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/channels/waba/configure`,
+      headers: { authorization: 'Bearer valid.jwt.token' },
+      payload: { phoneNumberId: 'phone-id', wabaId: 'waba-id', accessToken: 'tenant-token' },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: 'META_WABA_PHONE_NOT_CONNECTED',
+      providerStatus: 'DISCONNECTED',
+      platformType: 'ON_PREMISE',
+    });
+    expect(connect).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('does not persist an OAuth-selected phone that Meta reports as disconnected', async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'phone-id',
+        display_phone_number: '+55 49 99999-9999',
+        verified_name: 'Cliente',
+        whatsapp_business_account: { id: 'waba-id' },
+        status: 'DISCONNECTED',
+        platform_type: 'ON_PREMISE',
+      }),
+    });
+    vi.stubGlobal('fetch', fetch);
+    const connect = vi.fn();
+    const app = await buildApp({ databasePool: { query: vi.fn(), connect } });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/channels/waba/oauth-connect`,
+      headers: { authorization: 'Bearer valid.jwt.token' },
+      payload: { phoneNumberId: 'phone-id', wabaId: 'waba-id', accessToken: 'tenant-token' },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: 'META_WABA_PHONE_NOT_CONNECTED',
+      providerStatus: 'DISCONNECTED',
+      platformType: 'ON_PREMISE',
+    });
+    expect(connect).not.toHaveBeenCalled();
+    await app.close();
+  });
 });
