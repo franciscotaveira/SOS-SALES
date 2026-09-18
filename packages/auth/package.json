@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@sos-sales/contracts": "workspace:*",
-    "@sos-sales/observability": "workspace:*"
+    "@sos-sales/observability": "workspace:*",
+    "jose": "^6.2.12"
   },
   "devDependencies": {
     "tsup": "^8.4.0",

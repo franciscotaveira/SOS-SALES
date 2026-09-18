@@ -24,10 +24,26 @@ export interface AuthUser {
 
 export interface IIdentityProvider {
   verifyToken(token: string): Promise<AuthUser | null>;
-  generateToken(user: AuthUser, expiresInSeconds?: number): Promise<string>;
+  generateToken?(user: AuthUser, expiresInSeconds?: number): Promise<string>;
 }
 
 export interface IAuthorizationPolicy {
   hasPermission(user: AuthUser, permission: Permission): boolean;
   canAccessWorkspace(user: AuthUser, targetWorkspaceId: string): boolean;
 }
+
+export interface JwtProviderConfig {
+  type: "jwt";
+  secret: string;
+  issuer?: string;
+  audience?: string;
+}
+
+export interface SupabaseJwksConfig {
+  type: "supabase_jwks";
+  jwksUri: string;
+  issuer?: string;
+  audience?: string;
+}
+
+export type IdentityProviderConfig = JwtProviderConfig | SupabaseJwksConfig;

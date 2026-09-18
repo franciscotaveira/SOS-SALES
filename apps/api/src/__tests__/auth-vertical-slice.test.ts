@@ -133,10 +133,12 @@ describe("Iteração 2.5: Vertical Slice Autenticado e Tenant-First", () => {
   afterAll(async () => {
     try {
       if (workspaceAId && workspaceBId) {
+        await ownerPool.query("ALTER TABLE audit_events DISABLE TRIGGER trg_audit_events_immutable;");
         await ownerPool.query("DELETE FROM audit_events WHERE workspace_id IN ($1, $2)", [
           workspaceAId,
           workspaceBId,
         ]);
+        await ownerPool.query("ALTER TABLE audit_events ENABLE TRIGGER trg_audit_events_immutable;");
         await ownerPool.query("DELETE FROM workspace_memberships WHERE workspace_id IN ($1, $2)", [
           workspaceAId,
           workspaceBId,
@@ -185,7 +187,7 @@ describe("Iteração 2.5: Vertical Slice Autenticado e Tenant-First", () => {
     });
     expect(resMalformed.statusCode).toBe(401);
     const bodyMalformed = JSON.parse(resMalformed.body);
-    expect(bodyMalformed.detail).toMatch(/invalid or expired/i);
+    expect(bodyMalformed.detail).toMatch(/invalid|expired/i);
 
     // Expired token
     const resExpired = await app.inject({
@@ -197,7 +199,7 @@ describe("Iteração 2.5: Vertical Slice Autenticado e Tenant-First", () => {
     });
     expect(resExpired.statusCode).toBe(401);
     const bodyExpired = JSON.parse(resExpired.body);
-    expect(bodyExpired.detail).toMatch(/invalid or expired/i);
+    expect(bodyExpired.detail).toMatch(/invalid|expired/i);
   });
 
   it("3. should discover user and memberships on GET /v1/me with valid token", async () => {
@@ -347,4 +349,81 @@ describe("Iteração 2.5: Vertical Slice Autenticado e Tenant-First", () => {
       "Role 'operator' does not possess required permission 'workspace:manage'"
     );
   });
+
+  it("9. should reject token signed with the old hardcoded default secret (401 Unauthorized)", async () => {
+    // Attempt to attack using the old hardcoded fallback key
+    const oldDefaultSecret = "sos_v3_default_dev_secret_key_min32chars!";
+    const attackerProvider = new JwtIdentityProvider(oldDefaultSecret);
+    const attackerToken = await attackerProvider.generateToken(
+      {
+        id: userAlphaId,
+        email: "attacker@mct.br",
+        role: "owner",
+        workspaceId: workspaceAId,
+      },
+      3600
+    );
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/me",
+      headers: {
+        authorization: `Bearer ${attackerToken}`,
+      },
+    });
+
+    expect(res.statusCode).toBe(401);
+    const body = JSON.parse(res.body);
+    expect(body.detail).toMatch(/invalid, untrusted or expired/i);
+  });
+
+  it("10. should reject token lacking mandatory expiration claim 'exp' (401 Unauthorized)", async () => {
+    const { SignJWT } = await import("@sos-sales/auth");
+    const secretBytes = new TextEncoder().encode(jwtSecret);
+
+    const tokenWithoutExp = await new SignJWT({
+      email: "alpha@mct.br",
+      role: "owner",
+      workspace_id: workspaceAId,
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setSubject(userAlphaId)
+      .setIssuedAt()
+      .sign(secretBytes);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/me",
+      headers: {
+        authorization: `Bearer ${tokenWithoutExp}`,
+      },
+    });
+
+    expect(res.statusCode).toBe(401);
+    const body = JSON.parse(res.body);
+    expect(body.detail).toMatch(/invalid, untrusted or expired/i);
+  });
+
+  it("11. should fail fast at API startup if JWT_SECRET is missing or shorter than 32 characters", async () => {
+    await expect(buildApp({ jwtSecret: "too-short-secret" })).rejects.toThrow(
+      /at least 32 characters/i
+    );
+  });
+
+  it("12. should strictly reject UPDATE or DELETE on audit_events recorded during the test suite", async () => {
+    await expect(
+      ownerPool.query(
+        "UPDATE audit_events SET action = 'tampered' WHERE workspace_id = $1",
+        [workspaceAId]
+      )
+    ).rejects.toThrow(/immutable append-only ledger/i);
+
+    await expect(
+      ownerPool.query(
+        "DELETE FROM audit_events WHERE workspace_id = $1",
+        [workspaceAId]
+      )
+    ).rejects.toThrow(/immutable append-only ledger/i);
+  });
 });
+

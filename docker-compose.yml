@@ -50,6 +50,10 @@ services:
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: info
       OTEL_SERVICE_NAME: sos-sales-api
+      JWT_SECRET: ${JWT_SECRET}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_JWKS_URI: ${SUPABASE_JWKS_URI:-}
+      APP_MASTER_KEY: ${APP_MASTER_KEY:-}
     ports:
       - "${PORT_API:-4400}:4400"
     healthcheck:

@@ -63,6 +63,9 @@ describe("Tenant Isolation & Row Level Security (RLS) Negative Tests", () => {
   afterAll(async () => {
     try {
       if (workspaceAId && workspaceBId) {
+        await ownerPool.query("ALTER TABLE audit_events DISABLE TRIGGER trg_audit_events_immutable;");
+        await ownerPool.query("DELETE FROM audit_events WHERE workspace_id IN ($1, $2)", [workspaceAId, workspaceBId]);
+        await ownerPool.query("ALTER TABLE audit_events ENABLE TRIGGER trg_audit_events_immutable;");
         await ownerPool.query("DELETE FROM workspaces WHERE id IN ($1, $2)", [workspaceAId, workspaceBId]);
       }
     } finally {
@@ -181,6 +184,42 @@ describe("Tenant Isolation & Row Level Security (RLS) Negative Tests", () => {
       ).rejects.toThrow(/must be owner/i);
     } finally {
       client.release();
+    }
+  });
+
+  it("should strictly PROHIBIT UPDATE and DELETE on audit_events (immutable append-only ledger)", async () => {
+    // 1. Insert a legitimate audit event via ownerPool
+    const insertRes = await ownerPool.query(`
+      INSERT INTO audit_events (workspace_id, actor_id, actor_type, action, resource_type, resource_id)
+      VALUES ($1, $2, 'user', 'test.immutable_action', 'workspace', $3)
+      RETURNING id;
+    `, [workspaceAId, "00000000-0000-0000-0000-000000000001", workspaceAId]);
+    const auditId = insertRes.rows[0].id;
+
+    // 2. Test UPDATE rejection (blocked by trigger and permissions)
+    await expect(
+      ownerPool.query("UPDATE audit_events SET action = 'tampered' WHERE id = $1", [auditId])
+    ).rejects.toThrow(/immutable append-only ledger/i);
+
+    // 3. Test DELETE rejection (blocked by trigger and permissions)
+    await expect(
+      ownerPool.query("DELETE FROM audit_events WHERE id = $1", [auditId])
+    ).rejects.toThrow(/immutable append-only ledger/i);
+  });
+
+  it("should ensure security definer functions are owned by sos_migration_owner and revoked from PUBLIC", async () => {
+    const res = await ownerPool.query(`
+      SELECT proname, pg_get_userbyid(proowner) AS owner, array_to_string(proacl, ',') AS acl
+      FROM pg_proc 
+      WHERE proname IN ('get_user_workspaces', 'record_security_audit_event');
+    `);
+
+    expect(res.rows.length).toBe(2);
+    for (const row of res.rows) {
+      expect(row.owner).toBe("sos_migration_owner");
+      // proacl must NOT contain '=X/' without a grantee (which denotes PUBLIC in PostgreSQL)
+      expect(row.acl).not.toMatch(/(^|,)=X\//);
+      expect(row.acl).toMatch(/sos_app_user=X\/sos_migration_owner/);
     }
   });
 });

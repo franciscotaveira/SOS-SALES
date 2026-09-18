@@ -165,6 +165,9 @@ importers:
       '@sos-sales/observability':
         specifier: workspace:*
         version: link:../observability
+      jose:
+        specifier: ^6.2.12
+        version: 6.2.12
     devDependencies:
       tsup:
         specifier: ^8.4.0
@@ -1333,6 +1336,9 @@ packages:
   ipaddr.js@2.5.0:
     resolution: {integrity: sha512-aq+t5NAc+cS6rZQQVWC2x98CPqGtKKTMDd4Gaodv0wShnItdKg/51djkGJ1hqH+Oy0ivDftCbSLCQob8zso01w==}
     engines: {node: '>= 10'}
+
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -2734,6 +2740,8 @@ snapshots:
       - supports-color
 
   ipaddr.js@2.5.0: {}
+
+  jose@6.2.12: {}
 
   joycon@3.1.1: {}
 

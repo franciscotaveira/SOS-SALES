@@ -37,8 +37,12 @@ export async function checkRedisHealth(): Promise<{ healthy: boolean; latencyMs:
   }
 }
 
+import type { IIdentityProvider, IdentityProviderConfig } from "@sos-sales/auth";
+
 export interface BuildAppOptions {
   jwtSecret?: string;
+  identityProvider?: IIdentityProvider;
+  identityProviderConfig?: IdentityProviderConfig;
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
@@ -76,9 +80,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
 
   // Register Core Authentication & Tenant Isolation Plugin
-  await app.register(authPlugin, {
-    jwtSecret: options.jwtSecret,
-  });
+  await app.register(authPlugin, options);
 
   // Register Domain Routes
   await app.register(meRoutes);

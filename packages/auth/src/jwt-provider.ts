@@ -1,75 +1,79 @@
-import crypto from "node:crypto";
-import type { AuthUser, IIdentityProvider } from "./types";
+import { SignJWT, jwtVerify } from "jose";
+import type { AuthUser, IIdentityProvider, JwtProviderConfig } from "./types";
 import { logger } from "@sos-sales/observability";
+import type { Role } from "@sos-sales/contracts";
 
 export class JwtIdentityProvider implements IIdentityProvider {
   private readonly secret: string;
+  private readonly issuer?: string;
+  private readonly audience?: string;
+  private readonly secretBytes: Uint8Array;
 
-  constructor(secret?: string) {
-    this.secret = secret || process.env.JWT_SECRET || "sos_v3_default_dev_secret_key_min32chars!";
+  constructor(configOrSecret: string | JwtProviderConfig) {
+    const config: JwtProviderConfig =
+      typeof configOrSecret === "string"
+        ? { type: "jwt", secret: configOrSecret }
+        : configOrSecret;
+
+    if (!config.secret || typeof config.secret !== "string" || config.secret.trim().length < 32) {
+      throw new Error(
+        "JwtIdentityProvider: A cryptographically secure secret of at least 32 characters (256 bits) is required. Hardcoded defaults are strictly prohibited."
+      );
+    }
+
+    this.secret = config.secret;
+    this.issuer = config.issuer;
+    this.audience = config.audience;
+    this.secretBytes = new TextEncoder().encode(this.secret);
   }
 
   public async generateToken(user: AuthUser, expiresInSeconds = 86400): Promise<string> {
-    const header = {
-      alg: "HS256",
-      typ: "JWT",
-    };
-
-    const now = Math.floor(Date.now() / 1000);
-    const payload = {
-      sub: user.id,
+    const signer = new SignJWT({
       email: user.email,
       role: user.role,
       workspace_id: user.workspaceId,
-      iat: now,
-      exp: now + expiresInSeconds,
-    };
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setSubject(user.id)
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) + expiresInSeconds);
 
-    const encodedHeader = Buffer.from(JSON.stringify(header)).toString("base64url");
-    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    if (this.issuer) {
+      signer.setIssuer(this.issuer);
+    }
+    if (this.audience) {
+      signer.setAudience(this.audience);
+    }
 
-    const signature = crypto
-      .createHmac("sha256", this.secret)
-      .update(`${encodedHeader}.${encodedPayload}`)
-      .digest("base64url");
-
-    return `${encodedHeader}.${encodedPayload}.${signature}`;
+    return await signer.sign(this.secretBytes);
   }
 
   public async verifyToken(token: string): Promise<AuthUser | null> {
     try {
-      const parts = token.split(".");
-      if (parts.length !== 3) return null;
-
-      const [encodedHeader, encodedPayload, signature] = parts;
-      if (!encodedHeader || !encodedPayload || !signature) return null;
-
-      const expectedSignature = crypto
-        .createHmac("sha256", this.secret)
-        .update(`${encodedHeader}.${encodedPayload}`)
-        .digest("base64url");
-
-      if (signature !== expectedSignature) {
-        logger.warn("JWT signature verification failed");
+      if (!token || typeof token !== "string" || token.trim().length === 0) {
         return null;
       }
 
-      const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
-      const now = Math.floor(Date.now() / 1000);
+      const { payload } = await jwtVerify(token, this.secretBytes, {
+        algorithms: ["HS256"], // Strict: ONLY allow HS256 to prevent algorithm confusion
+        issuer: this.issuer,
+        audience: this.audience,
+        requiredClaims: ["exp", "sub"], // Strict: token MUST contain expiration and subject
+        clockTolerance: 0,
+      });
 
-      if (payload.exp && payload.exp < now) {
-        logger.warn("JWT token expired");
+      if (!payload.sub || typeof payload.sub !== "string") {
         return null;
       }
 
       return {
         id: payload.sub,
-        email: payload.email,
-        role: payload.role,
-        workspaceId: payload.workspace_id,
+        email: typeof payload.email === "string" ? payload.email : "",
+        role: (payload.role as Role) || "analyst",
+        workspaceId: typeof payload.workspace_id === "string" ? payload.workspace_id : "",
       };
     } catch (err) {
-      logger.error({ err }, "Failed to parse or verify JWT token");
+      logger.warn({ err }, "JWT token verification failed");
       return null;
     }
   }

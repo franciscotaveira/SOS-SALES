@@ -1,10 +1,14 @@
 import fp from "fastify-plugin";
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import {
+  createIdentityProvider,
   JwtIdentityProvider,
+  SupabaseJwksIdentityProvider,
   RbacAuthorizationPolicy,
   type AuthUser,
   type Permission,
+  type IIdentityProvider,
+  type IdentityProviderConfig,
 } from "@sos-sales/auth";
 import {
   getUserWorkspaces,
@@ -34,11 +38,46 @@ declare module "fastify" {
 const uuidSchema = z.string().uuid();
 
 export interface AuthPluginOptions {
+  identityProvider?: IIdentityProvider;
+  identityProviderConfig?: IdentityProviderConfig;
   jwtSecret?: string;
 }
 
 const authPluginCallback: FastifyPluginAsync<AuthPluginOptions> = async (app, options) => {
-  const jwtProvider = new JwtIdentityProvider(options.jwtSecret || process.env.JWT_SECRET);
+  // Resolve identity provider in strict order, with ZERO fallback default secrets
+  let identityProvider: IIdentityProvider;
+
+  if (options.identityProvider) {
+    identityProvider = options.identityProvider;
+  } else if (options.identityProviderConfig) {
+    identityProvider = createIdentityProvider(options.identityProviderConfig);
+  } else if (options.jwtSecret || process.env.JWT_SECRET) {
+    const secret = (options.jwtSecret || process.env.JWT_SECRET)!.trim();
+    if (secret.length < 32) {
+      throw new Error(
+        "FATAL: JWT_SECRET must be at least 32 characters long. Insecure configurations are rejected at boot."
+      );
+    }
+    identityProvider = new JwtIdentityProvider({
+      type: "jwt",
+      secret,
+    });
+  } else if (process.env.SUPABASE_JWKS_URI || process.env.SUPABASE_URL) {
+    const jwksUri =
+      process.env.SUPABASE_JWKS_URI ||
+      `${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
+    identityProvider = new SupabaseJwksIdentityProvider({
+      type: "supabase_jwks",
+      jwksUri,
+      issuer: process.env.SUPABASE_URL ? `${process.env.SUPABASE_URL}/auth/v1` : undefined,
+      audience: "authenticated",
+    });
+  } else {
+    throw new Error(
+      "FATAL: No valid authentication provider configured. Either JWT_SECRET (>= 32 chars) or SUPABASE_URL / SUPABASE_JWKS_URI must be provided. Hardcoded fallback secrets are prohibited."
+    );
+  }
+
   const rbacPolicy = new RbacAuthorizationPolicy();
 
   // 1. Authenticate Hook: validates token and discovers user memberships
@@ -56,14 +95,14 @@ const authPluginCallback: FastifyPluginAsync<AuthPluginOptions> = async (app, op
     }
 
     const token = authHeader.slice(7).trim();
-    const verifiedUser = await jwtProvider.verifyToken(token);
+    const verifiedUser = await identityProvider.verifyToken(token);
 
     if (!verifiedUser) {
       return reply.status(401).send({
         type: "https://sos-sales.mct.br/errors/unauthorized",
         title: "Unauthorized",
         status: 401,
-        detail: "Invalid or expired JWT token",
+        detail: "Invalid, untrusted or expired JWT token",
         instance: request.url,
         correlationId: request.id,
       });
