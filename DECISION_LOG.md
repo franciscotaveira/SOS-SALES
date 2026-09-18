@@ -1171,3 +1171,8 @@ O incidente de horários fictícios no workspace SOS revelou fallback local e ex
 - WAHA: normalização enfileira conversão na mesma transação somente para mensagem nova e ctwa_clid explícito no payload. Sinais codificados e texto do contato não viram click ID. Testes do extrator passaram; falta validar normalização completa no banco e o payload real da Haven.
 - Gate de publicação passa a exigir capi_lead_deliveries e queue_capi_lead com assinatura exata. Sintaxe do verificador validada; migrações de produção ainda não executadas.
 - Seleção de destino na interface limpa o identificador alternativo anterior (pixel/dataset), evitando a precedência silenciosa do dataset antigo. Estado visual só muda após confirmação da API. TypeScript validado; rebuild visual pendente.
+
+
+## 18/09/2026 — Refinamento delimitado de tracking e diagnóstico WABA Haven
+
+Candidato local libera somente configuração/teste/descoberta tracking autenticados no domínio, mantendo backfill/simulação e acesso direto por IP bloqueados. Validado por 36 testes e nove chamadas via proxy temporário no Docker Lab; publicação pendente do fluxo versionado. Consulta Graph confirma número Haven DISCONNECTED/ON_PREMISE e assinatura somente CRM TX APP; não migrar nem registrar número automaticamente. Segredo STA no runtime exige alinhamento com a assinatura/credencial reais antes de declarar entrada oficial homologada. Evidências em docs/audits/2026-09-18-haven-meta-tracking-refinement.md.

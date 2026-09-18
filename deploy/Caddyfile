@@ -46,8 +46,15 @@ crm.iaparavendas.tech, sos.mct.com.br {
         # 2. Bloqueia endpoints com PII e configurações sensíveis para TODOS os métodos HTTP (inclui GET, HEAD, OPTIONS, POST, etc.)
         # Consultas de status WAHA/WABA passam pelas guardas JWT e membership
         # da API. A contenção de dados e mutações permanece independente.
-        @blocked_sensitive_pii path_regexp ^/api/v1/workspaces/[^/]+/(contacts|tracking|reports)
+        @blocked_sensitive_pii path_regexp ^/api/v1/workspaces/[^/]+/(contacts|reports)
         respond @blocked_sensitive_pii "Forbidden: Workspace endpoint disabled during containment" 403
+
+        # Somente configuração e teste autenticados; backfill e simulação continuam bloqueados.
+        @blocked_tracking {
+            path_regexp ^/api/v1/workspaces/[^/]+/tracking
+            not path /api/v1/workspaces/*/tracking /api/v1/workspaces/*/tracking/test-capi /api/v1/workspaces/*/tracking/meta/list-datasets
+        }
+        respond @blocked_tracking "Forbidden: Tracking operation disabled during containment" 403
 
         # 3. Bloqueia plugins mutáveis encontrados no bundle implantado sem JWT,
         # membership ou RBAC. O bloqueio é deliberadamente independente do método
@@ -92,7 +99,7 @@ crm.iaparavendas.tech, sos.mct.com.br {
 
     route {
         # Bloqueio de IP direto incondicional para TODOS os métodos em rotas críticas e sensíveis
-        @ip_blocked path_regexp ^(?:/api/v1/workspaces/[^/]+/(?:contacts|tracking|reports|channels/waba/channel-info|channels/whatsapp/status|channels/whatsapp/logout|channels/whatsapp/clear-history|channels/messenger/(?:links|nlp/enable|welcome-screen)|channels/instagram/icebreakers|channels/comments/private-reply(?:-config)?|journeys/[^/]+/bot/(?:pause|resume)))$
+        @ip_blocked path_regexp ^(?:/api/v1/workspaces/[^/]+/(?:contacts|tracking(?:/.*)?|reports|channels/waba/channel-info|channels/whatsapp/status|channels/whatsapp/logout|channels/whatsapp/clear-history|channels/messenger/(?:links|nlp/enable|welcome-screen)|channels/instagram/icebreakers|channels/comments/private-reply(?:-config)?|journeys/[^/]+/bot/(?:pause|resume)))$
         respond @ip_blocked "Forbidden: Direct IP access not permitted" 403
 
         reverse_proxy /api/* sos-sales-api:4334

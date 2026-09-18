@@ -196,6 +196,28 @@ describe('Operational Routes JWT Authentication, RBAC & Multi-Tenant Isolation G
     await app.close();
   });
 
+  it.each([
+    ['GET', ''], ['HEAD', ''], ['POST', ''],
+    ['POST', '/test-capi'], ['POST', '/meta/list-datasets'],
+  ] as const)('Tracking %s %s denies missing/invalid JWT, non-owner and foreign workspace', async (method, suffix) => {
+    const app = await buildTestApp();
+    try {
+      for (const [token, expected] of [
+        [null, 401], ['invalid.token.value', 401],
+        ['valid_token_tenant_a_viewer.part2.part3', 403],
+        ['valid_token_tenant_a_operator.part2.part3', 403],
+        ['valid_token_tenant_b_owner.part2.part3', 403],
+      ] as const) {
+        const res = await app.inject({method,
+          url: `/api/v1/workspaces/11111111-1111-1111-1111-111111111111/tracking${suffix}`,
+          headers: token ? {authorization: `Bearer ${token}`} : {},
+          ...(method === 'POST' ? {payload: {}} : {}),
+        });
+        expect(res.statusCode).toBe(expected);
+      }
+    } finally {await app.close();}
+  });
+
   it('AUTH-18: Legacy cockpit send only queues a supervised dispatch and never calls a provider directly', async () => {
     const calls: string[] = [];
     const app = await buildTestApp({
