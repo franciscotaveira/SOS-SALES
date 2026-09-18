@@ -12,12 +12,14 @@
   "dependencies": {
     "@fastify/cors": "^10.1.0",
     "@sos-sales/application": "workspace:*",
+    "@sos-sales/auth": "workspace:*",
     "@sos-sales/contracts": "workspace:*",
     "@sos-sales/database": "workspace:*",
     "@sos-sales/domain": "workspace:*",
     "@sos-sales/observability": "workspace:*",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",
+    "fastify-plugin": "^6.0.0",
     "ioredis": "^5.6.0",
     "zod": "^3.24.2"
   },

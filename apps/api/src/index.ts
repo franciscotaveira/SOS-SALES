@@ -4,8 +4,10 @@ import cors from "@fastify/cors";
 import { logger } from "@sos-sales/observability";
 import { checkDatabaseHealth } from "@sos-sales/database";
 import crypto from "node:crypto";
-
 import { Redis } from "ioredis";
+import { authPlugin } from "./plugins/auth.plugin";
+import { meRoutes } from "./routes/me.routes";
+import { workspaceRoutes } from "./routes/workspace.routes";
 
 let redisClient: Redis | null = null;
 export function getRedisClient(): Redis {
@@ -35,7 +37,11 @@ export async function checkRedisHealth(): Promise<{ healthy: boolean; latencyMs:
   }
 }
 
-export async function buildApp() {
+export interface BuildAppOptions {
+  jwtSecret?: string;
+}
+
+export async function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
     loggerInstance: logger as any,
     requestIdHeader: "x-correlation-id",
@@ -45,7 +51,13 @@ export async function buildApp() {
   await app.register(cors, {
     origin: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Workspace-Id", "Idempotency-Key", "x-correlation-id"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Workspace-Id",
+      "Idempotency-Key",
+      "x-correlation-id",
+    ],
   });
 
   // RFC 9457 Problem Details standard error handler
@@ -62,6 +74,15 @@ export async function buildApp() {
       correlationId: request.id,
     });
   });
+
+  // Register Core Authentication & Tenant Isolation Plugin
+  await app.register(authPlugin, {
+    jwtSecret: options.jwtSecret,
+  });
+
+  // Register Domain Routes
+  await app.register(meRoutes);
+  await app.register(workspaceRoutes);
 
   // Liveness Check
   app.get("/health", async () => {
