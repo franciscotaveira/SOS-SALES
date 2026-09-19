@@ -1,10 +1,10 @@
 # CH-10 — Docker Dual-Engine & Coexistência Operacional
 
 > Nome do arquivo: `CH-10-DUAL-ENGINE.md`  
-> Estado: `READY` — Plano técnico de arquitetura e engenharia reconciliado (v1.2.0).  
-> Versão do Plano: `1.2.0`  
+> Estado: `COMPLETED` — Fases 1, 2 e 3 Concluídas (v1.3.0).<br>
+> Versão do Plano: `1.3.0`<br>
 > Data de Registro: 19 de setembro de 2026  
-> Escopo de Execução: Fases 1 e 2 — Fundação Docker WAHA e Repositório Tenant-First Multi-Linha.
+> Escopo de Execução: Fases 1, 2 e 3 — Fundação Docker WAHA, Repositório Multi-Linha, ChannelDispatchService e ChannelHealthService.
 
 ---
 
@@ -386,8 +386,78 @@ docker rm sos-v3-waha
    - `npx tsx scripts/verify-docker-compose-security.ts`: 8/8 checagens de segurança do Compose aprovadas.
    - `git diff --check`: 0 erros de formatação ou marcadores.
 
-7. **Confirmação de Inviolabilidade:**
+7. **Confirmação de Inviolabilidade (Fases 1 e 2):**
    - SOS Sales V2: 100% intocado.
    - Servidor VPS: 100% intocado.
    - Dispositivo celular / WhatsApp real: Zero conexões externas (EXT-05 permanece `BLOCKED_EXTERNAL` para CH-12).
-   - Não avançar para Fase 3 nesta missão.
+
+---
+
+## 13. Relatório de Implementação da Fase 3 e Retificação P1 do Smoke
+
+### 13.1. Retificação P1: Smoke Cleanup Confiável e Não Destrutivo (`scripts/smoke-docker-waha.ts`)
+
+1. **Proteção Contra Destruição de Containers Preexistentes:**
+   - Antes de iniciar o container de teste, o smoke runner executa `checkPreExistingContainer()` inspecionando `docker ps -a --filter name=^/waha$`.
+   - Se o container já existia antes do teste, a execução é abortada com `BLOCKED_EXTERNAL` (`Pre-existing container 'waha' detected. Smoke runner will not destroy or overwrite external lab resources`).
+   - O teste garante não destrutividade sobre ambientes compartilhados.
+
+2. **Limpeza de Sessão Verificada via API REST:**
+   - `deleteSessionViaApi(sessionName)` agora retorna `{ success: boolean; error?: string }`.
+   - Verifica ativamente o status HTTP retornado pelo endpoint `DELETE /api/sessions/:name` (aceitando 200/204/404 como desfecho esperado e registrando erro em caso de status inesperado ou recusa de conexão).
+
+3. **Coleta e Tratamento de Erros em Comandos Docker:**
+   - Eliminados todos os blocos `catch {}` silenciosos.
+   - Erros de `docker stop -t 3` e `docker rm -f` são coletados estruturadamente no array `cleanupErrors`.
+   - O Passo 8 do bloco `finally` avalia se houve qualquer erro na limpeza; se houver falhas, o Passo 8 é marcado como `FAIL`, impondo `hasFailures = true` e `exitCode = 1`.
+
+4. **Cobertura de Testes Unitários (`scripts/__tests__/smoke-docker-waha.test.ts`):**
+   - 9/9 testes aprovados cobrindo:
+     - Falha na deleção de sessão via API REST.
+     - Falha no comando `docker stop`.
+     - Falha no comando `docker rm`.
+     - Detecção e preservação de container preexistente.
+     - Falha controlada no modo `--negative`.
+
+### 13.2. Implementação do `ChannelDispatchService` (`packages/application/src/channels/services/channel-dispatch.service.ts`)
+
+1. **Roteamento Explícito Multi-Provider:**
+   - Despacho obriga o par `(workspaceId, channelInstanceId)`. Proibida qualquer seleção arbitrária de "primeira linha ativa".
+   - Busca determinística via `ChannelInstanceRepository.getById(workspaceId, channelInstanceId)` sob transação tenant-first.
+
+2. **Políticas de Falha Fechada (Fail-Closed):**
+   - Instância não encontrada ou de outro tenant: lança `ChannelInstanceNotFoundError`.
+   - Instância inativa (`is_active: false`): lança `ChannelInstanceInactiveError`.
+   - Provedor sem adapter registrado no `ChannelAdapterRegistry`: lança `ChannelAdapterNotFoundError`.
+   - Capacidade não suportada pelo canal (ex.: templates no motor WAHA): lança `ChannelCapabilityUnsupportedError`.
+   - Falha de rede/provedor: lança `ChannelProviderUnavailableError` ou `ChannelDispatchFailedError`.
+   - **Zero Fallback:** Em hipótese alguma uma mensagem destinada ao WAHA é redirecionada para a Meta WABA (ou vice-versa) em caso de falha.
+
+3. **Sanitização de Logs e Proteção de PII:**
+   - Método `maskRecipientPhone()` mascara telefones (`+5511*****8888`).
+   - Textos de mensagens, payloads de mídia e tokens de autenticação são estritamente omitidos dos metadados de logging.
+
+### 13.3. Implementação do `ChannelHealthService` (`packages/application/src/channels/services/channel-health.service.ts`)
+
+1. **Estados Canônicos Estruturados:**
+   - `healthy`: Linha operacional comprovada por evidência técnica ativa do provedor.
+   - `degraded`: Linha em estado transitório (ex.: WAHA em `STARTING` ou `SCAN_QR_CODE`).
+   - `unavailable`: Linha desconectada, serviço fora do ar ou motor inacessível.
+   - `misconfigured`: Falta de credenciais, token não associado ou adapter não registrado.
+   - `inactive`: Instância desativada administrativamente no workspace.
+   - `unknown`: Ausência de probe em tempo real (ex.: Meta WABA em ambiente de CI hermético sem chamada externa).
+
+2. **Invariante: Baseado em Evidência Técnica (Truth in Data):**
+   - A mera presença de uma linha no banco de dados jamais classifica o canal como `healthy`.
+   - Exige evidência técnica positiva (ex.: `getSession` do WAHA retornando status `WORKING`). Na ausência de probe ativo, o estado é conservadoramente reportado como `unknown`.
+
+### 13.4. Matriz de Testes e Gates da Fase 3
+
+| Componente | Arquivo de Teste | Asserções / Testes | Status |
+|---|---|---|---|
+| Smoke Runner WAHA | `scripts/__tests__/smoke-docker-waha.test.ts` | 9 testes | PASS |
+| ChannelDispatchService | `packages/application/src/__tests__/channel-dispatch.service.test.ts` | 12 testes | PASS |
+| ChannelHealthService | `packages/application/src/__tests__/channel-health.service.test.ts` | 13 testes | PASS |
+| Pacote Application Completo | `packages/application/src/__tests__/*.test.ts` | 166 testes | PASS |
+
+---
