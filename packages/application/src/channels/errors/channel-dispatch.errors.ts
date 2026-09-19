@@ -9,6 +9,14 @@ export class ChannelDispatchBaseError extends Error {
     this.cause = cause;
     Object.setPrototypeOf(this, new.target.prototype);
   }
+
+  toJSON(): Record<string, unknown> {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+    };
+  }
 }
 
 export class ChannelInstanceNotFoundError extends ChannelDispatchBaseError {

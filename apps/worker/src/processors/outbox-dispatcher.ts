@@ -1,10 +1,22 @@
+import crypto from "node:crypto";
 import type { Pool } from "pg";
 import type {
   ChannelAdapterRegistry,
   ISigningSecretResolver,
+  ChannelSendResult,
 } from "@sos-sales/application";
-import { QueueRetryPolicy } from "@sos-sales/application";
-import { withWorkerTransaction } from "@sos-sales/database";
+import {
+  ChannelDispatchService,
+  ChannelInstanceNotFoundError,
+  ChannelInstanceInactiveError,
+  ChannelCapabilityUnsupportedError,
+  QueueRetryPolicy,
+} from "@sos-sales/application";
+import {
+  withWorkerTransaction,
+  ChannelInstanceRepository,
+  encryptPayload,
+} from "@sos-sales/database";
 import { logger } from "@sos-sales/observability";
 
 export interface ClaimedOutboxItem {
@@ -100,14 +112,14 @@ export class OutboxDispatcher {
   }
 
   /**
-   * Dispatches a single outbound command via the registered adapter.
+   * Dispatches a single outbound command explicitly via ChannelDispatchService.
    */
   async dispatchItem(
     pool: Pool,
     item: ClaimedOutboxItem,
     workerId: string,
-    registry: ChannelAdapterRegistry,
-    secretResolver: ISigningSecretResolver,
+    dispatchServiceOrRegistry: ChannelDispatchService | ChannelAdapterRegistry,
+    secretResolver?: ISigningSecretResolver,
     signal?: AbortSignal
   ): Promise<{ success: boolean; externalMessageId?: string; status: string }> {
     // 0. Crash recovery protection:
@@ -174,25 +186,26 @@ export class OutboxDispatcher {
         throw new Error("FENCING_PRE_SEND_ABORT: Dispatch was aborted by signal before execution");
       }
 
-      // 1. Get channel provider and optional 24h window timestamp under tenant scope
-      let provider: string;
-      let lastInboundAt: Date | null = null;
-
-      await withWorkerTransaction(item.workspace_id, async (client) => {
-        const channelRes = await client.query<{ provider: string }>(
-          `SELECT provider FROM public.channel_instances WHERE id = $1 AND workspace_id = $2 LIMIT 1;`,
-          [item.channel_instance_id, item.workspace_id]
-        );
-
-        const channelRow = channelRes.rows[0];
-        if (!channelRow) {
-          throw new Error(
-            `Channel instance ${item.channel_instance_id} not found in workspace ${item.workspace_id}`
-          );
+      // Resolve ChannelDispatchService
+      let dispatchService: ChannelDispatchService;
+      if ("dispatchOutbound" in dispatchServiceOrRegistry) {
+        dispatchService = dispatchServiceOrRegistry as ChannelDispatchService;
+      } else {
+        if (!secretResolver) {
+          throw new Error("SECRET_RESOLVER_REQUIRED: Must provide secretResolver when passing ChannelAdapterRegistry to dispatchItem");
         }
-        provider = channelRow.provider;
+        const channelRepo = new ChannelInstanceRepository(pool);
+        dispatchService = new ChannelDispatchService({
+          channelInstanceRepo: channelRepo,
+          adapterRegistry: dispatchServiceOrRegistry as ChannelAdapterRegistry,
+          secretResolver,
+        });
+      }
 
-        if (item.thread_id) {
+      // 1. Fetch optional 24h window timestamp under tenant scope
+      let lastInboundAt: Date | null = null;
+      if (item.thread_id) {
+        await withWorkerTransaction(item.workspace_id, async (client) => {
           const lastInboundRes = await client.query<{ created_at: Date }>(
             `SELECT created_at FROM public.messages 
              WHERE thread_id = $1 AND direction = 'inbound' 
@@ -202,10 +215,8 @@ export class OutboxDispatcher {
           if (lastInboundRes.rows.length > 0) {
             lastInboundAt = lastInboundRes.rows[0]!.created_at;
           }
-        }
-      }, pool);
-
-      const adapter = registry.get(provider!);
+        }, pool);
+      }
 
       // Construct WABA template object if template_name is present
       const template = item.template_name
@@ -230,25 +241,96 @@ export class OutboxDispatcher {
         );
       }
 
-      // 2. Perform outbound dispatch via adapter
-      const sendResult = await adapter.sendMessage(
-        {
-          workspaceId: item.workspace_id,
-          channelInstanceId: item.channel_instance_id,
-          commandId: item.id,
-          messageId: item.message_id,
-          recipientE164: item.recipient_e164,
-          body: item.body,
-          mediaUrl: item.media_url,
-          template,
-          idempotencyKey: item.idempotency_key,
-          lastInboundMessageAt: lastInboundAt,
-          signal: effectiveSignal,
-        },
-        secretResolver
-      );
+      // 2. Perform outbound dispatch via ChannelDispatchService
+      let sendResult: ChannelSendResult;
+      try {
+        sendResult = await dispatchService.dispatchOutbound(
+          item.workspace_id,
+          item.channel_instance_id,
+          {
+            recipientE164: item.recipient_e164,
+            body: item.body,
+            mediaUrl: item.media_url,
+            template,
+            idempotencyKey: item.idempotency_key,
+            commandId: item.id,
+            messageId: item.message_id,
+            lastInboundMessageAt: lastInboundAt,
+            signal: effectiveSignal,
+          }
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const causeMsg = (err instanceof Error && (err as any).cause instanceof Error) ? (err as any).cause.message : "";
+        if (msg.includes("FENCING") || causeMsg.includes("FENCING") || effectiveSignal.aborted) {
+          throw err;
+        }
 
-      // 3. Handle success: Transactional finalization of command and EXACT message
+        if (
+          err instanceof ChannelInstanceNotFoundError ||
+          err instanceof ChannelInstanceInactiveError ||
+          err instanceof ChannelCapabilityUnsupportedError
+        ) {
+          const errCode = (err as any).code || "PERMANENT_DISPATCH_REJECTION";
+          const errMessage = err instanceof Error ? err.message : String(err);
+          logger.warn(
+            { commandId: item.id, workerId, errorCode: errCode },
+            "Permanent dispatch rejection from ChannelDispatchService"
+          );
+          await withWorkerTransaction(item.workspace_id, async (client) => {
+            const res = await client.query(
+              `UPDATE public.outbound_commands
+               SET status = 'dead_letter', error_message = $1, lease_until = NULL
+               WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
+              [`[${errCode}] ${errMessage}`, item.id, workerId, item.lease_token]
+            );
+            if ((res.rowCount ?? 0) === 0) {
+              throw new Error(
+                `FENCING_VIOLATION: Outbound command ${item.id} was recovered by another worker or lease expired.`
+              );
+            }
+            if (item.message_id) {
+              await client.query(
+                `UPDATE public.messages
+                 SET delivery_status = 'failed', status_rank = -1, updated_at = clock_timestamp()
+                 WHERE id = $1 AND workspace_id = $2 AND channel_instance_id = $3;`,
+                [item.message_id, item.workspace_id, item.channel_instance_id]
+              );
+            }
+          }, pool);
+          return { success: false, status: "dead_letter" };
+        }
+
+        if (
+          msg.includes("ETIMEDOUT") ||
+          msg.includes("ECONNRESET") ||
+          msg.includes("timeout") ||
+          msg.includes("ambiguous")
+        ) {
+          logger.warn(
+            { commandId: item.id, workerId },
+            "Ambiguous timeout/socket reset during dispatch. Routing to reconciliation_required to prevent duplicate dispatch."
+          );
+          await withWorkerTransaction(item.workspace_id, async (client) => {
+            const res = await client.query(
+              `UPDATE public.outbound_commands
+               SET status = 'reconciliation_required', error_message = $1, lease_until = NULL
+               WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
+              [`[AMBIGUOUS_ERROR] ${msg}`, item.id, workerId, item.lease_token]
+            );
+            if ((res.rowCount ?? 0) === 0) {
+              throw new Error(
+                `FENCING_VIOLATION: Outbound command ${item.id} was recovered by another worker or lease expired.`
+              );
+            }
+          }, pool);
+          return { success: false, status: "reconciliation_required" };
+        }
+
+        throw err;
+      }
+
+      // 3. Handle success: Transactional finalization of command, EXACT message, and delivery event
       if (sendResult.success) {
         await withWorkerTransaction(item.workspace_id, async (client) => {
           // Fencing: Update outbound command ensuring lease_token and worker_id match
@@ -273,6 +355,57 @@ export class OutboxDispatcher {
                WHERE id = $2 AND workspace_id = $3 AND channel_instance_id = $4;`,
               [sendResult.externalMessageId, item.message_id, item.workspace_id, item.channel_instance_id]
             );
+          }
+
+          // Step 6: Record delivery event append-only
+          try {
+            const chanRes = await client.query<{ provider: string }>(
+              "SELECT provider FROM public.channel_instances WHERE id = $1 AND workspace_id = $2;",
+              [item.channel_instance_id, item.workspace_id]
+            );
+            const provider = chanRes.rows[0]?.provider || "meta_waba";
+
+            const rawEvent = JSON.stringify({
+              externalMessageId: sendResult.externalMessageId,
+              sentAt: sendResult.sentAt,
+              commandId: item.id,
+              status: "sent",
+            });
+            const eventHash = crypto.createHash("sha256").update(rawEvent).digest("hex");
+            const masterKey =
+              process.env.MCT_CREDENTIALS_MASTER_KEY ||
+              process.env.APP_MASTER_KEY ||
+              "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+            const enc = encryptPayload(rawEvent, masterKey);
+
+            await client.query(
+              `INSERT INTO public.provider_delivery_events (
+                 workspace_id, channel_instance_id, message_id, external_message_id,
+                 external_event_id, recipient_e164, provider, status,
+                 raw_payload_hash, encrypted_payload, payload_iv, payload_auth_tag, occurred_at
+               ) VALUES (
+                 $1, $2, $3, $4,
+                 $5, $6, $7, 'sent',
+                 $8, $9, $10, $11, $12
+               )
+               ON CONFLICT (channel_instance_id, external_event_id) DO NOTHING;`,
+              [
+                item.workspace_id,
+                item.channel_instance_id,
+                item.message_id,
+                sendResult.externalMessageId,
+                `send-${item.id}`,
+                item.recipient_e164,
+                provider,
+                eventHash,
+                enc.encryptedBase64,
+                enc.ivBase64,
+                enc.authTagBase64,
+                sendResult.sentAt,
+              ]
+            );
+          } catch (evtErr) {
+            logger.warn({ commandId: item.id, workerId, err: evtErr }, "Failed to record outbound delivery event");
           }
         }, pool);
 
@@ -328,12 +461,14 @@ export class OutboxDispatcher {
         return { success: false, status: "dead_letter" };
       }
 
-      // Transient failure
+      // Transient failure with exponential backoff and jitter
       let nextAttemptAt: Date;
       if (sendResult.retryAfterSeconds && sendResult.retryAfterSeconds > 0) {
         nextAttemptAt = new Date(Date.now() + sendResult.retryAfterSeconds * 1000);
       } else {
-        const decision = QueueRetryPolicy.evaluate(item.retry_count, item.max_retries, new Date());
+        const decision = QueueRetryPolicy.evaluate(item.retry_count, item.max_retries, new Date(), {
+          jitterRatio: 0.15,
+        });
         if (decision.nextStatus === "dead_letter") {
           await withWorkerTransaction(item.workspace_id, async (client) => {
             const res = await client.query(
@@ -378,12 +513,15 @@ export class OutboxDispatcher {
       return { success: false, status: "failed" };
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      if (errorMessage.includes("FENCING")) {
+      const causeMsg = (err instanceof Error && (err as any).cause instanceof Error) ? (err as any).cause.message : "";
+      if (errorMessage.includes("FENCING") || causeMsg.includes("FENCING") || effectiveSignal.aborted) {
         throw err;
       }
       logger.error({ commandId: item.id, workerId, err }, "Exception during outbox dispatch");
 
-      const decision = QueueRetryPolicy.evaluate(item.retry_count, item.max_retries, new Date());
+      const decision = QueueRetryPolicy.evaluate(item.retry_count, item.max_retries, new Date(), {
+        jitterRatio: 0.15,
+      });
       try {
         await withWorkerTransaction(item.workspace_id, async (client) => {
           if (decision.nextStatus === "dead_letter") {
@@ -493,8 +631,8 @@ export class OutboxDispatcher {
   async runOnce(
     pool: Pool,
     workerId: string,
-    registry: ChannelAdapterRegistry,
-    secretResolver: ISigningSecretResolver,
+    dispatchServiceOrRegistry: ChannelDispatchService | ChannelAdapterRegistry,
+    secretResolver?: ISigningSecretResolver,
     limit = 10,
     signal?: AbortSignal
   ): Promise<number> {
@@ -502,7 +640,7 @@ export class OutboxDispatcher {
     for (const item of items) {
       if (signal?.aborted) break;
       try {
-        await this.dispatchItem(pool, item, workerId, registry, secretResolver, signal);
+        await this.dispatchItem(pool, item, workerId, dispatchServiceOrRegistry, secretResolver, signal);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("FENCING")) {

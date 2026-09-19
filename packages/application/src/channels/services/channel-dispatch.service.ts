@@ -167,6 +167,11 @@ export class ChannelDispatchService {
     try {
       sendResult = await adapter.sendMessage(sendParams, this.secretResolver);
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      if (errorMsg.includes("FENCING") || sendParams.signal?.aborted || (err instanceof Error && err.name === "AbortError")) {
+        throw err;
+      }
+
       // Safe error wrapping: preserve cause internally, expose safe message and provider/channelInstanceId
       this.logger?.error("Channel adapter threw an exception during dispatch", {
         workspaceId,
@@ -174,7 +179,6 @@ export class ChannelDispatchService {
         provider: instance.provider,
       });
 
-      const errorMsg = err instanceof Error ? err.message : String(err);
       if (errorMsg.includes("ECONNREFUSED") || errorMsg.includes("ETIMEDOUT") || errorMsg.includes("Network error")) {
         throw new ChannelProviderUnavailableError(
           instance.provider,

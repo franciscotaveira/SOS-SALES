@@ -2,6 +2,8 @@ export interface QueueRetryOptions {
   readonly baseDelayMs?: number;
   readonly maxDelayMs?: number;
   readonly backoffFactor?: number;
+  readonly jitterRatio?: number; // e.g. 0.15 = ±15% jitter
+  readonly randomFn?: () => number;
 }
 
 export interface QueueRetryDecision {
@@ -73,10 +75,18 @@ export class QueueRetryPolicy {
     }
 
     // Exponential Backoff calculation
-    const delayMs = Math.min(
+    const baseCalculatedDelayMs = Math.min(
       Math.round(baseDelayMs * Math.pow(backoffFactor, safeRetryCount)),
       maxDelayMs
     );
+
+    // Apply bounded jitter if jitterRatio is specified (e.g. 0.15 = ±15% variance)
+    let delayMs = baseCalculatedDelayMs;
+    if (options.jitterRatio && options.jitterRatio > 0) {
+      const rand = options.randomFn ? options.randomFn() : Math.random();
+      const multiplier = 1 + (rand * 2 - 1) * Math.min(0.5, options.jitterRatio);
+      delayMs = Math.min(Math.round(baseCalculatedDelayMs * multiplier), maxDelayMs);
+    }
 
     const nextAttemptAt = new Date(now.getTime() + delayMs);
     const nextRetryCount = safeRetryCount + 1;

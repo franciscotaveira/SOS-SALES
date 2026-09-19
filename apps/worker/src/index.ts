@@ -5,10 +5,12 @@ import type { Pool } from "pg";
 import { logger } from "@sos-sales/observability";
 import {
   ChannelAdapterRegistry,
+  ChannelDispatchService,
   MetaWabaAdapter,
   WahaAdapter,
 } from "@sos-sales/application";
 import {
+  ChannelInstanceRepository,
   DatabaseSigningSecretResolver,
   getWorkerDatabasePool,
   closeAllDatabasePools,
@@ -29,6 +31,9 @@ export interface WorkerRuntimeOptions {
   pollIntervalMs?: number;
   batchSize?: number;
   healthFilePath?: string;
+  dispatchService?: ChannelDispatchService;
+  channelInstanceRepo?: ChannelInstanceRepository;
+  registry?: ChannelAdapterRegistry;
 }
 
 export interface WorkerHealthStatus {
@@ -77,6 +82,8 @@ export class WorkerRuntime {
   private outboxDispatcher: OutboxDispatcher | null = null;
   private registry: ChannelAdapterRegistry | null = null;
   private secretResolver: DatabaseSigningSecretResolver | null = null;
+  private channelInstanceRepo: ChannelInstanceRepository | null = null;
+  private dispatchService: ChannelDispatchService | null = null;
 
   private inboxLastPolledAt: Date | null = null;
   private inboxConsecutiveFailures = 0;
@@ -130,6 +137,16 @@ export class WorkerRuntime {
     this.pollIntervalMs = options.pollIntervalMs ?? 1000;
     this.batchSize = options.batchSize ?? 10;
     this.healthFilePath = options.healthFilePath ?? "/tmp/worker-healthy";
+
+    if (options.registry) {
+      this.registry = options.registry;
+    }
+    if (options.channelInstanceRepo) {
+      this.channelInstanceRepo = options.channelInstanceRepo;
+    }
+    if (options.dispatchService) {
+      this.dispatchService = options.dispatchService;
+    }
   }
 
   async start(): Promise<void> {
@@ -152,21 +169,24 @@ export class WorkerRuntime {
       keyring: this.keyring,
     });
     this.outboxDispatcher = new OutboxDispatcher();
-    this.registry = new ChannelAdapterRegistry();
-    this.registry.register(new MetaWabaAdapter());
 
-    // P0: Startup WAHA validation
-    // WorkerRuntime must NOT instantiate WahaAdapter with a forbidden default (e.g. localhost:3000).
-    // WAHA_BASE_URL is strictly required when WAHA is enabled.
-    const wahaEnabled = process.env.WAHA_ENABLED === "true" || !!process.env.WAHA_BASE_URL;
-    if (wahaEnabled) {
-      const wahaUrl = process.env.WAHA_BASE_URL;
-      if (!wahaUrl) {
-        throw new Error(
-          "FATAL_CONFIG_ERROR: WAHA_BASE_URL is mandatory when WAHA is enabled in WorkerRuntime."
-        );
+    if (!this.registry) {
+      this.registry = new ChannelAdapterRegistry();
+      this.registry.register(new MetaWabaAdapter());
+
+      // P0: Startup WAHA validation
+      // WorkerRuntime must NOT instantiate WahaAdapter with a forbidden default (e.g. localhost:3000).
+      // WAHA_BASE_URL is strictly required when WAHA is enabled.
+      const wahaEnabled = process.env.WAHA_ENABLED === "true" || !!process.env.WAHA_BASE_URL;
+      if (wahaEnabled) {
+        const wahaUrl = process.env.WAHA_BASE_URL;
+        if (!wahaUrl) {
+          throw new Error(
+            "FATAL_CONFIG_ERROR: WAHA_BASE_URL is mandatory when WAHA is enabled in WorkerRuntime."
+          );
+        }
+        this.registry.register(new WahaAdapter({ baseUrl: wahaUrl }));
       }
-      this.registry.register(new WahaAdapter({ baseUrl: wahaUrl }));
     }
 
     this.secretResolver = new DatabaseSigningSecretResolver({
@@ -174,6 +194,18 @@ export class WorkerRuntime {
       masterKeyHex: this.masterKeyHex,
       keyring: this.keyring,
     });
+
+    if (!this.channelInstanceRepo) {
+      this.channelInstanceRepo = new ChannelInstanceRepository(this.pool);
+    }
+
+    if (!this.dispatchService) {
+      this.dispatchService = new ChannelDispatchService({
+        channelInstanceRepo: this.channelInstanceRepo,
+        adapterRegistry: this.registry,
+        secretResolver: this.secretResolver,
+      });
+    }
 
     this.isRunning = true;
     this.startedAt = Date.now();
@@ -303,7 +335,7 @@ export class WorkerRuntime {
             this.pool,
             item,
             this.workerId,
-            this.registry,
+            this.dispatchService ?? this.registry,
             this.secretResolver,
             signal
           );
