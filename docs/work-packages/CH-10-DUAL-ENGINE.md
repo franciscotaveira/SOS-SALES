@@ -393,33 +393,24 @@ docker rm sos-v3-waha
 
 ---
 
-## 13. Relatório de Implementação da Fase 3 e Retificação P1 do Smoke
+## 13. Relatório de Implementação da Fase 3 e Retificações de Segurança P0
 
-### 13.1. Retificação P1: Smoke Cleanup Confiável e Não Destrutivo (`scripts/smoke-docker-waha.ts`)
+### 13.1. Eliminação de Command Injection e Confiabilidade do Smoke (`scripts/smoke-docker-waha.ts`)
 
-1. **Proteção Contra Destruição de Containers Preexistentes:**
-   - Antes de iniciar o container de teste, o smoke runner executa `checkPreExistingContainer()` inspecionando `docker ps -a --filter name=^/waha$`.
-   - Se o container já existia antes do teste, a execução é abortada com `BLOCKED_EXTERNAL` (`Pre-existing container 'waha' detected. Smoke runner will not destroy or overwrite external lab resources`).
-   - O teste garante não destrutividade sobre ambientes compartilhados.
+1. **Eliminação Total de Shell Interpolation (P0-1):**
+   - Substituído `exec` com string por `execFileAsync("docker", args, options)` utilizando arrays de argumentos literais passados diretamente ao kernel sem invocar `/bin/sh`.
+   - `WAHA_API_KEY` injetada exclusivamente via `{ env: { ...process.env, WAHA_API_KEY: this.apiKey } }` em `options.env`, nunca como flag ou parâmetro de linha de comando.
+   - Validação estrita por allowlist regex (`SAFE_NAME_REGEX = /^[a-zA-Z0-9_-]+$/`) para `containerName` e `sessionName`.
+   - Aplicação de `encodeURIComponent(sessionName)` em todas as URLs REST de manipulação de sessão.
+   - Testes unitários comprovam a rejeição de `$()`, backticks, aspas, ponto-e-vírgula e garantem que nenhum valor configurável passe por interpretação de shell.
 
-2. **Limpeza de Sessão Verificada via API REST:**
-   - `deleteSessionViaApi(sessionName)` agora retorna `{ success: boolean; error?: string }`.
-   - Verifica ativamente o status HTTP retornado pelo endpoint `DELETE /api/sessions/:name` (aceitando 200/204/404 como desfecho esperado e registrando erro em caso de status inesperado ou recusa de conexão).
+2. **Ordenação de Veredito e Isolamento no Cleanup (P0-3):**
+   - Reestruturado o fluxo de `execute()` com rótulo `stepPipeline: { ... break stepPipeline; }`, garantindo que o bloco `finally` (Passo 8: Cleanup) execute integralmente ANTES da invocação de `evaluateVerdict()`.
+   - `BLOCKED_EXTERNAL` possui agora exit code canônico e distinto: **2** (reservado para dependências externas indisponíveis como Docker daemon ausente ou container preexistente).
+   - Qualquer falha durante o pipeline ou durante o Passo 8 (stop/rm/DELETE) marca `hasFailures = true` e impõe exit code **1**.
+   - Testes unitários validam cenários de container preexistente preservado, falha na API de DELETE, falha em `docker stop` e falha em `docker rm`.
 
-3. **Coleta e Tratamento de Erros em Comandos Docker:**
-   - Eliminados todos os blocos `catch {}` silenciosos.
-   - Erros de `docker stop -t 3` e `docker rm -f` são coletados estruturadamente no array `cleanupErrors`.
-   - O Passo 8 do bloco `finally` avalia se houve qualquer erro na limpeza; se houver falhas, o Passo 8 é marcado como `FAIL`, impondo `hasFailures = true` e `exitCode = 1`.
-
-4. **Cobertura de Testes Unitários (`scripts/__tests__/smoke-docker-waha.test.ts`):**
-   - 9/9 testes aprovados cobrindo:
-     - Falha na deleção de sessão via API REST.
-     - Falha no comando `docker stop`.
-     - Falha no comando `docker rm`.
-     - Detecção e preservação de container preexistente.
-     - Falha controlada no modo `--negative`.
-
-### 13.2. Implementação do `ChannelDispatchService` (`packages/application/src/channels/services/channel-dispatch.service.ts`)
+### 13.2. Redação de PII e Erros em `ChannelDispatchService` (P0-2)
 
 1. **Roteamento Explícito Multi-Provider:**
    - Despacho obriga o par `(workspaceId, channelInstanceId)`. Proibida qualquer seleção arbitrária de "primeira linha ativa".
@@ -433,19 +424,19 @@ docker rm sos-v3-waha
    - Falha de rede/provedor: lança `ChannelProviderUnavailableError` ou `ChannelDispatchFailedError`.
    - **Zero Fallback:** Em hipótese alguma uma mensagem destinada ao WAHA é redirecionada para a Meta WABA (ou vice-versa) em caso de falha.
 
-3. **Sanitização de Logs e Proteção de PII:**
-   - Método `maskRecipientPhone()` mascara telefones (`+5511*****8888`).
-   - Textos de mensagens, payloads de mídia e tokens de autenticação são estritamente omitidos dos metadados de logging.
+3. **Higiene de Observabilidade e Redação Estrita de PII:**
+   - Removido `recipientMasked` dos logs (número parcialmente mascarado continua sendo PII sob LGPD/GDPR).
+   - Removido `idempotencyKey` dos logs.
+   - Mensagens de exceção de provedores (`err.message`) e mensagens brutas de erro (`sendResult.errorMessage`) são estritamente redigidas dos logs e exceções públicas.
+   - Causa raiz original preservada exclusivamente no campo interno `cause` do erro (`new ChannelDispatchFailedError(msg, err)`), expondo publicamente apenas códigos seguros e o par `(provider, channelInstanceId)`.
 
-### 13.3. Implementação do `ChannelHealthService` (`packages/application/src/channels/services/channel-health.service.ts`)
+### 13.3. Redação de Evidência Técnica em `ChannelHealthService` (P0-2)
 
-1. **Estados Canônicos Estruturados:**
-   - `healthy`: Linha operacional comprovada por evidência técnica ativa do provedor.
-   - `degraded`: Linha em estado transitório (ex.: WAHA em `STARTING` ou `SCAN_QR_CODE`).
-   - `unavailable`: Linha desconectada, serviço fora do ar ou motor inacessível.
-   - `misconfigured`: Falta de credenciais, token não associado ou adapter não registrado.
-   - `inactive`: Instância desativada administrativamente no workspace.
-   - `unknown`: Ausência de probe em tempo real (ex.: Meta WABA em ambiente de CI hermético sem chamada externa).
+1. **Evidência Allowlisted Não Pessoal:**
+   - Interface `ChannelHealthEvidence` tipada e restrita a campos allowlisted: `status`, `checkedAt` e `endpointReachable`.
+   - Totalmente eliminado `sessionInfo.me` (que continha o JID do WhatsApp e dados do perfil).
+   - Proibido o retorno de `err.message`, `String(err)` ou objetos de erro brutos em `reasonMessage` e `lastKnownTechnicalEvidence`.
+   - Erros externos são normalizados em reason codes canônicos e seguros (`WAHA_NODE_UNREACHABLE`, `ADAPTER_HEALTH_CHECK_FAILED`, etc.).
 
 2. **Invariante: Baseado em Evidência Técnica (Truth in Data):**
    - A mera presença de uma linha no banco de dados jamais classifica o canal como `healthy`.
@@ -455,9 +446,9 @@ docker rm sos-v3-waha
 
 | Componente | Arquivo de Teste | Asserções / Testes | Status |
 |---|---|---|---|
-| Smoke Runner WAHA | `scripts/__tests__/smoke-docker-waha.test.ts` | 9 testes | PASS |
-| ChannelDispatchService | `packages/application/src/__tests__/channel-dispatch.service.test.ts` | 12 testes | PASS |
-| ChannelHealthService | `packages/application/src/__tests__/channel-health.service.test.ts` | 13 testes | PASS |
-| Pacote Application Completo | `packages/application/src/__tests__/*.test.ts` | 166 testes | PASS |
+| Smoke Runner WAHA (Segurança, Shell, Cleanup) | `scripts/__tests__/smoke-docker-waha.test.ts` | 16 testes | PASS |
+| ChannelDispatchService (Roteamento, PII Redact) | `packages/application/src/__tests__/channel-dispatch.service.test.ts` | 14 testes | PASS |
+| ChannelHealthService (Evidência Allowlisted) | `packages/application/src/__tests__/channel-health.service.test.ts` | 13 testes | PASS |
+| Pacote Application Completo | `packages/application/src/__tests__/*.test.ts` | 168 testes | PASS |
 
 ---

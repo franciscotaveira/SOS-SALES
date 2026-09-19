@@ -190,7 +190,7 @@ export class WahaSmokeRunner {
       const deleteRes = await fetch(`${this.baseUrl}/api/sessions/${encodedSession}`, {
         method: "DELETE",
         headers: { "X-Api-Key": this.apiKey },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(45000),
       });
       if (deleteRes.ok || deleteRes.status === 404) {
         return { success: true };
@@ -209,8 +209,8 @@ export class WahaSmokeRunner {
           "Content-Type": "application/json",
           "X-Api-Key": this.apiKey,
         },
-        body: JSON.stringify({ name: this.sessionName, logout: true }),
-        signal: AbortSignal.timeout(15000),
+        body: JSON.stringify({ name: this.sessionName, logout: false }),
+        signal: AbortSignal.timeout(45000),
       });
       if (stopRes.ok || stopRes.status === 404) {
         return { success: true };
