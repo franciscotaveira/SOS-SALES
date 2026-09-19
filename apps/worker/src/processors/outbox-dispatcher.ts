@@ -20,6 +20,7 @@ import {
   OutboundCommandRepository,
   FencingViolationError,
   encryptPayload,
+  DatabaseSigningSecretResolver,
 } from "@sos-sales/database";
 import { logger } from "@sos-sales/observability";
 
@@ -42,10 +43,70 @@ export interface ClaimedOutboxItem {
   previous_status?: string;
 }
 
+export interface OutboxDispatcherOptions {
+  outboundRepo?: OutboundCommandRepository;
+  masterKeyHex?: string;
+  secretResolver?: ISigningSecretResolver | DatabaseSigningSecretResolver;
+}
+
+export class FatalCryptographicConfigError extends Error {
+  readonly code = "FATAL_CRYPTOGRAPHIC_CONFIG_ERROR" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "FatalCryptographicConfigError";
+  }
+}
+
 export class OutboxDispatcher {
+  private readonly outboundRepo: OutboundCommandRepository;
+  private readonly configuredMasterKeyHex?: string;
+  private readonly configuredSecretResolver?: ISigningSecretResolver | DatabaseSigningSecretResolver;
+
   constructor(
-    private readonly outboundRepo: OutboundCommandRepository = new OutboundCommandRepository()
-  ) {}
+    outboundRepoOrOptions?: OutboundCommandRepository | OutboxDispatcherOptions
+  ) {
+    if (outboundRepoOrOptions && "claimPendingBatch" in outboundRepoOrOptions) {
+      this.outboundRepo = outboundRepoOrOptions;
+    } else if (outboundRepoOrOptions) {
+      const opts = outboundRepoOrOptions as OutboxDispatcherOptions;
+      this.outboundRepo = opts.outboundRepo || new OutboundCommandRepository();
+      this.configuredMasterKeyHex = opts.masterKeyHex;
+      this.configuredSecretResolver = opts.secretResolver;
+    } else {
+      this.outboundRepo = new OutboundCommandRepository();
+    }
+  }
+
+  /**
+   * Resolves the cryptographic master key for delivery event encryption.
+   * Fail-Closed: Strict validation without hardcoded default keys.
+   */
+  resolveMasterKey(secretResolver?: ISigningSecretResolver | DatabaseSigningSecretResolver): string {
+    const candidate =
+      this.configuredMasterKeyHex ||
+      (secretResolver as any)?.keyringOrKey ||
+      (this.configuredSecretResolver as any)?.keyringOrKey ||
+      process.env.MCT_CREDENTIALS_MASTER_KEY ||
+      process.env.APP_MASTER_KEY ||
+      process.env.MASTER_ENCRYPTION_KEY;
+
+    if (typeof candidate === "string" && /^[0-9a-fA-F]{64}$/.test(candidate)) {
+      return candidate;
+    }
+
+    if (candidate && typeof candidate === "object") {
+      const keys = Object.values(candidate) as string[];
+      for (const k of keys) {
+        if (typeof k === "string" && /^[0-9a-fA-F]{64}$/.test(k)) {
+          return k;
+        }
+      }
+    }
+
+    throw new FatalCryptographicConfigError(
+      "FATAL_CONFIG_ERROR: Master encryption key must be explicitly provided as a 64-character hex string for OutboxDispatcher delivery event encryption (no hardcoded fallback allowed)"
+    );
+  }
 
   /**
    * Concurrently claims a batch of eligible outbound commands using SKIP LOCKED and lease fencing.
@@ -113,6 +174,9 @@ export class OutboxDispatcher {
       }, pool);
       return { success: false, status: "reconciliation_required" };
     }
+
+    // Fail-Closed: Validate cryptographic master key before any dispatch or persistence
+    const masterKey = this.resolveMasterKey(secretResolver);
 
     try {
       // Reset lease clock immediately upon starting item dispatch
@@ -333,10 +397,6 @@ export class OutboxDispatcher {
               status: "sent",
             });
             const eventHash = crypto.createHash("sha256").update(rawEvent).digest("hex");
-            const masterKey =
-              process.env.MCT_CREDENTIALS_MASTER_KEY ||
-              process.env.APP_MASTER_KEY ||
-              "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
             const enc = encryptPayload(rawEvent, masterKey);
 
             await client.query(

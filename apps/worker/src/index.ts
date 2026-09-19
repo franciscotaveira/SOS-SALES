@@ -168,7 +168,9 @@ export class WorkerRuntime {
       masterKeyHex: this.masterKeyHex,
       keyring: this.keyring,
     });
-    this.outboxDispatcher = new OutboxDispatcher();
+    this.outboxDispatcher = new OutboxDispatcher({
+      masterKeyHex: this.masterKeyHex,
+    });
 
     if (!this.registry) {
       this.registry = new ChannelAdapterRegistry();
