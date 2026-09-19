@@ -2,7 +2,7 @@
 
 > Fonte de verdade para planejamento, execução, aceite e entrega da V3.  
 > Criado em 19 de setembro de 2026.  
-> Estado atual: `G-00` a `G-06`, `CH-00` a `CH-08` aceitos; `CH-09` em `IN_REVIEW`; `CH-10` em `PLANNED`; sem autorização para produção.
+> Estado atual: `G-00` a `G-06`, `CH-00` a `CH-09` aceitos; `CH-10` em `READY`; sem autorização para produção.
 
 ## Ordem de autoridade
 

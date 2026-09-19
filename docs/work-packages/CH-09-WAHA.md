@@ -1,14 +1,14 @@
 # CH-09 — WAHA Operacional
 
 > Nome do arquivo: `CH-09-WAHA.md`  
-> Estado: `IN_REVIEW` — Implementado e em revisão de engenharia/segurança.
+> Estado: `ACCEPTED` — Homologado com checkpoint imutável `9577e17b5508efe671d195756a27b6948c908f5b` e 110 testes aprovados.
 
 ---
 
 ## Identidade
 
 - **Parent objective:** Programa SOS Sales V3 — Motor de Comunicação (Fase CH)
-- **Estado:** `IN_REVIEW`
+- **Estado:** `ACCEPTED`
 - **Owner:** Gemini 3.8 (Executor Principal)
 - **Reviewer:** Agente SRE & Security Independente
 - **Dependências:** `CH-00` (Modelos Mínimos), `CH-01` (RLS Fail-Closed), `CH-02` (Fencing Concorrente), `CH-03` (Reconciliação e Resiliência), `CH-04` (Ingress Seguro), `CH-05` (Rate Limiting Distribuído), `CH-06` (Keyring E2E), `CH-07` (SSRF Guard & Mídia Segura)

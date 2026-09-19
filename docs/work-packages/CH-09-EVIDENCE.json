@@ -1,8 +1,8 @@
 {
   "package_id": "CH-09",
   "name": "WAHA Operacional",
-  "timestamp": "2026-09-19T08:26:00Z",
-  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "timestamp": "2026-09-19T14:20:00Z",
+  "commit_sha": "9577e17b5508efe671d195756a27b6948c908f5b",
   "branch": "codex/iteration-2.7",
   "evidence_id": "EV-CH09-001",
   "environment": {
