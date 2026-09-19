@@ -121,27 +121,41 @@ services:
       - sos-v3-network
 
   waha:
-    image: devlikeapro/waha:latest
+    platform: linux/amd64
+    image: devlikeapro/waha:latest-2026.8.2@sha256:527ff3d634925adb26d596883d7b3ca502c080f737af3c2af2be0c973c511533
     container_name: sos-v3-waha
     restart: unless-stopped
     profiles:
       - waha
+    security_opt:
+      - no-new-privileges:true
     environment:
-      WHATSAPP_HOOK_URL: http://api:4400/webhooks/whatsapp
-      WHATSAPP_HOOK_EVENTS: message,message.ack,session.status
-      WHATSAPP_API_KEY: ${WAHA_API_KEY:-sos_waha_secret_key_2026}
+      WHATSAPP_DEFAULT_ENGINE: ${WAHA_ENGINE:-WEBJS}
+      WHATSAPP_API_KEY: ${WAHA_API_KEY}
       WAHA_ZIP_LOGS: "false"
       WAHA_LOG_LEVEL: info
+      WAHA_PRINT_QR: "false"
+      WAHA_BASE_URL: http://waha:3000
     ports:
-      - "${PORT_WAHA:-3000}:3000"
+      - "127.0.0.1:${PORT_WAHA:-3000}:3000"
+    volumes:
+      - sos_v3_waha_sessions:/app/.sessions
+    networks:
+      - sos-v3-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.50'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/server/version || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- --header=\"X-Api-Key: $${WHATSAPP_API_KEY}\" http://127.0.0.1:3000/api/server/version || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - sos-v3-network
-
+      start_period: 30s
 
 networks:
   sos-v3-network:
@@ -153,3 +167,5 @@ volumes:
     name: sos_v3_pgdata
   sos_v3_redisdata:
     name: sos_v3_redisdata
+  sos_v3_waha_sessions:
+    name: sos_v3_waha_sessions
