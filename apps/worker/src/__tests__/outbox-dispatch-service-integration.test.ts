@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,6 +8,7 @@ import {
   DatabaseSigningSecretResolver,
   ChannelInstanceRepository,
   OutboundCommandRepository,
+  IdempotencyConflictError,
 } from "@sos-sales/database";
 import {
   ChannelAdapterRegistry,
@@ -20,6 +21,7 @@ import {
   type OutboundSendParams,
   type ChannelSendResult,
 } from "@sos-sales/application";
+import { logger } from "@sos-sales/observability";
 import { OutboxDispatcher } from "../processors/outbox-dispatcher";
 
 describe("CH-10: Outbox → Worker → ChannelDispatchService Integration & Resilience", () => {
@@ -641,11 +643,67 @@ describe("CH-10: Outbox → Worker → ChannelDispatchService Integration & Resi
     ).rejects.toThrow(ChannelInstanceNotFoundError);
   });
 
-  it("10. should sanitize logs and mask E.164 phone numbers to prevent PII leakage", () => {
+  it("10. should sanitize logs and ensure telephone numbers are never logged in dispatch/worker logs", async () => {
+    // 1. maskRecipientPhone utility verification
     expect(maskRecipientPhone("+5511999998888")).toBe("+5511*****8888");
     expect(maskRecipientPhone("+14155552671")).toBe("+1415*****2671");
     expect(maskRecipientPhone("short")).toBe("***");
     expect(maskRecipientPhone("")).toBe("***");
+
+    // 2. Behavioral verification: Zero phone in dispatch logs
+    const sensitivePhone = "+5511977776666";
+    const { commandId } = await createMessageAndCommand({
+      workspaceId: workspaceAId,
+      channelInstanceId: lineCommercialId,
+      recipientE164: sensitivePhone,
+      body: "Observability privacy test",
+    });
+
+    const dispatcher = new OutboxDispatcher();
+    const registry = new ChannelAdapterRegistry();
+    const mockAdapter: IChannelAdapter = {
+      provider: "meta_waba",
+      async sendMessage(): Promise<ChannelSendResult> {
+        return {
+          success: true,
+          externalMessageId: `wamid.privacy-${Date.now()}`,
+          sentAt: new Date(),
+        };
+      },
+    };
+    registry.register(mockAdapter);
+
+    const secretResolver = new DatabaseSigningSecretResolver({
+      pool: workerPool,
+      masterKeyHex: testMasterKey,
+    });
+
+    const claimed = await dispatcher.claimBatch(workerPool, "worker-privacy-test", 10);
+    const item = claimed.find((c) => c.id === commandId);
+    expect(item).toBeDefined();
+
+    const loggedChunks: string[] = [];
+    const infoSpy = vi.spyOn(logger, "info").mockImplementation((...args) => {
+      loggedChunks.push(JSON.stringify(args));
+    });
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation((...args) => {
+      loggedChunks.push(JSON.stringify(args));
+    });
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation((...args) => {
+      loggedChunks.push(JSON.stringify(args));
+    });
+
+    try {
+      await dispatcher.dispatchItem(workerPool, item!, "worker-privacy-test", registry, secretResolver);
+
+      const allLogs = loggedChunks.join(" ");
+      expect(allLogs).not.toContain(sensitivePhone);
+      expect(allLogs).not.toContain(maskRecipientPhone(sensitivePhone));
+    } finally {
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   it("11. should statically verify total absence of legacy shell execution in worker and smoke scripts", () => {
@@ -691,4 +749,175 @@ describe("CH-10: Outbox → Worker → ChannelDispatchService Integration & Resi
     const jsonString = JSON.stringify(serialized);
     expect(jsonString).not.toContain("SENSITIVE_INTERNAL_DATABASE_CREDENTIALS_LEAK");
   });
+
+  it("13. should sanitize error_message in outbound_commands and prevent leak of raw exception, URL, token, phone, or body", async () => {
+    const rawSensitiveUrl = "https://waha.internal.corp:3000/api/sendText?token=SECRET_BEARER_TOKEN_999&phone=+5511999998888";
+    const { commandId } = await createMessageAndCommand({
+      workspaceId: workspaceAId,
+      channelInstanceId: lineCommercialId,
+      recipientE164: "+5511999998888",
+      body: "Sanitization test body",
+    });
+
+    const dispatcher = new OutboxDispatcher();
+    const registry = new ChannelAdapterRegistry();
+    const mockFailingAdapter: IChannelAdapter = {
+      provider: "meta_waba",
+      async sendMessage(): Promise<ChannelSendResult> {
+        throw new Error(`Connection refused to ${rawSensitiveUrl}`);
+      },
+    };
+    registry.register(mockFailingAdapter);
+
+    const secretResolver = new DatabaseSigningSecretResolver({
+      pool: workerPool,
+      masterKeyHex: testMasterKey,
+    });
+
+    const claimed = await dispatcher.claimBatch(workerPool, "worker-sanitize-test", 10);
+    const item = claimed.find((c) => c.id === commandId);
+    expect(item).toBeDefined();
+
+    await dispatcher.dispatchItem(workerPool, item!, "worker-sanitize-test", registry, secretResolver);
+
+    const check = await ownerPool.query(
+      "SELECT status, error_message FROM outbound_commands WHERE id = $1",
+      [commandId]
+    );
+    expect(check.rows[0].status).toBe("failed");
+
+    const errMsg = check.rows[0].error_message;
+    expect(errMsg).toBeDefined();
+    expect(errMsg).not.toContain("SECRET_BEARER_TOKEN_999");
+    expect(errMsg).not.toContain("https://waha.internal.corp");
+    expect(errMsg).not.toContain("+5511999998888");
+    expect(errMsg).not.toContain("Sanitization test body");
+    expect(errMsg).toContain("ERR_");
+  });
+
+  it("14. should atomically rollback and reject status='sent' when lease is stolen after provider dispatch succeeds", async () => {
+    const { commandId, messageId } = await createMessageAndCommand({
+      workspaceId: workspaceAId,
+      channelInstanceId: lineCommercialId,
+      recipientE164: "+5511988887777",
+      body: "Post-send fencing race test",
+    });
+
+    const dispatcher = new OutboxDispatcher();
+    const registry = new ChannelAdapterRegistry();
+
+    // Adapter simulates successful provider send, but another worker invalidates the lease concurrently
+    const mockRacyAdapter: IChannelAdapter = {
+      provider: "meta_waba",
+      async sendMessage(): Promise<ChannelSendResult> {
+        // Concurrently invalidate Worker 1's lease before return
+        await ownerPool.query(
+          "UPDATE outbound_commands SET lease_token = gen_random_uuid(), worker_id = 'worker-thief' WHERE id = $1",
+          [commandId]
+        );
+        return {
+          success: true,
+          externalMessageId: `wamid.stolen-lease-${Date.now()}`,
+          sentAt: new Date(),
+        };
+      },
+    };
+    registry.register(mockRacyAdapter);
+
+    const secretResolver = new DatabaseSigningSecretResolver({
+      pool: workerPool,
+      masterKeyHex: testMasterKey,
+    });
+
+    const claimed = await dispatcher.claimBatch(workerPool, "worker-victim", 10);
+    const item = claimed.find((c) => c.id === commandId);
+    expect(item).toBeDefined();
+
+    // Attempting dispatchItem must throw or reject with FencingViolationError
+    await expect(
+      dispatcher.dispatchItem(workerPool, item!, "worker-victim", registry, secretResolver)
+    ).rejects.toThrow(/FENCING/);
+
+    // Verify messages table remained 'queued' (did not get updated to 'sent' because transaction rolled back)
+    const msgCheck = await ownerPool.query("SELECT delivery_status FROM messages WHERE id = $1", [messageId]);
+    expect(msgCheck.rows[0].delivery_status).toBe("queued");
+
+    // Verify outbound_commands table did NOT transition to 'sent'
+    const cmdCheck = await ownerPool.query("SELECT status, worker_id FROM outbound_commands WHERE id = $1", [commandId]);
+    expect(cmdCheck.rows[0].status).not.toBe("sent");
+    expect(cmdCheck.rows[0].worker_id).toBe("worker-thief");
+  });
+
+  it("15. should verify OutboundCommandRepository handles persistent idempotency and conflict detection", async () => {
+    const repo = new OutboundCommandRepository(ownerPool);
+    const idempotencyKey = `idemp-canonical-${Date.now()}`;
+
+    const { messageId } = await createMessageAndCommand({
+      workspaceId: workspaceAId,
+      channelInstanceId: lineCommercialId,
+      recipientE164: "+5511988887777",
+      body: "Canonical idempotency test",
+      idempotencyKey,
+    });
+
+    // 1. Same payload returns identical command idempotently
+    const secondCall = await repo.enqueueOutboundCommand({
+      workspaceId: workspaceAId,
+      channelInstanceId: lineCommercialId,
+      messageId,
+      recipientE164: "+5511988887777",
+      body: "Canonical idempotency test",
+      idempotencyKey,
+    });
+    expect(secondCall.message_id).toBe(messageId);
+    expect(secondCall.channel_instance_id).toBe(lineCommercialId);
+
+    // 2. Mismatched message_id with same idempotency_key throws IdempotencyConflictError
+    await expect(
+      repo.enqueueOutboundCommand({
+        workspaceId: workspaceAId,
+        channelInstanceId: lineCommercialId,
+        messageId: crypto.randomUUID(),
+        recipientE164: "+5511988887777",
+        body: "Canonical idempotency test",
+        idempotencyKey,
+      })
+    ).rejects.toThrow(IdempotencyConflictError);
+
+    // 3. Same idempotency_key in another workspace does not conflict
+    const contactBRes = await ownerPool.query(
+      `INSERT INTO contacts (workspace_id, phone_e164, name)
+       VALUES ($1, '+5511988887777', 'Lead Beta Idemp')
+       RETURNING id;`,
+      [workspaceBId]
+    );
+    const threadBRes = await ownerPool.query(
+      `INSERT INTO commercial_threads (workspace_id, channel_instance_id, contact_id, status)
+       VALUES ($1, $2, $3, 'active')
+       RETURNING id;`,
+      [workspaceBId, workspaceBLineId, contactBRes.rows[0].id]
+    );
+    const msgBRes = await ownerPool.query(
+      `INSERT INTO messages (
+        workspace_id, channel_instance_id, thread_id, provider, direction,
+        sender_e164, recipient_e164, content_type, body, delivery_status, status_rank
+      ) VALUES (
+        $1, $2, $3, 'meta_waba', 'outbound',
+        '+5511999990004', '+5511988887777', 'text', 'Other workspace test', 'queued', 0
+      ) RETURNING id;`,
+      [workspaceBId, workspaceBLineId, threadBRes.rows[0].id]
+    );
+    const wsBMessageId = msgBRes.rows[0].id;
+
+    const otherWsCall = await repo.enqueueOutboundCommand({
+      workspaceId: workspaceBId,
+      channelInstanceId: workspaceBLineId,
+      messageId: wsBMessageId,
+      recipientE164: "+5511988887777",
+      body: "Other workspace test",
+      idempotencyKey,
+    });
+    expect(otherWsCall.workspace_id).toBe(workspaceBId);
+  });
+
 });
