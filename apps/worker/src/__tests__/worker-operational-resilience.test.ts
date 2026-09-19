@@ -133,43 +133,35 @@ describe("Worker Operational Resilience & P0/P1 Edge Case Verification", () => {
       const registry = new ChannelAdapterRegistry();
       registry.register(fakeAdapter);
 
-      const secretResolver = new DatabaseSigningSecretResolver({
-        pool: workerPool,
-        masterKeyHex: testMasterKey,
-      });
-
       const dispatcher = new OutboxDispatcher();
 
-      // Claim batch using workerPool (role sos_worker_user)
+      // 1. Normal claimBatch MUST NOT claim the expired processing item (P0-5)
       const claimed = await dispatcher.claimBatch(workerPool, "recovery-worker-1", 100);
       const targetItem = claimed.find((c) => c.id === commandId);
-      expect(targetItem).toBeDefined();
-      expect(targetItem?.previous_status).toBe("processing");
+      expect(targetItem).toBeUndefined();
 
-      // Dispatch the claimed item
-      const result = await dispatcher.dispatchItem(
-        workerPool,
-        targetItem!,
-        "recovery-worker-1",
-        registry,
-        secretResolver
-      );
+      // 2. Dedicated lease reclamation recovers it directly to reconciliation_required without touching retry_count
+      const reclaimed = await dispatcher.reclaimExpiredLeases(workerPool, 100);
+      expect(reclaimed).toBeGreaterThanOrEqual(1);
 
       // P0 Assertion: Adapter MUST NOT be called!
       expect(adapterCalled).toBe(false);
-      expect(result.status).toBe("reconciliation_required");
 
-      // Verify state in database
+      // Verify state in database: moved to reconciliation_required with zero retry increment
       const checkRes = await ownerPool.query(
-        "SELECT status, error_message FROM outbound_commands WHERE id = $1;",
+        "SELECT status, error_message, retry_count, lease_until, worker_id, lease_token FROM outbound_commands WHERE id = $1;",
         [commandId]
       );
       expect(checkRes.rows[0].status).toBe("reconciliation_required");
-      expect(checkRes.rows[0].error_message).toContain("LEASE_EXPIRED_DURING_PROCESSING");
+      expect(checkRes.rows[0].error_message).toContain("ERR_LEASE_EXPIRED_DURING_PROCESSING");
+      expect(checkRes.rows[0].retry_count).toBe(1); // Unchanged from initial 1 (zero increment upon lease reclamation)
+      expect(checkRes.rows[0].lease_until).toBeNull();
+      expect(checkRes.rows[0].worker_id).toBeNull();
+      expect(checkRes.rows[0].lease_token).toBeNull();
 
       // Verify administrative reconciliation action
       const reconciled = await dispatcher.reconcileItem(
-        workerPool,
+        ownerPool,
         workspaceId,
         commandId,
         "sent",

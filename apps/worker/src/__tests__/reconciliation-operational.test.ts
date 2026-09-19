@@ -484,12 +484,12 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       expect(checkCmd.rows[0].lease_until).toBeNull();
     });
 
-    it("should reschedule ambiguous command to 'pending' for retry when TTL expired and retries available", async () => {
+    it("should keep ambiguous command in 'reconciliation_required' without blind retry when TTL expired without delivery evidence (P0-4)", async () => {
       const dispatcher = new OutboxDispatcher();
       const phone = "+5511999991006";
       const threadId = await createThreadForPhone(phone);
 
-      // 1. Command created 70 seconds ago (expired against 60s TTL), retry_count = 0 < max_retries = 3
+      // 1. Create message and ambiguous command created 70 seconds ago (TTL expired)
       const msgRes = await ownerPool.query(`
         INSERT INTO messages (
           workspace_id, channel_instance_id, thread_id, provider, direction,
@@ -513,27 +513,25 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-resched-${Date.now()}`]);
       const cmdId = cmdRes.rows[0].id;
 
-      // 2. Reconcile with 60s TTL
+      // 2. Reconcile with 60s TTL: without evidence, MUST NOT auto-retry!
       const reconciled = await dispatcher.reconcileBatch(workerPool, "poller-test-3", 10, 60);
-      expect(reconciled).toBeGreaterThanOrEqual(1);
+      expect(reconciled).toBe(0);
 
-      // 3. Command is now pending with incremented retry_count
+      // 3. Command remains in reconciliation_required with unincremented retry_count
       const checkCmd = await ownerPool.query(
-        "SELECT status, retry_count, next_attempt_at, lease_until FROM outbound_commands WHERE id = $1",
+        "SELECT status, retry_count, lease_until FROM outbound_commands WHERE id = $1",
         [cmdId]
       );
-      expect(checkCmd.rows[0].status).toBe("pending");
-      expect(checkCmd.rows[0].retry_count).toBe(1);
-      expect(checkCmd.rows[0].next_attempt_at).not.toBeNull();
+      expect(checkCmd.rows[0].status).toBe("reconciliation_required");
+      expect(checkCmd.rows[0].retry_count).toBe(0);
       expect(checkCmd.rows[0].lease_until).toBeNull();
     });
 
-    it("should transition ambiguous command to 'dead_letter' when TTL expired and retries exhausted", async () => {
+    it("should transition ambiguous command to 'dead_letter' when provider confirms definitive delivery failure via provider_delivery_events", async () => {
       const dispatcher = new OutboxDispatcher();
       const phone = "+5511999991007";
       const threadId = await createThreadForPhone(phone);
 
-      // 1. Command with retry_count = 3 == max_retries = 3, created 70 seconds ago
       const msgRes = await ownerPool.query(`
         INSERT INTO messages (
           workspace_id, channel_instance_id, thread_id, provider, direction,
@@ -545,17 +543,31 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       `, [workspaceId, channelInstanceId, threadId, phone]);
       const msgId = msgRes.rows[0].id;
 
+      const extMsgId = `ext-${Date.now()}`;
       const cmdRes = await ownerPool.query(`
         INSERT INTO outbound_commands (
           workspace_id, channel_instance_id, thread_id, message_id, recipient_e164,
-          body, idempotency_key, status, retry_count, max_retries, lease_until, created_at
+          body, idempotency_key, status, retry_count, max_retries, lease_until, external_message_id, created_at
         ) VALUES (
           $1, $2, $3, $4, $5,
           'Max Retries Dead Letter', $6, 'reconciliation_required',
-          3, 3, NULL, clock_timestamp() - INTERVAL '70 seconds'
+          3, 3, NULL, $7, clock_timestamp() - INTERVAL '70 seconds'
         ) RETURNING id;
-      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-exhaust-${Date.now()}`]);
+      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-exhaust-${Date.now()}`, extMsgId]);
       const cmdId = cmdRes.rows[0].id;
+
+      // Insert definitive negative delivery confirmation in provider_delivery_events
+      await ownerPool.query(`
+        INSERT INTO provider_delivery_events (
+          workspace_id, channel_instance_id, message_id, external_message_id,
+          external_event_id, recipient_e164, provider, status,
+          raw_payload_hash, encrypted_payload, payload_iv, payload_auth_tag, occurred_at
+        ) VALUES (
+          $1, $2, $3, $4,
+          $5, $6, 'meta_waba', 'failed',
+          '${"a".repeat(64)}', 'dummy-enc', 'dummy-iv', 'dummy-tag', clock_timestamp()
+        );
+      `, [workspaceId, channelInstanceId, msgId, extMsgId, `evt-${cmdId}`, phone]);
 
       // 2. Reconcile with 60s TTL
       const reconciled = await dispatcher.reconcileBatch(workerPool, "poller-test-4", 10, 60);
@@ -567,7 +579,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
         [cmdId]
       );
       expect(checkCmd.rows[0].status).toBe("dead_letter");
-      expect(checkCmd.rows[0].error_message).toContain("exhausted");
+      expect(checkCmd.rows[0].error_message).toContain("ERR_DELIVERY_FAILURE_CONFIRMED");
       expect(checkCmd.rows[0].lease_until).toBeNull();
 
       const checkMsg = await ownerPool.query(
@@ -584,7 +596,6 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       const phone = "+5511999991008";
       const threadId = await createThreadForPhone(phone);
 
-      // Insert an expired ambiguous command with retries exhausted BEFORE starting runtime
       const msgRes = await ownerPool.query(`
         INSERT INTO messages (
           workspace_id, channel_instance_id, thread_id, provider, direction,
@@ -596,16 +607,30 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       `, [workspaceId, channelInstanceId, threadId, phone]);
       const msgId = msgRes.rows[0].id;
 
+      const runtimeExtId = `wamid.runtime-${Date.now()}`;
       await ownerPool.query(`
         INSERT INTO outbound_commands (
           workspace_id, channel_instance_id, thread_id, message_id, recipient_e164,
-          body, idempotency_key, status, retry_count, max_retries, lease_until, created_at
+          body, idempotency_key, status, retry_count, max_retries, lease_until, external_message_id, created_at
         ) VALUES (
           $1, $2, $3, $4, $5,
           'Runtime Recon', $6, 'reconciliation_required',
-          3, 3, NULL, clock_timestamp() - INTERVAL '100 seconds'
+          3, 3, NULL, $7, clock_timestamp() - INTERVAL '100 seconds'
         );
-      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-runtime-${Date.now()}`]);
+      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-runtime-${Date.now()}`, runtimeExtId]);
+
+      // Insert positive delivery event confirming external delivery
+      await ownerPool.query(`
+        INSERT INTO provider_delivery_events (
+          workspace_id, channel_instance_id, message_id, external_message_id,
+          external_event_id, recipient_e164, provider, status,
+          raw_payload_hash, encrypted_payload, payload_iv, payload_auth_tag, occurred_at
+        ) VALUES (
+          $1, $2, $3, $4,
+          $5, $6, 'meta_waba', 'delivered',
+          '${"a".repeat(64)}', 'dummy-enc', 'dummy-iv', 'dummy-tag', clock_timestamp()
+        );
+      `, [workspaceId, channelInstanceId, msgId, runtimeExtId, `evt-runtime-${Date.now()}`, phone]);
 
       const runtime = new WorkerRuntime({
         workerId: "test-reconciliation-runtime",

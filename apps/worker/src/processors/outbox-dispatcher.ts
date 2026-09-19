@@ -16,6 +16,7 @@ import {
 } from "@sos-sales/application";
 import {
   withWorkerTransaction,
+  withTenantTransaction,
   ChannelInstanceRepository,
   OutboundCommandRepository,
   FencingViolationError,
@@ -722,21 +723,22 @@ export class OutboxDispatcher {
       }
     }
 
-    const sanitizedNote = options.adminNote
-      ? sanitizeOutboxErrorMessage(
-          resolution === "dead_letter" ? "permanent" : "reconciliation",
-          resolution === "dead_letter" ? "ERR_ADMIN_RESOLVED_DEAD_LETTER" : "ERR_ADMIN_RESOLVED_RETRY"
-        )
-      : undefined;
+    const effectiveAdminNote = options.adminNote || (
+      resolution === "sent"
+        ? "Reconciled: Externally verified sent"
+        : resolution === "dead_letter"
+        ? sanitizeOutboxErrorMessage("permanent", "ERR_ADMIN_RESOLVED_DEAD_LETTER")
+        : sanitizeOutboxErrorMessage("reconciliation", "ERR_ADMIN_RESOLVED_RETRY")
+    );
 
-    return await withWorkerTransaction(workspaceId, async (client) => {
+    return await withTenantTransaction(workspaceId, async (client) => {
       const reconciled = await this.outboundRepo.adminReconcile(
         workspaceId,
         commandId,
         resolution,
         {
           externalMessageId: options.externalMessageId,
-          adminNote: sanitizedNote || (resolution === "sent" ? "Reconciled: Externally verified sent" : undefined),
+          adminNote: effectiveAdminNote,
           actorId: options.actorId,
         },
         client

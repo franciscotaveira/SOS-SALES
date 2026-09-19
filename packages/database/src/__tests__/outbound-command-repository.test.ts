@@ -250,7 +250,7 @@ describe("OutboundCommandRepository (CH-10)", () => {
       expect(claimed2).toBeUndefined();
     });
 
-    it("should claim expired lease item from processing status and report previous_status = 'processing'", async () => {
+    it("should NOT claim expired lease item from processing status via normal claim, but reclaim it via reclaimExpiredLeases", async () => {
       const idempotencyKey = `expired-lease-claim-${Date.now()}`;
       const cmd = await repo.enqueueOutboundCommand(
         {
@@ -275,13 +275,20 @@ describe("OutboundCommandRepository (CH-10)", () => {
         WHERE id = $1;
       `, [cmd.id]);
 
+      // Normal claim MUST NOT claim processing items (P0-5)
       const claimedBatch = await repo.claimPendingBatch("worker-recovery", 10, 30, workerPool);
       const recoveredItem = claimedBatch.find((c) => c.id === cmd.id);
+      expect(recoveredItem).toBeUndefined();
 
-      expect(recoveredItem).toBeDefined();
-      expect(recoveredItem?.status).toBe("processing");
-      expect(recoveredItem?.worker_id).toBe("worker-recovery");
-      expect(recoveredItem?.previous_status).toBe("processing");
+      // Explicit lease recovery reclaims it to reconciliation_required without incrementing retry_count
+      const reclaimed = await repo.reclaimExpiredLeases(10, workerPool);
+      expect(reclaimed).toBe(1);
+
+      const verify = await ownerPool.query("SELECT status, error_message, retry_count, lease_until FROM outbound_commands WHERE id = $1;", [cmd.id]);
+      expect(verify.rows[0].status).toBe("reconciliation_required");
+      expect(verify.rows[0].error_message).toContain("ERR_LEASE_EXPIRED_DURING_PROCESSING");
+      expect(verify.rows[0].retry_count).toBe(0);
+      expect(verify.rows[0].lease_until).toBeNull();
     });
   });
 
@@ -479,7 +486,7 @@ describe("OutboundCommandRepository (CH-10)", () => {
 
       const verify = await ownerPool.query("SELECT status, error_message, lease_until FROM outbound_commands WHERE id = $1;", [cmd.id]);
       expect(verify.rows[0].status).toBe("reconciliation_required");
-      expect(verify.rows[0].error_message).toContain("LEASE_EXPIRED_RECLAIMED");
+      expect(verify.rows[0].error_message).toContain("ERR_LEASE_EXPIRED_DURING_PROCESSING");
       expect(verify.rows[0].lease_until).toBeNull();
     });
   });

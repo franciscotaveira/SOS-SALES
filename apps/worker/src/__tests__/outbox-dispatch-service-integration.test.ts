@@ -506,13 +506,19 @@ describe("CH-10: Outbox → Worker → ChannelDispatchService Integration & Resi
       WHERE id = $1;
     `, [cmd.id]);
 
-    // Claim batch with a new worker
+    // Claim batch with a new worker: normal claim ignores expired processing under P0-5
     const batch = await repo.claimPendingBatch("worker-recovered", 10, 30, ownerPool);
     const recovered = batch.find((c) => c.id === cmd.id);
-    expect(recovered).toBeDefined();
-    expect(recovered!.worker_id).toBe("worker-recovered");
-    expect(recovered!.lease_token).toBeDefined();
-    expect(new Date(recovered!.lease_until!).getTime()).toBeGreaterThan(Date.now());
+    expect(recovered).toBeUndefined();
+
+    // Reclaim via reclaimExpiredLeases recovers directly to reconciliation_required
+    const reclaimed = await repo.reclaimExpiredLeases(10, ownerPool);
+    expect(reclaimed).toBe(1);
+
+    const check = await ownerPool.query("SELECT status, error_message, lease_until FROM outbound_commands WHERE id = $1;", [cmd.id]);
+    expect(check.rows[0].status).toBe("reconciliation_required");
+    expect(check.rows[0].error_message).toContain("ERR_LEASE_EXPIRED_DURING_PROCESSING");
+    expect(check.rows[0].lease_until).toBeNull();
   });
 
   it("7. should transition ambiguous network timeout to reconciliation_required to prevent duplicate dispatch", async () => {
@@ -833,19 +839,20 @@ describe("CH-10: Outbox → Worker → ChannelDispatchService Integration & Resi
     const item = claimed.find((c) => c.id === commandId);
     expect(item).toBeDefined();
 
-    // Attempting dispatchItem must throw or reject with FencingViolationError
-    await expect(
-      dispatcher.dispatchItem(workerPool, item!, "worker-victim", registry, secretResolver)
-    ).rejects.toThrow(/FENCING/);
+    // P0-3: When lease is stolen after provider dispatch succeeds, dispatchItem MUST route to reconciliation_required
+    const result = await dispatcher.dispatchItem(workerPool, item!, "worker-victim", registry, secretResolver);
+    expect(result.success).toBe(false);
+    expect(result.status).toBe("reconciliation_required");
+    expect(result.externalMessageId).toBeDefined();
 
-    // Verify messages table remained 'queued' (did not get updated to 'sent' because transaction rolled back)
+    // Verify messages table remained 'queued' (did not get updated to 'sent')
     const msgCheck = await ownerPool.query("SELECT delivery_status FROM messages WHERE id = $1", [messageId]);
     expect(msgCheck.rows[0].delivery_status).toBe("queued");
 
-    // Verify outbound_commands table did NOT transition to 'sent'
-    const cmdCheck = await ownerPool.query("SELECT status, worker_id FROM outbound_commands WHERE id = $1", [commandId]);
-    expect(cmdCheck.rows[0].status).not.toBe("sent");
-    expect(cmdCheck.rows[0].worker_id).toBe("worker-thief");
+    // Verify outbound_commands table did NOT transition to 'sent', but to 'reconciliation_required' preserving externalMessageId
+    const cmdCheck = await ownerPool.query("SELECT status, external_message_id FROM outbound_commands WHERE id = $1", [commandId]);
+    expect(cmdCheck.rows[0].status).toBe("reconciliation_required");
+    expect(cmdCheck.rows[0].external_message_id).toBe(result.externalMessageId);
   });
 
   it("15. should verify OutboundCommandRepository handles persistent idempotency and conflict detection", async () => {
