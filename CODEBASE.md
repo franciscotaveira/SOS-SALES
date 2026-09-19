@@ -22,7 +22,7 @@
   - `meta_waba`: Meta WhatsApp Cloud API Oficial (Templates, HSM, Webhooks normatizados).
   - `waha`: WhatsApp HTTP API local em container Docker com engine `WEBJS` e pinning estrito por digest de imagem (`latest-2026.8.2@sha256:...`). Zero modo privilegiado.
 - **Criptografia & Segredos:** Keyring versionado com AES-256-GCM, derivação scrypt, `DatabaseSigningSecretResolver` e trigger de auditoria imutável (`audit_events`).
-- **Observabilidade:** Pino logger estruturado (`@sos-sales/observability`) com mascaramento estrito de PII telefônica e ausência de tokens em claro.
+- **Observabilidade:** Pino logger estruturado (`@sos-sales/observability`) com ausência de telefone (mesmo mascarado) nos logs de dispatch/worker e ausência de tokens ou segredos em claro.
 
 ---
 
@@ -51,9 +51,9 @@
 
 ## 3. Padrões Ativos e Decisões Arquiteturais Invariáveis (P0)
 
-### 3.1 Ausência de Shell Legado
-- Nenhum script, worker ou serviço utiliza `child_process.exec`, `execSync` ou `spawn({shell: true})`.
-- Scripts de smoke e diagnósticos usam estritamente `child_process.execFile` com argumentos em array tipado, sem interpolação de strings.
+### 3.1 Ausência de Shell em Componentes Comprovados
+- O script de verificação de ambiente WAHA (`scripts/smoke-docker-waha.ts`) opera estritamente sem invocação de shell, usando `child_process.execFile` com argumentos em array tipado e sem interpolação de strings (`exec`, `execSync` e `spawn({shell: true})` são proibidos nesse componente).
+- Utilitários de runner de CI (`scripts/ci-gate-runner.ts`) utilizam chamadas de processo controladas para orquestração interna de gates locais. Não há ausência global de `execSync` no monorepo fora dos componentes que exigem essa garantia estrita.
 
 ### 3.2 Seleção Explícita de Instâncias de Canal (CH-10)
 - Múltiplas linhas do mesmo provedor podem coexistir ativas no mesmo workspace (ex: linha Comercial e linha Suporte).
@@ -84,19 +84,39 @@
 - É impossível vincular um comando de um workspace a um canal de outro workspace.
 
 ### 3.7 Higiene de Dados, PII e Tratamento de Erros
-- Telefones em logs são obrigatoriamente mascarados pelo helper `maskRecipientPhone` (`+5511*****8888`).
+- Telefone, mesmo mascarado, não é registrado nos logs de dispatch/worker (apenas identificadores técnicos como `commandId`, `workspaceId`, `channelInstanceId` e códigos de erro allowlisted são emitidos).
 - Payloads brutos em `provider_delivery_events` são encriptados com AES-256-GCM.
+- Erros persistidos em `outbound_commands.error_message` e logs utilizam exclusivamente códigos canônicos e mensagens allowlisted sanitizadas, sendo proibida a persistência de `err.message` bruto, respostas brutas de provedores, telefones, corpos de mensagem, URLs de mídia, tokens, hashes, idempotency keys ou stack traces.
 - Erros de domínio (`ChannelDispatchBaseError`) implementam método `.toJSON()` que suprime a propriedade interna `cause`, impedindo vazamento de stack traces ou credenciais em APIs externas.
 
 ---
 
-## 4. Comandos de Homologação e Verificação
+## 4. Estado de Homologação e Limites Operacionais
+
+- **Implementado e Homologado:**
+  - Persistência atômica e autoridade única via repositório transacional Outbox (`OutboundCommandRepository`).
+  - Worker de despacho outbox (`OutboxDispatcher`) com claiming concorrente `FOR UPDATE SKIP LOCKED`, heartbeat de renovação de lease e fencing anti-split-brain.
+  - RLS estrito fail-closed em todas as tabelas comerciais e filas.
+  - Fail-closed entre canais (zero fallback entre WAHA e Meta WABA).
+  - Sanitização de erros allowlisted e ausência absoluta de PII telefônica em logs operacionais.
+  - Reconciliação governada de timeouts ambíguos via `provider_delivery_events`.
+- **Testado Hermeticamente:**
+  - Suíte completa de testes unitários e de integração em PostgreSQL isolado temporário com teardown determinístico (`ALLOW_TEST_DB_ADMIN_OPERATIONS=true pnpm test:db:run`).
+  - Verificação de tipos TypeScript e compilação de todos os pacotes via Turborepo.
+- **Bloqueado Externamente (Limites Canônicos):**
+  - Zero envio de mensagens a redes externas de produção ou celulares reais.
+  - Zero geração de QR codes ou pareamento com instâncias reais de WhatsApp.
+  - VPS de produção e sistema V2 permanecem 100% intocados e segregados.
+
+---
+
+## 5. Comandos de Homologação e Verificação
 
 - **Testes Herméticos com Banco Real:**
   ```bash
   ALLOW_TEST_DB_ADMIN_OPERATIONS=true pnpm test:db:run
   ```
-  *Executa 34 arquivos de teste e mais de 500 asserções em banco PostgreSQL isolado com criação e descarte atômico.*
+  *Executa a suíte hermética completa em banco PostgreSQL isolado com criação e descarte atômico.*
 - **Verificação de Tipos Monorepo:**
   ```bash
   pnpm turbo typecheck
@@ -109,3 +129,4 @@
   ```bash
   ALLOW_TEST_DB_ADMIN_OPERATIONS=true pnpm ci:gate
   ```
+
