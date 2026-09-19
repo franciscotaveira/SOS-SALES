@@ -24,6 +24,17 @@
       "docs/work-packages/CH-09-WAHA.md",
       "docs/work-packages/CH-09-EVIDENCE.json"
     ],
+    "digest_format": "scoped-digest-v1",
+    "digest_algorithm": "SHA-256",
+    "digest_composition": "<path>:<sha256>\\n (UTF-8)",
+    "scoped_code_files": [
+      "packages/application/src/channels/adapters/waha.adapter.ts",
+      "packages/application/src/channels/normalizers/waha-normalizer.ts",
+      "packages/application/src/channels/fixtures/waha-fixtures.ts",
+      "packages/application/src/__tests__/channel-adapters.test.ts",
+      "packages/application/src/__tests__/channel-gateway.test.ts",
+      "docker-compose.yml"
+    ],
     "scoped_code_sha256": {
       "packages/application/src/channels/adapters/waha.adapter.ts": "d8115ea62dfdca0e63d84d907924f32a34335e280722d3f72af1d5bb58947520",
       "packages/application/src/channels/normalizers/waha-normalizer.ts": "6f003c096a03ee86d6b4a4b95f36873233bbdf08942c1b51e340f4a323b4f521",
@@ -32,7 +43,11 @@
       "packages/application/src/__tests__/channel-gateway.test.ts": "e52e8b85017a8963a27c4c4cf25f0315ff2648d79792d8e7c404c43ab771183b",
       "docker-compose.yml": "c88f017903637af31152efdc78ebd8ecc0f25b361e430bfe7ec20aaa6049443b"
     },
-    "scoped_composite_code_sha256": "129759d5718dfd0eb305faef339965d8c6b24505f5fc274ef43d46a6f1d2df0c"
+    "scoped_composite_code_sha256": "f1227d2ae0015ced5e9a9af3a18abe7af5fccd9d1720bc1cc34bbb336fb262e5",
+    "governance_files": [
+      "docs/work-packages/CH-09-WAHA.md",
+      "docs/work-packages/CH-09-EVIDENCE.json"
+    ]
   },
   "environment": {
     "node_version": "v24.11.0",

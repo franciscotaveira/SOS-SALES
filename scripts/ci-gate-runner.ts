@@ -321,6 +321,15 @@ function executeGate6(): GateResult {
     }
   }
 
+  // Cryptographic evidence digest verification
+  const digestRes = runCommand("pnpm tsx scripts/verify-evidence-digests.ts");
+  if (digestRes.exitCode !== 0) {
+    const errorOutput = (digestRes.stderr || digestRes.stdout).trim();
+    errors.push(`Cryptographic digest verification failed (exit code ${digestRes.exitCode}):\n${errorOutput}`);
+  } else {
+    console.log("- GATE 6: Cryptographic file and composite digests verified successfully.");
+  }
+
   const durationMs = Date.now() - start;
   if (errors.length > 0) {
     console.error(`- GATE 6 FAIL: ${errors.length} evidence manifest defects found.`);
@@ -330,17 +339,17 @@ function executeGate6(): GateResult {
       name: "Evidence Manifest Integrity Audit",
       durationMs,
       status: "FAIL",
-      details: `${errors.length} manifest defects found`,
+      details: `${errors.length} manifest/digest defects found`,
     };
   }
 
-  console.log(`- GATE 6 PASS: Verified ${manifestFiles.length} canonical evidence manifests.`);
+  console.log(`- GATE 6 PASS: Verified ${manifestFiles.length} canonical evidence manifests and cryptographic digests.`);
   return {
     gateId: "GATE-06",
     name: "Evidence Manifest Integrity Audit",
     durationMs,
     status: "PASS",
-    details: `${manifestFiles.length} manifests validated with valid structure and timestamps`,
+    details: `${manifestFiles.length} manifests validated with valid structure and cryptographic digests verified`,
   };
 }
 

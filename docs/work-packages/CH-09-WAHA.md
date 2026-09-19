@@ -69,7 +69,11 @@ Implementar e homologar a camada operacional completa para o canal **WhatsApp HT
 
 ## Arquivos sob ownership e Proveniência (Integration Checkpoint IC-01)
 
-O código deste pacote foi consolidado no **Integration Checkpoint IC-01** (`9577e17b5508efe671d195756a27b6948c908f5b`), documentado em `docs/project/INTEGRATION_CHECKPOINT_IC-01.md` e manifesto `docs/project/IC-01-MANIFEST.json`. Os 8 arquivos sob ownership estrito do CH-09 são:
+O código deste pacote foi consolidado no **Integration Checkpoint IC-01** (`9577e17b5508efe671d195756a27b6948c908f5b`), documentado em `docs/project/INTEGRATION_CHECKPOINT_IC-01.md` e manifesto `docs/project/IC-01-MANIFEST.json`.
+
+### Escopo Estável do Digest Criptográfico (`scoped-digest-v1`)
+
+O digest executável do CH-09 incide estritamente sobre os **6 arquivos funcionais** de implementação, suítes de teste e orquestração de infraestrutura:
 
 1. `packages/application/src/channels/adapters/waha.adapter.ts` (métodos de sessão startSession, stopSession, getSession, getQrCode com single-read e tipagem estrita, roteamento de mídias para endpoints dedicados, SSRF guard perimétrico e classificação determinística de erros)
 2. `packages/application/src/channels/normalizers/waha-normalizer.ts` (normalização de ciclo de vida de sessão, detecção precisa de mídias inbound e tratamento de ACKs incluindo falhas negativas)
@@ -77,8 +81,16 @@ O código deste pacote foi consolidado no **Integration Checkpoint IC-01** (`957
 4. `packages/application/src/__tests__/channel-adapters.test.ts` (testes de startSession, stopSession, getSession, getQrCode em múltiplos formatos, limite de payload, single body read, abort em voo e erros HTTP)
 5. `packages/application/src/__tests__/channel-gateway.test.ts` (testes de ciclo de vida de sessão, mídias inbound tipadas e ACKs negativos)
 6. `docker-compose.yml` (definição do serviço waha sob profiles: ["waha"])
+
+- **Fórmula Canônica de Composição:** `<path>:<sha256>\n` em codificação UTF-8 sobre a lista ordenada estável.
+- **Digest Composto Canônico:** `f1227d2ae0015ced5e9a9af3a18abe7af5fccd9d1720bc1cc34bbb336fb262e5` (validado e verificado automaticamente pelo script `scripts/verify-evidence-digests.ts` no Gate 6).
+
+### Arquivos de Governança Documental
+
+Os seguintes arquivos são artefatos de governança e rastreabilidade, versionados e protegidos pelo histórico do Git, permanecendo fora do cálculo do digest composto para evitar dependência circular autorreferente:
+
 7. `docs/work-packages/CH-09-WAHA.md` (este documento de especificação)
-8. `docs/work-packages/CH-09-EVIDENCE.json` (manifesto de evidência estruturada e hashes de escopo)
+8. `docs/work-packages/CH-09-EVIDENCE.json` (manifesto estruturado de evidência e hashes)
 
 ---
 

@@ -77,7 +77,7 @@ O Integration Checkpoint `IC-01` agrega os seguintes subsistemas funcionais:
 
 Para suprir a ausência de atomicidade pura no commit `9577e17`, o pacote CH-09 passa a ser rastreado através de uma tripla âncora:
 1. **Âncora de Integração:** O commit `9577e17` (IC-01) serve como âncora de integridade estrutural e execução de testes.
-2. **Digest de Conteúdo Escopado:** O manifesto `docs/work-packages/CH-09-EVIDENCE.json` passa a registrar os hashes SHA-256 individuais e o digest composto dos 8 arquivos sob ownership estrito do CH-09.
+2. **Digest de Conteúdo Escopado (`scoped-digest-v1`):** O manifesto `docs/work-packages/CH-09-EVIDENCE.json` registra os hashes SHA-256 individuais e o digest composto determinístico (`f1227d2ae0015ced5e9a9af3a18abe7af5fccd9d1720bc1cc34bbb336fb262e5`) dos 6 arquivos funcionais de código, testes e infraestrutura sob ownership estrito do CH-09, mantendo os documentos de governança (`CH-09-WAHA.md` e `CH-09-EVIDENCE.json`) versionados e auditáveis no Git sem dependência autorreferente circular.
 3. **Auditoria Independente Materializada:** O artefato `docs/audits/ch-09/INDEPENDENT_REVIEW.md` documenta a revisão cirúrgica do código do CH-09 realizada por um agente independente.
 
 ---
