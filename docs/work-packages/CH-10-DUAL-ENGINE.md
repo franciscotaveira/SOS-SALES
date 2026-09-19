@@ -1,133 +1,236 @@
 # CH-10 — Docker Dual-Engine & Coexistência Operacional
 
 > Nome do arquivo: `CH-10-DUAL-ENGINE.md`  
-> Estado: `READY` — Plano técnico de arquitetura e engenharia aprovado para execução em Docker Lab hermético.  
-> Versão do Plano: `1.0.0`  
+> Estado: `READY` — Plano técnico de arquitetura e engenharia revisado (v1.1).  
+> Versão do Plano: `1.1.0`  
 > Data de Registro: 19 de setembro de 2026  
+> Escopo de Execução: Planejamento estrito — zero implementação de código funcional nesta etapa.
 
 ---
 
 ## 1. Identidade e Metadados do Pacote
 
 - **Parent Objective:** Programa SOS Sales V3 — Motor de Canais de Comunicação (Fase CH)
-- **Estado:** `READY` (Aguardando início de implementação)
+- **Estado:** `READY` (Aguardando autorização de implementação do plano corrigido v1.1)
 - **Arquitetura & Lead:** Gemini 3.8 (@orchestrator)
 - **Agentes Especializados Envolvidos:**
-  - `Architect`: Especificação do `ChannelPortRegistry`, lifecycle states e contratos multi-tenant.
-  - `Docker/SRE Specialist`: Hardening de containers, imagem por digest, resource limits, healthchecks e volumes.
-  - `Security Auditor`: Isolamento perimétrico de rede, allowlist interna, RLS cross-workspace e proteção contra token leakage.
-  - `Backend Specialist`: Implementação de health checks, dispatch routing sem fallback silencioso e audit log de provedores.
-  - `QA Specialist`: Testes de integração viva (Docker Lab), suítes herméticas com mocks e validação negativa.
-- **Dependências Upstream:** `CH-00` a `CH-07` (Fundação, RLS, Fencing, Ingress, Rate Limiting, Keyring, SSRF Guard), `CH-08` (WABA Operacional), `CH-09` (WAHA Operacional, commit `9577e17` / `d4b43d8`).
-- **ADRs Vinculadas:** ADR-002 (Multi-Tenancy & Auth Strategy), ADR-005 (Channel Gateway & Inbox/Outbox).
-- **Roadmap Gate:** `| CH-10 | Docker dual-engine | CH-08/09 | Coexistência de Meta WABA e WAHA, seleção explícita por workspace e integração viva em Docker Lab |`
-- **Risco Primário Mitigado:** `R-006` (Fallback automático silencioso entre canais provocando envio por canal indevido, poluição de credenciais entre workspaces, deriva de imagens Docker sem pinning por digest, e instabilidade de sessão pós-reinicialização).
+  - `Architecture Reviewer`: Decomposição de responsabilidades (sem sobreposição de registry) e separação de contratos.
+  - `Database/RLS Specialist`: Mapeamento de `audit_events`, trigger de imutabilidade e especificação da Migration 006 para índice parcial único.
+  - `Docker/SRE Specialist`: Hardening viável para Chromium/WAHA, isolamento loopback `127.0.0.1`, volumes e rollback direcionado.
+  - `WAHA Contract Researcher`: Mapeamento rigoroso KNOWN / INFERRED / UNRESOLVED do contrato OpenAPI, autenticação e rotas.
+  - `Security Reviewer`: Isolamento perimétrico Fastify, `endpointToken` seguro, verificação de assinaturas e RLS multi-tenant.
+  - `QA/Evidence Engineer`: Estruturação em 3 camadas de teste (Hermético / Docker Smoke / Externo Humano) e critérios de aceite em `NOT_RUN`.
+- **Dependências Upstream:** `CH-00` a `CH-07` (Fundação, RLS, Ingress Shielding, Rate Limiting, Keyring, SSRF Guard), `CH-08` (WABA Operacional), `CH-09` (WAHA Operacional, commit `9577e17` / `d4b43d8`).
+- **ADRs Vinculadas:** ADR-002 (Multi-Tenancy & Auth Strategy), ADR-005 (Channel Gateway & Transactional Ingress Shielding).
+- **Roadmap Gate:** `| CH-10 | Docker dual-engine | CH-08/09 | Coexistência de Meta WABA e WAHA, seleção explícita por workspace e integração em Docker Lab |`
+- **Risco Primário Mitigado:** `R-006` (Fallback automático silencioso entre provedores, poluição de credenciais cross-workspace, pinning fictício de digest Docker, colisão de rotas de webhook e instabilidade de sessão pós-restart).
 
 ---
 
-## 2. Objetivo da Missão
+## 2. Fronteira Arquitetural: CH-10 vs CH-12 vs EXT-05
 
-Comprovar em ambiente controlado de **Docker Lab** a coexistência operacional de alta fidelidade entre **Meta WABA (Meta Cloud API)** e **WAHA (WhatsApp HTTP API)** selecionáveis explicitamente por workspace, garantindo:
-1. **Zero Fallback Silencioso:** Proibir categoricamente qualquer tentativa de failover automático entre provedores (se o canal WAHA configurado estiver degradado ou desconectado, o sistema reporta o erro e falha fechado, sem desviar mensagens silenciosamente para WABA ou vice-versa).
-2. **Isolamento Criptográfico e de Credenciais:** Workspaces mantêm credenciais totalmente estanque via `ISigningSecretResolver`, sem vazamento de API keys ou tokens em logs, webhooks ou mensagens de erro.
-3. **Imutabilidade e Segurança de Infraestrutura:** Fixação da imagem do WAHA por digest SHA-256 (nunca tag mutável `latest`), limites estritos de CPU/memória, volume persistente para sessões Chromium e isolamento de portas expostas exclusivamente em loopback (`127.0.0.1`).
-4. **Verificação de Integração Viva:** Validação de 12 operações de ciclo de vida real contra o container WAHA (sessão, QR, status, reinicialização com persistência, despacho de 4 tipos de mídia, webhook e ACK) preservando a baseline hermética da CI sem dependência de container ativo.
+O pacote **CH-10** tem escopo estritamente delimitado à **infraestrutura, governança e coexistência operacional**:
+1. **O que o CH-10 comprova:**
+   - Coexistência no mesmo monorepo dos dois motores (`meta_waba` e `waha`).
+   - Seleção determinística e estanque do provedor ativo por workspace.
+   - Subida e saúde do container Docker `waha` via imagem resolvida por digest criptográfico real.
+   - Resolução de adapters sem fallback silencioso (falha fechada obrigatória diante de indisponibilidade).
+   - Persistência de sessões WAHA em volume nomeado entre reinicializações do container.
+   - Isolamento multi-tenant via RLS e integridade de auditoria em `audit_events`.
+   - Execução de smoke test de API (sessão, QR, health, endpoints dedicados de despacho) em ambiente hermético ou de lab.
+2. **O que NÃO pertence ao CH-10 (pertence ao CH-12 ou à subfase CH-10B dependente de EXT-05):**
+   - Escaneamento de QR Code com conta de WhatsApp real mantida por operador humano.
+   - Envio e recebimento de mensagens ponta-a-ponta na rede pública da Meta/WhatsApp.
+   - Tráfego real de webhook da Meta ou do WAHA conectado a dispositivo físico.
+   - Criação de threads comerciais reais com clientes reais e deduplicação de ACKs de operadora externa.
+   - **Toda validação dependente de aparelho celular real é classificada como `BLOCKED_EXTERNAL` (EXT-05).**
 
 ---
 
-## 3. Especificação Arquitetural
+## 3. Matriz de Contratos Técnicos: KNOWN / INFERRED / UNRESOLVED
+
+| Item do Contrato | Classificação | Detalhes Técnicos e Evidência no Código | Ação na Implementação |
+|---|---|---|---|
+| **Digest da Imagem Docker WAHA** | `UNRESOLVED_EXTERNAL` | O digest SHA-256 não deve ser ilustrativo ou presumido. Deve ser extraído diretamente do registry oficial Docker Hub. | Executar antes do commit: `docker buildx imagetools inspect devlikeapro/waha:<tag>` e fixar o digest exato do manifesto `linux/amd64` (ou multi-arch). |
+| **Edição e Engine WAHA** | `KNOWN` | Edição: **WAHA Core** (open-source) ou **WAHA Plus** (avançada). Engines suportadas: `WEBJS` (Puppeteer/Chromium), `NOWEB` (WebSocket leve), `GOWS` (Go WhatsApp). A baseline do projeto suporta Core/Plus sob `WEBJS` ou `NOWEB`. | Definir explicitamente `WHATSAPP_DEFAULT_ENGINE=WEBJS` (ou `NOWEB`) no Compose; documentar compatibilidade. |
+| **Variáveis de Ambiente WAHA** | `KNOWN` | Variáveis documentadas pela API WAHA: `WHATSAPP_HOOK_URL`, `WHATSAPP_HOOK_EVENTS`, `WHATSAPP_API_KEY`, `WAHA_ZIP_LOGS`, `WAHA_LOG_LEVEL`, `WAHA_PRINT_QR`, `WAHA_BASE_URL`. | Consumir segredos via `.env.local` sem valores default hardcoded em produção. |
+| **Endpoint de Health / Version** | `KNOWN` | Endpoint WAHA comprovado: `GET /api/server/version`. Suporta retorno estruturado JSON com versão e status do servidor. | Utilizado no probe de healthcheck do Docker Compose e no `WahaAdapter.checkHealth()`. |
+| **Endpoints de Sessão e QR** | `KNOWN` | Comprovado em `waha.adapter.ts`: `POST /api/sessions/start`, `POST /api/sessions/stop`, `GET /api/sessions/{session}`, `GET /api/sessions/{session}/auth/qr`. | Respeitar teto de 512 KB no QR e tratamento de `response.text()` / `response.json()` seguro contra stream consumido. |
+| **Diretório de Persistência** | `KNOWN` | O diretório interno padrão do container para armazenamento de perfis Chromium/sessões é `/app/.sessions`. | Mapear para o volume nomeado `waha_sessions:/app/.sessions`. |
+| **Header de Autenticação Ingress** | `KNOWN` | Comprovado em `signature-verification.service.ts`: WAHA aceita `x-api-key`, `x-webhook-secret` ou `authorization: Bearer <token>`. | Validado via `SignatureVerificationService.verify()` com `timingSafeEqual`. |
+| **Rota de Webhook Fastify Real** | `KNOWN` | Comprovado em `apps/api/src/routes/webhook.routes.ts`: `POST /v1/webhooks/whatsapp/:endpointToken`. Não existe `/webhooks/whatsapp` genérico. | O webhook deve ser configurado por instância com seu `endpointToken` dedicado gerado no banco. Proibido token hardcoded no Compose. |
+| **Raw Body e Teto de Payload** | `KNOWN` | Comprovado em `webhook.routes.ts`: Ingress exige `request.rawBody` preservado e impõe teto de 512 KB (`512 * 1024` bytes). Excesso retorna HTTP 413. | Respeitado rigorosamente no gateway Fastify. |
+| **Tabela de Auditoria Soberana** | `KNOWN` | Comprovado em Migrations 001 e 004: Tabela é `public.audit_events` (não `audit_logs`), protegida por trigger `trg_audit_events_immutable`. | `ChannelSwitchService` insere eventos em `public.audit_events` via `sos_app_user`. |
+| **Unicidade de Provedor Ativo** | `INFERRED` | Migration 005 possui unicidade de `endpoint_token_hash`, mas NÃO possui índice impedindo dois registros ativos para o mesmo provedor no mesmo workspace. | Planejada Migration 006: `CREATE UNIQUE INDEX uq_channel_instances_active_provider ON public.channel_instances (workspace_id, provider) WHERE is_active = true;`. |
+| **Health Externo da Meta (WABA)** | `UNRESOLVED_EXTERNAL` | A CI não possui e não deve usar credenciais reais da Meta Graph API para evitar quebras por rede externa ou rate limits. | A saúde estrutural/configuracional do WABA é testada com mocks na CI; verificação externa real exige homologação manual (EXT-03). |
+
+---
+
+## 4. Diagrama Arquitetural de Responsabilidades
+
+Para evitar sobreposição de responsabilidades e registries duplicados, o sistema utiliza o `ChannelAdapterRegistry` existente para resolução de adapters stateless e distribui as responsabilidades operacionais em serviços especializados:
 
 ```
 +---------------------------------------------------------------------------------------------------------+
 |                                           SOS SALES V3 APPLICATION                                     |
 |                                                                                                         |
-|  +---------------------------------------------------------------------------------------------------+  |
-|  |                                     ChannelPortRegistry                                           |  |
-|  |   - resolveAdapter(workspaceId, provider): IChannelAdapter                                        |  |
-|  |   - getActiveInstance(workspaceId, provider): ChannelInstanceRecord                              |  |
-|  |   - evaluateProviderHealth(workspaceId, provider): Promise<ChannelHealthStatus>                  |  |
-|  |   - switchActiveProvider(workspaceId, fromProvider, toProvider, actorId): Promise<AuditLogEntry>  |  |
-|  +---------------------------------------------------------------------------------------------------+  |
-|                         |                                                 |                             |
-|          [workspace A: provider='waha']                    [workspace B: provider='meta_waba']          |
-|                         v                                                 v                             |
-|          +-------------------------------+                 +-------------------------------+            |
-|          |          WahaAdapter          |                 |        MetaWabaAdapter        |            |
-|          +-------------------------------+                 +-------------------------------+            |
-|                         |                                                 |                             |
-|  SSRF Perimeter Guard   | (INTERNAL_SERVICE_ALLOWLIST)                    | (Enforce 24h window)        |
-|  No credential leakage  |                                                 | Multi-lang templates        |
-|  Single-read QR body    |                                                 | Media filename extraction   |
-|                         |                                                 |                             |
-+-------------------------|-------------------------------------------------|-----------------------------+
-                          |                                                 |
-                          v (Docker Network: sos-v3-network)                v (HTTPS WAN)
-       +------------------------------------+                  +--------------------------------+
-       |       Container: sos-v3-waha       |                  |      Meta Graph API v21.0      |
-       |  Image: devlikeapro/waha@sha256:.. |                  |    graph.facebook.com/v21.0    |
-       |  Port: 127.0.0.1:3000:3000         |                  +--------------------------------+
-       |  Volume: waha_sessions:/app/.sess  |
-       |  Limits: 1.5 CPU / 1024MB RAM      |
-       +------------------------------------+
+|  1. ChannelAdapterRegistry (Stateless Singleton)                                                        |
+|     - register(adapter: IChannelAdapter): void                                                          |
+|     - get(provider: ChannelProvider): IChannelAdapter                                                   |
+|     - has(provider: ChannelProvider): boolean                                                           |
+|                                                                                                         |
+|  2. ChannelInstanceRepository (Tenant-Safe Database Layer - packages/database)                         |
+|     - findActiveByWorkspaceAndProvider(workspaceId, provider): Promise<ChannelInstanceRecord | null>    |
+|     - findById(workspaceId, channelInstanceId): Promise<ChannelInstanceRecord | null>                   |
+|     - Enforces RLS: app.current_workspace_id                                                            |
+|                                                                                                         |
+|  3. ChannelDispatchService (Routing & Fail-Closed Policy)                                               |
+|     - dispatchOutbound(workspaceId, messagePayload): Promise<ChannelSendResult>                         |
+|     - Valida compatibilidade: message.provider === activeInstance.provider                              |
+|     - Falha Fechada: Sem fallback silencioso para outro canal se o provedor ativo estiver degradado      |
+|                                                                                                         |
+|  4. ChannelHealthService (Operational Health Evaluator)                                                 |
+|     - evaluateChannelHealth(workspaceId, provider): Promise<ChannelHealthStatusReport>                  |
+|     - Consulta estado operacional do adapter (probe HTTP local WAHA / probe credenciais WABA)           |
+|                                                                                                         |
+|  5. ChannelSwitchService (Administrative Transition Service)                                            |
+|     - switchActiveProvider(workspaceId, targetProvider, actorId, reason): Promise<SwitchResult>         |
+|     - Inativa provedor anterior, ativa novo provedor e grava em public.audit_events (imutável)          |
++---------------------------------------------------------------------------------------------------------+
+                         |                                                 |
+       [workspace: provider='waha']                      [workspace: provider='meta_waba']
+                         v                                                 v
+          +-------------------------------+                 +-------------------------------+
+          |          WahaAdapter          |                 |        MetaWabaAdapter        |
+          +-------------------------------+                 +-------------------------------+
+                         |                                                 |
+   Perimeter Guard: INTERNAL_ALLOWLIST    |                                 | External HTTPS WAN
+   Strict 127.0.0.1 / waha host           |                                 | Graph API v21.0
+                         v                                                 v
+        +----------------------------------+              +----------------------------------+
+        |     Docker Container: waha       |              |       Meta Cloud API (WABA)      |
+        |  Port: 127.0.0.1:3000:3000       |              |      graph.facebook.com/v21.0    |
+        |  Volume: waha_sessions:/app/.sess|              +----------------------------------+
+        |  Image: devlikeapro/waha@sha256..|
+        +----------------------------------+
 ```
 
-### 3.1 `ChannelPortRegistry` por Workspace
-- Cada workspace possui até uma `channel_instance` ativa por provedor registrado (`meta_waba`, `waha`).
-- A rota de despacho transacional (`outbound`) e de recepção (`ingress`) consulta o `ChannelPortRegistry` fornecendo o par `(workspaceId, provider)`.
-- **Regra de Não-Ambiguidade:** Se um workspace tentar despachar uma mensagem indicando um provedor diferente do configurado na thread comercial, a operação é rejeitada com código tipado `CHANNEL_PROVIDER_MISMATCH`.
-- **Regra de Falha Fechada:** Se o provedor configurado estiver indisponível (`unavailable` ou `unhealthy`), a mensagem é colocada em status `failed` (ou retida em retry temporário com backoff exponencial se o erro for transitório), **sendo expressamente proibido qualquer fallback automático para outro canal**.
+### 4.1 Responsabilidades Detalhadas dos Componentes
 
-### 3.2 Máquina de Estados de Saúde (`ChannelHealthStatus`)
-O registro de instâncias monitora e classifica o estado do canal independentemente:
-
-| Estado | Descrição | Comportamento de Despacho |
-|---|---|---|
-| `HEALTHY` | Provedor operacional, credenciais válidas, sessão WAHA conectada (`CONNECTED`/`WORKING`) ou WABA com conectividade Graph API OK. | Despacho normal autorizado. |
-| `DEGRADED` | Latência anormal (> 3000ms), taxa de HTTP 429 elevada com `Retry-After`, ou webhook intermitente. | Despacho autorizado com alerta em métricas e rate-limiting defensivo. |
-| `UNHEALTHY` | Sessão WAHA desconectada (`SCAN_QR_CODE`, `STOPPED`, `FAILED`), erro HTTP 5xx contínuo ou auth failure (`190` Meta / `session.auth_failure` WAHA). | Despacho suspenso; erros classificados como permanentes com notificação para reautenticação. |
-| `UNAVAILABLE` | Container Docker desligado, timeout de conexão (`ECONNREFUSED`), host inalcançável ou credencial ausente/revogada. | Falha fechada imediata (`PROVIDER_UNAVAILABLE`); zero despacho. |
-
-### 3.3 Transição e Auditoria de Provedor
-- A alteração do provedor de um workspace (ex: migrar de `waha` para `meta_waba`) é uma operação explícita executada via comando administrativo de tenant.
-- A transição registra evento imutável na tabela `audit_logs` contendo:
-  - `workspace_id`, `actor_user_id`, `action: "CHANNEL_PROVIDER_SWITCH"`
-  - `metadata: { previous_provider: "waha", new_provider: "meta_waba", timestamp: ISOString }`
-- **Preservação de Histórico:** A thread comercial preexistente mantém o histórico de mensagens anterior inalterado com suas respectivas chaves estrangeiras e identificadores externos (`external_message_id`), garantindo integridade forense contábil e de CRM.
+1. **`ChannelAdapterRegistry` (`packages/application/src/channels/registry/channel-adapter.registry.ts`):**
+   - **Papel:** Catálogo em memória e desacoplado de instâncias de adaptadores (`provider -> IChannelAdapter`).
+   - **Regra:** Stateless. Não acessa banco de dados, não conhece tenants e não armazena tokens.
+2. **`ChannelInstanceRepository` (`packages/database/src/repositories/channel-instance.repository.ts`):**
+   - **Papel:** Acesso a dados tenant-safe para a tabela `channel_instances`.
+   - **Regra:** Todas as consultas executam com `app.current_workspace_id` configurado na sessão do cliente PostgreSQL. Utiliza a role `sos_app_user` (ou `sos_ingress_user` para lookups por token hash).
+3. **`ChannelDispatchService` (`packages/application/src/channels/services/channel-dispatch.service.ts`):**
+   - **Papel:** Orquestração do envio de mensagens de ponta a ponta.
+   - **Regra de Falha Fechada (P0):** Se a thread comercial estiver associada ao canal `waha` e o container WAHA estiver indisponível (`UNAVAILABLE` ou `UNHEALTHY`), o serviço retorna erro tipado `CHANNEL_PROVIDER_UNAVAILABLE` e marca o envio como `failed`. **É categoricamente proibido rotear a mensagem para WABA como fallback.**
+4. **`ChannelHealthService` (`packages/application/src/channels/services/channel-health.service.ts`):**
+   - **Papel:** Avaliação diagnóstica do estado operacional de cada provedor registrado para o workspace.
+   - **Estados Mapeados:**
+     - `HEALTHY`: Conexão ativa, credenciais íntegras, sessão operacional (`WORKING`/`CONNECTED`).
+     - `DEGRADED`: Latência elevada, rate limiting com `Retry-After`, intermitência transitória.
+     - `UNHEALTHY`: Sessão desautenticada (`SCAN_QR_CODE`, `FAILED`), erro 401/403 permanente.
+     - `UNAVAILABLE`: Host inalcançável (`ECONNREFUSED`), container desligado, credenciais ausentes.
+5. **`ChannelSwitchService` (`packages/application/src/channels/services/channel-switch.service.ts`):**
+   - **Papel:** Execução de migração administrativa de canal ativo para um workspace.
+   - **Auditoria:** Grava registro imutável em `public.audit_events` com `action = 'CHANNEL_PROVIDER_SWITCH'`, `resource_type = 'channel_instance'`.
+   - **Integridade de Threads:** As conversas e mensagens anteriores mantêm seu histórico intacto.
 
 ---
 
-## 4. Orquestração e Hardening de Docker
+## 5. Persistência de Banco, RLS e Auditoria Soberana
 
-### 4.1 Declaração Imutável no `docker-compose.yml`
+### 5.1 O Ledger Imutável `public.audit_events`
+Em conformidade com a Migration 001 e a Migration 004, o sistema utiliza exclusivamente `public.audit_events`:
 
-A definição do serviço `waha` no `docker-compose.yml` deve cumprir os requisitos de hardening corporativo:
+```sql
+-- Schema real (Migration 001 & 004)
+-- Tabela protegida contra mutação via trg_audit_events_immutable
+INSERT INTO public.audit_events (
+    workspace_id,
+    actor_id,
+    actor_type,
+    action,
+    resource_type,
+    resource_id,
+    metadata,
+    ip_address,
+    user_agent
+) VALUES (
+    $1, -- workspace_id (UUID)
+    $2, -- actor_id (UUID)
+    'user', -- actor_type
+    'CHANNEL_PROVIDER_SWITCH', -- action
+    'channel_instance', -- resource_type
+    $3, -- resource_id (UUID da channel_instance ativada)
+    jsonb_build_object(
+        'previous_provider', $4,
+        'new_provider', $5,
+        'switch_reason', $6,
+        'timestamp', NOW()
+    ),
+    $7, -- ip_address
+    $8  -- user_agent
+);
+```
+
+### 5.2 Migration 006: Garantia de Unicidade de Provedor Ativo
+Atualmente, `public.channel_instances` permite múltiplos registros com `is_active = true` para o mesmo provedor. Para garantir determinismo na resolução sem colisões, planeja-se a Migration 006:
+
+```sql
+-- packages/database/migrations/006_channel_instances_active_provider_unique.sql
+-- Garante no máximo 1 instância ativa por provedor em cada workspace
+CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_instances_active_provider
+    ON public.channel_instances (workspace_id, provider)
+    WHERE is_active = true;
+```
+
+---
+
+## 6. Orquestração e Hardening de Docker Realista
+
+### 6.1 Resolução de Imagem Docker (Sem Inventar Digest)
+A tag e o digest não são assumidos no plano. O valor deve ser resolvido via comando CLI antes da implementação e registrado:
+
+```bash
+# Comando de resolução obrigatório antes de fixar o compose:
+docker buildx imagetools inspect devlikeapro/waha:2025.1.1
+# ou
+docker manifest inspect devlikeapro/waha:2025.1.1
+```
+
+O compose final conterá o digest real retornado pelo Docker Hub:
+`image: devlikeapro/waha:<version>@sha256:<digest-real-resolvido>`
+
+### 6.2 Hardening Viável para Chromium no WAHA
+O WAHA utiliza Chromium em modo headless para o engine `WEBJS`. Aplicar restrições cegas de segurança como `cap_drop: [ALL]` ou `read_only: true` no rootfs impede a inicialização do Chromium (que necessita de namespaces de PID, gerenciamento de processos filhos e cache de sessão).
+
+**Diretrizes de Hardening Aplicadas:**
+1. **Sem Rootfs Read-Only Cego:** O Chromium precisa gravar em `/tmp` e `/app/.sessions`. O isolamento é garantido via volume persistente nomeado e limites de processo.
+2. **Capabilidades Adequadas:** Se `cap_drop: [ALL]` for avaliado, devem ser adicionadas as capabilidades estritamente exigidas (`SYS_ADMIN` se necessário para o sandbox do Chromium, ou execução com `--no-sandbox` configurado internamente pelo WAHA).
+3. **Loopback Binding Estrito:** A porta do container é mapeada exclusivamente para o IP de loopback do host: `"127.0.0.1:${PORT_WAHA:-3000}:3000"`.
+4. **Isolamento de Rede Interna:** Na rede Docker `sos-v3-network`, o hostname interno é `waha`. O hostname `localhost` é expressamente proibido na allowlist de produção.
+5. **Zero Token Hardcoded:** O webhook URL do WAHA no compose NÃO deve conter tokens estáticos em texto plano. O endpoint de webhook do workspace é configurado no momento em que a sessão é provisionada via API REST do WAHA (`POST /api/sessions/start`).
 
 ```yaml
   waha:
-    image: devlikeapro/waha:2024.12.1@sha256:3a6f1d29c8e11a62d08a501ee47b144fcaa6224d2f7ac5d0e045a4cb7df0b5c3
+    image: devlikeapro/waha:2025.1.1@sha256:UNRESOLVED_EXTERNAL
     container_name: sos-v3-waha
     restart: unless-stopped
     profiles:
       - waha
-      - full
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETUID
-      - SETGID
     environment:
-      WHATSAPP_HOOK_URL: http://api:4400/webhooks/whatsapp
-      WHATSAPP_HOOK_EVENTS: message,message.ack,session.status,session.qr
+      WHATSAPP_DEFAULT_ENGINE: ${WAHA_ENGINE:-WEBJS}
       WHATSAPP_API_KEY: ${WAHA_API_KEY}
       WAHA_ZIP_LOGS: "false"
       WAHA_LOG_LEVEL: info
       WAHA_PRINT_QR: "false"
       WAHA_BASE_URL: http://waha:3000
     ports:
-      # Exposição estritamente vinculada ao loopback local (127.0.0.1)
       - "127.0.0.1:${PORT_WAHA:-3000}:3000"
     volumes:
       - waha_sessions:/app/.sessions
@@ -154,255 +257,170 @@ volumes:
     driver: local
 ```
 
-### 4.2 Regras Estritas de Orquestração
-1. **Fixação por Digest Criptográfico:** É estritamente proibido o uso da tag `:latest`. A imagem deve especificar tag de versão estável concatenada ao digest SHA-256 do manifesto do registry Docker Hub.
-2. **Isolamento de Portas:** A porta `3000` do container é mapeada exclusivamente para `127.0.0.1` na máquina hospedeira. Proibido mapeamento genérico `3000:3000` (que abriria interface em `0.0.0.0` para a rede local ou externa).
-3. **Isolamento de Secrets:** A chave `WHATSAPP_API_KEY` deve ser consumida de variável de ambiente (`.env.local` / ambiente do processo), sem fallback com chave hardcoded no repositório.
-4. **Persistência de Sessão:** O volume nomeado `sos_v3_waha_sessions` preserva tokens de sessão do WhatsApp Web entre reinicializações do container, permitindo testes de resiliência e validação de reconexão sem novo QR code.
-5. **Preservação da Baseline de CI (Zero Poluição):** O profile `profiles: ["waha", "full"]` garante que a execução padrão de testes (`pnpm test`, `pnpm ci:gate`) continue executando com hermeticidade pura e mocks sem exigir o daemon Docker rodando o container WAHA.
+### 6.3 Rollback Seguro e Direcionado
+É expressamente proibido o uso de `docker compose --profile waha down` genérico, pois isso pode encerrar serviços adjacentes de suporte na mesma rede.
 
----
+**Procedimento de Parada e Remoção Direcionada:**
+```bash
+# 1. Parada cirúrgica do container WAHA (sem afetar Postgres, Redis, API ou Web):
+docker stop sos-v3-waha
 
-## 5. Arquitetura de Segurança e Multi-Tenancy
+# 2. Remoção do container preservando o volume de dados:
+docker rm sos-v3-waha
 
-### 5.1 Isolamento de Credenciais Cross-Workspace
-- O acesso a segredos de provedor (`apiKey` para WAHA, `accessToken` e `systemUserSecret` para WABA) é mediado pelo `ISigningSecretResolver`.
-- Nenhuma chave de API transita na URL de requisição ou em parâmetros query (apenas headers `X-Api-Key` ou `Authorization: Bearer`).
-- Caso o workspace A tente carregar o adaptador ou enviar mensagem apontando para uma `channel_instance` do workspace B, a camada de banco bloqueia imediatamente via RLS (`FORCE ROW LEVEL SECURITY`) e constraints compostas `(workspace_id, id)`.
-
-### 5.2 Allowlist Interna de Serviços (`INTERNAL_SERVICE_ALLOWLIST`)
-- Em conformidade com o `CH-07` e `CH-09`, a URL base do WAHA (`http://waha:3000` ou `http://localhost:3000`) é validada pela função perimétrica `validateWahaBaseUrl`.
-- Em ambiente não-produtivo ou de teste, o acesso via HTTP puro é restrito aos hostnames explicitamente autorizados em `INTERNAL_SERVICE_ALLOWLIST`:
-  - `localhost`
-  - `127.0.0.1`
-  - `waha` (nome do container Docker na rede bridge `sos-v3-network`)
-- Qualquer outro host HTTP fora da allowlist é sumariamente bloqueado com exceção `SSRF_VIOLATION`.
-
-### 5.3 Sanitização de Logs e Prevenção de DoS
-- Payloads brutos de QR Code (strings base64 ou binários de até 512 KB) são sanitizados antes de qualquer log.
-- Mensagens de erro de requisição HTTP interceptam e removem cabeçalhos `Authorization` e `X-Api-Key`.
-- O tamanho máximo de payload recebido no webhook do WAHA é estritamente limitado a 512 KB (`WAHA_MAX_INBOUND_PAYLOAD_BYTES`).
-
----
-
-## 6. Plano de Testes de Integração Viva (Docker Lab)
-
-Os testes de integração viva contra o container Docker real são implementados em arquivo dedicado:
-`packages/application/src/__tests__/channel-docker-dual-engine.integration.test.ts`.
-
-### 6.1 Pré-condições de Execução do Lab
-- O teste detecta automaticamente se o container WAHA está saudável via healthcheck probe HTTP em `http://127.0.0.1:3000/api/server/version`.
-- Se o container não estiver ativo e o teste estiver em modo CI hermético padrão, a suíte de integração viva reporta `SKIPPED` com mensagem instrutiva (`Docker WAHA container offline — run 'docker compose --profile waha up -d' for live integration testing`), preservando a aprovação dos 6 quality gates padrão.
-- Quando a variável `RUN_DOCKER_LIVE_TESTS=true` estiver ativa, a suíte executa o ciclo completo de 12 etapas reais:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant TestRunner as Integration Test Runner
-    participant Registry as ChannelPortRegistry
-    participant WahaAdp as WahaAdapter
-    participant WahaCont as Docker WAHA Container
-    participant Normalizer as WahaWebhookNormalizer
-
-    Note over TestRunner,WahaCont: FASE 1: Ciclo de Vida de Sessão
-    TestRunner->>Registry: resolveAdapter(wsA, "waha")
-    Registry-->>TestRunner: WahaAdapter instance
-    TestRunner->>WahaAdp: startSession("live-test-session")
-    WahaAdp->>WahaCont: POST /api/sessions/start
-    WahaCont-->>WahaAdp: 201 Created (status: "STARTING")
-    TestRunner->>WahaAdp: getQrCode("live-test-session")
-    WahaAdp->>WahaCont: GET /api/sessions/live-test-session/auth/qr
-    WahaCont-->>WahaAdp: 200 OK (Content-Type: image/png, Buffer 12KB)
-    Note over WahaAdp: Leitura única de Buffer + conversão Data URI
-    WahaAdp-->>TestRunner: { format: "binary", qr: "data:image/png;base64,..." }
-
-    Note over TestRunner,WahaCont: FASE 2: Despacho Tipado para Endpoints Dedicados
-    TestRunner->>WahaAdp: sendTextMessage(textPayload)
-    WahaAdp->>WahaCont: POST /api/sendText
-    WahaCont-->>WahaAdp: 200 OK { id: "waha-msg-001" }
-    TestRunner->>WahaAdp: sendMediaMessage(imagePayload)
-    WahaAdp->>WahaCont: POST /api/sendImage
-    WahaCont-->>WahaAdp: 200 OK { id: "waha-msg-002" }
-    TestRunner->>WahaAdp: sendMediaMessage(videoPayload)
-    WahaAdp->>WahaCont: POST /api/sendVideo
-    WahaCont-->>WahaAdp: 200 OK { id: "waha-msg-003" }
-    TestRunner->>WahaAdp: sendMediaMessage(voicePayload)
-    WahaAdp->>WahaCont: POST /api/sendVoice
-    WahaCont-->>WahaAdp: 200 OK { id: "waha-msg-004" }
-    TestRunner->>WahaAdp: sendMediaMessage(docPayload)
-    WahaAdp->>WahaCont: POST /api/sendFile
-    WahaCont-->>WahaAdp: 200 OK { id: "waha-msg-005" }
-
-    Note over TestRunner,Normalizer: FASE 3: Normalização de Webhook e ACKs
-    TestRunner->>Normalizer: normalizeWebhook(rawAckPayload)
-    Normalizer-->>TestRunner: CanonicalDeliveryEvent (status: "delivered", externalEventId)
-
-    Note over TestRunner,WahaCont: FASE 4: Resiliência e Persistência de Sessão
-    TestRunner->>WahaAdp: stopSession("live-test-session")
-    WahaAdp->>WahaCont: POST /api/sessions/stop
-    WahaCont-->>WahaAdp: 200 OK (status: "STOPPED")
-    Note over TestRunner: Reinício do container (docker restart sos-v3-waha)
-    TestRunner->>WahaAdp: getSession("live-test-session")
-    WahaAdp->>WahaCont: GET /api/sessions/live-test-session
-    WahaCont-->>WahaAdp: 200 OK (sessão recuperada do volume waha_sessions)
+# 3. O volume nomeado sos_v3_waha_sessions é PRESERVADO por padrão.
+# A remoção do volume só ocorrerá se explicitamente autorizada:
+# docker volume rm sos_v3_waha_sessions
 ```
 
-### 6.2 As 12 Etapas Auditadas no Teste Vivo
-1. `SUBIR_SESSAO`: Dispara `startSession` e valida transição de estado da API.
-2. `OBTER_QR`: Consome QR Code real da API WAHA, validando formato (imagem/PNG ou texto) e teto de payload (512 KB).
-3. `OBSERVAR_STATUS`: Consulta `getSession` e valida resposta tipada estruturada (`status`, `me`).
-4. `PARAR_SESSAO`: Dispara `stopSession` e valida parada controlada sem travar worker.
-5. `PERSISTENCIA_RESTART`: Verifica que os metadados da sessão foram preservados no volume `waha_sessions`.
-6. `ENVIAR_TEXTO`: Valida rota dedicada `/api/sendText` com payload real.
-7. `ENVIAR_IMAGEM`: Valida rota dedicada `/api/sendImage` com URL sanitizada contra SSRF.
-8. `ENVIAR_VIDEO`: Valida rota dedicada `/api/sendVideo`.
-9. `ENVIAR_VOZ`: Valida rota dedicada `/api/sendVoice` (áudio PTT).
-10. `ENVIAR_DOCUMENTO`: Valida rota dedicada `/api/sendFile` com extração do filename original.
-11. `RECEBER_WEBHOOK`: Simula evento inbound e valida normalização canônica pelo `WahaWebhookNormalizer`.
-12. `PROCESSAR_ACK_E_IDEMPOTENCIA`: Processa confirmação de entrega e valida deduplicação de evento por `externalEventId`.
+---
+
+## 7. Estruturação dos Testes em Três Camadas
+
+Para garantir conformidade com o rigor de CI e evitar falsos positivos ou falsos negativos:
+
+```
++---------------------------------------------------------------------------------------------------------+
+|                                           TEST EXECUTION LAYERS                                         |
++---------------------------------------------------------------------------------------------------------+
+|  CAMADA A: Hermética Automatizada (Local CI Gate - pnpm test / pnpm ci:gate)                            |
+|  - Mock de fetch e probes HTTP locais.                                                                   |
+|  - Resolução de adaptadores via ChannelAdapterRegistry.                                                 |
+|  - Validação de fail-closed e ausência de fallback no ChannelDispatchService.                           |
+|  - Validação de RLS cross-workspace e auditoria em public.audit_events com banco temporário.            |
+|  - Inspeção estática de configuração de segurança do docker-compose.yml.                                |
+|  - STATUS: 100% AUTOMATIZADO, ZERO DEPENDÊNCIA DE DOCKER ATIVO.                                         |
++---------------------------------------------------------------------------------------------------------+
+|  CAMADA B: Docker Smoke Automatizado (Ambiente com Daemon Docker - RUN_DOCKER_LIVE_TESTS=true)          |
+|  - Pull da imagem WAHA pelo digest SHA-256 verificado no registry.                                      |
+|  - Subida controlada do container sos-v3-waha.                                                         |
+|  - Validação de healthcheck HTTP autenticado (/api/server/version).                                     |
+|  - Ciclo de sessão inicial: startSession, stopSession, listSessions.                                    |
+|  - Obtenção de QR code sintético ou inicial gerado pelo engine.                                         |
+|  - Restart do container (docker restart sos-v3-waha) e validação de persistência no volume waha_sessions.|
+|  - REGRA DE FALHA: Se RUN_DOCKER_LIVE_TESTS=true e container ausente, o teste FALHA IMEDIATAMENTE.       |
+|  - STATUS: SEMI-AUTOMATIZADO EM AMBIENTE COM DOCKER.                                                    |
++---------------------------------------------------------------------------------------------------------+
+|  CAMADA C: Homologação Humana / Externa (Dispositivo Celular Real - EXT-05)                             |
+|  - Escaneamento de QR Code com aplicativo WhatsApp em smartphone real.                                  |
+|  - Conexão e sincronização com a infraestrutura de produção da Meta.                                    |
+|  - Envio e recepção de mensagem de texto e mídia real entre aparelhos físicos.                           |
+|  - Confirmação de entrega de operadora (ACK read / delivered real).                                      |
+|  - STATUS: BLOCKED_EXTERNAL (Requer operador humano, aparelho de teste e janela autorizada).            |
++---------------------------------------------------------------------------------------------------------+
+```
 
 ---
 
-## 7. Critérios de Aceite Numerados (AC-CH10)
+## 8. Critérios de Aceite Numerados (AC-CH10)
 
-| ID do Critério | Requisito Verificado | Método de Verificação | Veredito Alvo |
+Todos os critérios de aceite iniciam rigorosamente no estado `NOT_RUN`. Nenhum critério pode ser marcado como `PASS` antes da execução das suítes de validação.
+
+| ID do Critério | Requisito Verificado | Método de Verificação | Evidência Esperada | Estado Atual | Bloqueio Externo |
+|---|---|---|---|---|---|
+| **AC-CH10-001** | `ChannelAdapterRegistry` registra e entrega `waha` e `meta_waba` como instâncias stateless sem conflito ou estado compartilhado. | Teste unitário hermético em `channel-adapter.registry.test.ts`. | Instâncias separadas retornadas para cada provedor com integridade tipada. | `NOT_RUN` | `NONE` |
+| **AC-CH10-002** | `ChannelInstanceRepository` resolve a instância ativa por workspace e respeita RLS multi-tenant, impedindo vazamento cross-workspace. | Teste de banco em `channel-instance.repository.test.ts`. | Isolamento comprovado via `app.current_workspace_id`; tentativa de cross-read retorna `null`. | `NOT_RUN` | `NONE` |
+| **AC-CH10-003** | `ChannelDispatchService` proíbe categoricamente fallback silencioso automático: falha fechada com `CHANNEL_PROVIDER_UNAVAILABLE` quando o provedor da thread está inoperante. | Teste de injeção de erro e mock de falha em `channel-dispatch-fallback.test.ts`. | Assert de exceção tipada e zero tentativa de chamada ao provedor alternativo. | `NOT_RUN` | `NONE` |
+| **AC-CH10-004** | Migration 006 cria índice único parcial `uq_channel_instances_active_provider` impedindo duas instâncias ativas para o mesmo provedor no mesmo workspace. | Execução de migration e teste de inserção conflitante com erro `23505`. | Violação de unicidade capturada pelo banco em teste de banco hermético. | `NOT_RUN` | `NONE` |
+| **AC-CH10-005** | `ChannelSwitchService` realiza transição administrativa de provedor com registro imutável em `public.audit_events` e preservação do histórico de conversas. | Teste de integração de serviço em `channel-switch.service.test.ts`. | Registro persistido em `audit_events`; threads antigas inalteradas. | `NOT_RUN` | `NONE` |
+| **AC-CH10-006** | `ChannelHealthService` mapeia os 4 estados operacionais (`HEALTHY`, `DEGRADED`, `UNHEALTHY`, `UNAVAILABLE`) sem realizar requisições reais externas da Meta na CI. | Teste unitário de health service com mocks em `channel-health.service.test.ts`. | Mapeamento exato de latências, códigos HTTP e status de sessão. | `NOT_RUN` | `NONE` |
+| **AC-CH10-007** | Configuração Docker do serviço `waha` vinculada exclusivamente a `127.0.0.1`, com volume persistente `sos_v3_waha_sessions` e sem digest ilustrativo inventado. | Script de inspeção estática `verify-docker-compose-security.ts`. | Conformidade do compose validada com digest resolvido via registry. | `NOT_RUN` | `NONE` |
+| **AC-CH10-008** | Suíte de Docker Smoke (`RUN_DOCKER_LIVE_TESTS=true`) valida ciclo de vida local do container WAHA (boot, healthcheck, sessions, persistência de volume). | Runner de teste de integração em `channel-docker-dual-engine.integration.test.ts`. | Container sobe, responde healthcheck e preserva dados no restart. Falha se container ausente com flag ativa. | `NOT_RUN` | `BLOCKED_EXTERNAL: EXT-04` (Ambiente Docker ativo) |
+
+---
+
+## 9. Dependências Externas e Bloqueios (`EXT-01` a `EXT-05`)
+
+| Código | Descrição da Dependência Externa | Impacto no CH-10 | Status de Desbloqueio |
 |---|---|---|---|
-| **AC-CH10-001** | `ChannelPortRegistry` instancia e resolve independentemente adaptadores `waha` e `meta_waba` por workspace sem colisão ou estado compartilhado. | Teste unitário e de contrato multi-tenant. | `PASS` |
-| **AC-CH10-002** | O despacho de mensagens proíbe categoricamente fallback silencioso automático entre provedores diante de instâncias degradadas ou indisponíveis, falhando fechado com erro tipado `PROVIDER_UNAVAILABLE` ou `PROVIDER_DEGRADED`. | Teste de falha forçada e injeção de erro. | `PASS` |
-| **AC-CH10-003** | Serviço Docker `waha` configurado com imagem fixada por digest SHA-256 (sem tag `:latest`), limites de recurso (1.5 CPU, 1024MB RAM), vinculação exclusiva a `127.0.0.1:3000` e volume persistente `sos_v3_waha_sessions`. | Inspeção estática de `docker-compose.yml` e teste de inicialização. | `PASS` |
-| **AC-CH10-004** | Healthcheck real do container WAHA implementado e funcional com credenciais injetadas por variável de ambiente sem hardcoding de API key. | Execução de `docker inspect` e consulta HTTP authenticated. | `PASS` |
-| **AC-CH10-005** | Adaptação WABA oficial (`MetaWabaAdapter`) preservada integralmente com verificação de health/config sem requisições reais em ambiente de CI. | Suíte `channel-adapters.test.ts` (110 asserções) 100% verde. | `PASS` |
-| **AC-CH10-006** | Isolamento multi-tenant comprovado: Workspace Alpha com provedor `waha` não tem acesso ou visibilidade das credenciais ou instâncias do Workspace Beta com `meta_waba`. | Teste de segurança multi-tenant com assert de RLS negativo. | `PASS` |
-| **AC-CH10-007** | Alteração de provedor de canal por workspace exige comando administrativo explícito e gera registro de auditoria imutável em `audit_logs`, preservando threads comerciais existentes. | Teste de integração de transição de canal e consulta à tabela de auditoria. | `PASS` |
-| **AC-CH10-008** | Suíte de integração viva em Docker Lab executa as 12 operações de ciclo de vida contra container WAHA real e preserva a execução hermética padrão dos 6 gates de CI locais. | Execução de `pnpm ci:gate` e runner dedicado de integração viva. | `PASS` |
+| **EXT-01** | Registry Oficial Docker Hub acessível para inspeção de digest do WAHA. | Impede resolução do digest SHA-256 definitivo da imagem `devlikeapro/waha`. | Desbloqueável via comando de inspeção de registry. |
+| **EXT-02** | Daemon Docker disponível para execução da Camada B (Docker Smoke). | Impede execução de testes com container ativo; CI hermética roda com skip gracioso. | Desbloqueável localmente com Docker Desktop / daemon ativo. |
+| **EXT-03** | Credenciais de Homologação da Meta Graph API (WABA). | Impede testes manuais de health real contra a Meta; testes de CI rodam com mocks. | Bloqueado para ambiente de produção; mocks usados no Lab. |
+| **EXT-04** | Porta local `3000` desimpedida no host para bind loopback `127.0.0.1`. | Conflito se outra aplicação local estiver usando a porta 3000. | Configurável via variável `PORT_WAHA`. |
+| **EXT-05** | Operador humano com aparelho smartphone e chip autorizado para escanear QR Code do WAHA. | Impede execução da Camada C (E2E real com WhatsApp ativo). | **BLOCKED_EXTERNAL**: Fica explicitamente delegado para o CH-12 ou CH-10B. |
 
 ---
 
-## 8. Matriz de Rastreabilidade (Requisito → Teste → Evidência)
+## 10. Arquivos sob Ownership do Pacote CH-10
 
-| Requisito do Plano | Componente / Arquivo | Teste Automatizado | Evidência Canônica |
-|---|---|---|---|
-| Registry dual-engine por workspace | `packages/application/src/channels/registry/channel-port.registry.ts` | `packages/application/src/__tests__/channel-port-registry.test.ts` | `EV-CH10-001` (Asserção de resolução única e estanque) |
-| Proibição de fallback silencioso | `packages/application/src/channels/services/channel-dispatch.service.ts` | `packages/application/src/__tests__/channel-dispatch-fallback.test.ts` | `EV-CH10-001` (Assert de falha fechada sem desvio de tráfego) |
-| Docker hardening com digest fixo | `docker-compose.yml` | `scripts/verify-docker-compose-security.ts` | `EV-CH10-001` (Validação de digest SHA-256 e portas 127.0.0.1) |
-| Ciclo de vida real WAHA (12 passos) | `packages/application/src/channels/adapters/waha.adapter.ts` | `packages/application/src/__tests__/channel-docker-dual-engine.integration.test.ts` | `EV-CH10-001` (Log de execução viva em Docker Lab) |
-| Preservação do adapter WABA | `packages/application/src/channels/adapters/meta-waba.adapter.ts` | `packages/application/src/__tests__/channel-adapters.test.ts` | `EV-CH10-001` (59 testes de adaptadores aprovados) |
-| Isolamento multi-tenant | `packages/database/src/messaging.ts` | `packages/database/src/__tests__/channel-foundation-security.test.ts` | `EV-CH10-001` (Assert RLS cross-workspace bloqueado) |
-| Auditoria de transição de provedor | `packages/application/src/channels/services/channel-switch.service.ts` | `packages/application/src/__tests__/channel-provider-switch.test.ts` | `EV-CH10-001` (Registro gerado em audit_logs) |
-| Gate 6 e verificação criptográfica | `scripts/verify-evidence-digests.ts` | `pnpm ci:gate` | `EV-CH10-001` (Gate 6 aprovado com novo digest do CH-10) |
+### 10.1 Arquivos Modificados / Expandidos:
+1. `docker-compose.yml` (Hardening do serviço waha: digest resolvido por registry, volume persistente, limits de recursos e porta estrita em `127.0.0.1`).
+2. `packages/application/src/channels/adapters/waha.adapter.ts` (Adição do método estruturado de avaliação de saúde operacional `checkHealth()`).
+3. `packages/application/src/channels/adapters/meta-waba.adapter.ts` (Adição do método estruturado de avaliação de saúde operacional `checkHealth()`).
 
----
-
-## 9. Arquivos sob Ownership do Pacote CH-10
-
-### Arquivos Modificados / Expandidos:
-1. `docker-compose.yml` (Hardening do serviço waha: digest imutável, volume nomeado, limites de recursos, segurança sem privilégios e portas locais)
-2. `packages/application/src/channels/registry/channel-adapter.registry.ts` (Evolução para suportar health check e status por provedor)
-3. `packages/application/src/channels/adapters/waha.adapter.ts` (Método de health check nativo `checkHealth(): Promise<ChannelHealthStatus>`)
-4. `packages/application/src/channels/adapters/meta-waba.adapter.ts` (Método de health check nativo `checkHealth(): Promise<ChannelHealthStatus>`)
-
-### Arquivos Novos (Criados pelo Pacote):
-5. `packages/application/src/channels/registry/channel-port.registry.ts` (Port registry multi-tenant vinculando workspace a provedor ativo)
-6. `packages/application/src/channels/services/channel-dispatch.service.ts` (Serviço de despacho seguro sem fallback silencioso)
-7. `packages/application/src/channels/services/channel-switch.service.ts` (Serviço de transição auditada de provedores com log imutável)
-8. `packages/application/src/__tests__/channel-port-registry.test.ts` (Testes unitários do registry multi-tenant)
-9. `packages/application/src/__tests__/channel-dispatch-fallback.test.ts` (Testes negativos de proscrição de fallback silencioso)
-10. `packages/application/src/__tests__/channel-provider-switch.test.ts` (Testes de auditoria de transição de provedor)
-11. `packages/application/src/__tests__/channel-docker-dual-engine.integration.test.ts` (Suíte de integração viva em 12 etapas)
-12. `docs/work-packages/CH-10-DUAL-ENGINE.md` (Este documento canônico de especificação e planejamento)
-13. `docs/work-packages/CH-10-EVIDENCE.json` (Manifesto estruturado de evidência criptográfica `EV-CH10-001`)
-
----
-
-## 10. Divisão de Tarefas por Agente Especializado
-
-```
-+-------------------+-----------------------------------------------------------------------------------+
-| Agente            | Atribuições Específicas na Execução do CH-10                                      |
-+-------------------+-----------------------------------------------------------------------------------+
-| Architect         | - Modelagem da interface ChannelPortRegistry e tipos ChannelHealthStatus.          |
-|                   | - Definição dos contratos de transição de provedor e proscrição de fallback.      |
-+-------------------+-----------------------------------------------------------------------------------+
-| Docker/SRE        | - Fixação da imagem devlikeapro/waha por digest SHA-256 e declaração de volume.    |
-| Specialist        | - Configuração de healthcheck HTTP com timeout/retries e limits de CPU/memória.   |
-|                   | - Garantia de isolamento das portas em 127.0.0.1 e preservação da baseline sem CI.|
-+-------------------+-----------------------------------------------------------------------------------+
-| Security          | - Auditoria perimétrica de rede e validação de INTERNAL_SERVICE_ALLOWLIST.         |
-| Auditor           | - Verificação de isolamento RLS cross-workspace e ausência de vazamento de chaves.|
-|                   | - Validação de integridade do audit log de transição de provedor.                |
-+-------------------+-----------------------------------------------------------------------------------+
-| Backend           | - Implementação do ChannelPortRegistry e do ChannelDispatchService.               |
-| Specialist        | - Adição de checkHealth() nos adaptadores WahaAdapter e MetaWabaAdapter.          |
-|                   | - Integração do ChannelSwitchService com persistência em audit_logs.              |
-+-------------------+-----------------------------------------------------------------------------------+
-| QA                | - Criação da suíte de integração viva em 12 etapas com skip gracioso sem Docker.   |
-| Specialist        | - Implementação dos testes de fallback proibido e testes multi-tenant.            |
-|                   | - Homologação de 100% dos testes e aprovação nos 6 gates do ci:gate.             |
-+-------------------+-----------------------------------------------------------------------------------+
-```
+### 10.2 Arquivos Novos (Criados na Implementação):
+4. `packages/database/migrations/006_channel_instances_active_provider_unique.sql` (Índice único parcial `uq_channel_instances_active_provider`).
+5. `packages/database/src/repositories/channel-instance.repository.ts` (Repository tenant-safe para instâncias de canal).
+6. `packages/application/src/channels/services/channel-dispatch.service.ts` (Serviço de despacho com fail-closed estrito e sem fallback silencioso).
+7. `packages/application/src/channels/services/channel-health.service.ts` (Serviço de diagnóstico de saúde dos provedores por workspace).
+8. `packages/application/src/channels/services/channel-switch.service.ts` (Serviço de transição administrativa com gravação em `public.audit_events`).
+9. `packages/database/src/__tests__/channel-instance-repository.test.ts` (Testes de consulta e RLS da `channel_instance`).
+10. `packages/application/src/__tests__/channel-dispatch-fallback.test.ts` (Testes negativos de proscrição de fallback silencioso).
+11. `packages/application/src/__tests__/channel-health.service.test.ts` (Testes de classificação de estados operacionais).
+12. `packages/application/src/__tests__/channel-switch.service.test.ts` (Testes de auditoria em `audit_events`).
+13. `packages/application/src/__tests__/channel-docker-dual-engine.integration.test.ts` (Suíte Docker Smoke das Camadas A e B).
+14. `scripts/verify-docker-compose-security.ts` (Verificador de hardening do `docker-compose.yml`).
+15. `docs/work-packages/CH-10-DUAL-ENGINE.md` (Este documento canônico de especificação).
 
 ---
 
 ## 11. Ordem Sequencial de Implementação
 
-A execução do CH-10 seguirá estritamente 6 fases lineares, com pontos de parada e validação intermediária:
-
-1. **Fase 1 — Hardening do Docker Compose:**
-   - Ajustar `docker-compose.yml` para fixar digest SHA-256 do WAHA, volume nomeado de sessões, limits de recurso e porta vinculada ao loopback `127.0.0.1`.
-   - Validar sintaxe com `docker compose config` (sem subir serviços desnecessários).
-
-2. **Fase 2 — Tipos e Interfaces de Health & Registry:**
-   - Criar contratos de `ChannelHealthStatus` (`HEALTHY`, `DEGRADED`, `UNHEALTHY`, `UNAVAILABLE`) e métodos `checkHealth()` nas interfaces de canal.
-   - Implementar `ChannelPortRegistry` com isolamento por workspace.
-
-3. **Fase 3 — Serviços de Despacho e Auditoria de Transição:**
-   - Implementar `ChannelDispatchService` aplicando fail-closed estrito e proscrição de fallback silencioso.
-   - Implementar `ChannelSwitchService` gravando registros imutáveis em `audit_logs`.
-
-4. **Fase 4 — Suíte de Testes Herméticos e Multi-Tenant:**
-   - Implementar `channel-port-registry.test.ts`, `channel-dispatch-fallback.test.ts` e `channel-provider-switch.test.ts`.
-   - Executar suíte hermética contra banco temporário (`pnpm test:db:run`).
-
-5. **Fase 5 — Suíte de Integração Viva (Docker Lab):**
-   - Implementar `channel-docker-dual-engine.integration.test.ts` cobrindo as 12 etapas do ciclo de vida WAHA.
-   - Executar com container real e comprovar persistência de sessão após reinicialização.
-
-6. **Fase 6 — Governança e Homologação de Quality Gates:**
-   - Gerar manifesto `docs/work-packages/CH-10-EVIDENCE.json` com `scoped-digest-v1` (ordenação lexicográfica).
-   - Executar `pnpm vitest run` e `pnpm ci:gate` garantindo 100% de aprovação nos 6 gates.
-   - Realizar commit cirúrgico com caminhos explícitos.
+1. **Fase 1 — Resolução do Digest e Hardening do Compose:**
+   - Inspecionar registry com `docker buildx imagetools inspect` para fixar digest real do WAHA.
+   - Ajustar `docker-compose.yml` com portas loopback e volume nomeado `sos_v3_waha_sessions`.
+   - Implementar `scripts/verify-docker-compose-security.ts`.
+2. **Fase 2 — Migração de Banco e Repository Tenant-Safe:**
+   - Criar Migration 006 com índice único parcial.
+   - Implementar `ChannelInstanceRepository` em `packages/database` com isolamento por RLS.
+   - Criar testes herméticos de banco em `channel-instance-repository.test.ts`.
+3. **Fase 3 — Serviços de Despacho, Health e Transição:**
+   - Implementar `ChannelDispatchService` (fail-closed, sem fallback).
+   - Implementar `ChannelHealthService` com suporte a `checkHealth()` nos adaptadores.
+   - Implementar `ChannelSwitchService` gravando em `public.audit_events`.
+4. **Fase 4 — Suítes Herméticas Automatizadas (Camada A):**
+   - Implementar suítes de teste de fallback, health mapping e transição auditada.
+   - Validar execução 100% verde com `pnpm test:db:run`.
+5. **Fase 5 — Docker Smoke Test (Camada B):**
+   - Implementar `channel-docker-dual-engine.integration.test.ts` com skip gracioso na ausência de daemon Docker e falha estrita quando `RUN_DOCKER_LIVE_TESTS=true`.
+6. **Fase 6 — Verificação Canônica de Gates:**
+   - Executar `pnpm ci:gate` garantindo 100% de aprovação nos 6 gates locais.
+   - Realizar commit cirúrgico dos arquivos implementados.
 
 ---
 
-## 12. Plano de Rollback
+## 12. Matriz de Riscos P0 / P1 / P2
 
-Caso ocorra falha irreversível durante a ativação ou validação do CH-10:
-1. **Desativação Imediata do Container:** Executar `docker compose --profile waha down` (remove os containers da rede interna sem destruir o volume persistente `sos_v3_waha_sessions`).
-2. **Isolamento de Canais:** O tráfego do Meta WABA (`meta_waba`) permanece 100% operacional através da Graph API, uma vez que não depende de containers locais.
-3. **Reversão de Código:** Reversão limpa do branch de trabalho para o commit do precheck `d4b43d8` via `git revert` cirúrgico.
-4. **Zero Impacto em Produção/V2:** O ambiente de produção V2 reside em infraestrutura segregada e permanece totalmente intocado.
+### Riscos P0 (Bloqueadores de Conformidade e Segurança):
+- **Risco:** Fallback silencioso automático enviar mensagem com template WABA em formato WAHA ou vice-versa, violando janela de atendimento da Meta ou quebrando regras de negócio.  
+  **Mitigação:** Regra inegociável no `ChannelDispatchService`: erro em provedor configurado gera falha imediata na mensagem (`PROVIDER_UNAVAILABLE`), sem desvio de rota.
+- **Risco:** Falha de isolamento permitindo que Workspace Alpha despache mensagens pela `channel_instance` do Workspace Beta.  
+  **Mitigação:** Validação estrita via RLS no `ChannelInstanceRepository` (`app.current_workspace_id`) e verificação de integridade no `ChannelDispatchService`.
 
----
+### Riscos P1 (Riscos Operacionais e de Infraestrutura):
+- **Risco:** Bloqueio do Chromium dentro do container WAHA devido a capabilidades insuficientes no Docker Compose.  
+  **Mitigação:** Não aplicar `cap_drop: [ALL]` indiscriminadamente sem validação empírica; permitir gravação em `/tmp` e `/app/.sessions`.
+- **Risco:** Docker Compose local derrubar Postgres ou Redis durante operações de teste no container WAHA.  
+  **Mitigação:** Procedimento de rollback direcionado operando exclusivamente sobre o container `sos-v3-waha` via `docker stop/rm`.
 
-## 13. Classificação de Riscos e Mitigações
-
-### Riscos P0 (Bloqueadores Críticos):
-- **Risco:** Tentativa de failover automático entre provedores enviando mensagens de cobrança/notificação com template WABA em formato WAHA ou vice-versa, violando janela de 24h ou quebrando conformidade Meta.  
-  **Mitigação:** Regra arquitetural inquebrável no `ChannelDispatchService`: erro de canal reporta status `failed`/`retry` no mesmo provedor, sem desvio de rota.
-
-### Riscos P1 (Riscos Arquiteturais):
-- **Risco:** Inicialização lenta do Chromium no container WAHA provocando timeouts nos primeiros requests de teste.  
-  **Mitigação:** `start_period: 30s` no healthcheck do compose e polling defensivo de pré-flight no test runner com retry configurável.
-
-### Riscos P2 (Ressalvas Operacionais):
-- **Risco:** Consumo de memória elevado pelo Chromium dentro do container WAHA em testes prolongados.  
-  **Mitigação:** Limite rígido de memória no compose (`memory: 1024M`), flag de limpeza de processos órfãos e restart controlado.
+### Riscos P2 (Ressalvas de Manutenibilidade):
+- **Risco:** Inconsistência nos testes herméticos da CI provocada por chamadas de rede externas não mockadas.  
+  **Mitigação:** Isolamento estrito de todos os probes externos na Camada A, utilizando mocks determinísticos.
 
 ---
 
-## 14. Definição de Ciclo de Vida do Pacote
+## 13. Comandos de Validação e Verificação do Plano
 
-- **`READY` (Estado Atual):** Especificação completa aprovada, critérios de aceite AC-CH10-001 a 008 definidos, riscos mitigados, matriz de evidência pronta, pré-requisitos cumpridos.
-- **`IN_PROGRESS`:** Desenvolvimento ativo dos componentes em `packages/application` e `docker-compose.yml`.
-- **`IN_QA`:** Código finalizado; execução dos testes unitários, testes de banco hermético e teste vivo de 12 passos em Docker Lab.
-- **`ACCEPTED`:** 100% dos testes aprovados, 6/6 quality gates do CI aprovados (`pnpm ci:gate`), manifesto criptográfico `CH-10-EVIDENCE.json` validado com `scoped-digest-v1` e commit cirúrgico realizado.
+```bash
+# 1. Validação de integridade de sintaxe e schemas (Gate 1):
+pnpm ci:gate
+
+# 2. Resolução do digest real da imagem WAHA:
+docker buildx imagetools inspect devlikeapro/waha:2025.1.1
+
+# 3. Validação de sintaxe estática do Docker Compose:
+docker compose --profile waha config
+
+# 4. Execução da suíte de banco hermético:
+pnpm test:db:run
+```
