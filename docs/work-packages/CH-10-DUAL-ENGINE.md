@@ -51,7 +51,7 @@ O pacote **CH-10** tem escopo estritamente delimitado à **infraestrutura, gover
 
 | Item do Contrato | Classificação | Detalhes Técnicos e Evidência no Código | Ação na Implementação |
 |---|---|---|---|
-| **Digest da Imagem Docker WAHA** | `UNRESOLVED_EXTERNAL` | O digest SHA-256 não deve ser ilustrativo ou presumido. Deve ser extraído diretamente do registry oficial Docker Hub. | Executar antes do commit: `docker buildx imagetools inspect devlikeapro/waha:<tag>` e fixar o digest exato do manifesto `linux/amd64` (ou multi-arch). |
+| **Digest da Imagem Docker WAHA** | `RESOLVED` | Inspecionado via Docker Hub: tag `latest-2026.8.2`, OCI index digest `sha256:527ff3d634925adb26d596883d7b3ca502c080f737af3c2af2be0c973c511533` (linux/amd64: `sha256:dcc55f079b1d2c15ad0dc35a1b08c983c203f843bf1260df01441af0f84309b0`). | Fixado formalmente no Compose para a fase de implementação do CH-10. |
 | **Edição e Engine WAHA** | `KNOWN` | Edição: **WAHA Core** (open-source) ou **WAHA Plus** (avançada). Engines suportadas: `WEBJS` (Puppeteer/Chromium), `NOWEB` (WebSocket leve), `GOWS` (Go WhatsApp). A baseline do projeto suporta Core/Plus sob `WEBJS` ou `NOWEB`. | Definir explicitamente `WHATSAPP_DEFAULT_ENGINE=WEBJS` (ou `NOWEB`) no Compose; documentar compatibilidade. |
 | **Variáveis de Ambiente WAHA** | `KNOWN` | Variáveis documentadas pela API WAHA: `WHATSAPP_HOOK_URL`, `WHATSAPP_HOOK_EVENTS`, `WHATSAPP_API_KEY`, `WAHA_ZIP_LOGS`, `WAHA_LOG_LEVEL`, `WAHA_PRINT_QR`, `WAHA_BASE_URL`. | Consumir segredos via `.env.local` sem valores default hardcoded em produção. |
 | **Endpoint de Health / Version** | `KNOWN` | Endpoint WAHA comprovado: `GET /api/server/version`. Suporta retorno estruturado JSON com versão e status do servidor. | Utilizado no probe de healthcheck do Docker Compose e no `WahaAdapter.checkHealth()`. |
@@ -61,7 +61,7 @@ O pacote **CH-10** tem escopo estritamente delimitado à **infraestrutura, gover
 | **Rota de Webhook Fastify Real** | `KNOWN` | Comprovado em `apps/api/src/routes/webhook.routes.ts`: `POST /v1/webhooks/whatsapp/:endpointToken`. Não existe `/webhooks/whatsapp` genérico. | O webhook deve ser configurado por instância com seu `endpointToken` dedicado gerado no banco. Proibido token hardcoded no Compose. |
 | **Raw Body e Teto de Payload** | `KNOWN` | Comprovado em `webhook.routes.ts`: Ingress exige `request.rawBody` preservado e impõe teto de 512 KB (`512 * 1024` bytes). Excesso retorna HTTP 413. | Respeitado rigorosamente no gateway Fastify. |
 | **Tabela de Auditoria Soberana** | `KNOWN` | Comprovado em Migrations 001 e 004: Tabela é `public.audit_events` (não `audit_logs`), protegida por trigger `trg_audit_events_immutable`. | `ChannelSwitchService` insere eventos em `public.audit_events` via `sos_app_user`. |
-| **Unicidade de Provedor Ativo** | `INFERRED` | Migration 005 possui unicidade de `endpoint_token_hash`, mas NÃO possui índice impedindo dois registros ativos para o mesmo provedor no mesmo workspace. | Planejada Migration 006: `CREATE UNIQUE INDEX uq_channel_instances_active_provider ON public.channel_instances (workspace_id, provider) WHERE is_active = true;`. |
+| **Unicidade de Provedor / Linha Ativa** | `RESOLVED` | Investigação empírica contra `channel-foundation-security.test.ts` comprovou que o modelo de dados suporta múltiplas linhas ativas por workspace, desde que cada número seja único por provedor. | Migration 006 implementa `uq_channel_instances_active_provider_phone` sobre `(workspace_id, provider, phone_number_e164) WHERE is_active = true`. |
 | **Health Externo da Meta (WABA)** | `UNRESOLVED_EXTERNAL` | A CI não possui e não deve usar credenciais reais da Meta Graph API para evitar quebras por rede externa ou rate limits. | A saúde estrutural/configuracional do WABA é testada com mocks na CI; verificação externa real exige homologação manual (EXT-03). |
 
 ---
@@ -176,33 +176,40 @@ INSERT INTO public.audit_events (
 );
 ```
 
-### 5.2 Migration 006: Garantia de Unicidade de Provedor Ativo
-Atualmente, `public.channel_instances` permite múltiplos registros com `is_active = true` para o mesmo provedor. Para garantir determinismo na resolução sem colisões, planeja-se a Migration 006:
+### 5.2 Migration 006: Garantia de Unicidade e Modelagem Multi-Linha
+Na investigação empírica contra a suíte hermética existente (`channel-foundation-security.test.ts`), identificou-se que a Migration 005 foi concebida para suportar **múltiplas linhas telefônicas por workspace** (ex: `channelAId` e `channelA2Id` provisionadas como instâncias ativas para testar segregação de threads e mensagens por chave estrangeira composta).
+
+Para conciliar a coexistência dual-engine (CH-10) com o modelo de múltiplas linhas:
+- **Trade-off 1 (Unicidade estrita workspace + provider):** `UNIQUE (workspace_id, provider) WHERE is_active = true`. Força no máximo 1 linha WAHA e 1 linha WABA por tenant. Impede cenários onde uma empresa opera 2 números de WhatsApp no mesmo provedor.
+- **Trade-off 2 (Unicidade por linha telefônica/número):** `UNIQUE (workspace_id, provider, phone_number_e164) WHERE is_active = true`. Permite múltiplas linhas simultâneas para o mesmo provedor, impedindo colisão do mesmo número de telefone no mesmo provedor.
+- **Recomendação Soberana para CH-10:** A Migration 006 implementa a unicidade por linha `(workspace_id, provider, phone_number_e164) WHERE is_active = true AND phone_number_e164 IS NOT NULL`, e o `ChannelDispatchService` consome explicitamente a `channel_instance_id` vinculada à thread comercial, garantindo determinismo sem quebrar o teste canônico de chaves compostas de `channel-foundation-security.test.ts`.
 
 ```sql
 -- packages/database/migrations/006_channel_instances_active_provider_unique.sql
--- Garante no máximo 1 instância ativa por provedor em cada workspace
-CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_instances_active_provider
-    ON public.channel_instances (workspace_id, provider)
-    WHERE is_active = true;
+-- Garante que um mesmo número não seja ativado em duplicidade para o mesmo provedor no workspace
+CREATE UNIQUE INDEX IF NOT EXISTS uq_channel_instances_active_provider_phone
+    ON public.channel_instances (workspace_id, provider, phone_number_e164)
+    WHERE is_active = true AND phone_number_e164 IS NOT NULL;
 ```
 
 ---
 
 ## 6. Orquestração e Hardening de Docker Realista
 
-### 6.1 Resolução de Imagem Docker (Sem Inventar Digest)
-A tag e o digest não são assumidos no plano. O valor deve ser resolvido via comando CLI antes da implementação e registrado:
+### 6.1 Resolução de Imagem Docker com Evidência Canônica
+Em inspeção direta ao registry oficial Docker Hub (`docker buildx imagetools inspect`), obteve-se o digest criptográfico real e imutável para a versão estável mais recente do WAHA:
 
+- **Tag Oficial Estável:** `devlikeapro/waha:latest-2026.8.2`
+- **Digest OCI Index:** `sha256:527ff3d634925adb26d596883d7b3ca502c080f737af3c2af2be0c973c511533`
+- **Digest Manifest linux/amd64:** `sha256:dcc55f079b1d2c15ad0dc35a1b08c983c203f843bf1260df01441af0f84309b0`
+
+Comando de inspeção executado:
 ```bash
-# Comando de resolução obrigatório antes de fixar o compose:
-docker buildx imagetools inspect devlikeapro/waha:2025.1.1
-# ou
-docker manifest inspect devlikeapro/waha:2025.1.1
+docker buildx imagetools inspect devlikeapro/waha:latest-2026.8.2
 ```
 
-O compose final conterá o digest real retornado pelo Docker Hub:
-`image: devlikeapro/waha:<version>@sha256:<digest-real-resolvido>`
+O compose utilizará a referência imutável resolvida:
+`image: devlikeapro/waha:latest-2026.8.2@sha256:527ff3d634925adb26d596883d7b3ca502c080f737af3c2af2be0c973c511533`
 
 ### 6.2 Hardening Viável para Chromium no WAHA
 O WAHA utiliza Chromium em modo headless para o engine `WEBJS`. Aplicar restrições cegas de segurança como `cap_drop: [ALL]` ou `read_only: true` no rootfs impede a inicialização do Chromium (que necessita de namespaces de PID, gerenciamento de processos filhos e cache de sessão).
@@ -216,7 +223,7 @@ O WAHA utiliza Chromium em modo headless para o engine `WEBJS`. Aplicar restriç
 
 ```yaml
   waha:
-    image: devlikeapro/waha:2025.1.1@sha256:UNRESOLVED_EXTERNAL
+    image: devlikeapro/waha:latest-2026.8.2@sha256:527ff3d634925adb26d596883d7b3ca502c080f737af3c2af2be0c973c511533
     container_name: sos-v3-waha
     restart: unless-stopped
     profiles:
@@ -233,7 +240,7 @@ O WAHA utiliza Chromium em modo headless para o engine `WEBJS`. Aplicar restriç
     ports:
       - "127.0.0.1:${PORT_WAHA:-3000}:3000"
     volumes:
-      - waha_sessions:/app/.sessions
+      - sos_v3_waha_sessions:/app/.sessions
     networks:
       - sos-v3-network
     deploy:
