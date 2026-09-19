@@ -43,6 +43,19 @@ export interface ClaimedOutboundCommand extends OutboundCommandRecord {
   previous_status: OutboundCommandStatus;
 }
 
+export interface ClaimedReconciliationCommand {
+  id: string;
+  workspace_id: string;
+  channel_instance_id: string;
+  message_id: string;
+  recipient_e164: string;
+  external_message_id: string | null;
+  created_at: Date;
+  retry_count: number;
+  max_retries: number;
+  lease_token: string;
+}
+
 export interface EnqueueOutboundCommandParams {
   workspaceId: string;
   channelInstanceId: string;
@@ -411,4 +424,221 @@ export class OutboundCommandRepository {
     const res = await executor.query(query, [Math.max(1, limit)]);
     return res.rowCount ?? 0;
   }
+
+  /**
+   * Claims a batch of ambiguous outbound commands requiring reconciliation using SKIP LOCKED.
+   */
+  async claimReconciliationBatch(
+    workerId: string,
+    limit = 10,
+    leaseSeconds = 30,
+    client?: Pool | PoolClient
+  ): Promise<ClaimedReconciliationCommand[]> {
+    const executor = client || this.pool;
+    const query = `
+      WITH claimed AS (
+        SELECT id
+        FROM public.outbound_commands
+        WHERE status = 'reconciliation_required'
+          AND (lease_until IS NULL OR lease_until < clock_timestamp())
+        ORDER BY created_at ASC
+        LIMIT $2
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE public.outbound_commands o
+      SET lease_until = clock_timestamp() + ($3 || ' seconds')::interval,
+          lease_token = gen_random_uuid(),
+          worker_id = $1,
+          updated_at = clock_timestamp()
+      FROM claimed
+      WHERE o.id = claimed.id
+      RETURNING o.id, o.workspace_id, o.channel_instance_id, o.message_id,
+                o.recipient_e164, o.external_message_id, o.created_at,
+                o.retry_count, o.max_retries, o.lease_token::text;
+    `;
+
+    const res = await executor.query<ClaimedReconciliationCommand>(query, [
+      workerId,
+      Math.max(1, limit),
+      Math.max(1, leaseSeconds),
+    ]);
+    return res.rows;
+  }
+
+  /**
+   * Resolves a reconciliation command as sent when delivery event confirmed provider acceptance.
+   */
+  async resolveReconciliationSent(
+    commandId: string,
+    workerId: string,
+    leaseToken: string,
+    externalMessageId: string,
+    errorMessage = "Reconciled: Delivery event confirmed by provider",
+    sentAt: Date = new Date(),
+    client?: Pool | PoolClient
+  ): Promise<void> {
+    const executor = client || this.pool;
+    const res = await executor.query(
+      `UPDATE public.outbound_commands
+       SET status = 'sent',
+           external_message_id = COALESCE(external_message_id, $1),
+           sent_at = COALESCE(sent_at, $2),
+           lease_until = NULL,
+           error_message = $3,
+           updated_at = clock_timestamp()
+       WHERE id = $4 AND status = 'reconciliation_required' AND worker_id = $5 AND lease_token = $6::uuid;`,
+      [externalMessageId, sentAt, errorMessage, commandId, workerId, leaseToken]
+    );
+
+    if ((res.rowCount ?? 0) === 0) {
+      throw new FencingViolationError(
+        commandId,
+        "Failed to resolve reconciliation to 'sent' (lease expired or reclaimed)"
+      );
+    }
+  }
+
+  /**
+   * Resolves a reconciliation command as dead_letter when delivery event confirms delivery failure
+   * or when reconciliation TTL has expired with retries exhausted.
+   */
+  async resolveReconciliationDeadLetter(
+    commandId: string,
+    workerId: string,
+    leaseToken: string,
+    errorMessage: string,
+    client?: Pool | PoolClient
+  ): Promise<void> {
+    const executor = client || this.pool;
+    const res = await executor.query(
+      `UPDATE public.outbound_commands
+       SET status = 'dead_letter',
+           lease_until = NULL,
+           error_message = $1,
+           updated_at = clock_timestamp()
+       WHERE id = $2 AND status = 'reconciliation_required' AND worker_id = $3 AND lease_token = $4::uuid;`,
+      [errorMessage, commandId, workerId, leaseToken]
+    );
+
+    if ((res.rowCount ?? 0) === 0) {
+      throw new FencingViolationError(
+        commandId,
+        "Failed to resolve reconciliation to 'dead_letter' (lease expired or reclaimed)"
+      );
+    }
+  }
+
+  /**
+   * Reschedules a reconciliation command back to 'pending' after grace period when retries remain.
+   */
+  async resolveReconciliationRetry(
+    commandId: string,
+    workerId: string,
+    leaseToken: string,
+    nextAttemptAt: Date,
+    errorMessage: string,
+    client?: Pool | PoolClient
+  ): Promise<void> {
+    const executor = client || this.pool;
+    const res = await executor.query(
+      `UPDATE public.outbound_commands
+       SET status = 'pending',
+           retry_count = LEAST(retry_count + 1, max_retries),
+           next_attempt_at = $1,
+           lease_until = NULL,
+           error_message = $2,
+           updated_at = clock_timestamp()
+       WHERE id = $3 AND status = 'reconciliation_required' AND worker_id = $4 AND lease_token = $5::uuid;`,
+      [nextAttemptAt, errorMessage, commandId, workerId, leaseToken]
+    );
+
+    if ((res.rowCount ?? 0) === 0) {
+      throw new FencingViolationError(
+        commandId,
+        "Failed to resolve reconciliation to 'pending' (lease expired or reclaimed)"
+      );
+    }
+  }
+
+  /**
+   * Releases lease on a reconciliation command still within its grace period.
+   */
+  async releaseReconciliationLease(
+    commandId: string,
+    workerId: string,
+    leaseToken: string,
+    client?: Pool | PoolClient
+  ): Promise<void> {
+    const executor = client || this.pool;
+    const res = await executor.query(
+      `UPDATE public.outbound_commands
+       SET lease_until = NULL,
+           updated_at = clock_timestamp()
+       WHERE id = $1 AND status = 'reconciliation_required' AND worker_id = $2 AND lease_token = $3::uuid;`,
+      [commandId, workerId, leaseToken]
+    );
+
+    if ((res.rowCount ?? 0) === 0) {
+      throw new FencingViolationError(
+        commandId,
+        "Failed to release reconciliation lease (lease expired or reclaimed)"
+      );
+    }
+  }
+
+  /**
+   * Administrative reconciliation update on a command in reconciliation_required.
+   */
+  async adminReconcile(
+    workspaceId: string,
+    commandId: string,
+    resolution: "sent" | "dead_letter" | "retry",
+    options: {
+      externalMessageId?: string;
+      adminNote?: string;
+    } = {},
+    client?: Pool | PoolClient
+  ): Promise<{ messageId: string; channelInstanceId: string } | null> {
+    const executor = client || this.pool;
+    const cmdRes = await executor.query<{ message_id: string; channel_instance_id: string }>(
+      `SELECT message_id, channel_instance_id FROM public.outbound_commands
+       WHERE id = $1 AND workspace_id = $2 AND status = 'reconciliation_required'
+       FOR UPDATE;`,
+      [commandId, workspaceId]
+    );
+
+    const cmd = cmdRes.rows[0];
+    if (!cmd) {
+      return null;
+    }
+
+    if (resolution === "sent") {
+      const externalId = options.externalMessageId || `manual-recon-${Date.now()}`;
+      await executor.query(
+        `UPDATE public.outbound_commands
+         SET status = 'sent', external_message_id = $1, sent_at = clock_timestamp(),
+             error_message = $2, lease_until = NULL, updated_at = clock_timestamp()
+         WHERE id = $3;`,
+        [externalId, options.adminNote || "Reconciled externally verified sent", commandId]
+      );
+    } else if (resolution === "dead_letter") {
+      await executor.query(
+        `UPDATE public.outbound_commands
+         SET status = 'dead_letter', error_message = $1, lease_until = NULL, updated_at = clock_timestamp()
+         WHERE id = $2;`,
+        [options.adminNote || "Reconciled as dead_letter by administrator", commandId]
+      );
+    } else if (resolution === "retry") {
+      await executor.query(
+        `UPDATE public.outbound_commands
+         SET status = 'pending', retry_count = 0, next_attempt_at = clock_timestamp(),
+             error_message = $1, lease_until = NULL, updated_at = clock_timestamp()
+         WHERE id = $2;`,
+        [options.adminNote || "Reconciled: reset to pending for retry", commandId]
+      );
+    }
+
+    return { messageId: cmd.message_id, channelInstanceId: cmd.channel_instance_id };
+  }
 }
+

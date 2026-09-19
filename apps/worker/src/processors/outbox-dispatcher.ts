@@ -15,6 +15,8 @@ import {
 import {
   withWorkerTransaction,
   ChannelInstanceRepository,
+  OutboundCommandRepository,
+  FencingViolationError,
   encryptPayload,
 } from "@sos-sales/database";
 import { logger } from "@sos-sales/observability";
@@ -39,57 +41,21 @@ export interface ClaimedOutboxItem {
 }
 
 export class OutboxDispatcher {
+  constructor(
+    private readonly outboundRepo: OutboundCommandRepository = new OutboundCommandRepository()
+  ) {}
+
   /**
    * Concurrently claims a batch of eligible outbound commands using SKIP LOCKED and lease fencing.
-   * Eligible items:
-   * 1. status = 'pending' AND next_attempt_at <= clock_timestamp()
-   * 2. status = 'failed' AND next_attempt_at <= clock_timestamp()
-   * 3. status = 'processing' AND lease_until < clock_timestamp() (expired lease recovery)
-   *
-   * Crucial safety: Only claims if retry_count < max_retries to ensure that
-   * incrementing retry_count never violates the CHECK (retry_count <= max_retries) constraint.
+   * Delegates entirely to OutboundCommandRepository as the sole persistence authority.
    */
   async claimBatch(
     pool: Pool,
     workerId: string,
     limit = 10
   ): Promise<ClaimedOutboxItem[]> {
-    const query = `
-      WITH claimed AS (
-        SELECT id, status AS previous_status
-        FROM public.outbound_commands
-        WHERE (
-          (status IN ('pending', 'failed') AND next_attempt_at <= clock_timestamp() AND (lease_until IS NULL OR lease_until < clock_timestamp()))
-          OR
-          (status = 'processing' AND lease_until < clock_timestamp())
-        )
-        AND (
-          (status IN ('pending', 'failed') AND retry_count < max_retries)
-          OR
-          (status = 'processing')
-        )
-        ORDER BY next_attempt_at ASC
-        LIMIT $2
-        FOR UPDATE SKIP LOCKED
-      )
-      UPDATE public.outbound_commands o
-      SET 
-        status = 'processing',
-        worker_id = $1,
-        lease_token = gen_random_uuid(),
-        lease_until = clock_timestamp() + INTERVAL '30 seconds',
-        retry_count = LEAST(o.retry_count + 1, o.max_retries)
-      FROM claimed
-      WHERE o.id = claimed.id
-      RETURNING o.id, o.workspace_id, o.channel_instance_id, o.thread_id, o.message_id,
-                o.recipient_e164, o.body, o.media_url, o.idempotency_key,
-                o.retry_count, o.max_retries, o.lease_token::text,
-                o.template_name, o.template_language, o.template_components,
-                claimed.previous_status;
-    `;
-
-    const res = await pool.query<ClaimedOutboxItem>(query, [workerId, limit]);
-    return res.rows;
+    const records = await this.outboundRepo.claimPendingBatch(workerId, limit, 30, pool);
+    return records as ClaimedOutboxItem[];
   }
 
   /**
@@ -102,13 +68,7 @@ export class OutboxDispatcher {
     leaseToken: string,
     extendSeconds = 30
   ): Promise<boolean> {
-    const res = await pool.query(
-      `UPDATE public.outbound_commands
-       SET lease_until = clock_timestamp() + ($1 || ' seconds')::interval
-       WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
-      [extendSeconds, itemId, workerId, leaseToken]
-    );
-    return (res.rowCount ?? 0) > 0;
+    return this.outboundRepo.markProcessing(itemId, workerId, leaseToken, extendSeconds, pool);
   }
 
   /**
@@ -133,19 +93,13 @@ export class OutboxDispatcher {
         "Outbox command lease expired while in processing (potential worker crash). Routing to reconciliation_required to prevent duplicate dispatch."
       );
       await withWorkerTransaction(item.workspace_id, async (client) => {
-        const res = await client.query(
-          `UPDATE public.outbound_commands
-           SET status = 'reconciliation_required',
-               error_message = 'LEASE_EXPIRED_DURING_PROCESSING: Routed to reconciliation to prevent duplicate external dispatch after crash',
-               lease_until = NULL
-           WHERE id = $1 AND status = 'processing' AND worker_id = $2 AND lease_token = $3::uuid;`,
-          [item.id, workerId, item.lease_token]
+        await this.outboundRepo.markReconciliationRequired(
+          item.id,
+          workerId,
+          item.lease_token,
+          "LEASE_EXPIRED_DURING_PROCESSING: Routed to reconciliation to prevent duplicate external dispatch after crash",
+          client
         );
-        if ((res.rowCount ?? 0) === 0) {
-          throw new Error(
-            `FENCING_VIOLATION: Outbound command ${item.id} was recovered by another worker or lease expired.`
-          );
-        }
       }, pool);
       return { success: false, status: "reconciliation_required" };
     }
@@ -153,8 +107,9 @@ export class OutboxDispatcher {
     // Reset lease clock immediately upon starting item dispatch
     const initialLease = await this.renewLease(pool, item.id, workerId, item.lease_token, 30);
     if (!initialLease) {
-      throw new Error(
-        `FENCING_VIOLATION: Outbound command ${item.id} lease expired or was reclaimed before execution`
+      throw new FencingViolationError(
+        item.id,
+        "Lease expired or was reclaimed before execution"
       );
     }
 
@@ -173,7 +128,10 @@ export class OutboxDispatcher {
             "Lease lost during heartbeat renewal, aborting in-flight dispatch"
           );
           abortController.abort(
-            new Error(`FENCING_LEASE_LOST: Outbound command ${item.id} lease expired or stolen during dispatch`)
+            new FencingViolationError(
+              item.id,
+              "Lease expired or stolen during dispatch heartbeat"
+            )
           );
         }
       } catch (hbErr) {
@@ -228,7 +186,7 @@ export class OutboxDispatcher {
         : undefined;
 
       // PRE-SEND FENCING VALIDATION (CH-02):
-      // Crucial: verify that the lease is still valid and owned by this worker immediately before external send!
+      // Verify that the lease is still valid and owned by this worker immediately before external send
       if (effectiveSignal.aborted) {
         throw new Error(
           `FENCING_PRE_SEND_ABORT: Dispatch aborted before external send for command ${item.id}`
@@ -236,8 +194,9 @@ export class OutboxDispatcher {
       }
       const preSendRenewed = await this.renewLease(pool, item.id, workerId, item.lease_token, 30);
       if (!preSendRenewed) {
-        throw new Error(
-          `FENCING_PRE_SEND_ABORT: Lease expired or stolen immediately before external send for command ${item.id}`
+        throw new FencingViolationError(
+          item.id,
+          "Lease expired or stolen immediately before external send"
         );
       }
 
@@ -278,17 +237,13 @@ export class OutboxDispatcher {
             "Permanent dispatch rejection from ChannelDispatchService"
           );
           await withWorkerTransaction(item.workspace_id, async (client) => {
-            const res = await client.query(
-              `UPDATE public.outbound_commands
-               SET status = 'dead_letter', error_message = $1, lease_until = NULL
-               WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
-              [`[${errCode}] ${errMessage}`, item.id, workerId, item.lease_token]
+            await this.outboundRepo.markPermanentFailure(
+              item.id,
+              workerId,
+              item.lease_token,
+              `[${errCode}] ${errMessage}`,
+              client
             );
-            if ((res.rowCount ?? 0) === 0) {
-              throw new Error(
-                `FENCING_VIOLATION: Outbound command ${item.id} was recovered by another worker or lease expired.`
-              );
-            }
             if (item.message_id) {
               await client.query(
                 `UPDATE public.messages
@@ -312,17 +267,13 @@ export class OutboxDispatcher {
             "Ambiguous timeout/socket reset during dispatch. Routing to reconciliation_required to prevent duplicate dispatch."
           );
           await withWorkerTransaction(item.workspace_id, async (client) => {
-            const res = await client.query(
-              `UPDATE public.outbound_commands
-               SET status = 'reconciliation_required', error_message = $1, lease_until = NULL
-               WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
-              [`[AMBIGUOUS_ERROR] ${msg}`, item.id, workerId, item.lease_token]
+            await this.outboundRepo.markReconciliationRequired(
+              item.id,
+              workerId,
+              item.lease_token,
+              `[AMBIGUOUS_ERROR] ${msg}`,
+              client
             );
-            if ((res.rowCount ?? 0) === 0) {
-              throw new Error(
-                `FENCING_VIOLATION: Outbound command ${item.id} was recovered by another worker or lease expired.`
-              );
-            }
           }, pool);
           return { success: false, status: "reconciliation_required" };
         }
@@ -333,19 +284,15 @@ export class OutboxDispatcher {
       // 3. Handle success: Transactional finalization of command, EXACT message, and delivery event
       if (sendResult.success) {
         await withWorkerTransaction(item.workspace_id, async (client) => {
-          // Fencing: Update outbound command ensuring lease_token and worker_id match
-          const cmdUpdateRes = await client.query(
-            `UPDATE public.outbound_commands
-             SET status = 'sent', external_message_id = $1, sent_at = $2, lease_until = NULL, error_message = NULL
-             WHERE id = $3 AND status = 'processing' AND worker_id = $4 AND lease_token = $5::uuid;`,
-            [sendResult.externalMessageId, sendResult.sentAt, item.id, workerId, item.lease_token]
+          // Fencing: Update outbound command ensuring lease_token and worker_id match via repository
+          await this.outboundRepo.markSent(
+            item.id,
+            workerId,
+            item.lease_token,
+            sendResult.externalMessageId!,
+            sendResult.sentAt ?? new Date(),
+            client
           );
-
-          if ((cmdUpdateRes.rowCount ?? 0) === 0) {
-            throw new Error(
-              `FENCING_VIOLATION: Outbound command ${item.id} was recovered by another worker or lease expired.`
-            );
-          }
 
           // P0: STRICTLY update ONLY the exact single message associated with this command
           if (item.message_id) {
@@ -419,17 +366,13 @@ export class OutboxDispatcher {
         // P0: Ambiguous results (timeout, socket reset) MUST NOT enter normal retry.
         // Set reconciliation_required to prevent duplicate external messages!
         await withWorkerTransaction(item.workspace_id, async (client) => {
-          const res = await client.query(
-            `UPDATE public.outbound_commands
-             SET status = 'reconciliation_required', error_message = $1, lease_until = NULL
-             WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
-            [errorMessage, item.id, workerId, item.lease_token]
+          await this.outboundRepo.markReconciliationRequired(
+            item.id,
+            workerId,
+            item.lease_token,
+            errorMessage,
+            client
           );
-          if ((res.rowCount ?? 0) === 0) {
-            throw new Error(
-              `FENCING_VIOLATION: Outbound command ${item.id} was recovered by another worker or lease expired.`
-            );
-          }
         }, pool);
         return { success: false, status: "reconciliation_required" };
       }
@@ -437,17 +380,13 @@ export class OutboxDispatcher {
       if (sendResult.category === "permanent") {
         // Permanent failure: transition command to dead_letter and message to failed (-1)
         await withWorkerTransaction(item.workspace_id, async (client) => {
-          const res = await client.query(
-            `UPDATE public.outbound_commands
-             SET status = 'dead_letter', error_message = $1, lease_until = NULL
-             WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
-            [errorMessage, item.id, workerId, item.lease_token]
+          await this.outboundRepo.markPermanentFailure(
+            item.id,
+            workerId,
+            item.lease_token,
+            errorMessage,
+            client
           );
-          if ((res.rowCount ?? 0) === 0) {
-            throw new Error(
-              `FENCING_VIOLATION: Outbound command ${item.id} was recovered by another worker or lease expired.`
-            );
-          }
 
           if (item.message_id) {
             await client.query(
@@ -471,17 +410,13 @@ export class OutboxDispatcher {
         });
         if (decision.nextStatus === "dead_letter") {
           await withWorkerTransaction(item.workspace_id, async (client) => {
-            const res = await client.query(
-              `UPDATE public.outbound_commands
-               SET status = 'dead_letter', error_message = $1, lease_until = NULL
-               WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
-              [errorMessage, item.id, workerId, item.lease_token]
+            await this.outboundRepo.markPermanentFailure(
+              item.id,
+              workerId,
+              item.lease_token,
+              errorMessage,
+              client
             );
-            if ((res.rowCount ?? 0) === 0) {
-              throw new Error(
-                `FENCING_VIOLATION: Outbound command ${item.id} was recovered by another worker or lease expired.`
-              );
-            }
 
             if (item.message_id) {
               await client.query(
@@ -498,17 +433,14 @@ export class OutboxDispatcher {
       }
 
       await withWorkerTransaction(item.workspace_id, async (client) => {
-        const res = await client.query(
-          `UPDATE public.outbound_commands
-           SET status = 'failed', next_attempt_at = $1, error_message = $2, lease_until = NULL
-           WHERE id = $3 AND status = 'processing' AND worker_id = $4 AND lease_token = $5::uuid;`,
-          [nextAttemptAt, errorMessage, item.id, workerId, item.lease_token]
+        await this.outboundRepo.markRetryableFailure(
+          item.id,
+          workerId,
+          item.lease_token,
+          errorMessage,
+          nextAttemptAt,
+          client
         );
-        if ((res.rowCount ?? 0) === 0) {
-          throw new Error(
-            `FENCING_VIOLATION: Outbound command ${item.id} was recovered by another worker or lease expired.`
-          );
-        }
       }, pool);
       return { success: false, status: "failed" };
     } catch (err: unknown) {
@@ -525,11 +457,12 @@ export class OutboxDispatcher {
       try {
         await withWorkerTransaction(item.workspace_id, async (client) => {
           if (decision.nextStatus === "dead_letter") {
-            await client.query(
-              `UPDATE public.outbound_commands
-               SET status = 'dead_letter', error_message = $1, lease_until = NULL
-               WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
-              [errorMessage, item.id, workerId, item.lease_token]
+            await this.outboundRepo.markPermanentFailure(
+              item.id,
+              workerId,
+              item.lease_token,
+              errorMessage,
+              client
             );
             if (item.message_id) {
               await client.query(
@@ -540,11 +473,13 @@ export class OutboxDispatcher {
               );
             }
           } else {
-            await client.query(
-              `UPDATE public.outbound_commands
-               SET status = 'failed', next_attempt_at = $1, error_message = $2, lease_until = NULL
-               WHERE id = $3 AND status = 'processing' AND worker_id = $4 AND lease_token = $5::uuid;`,
-              [decision.nextAttemptAt, errorMessage, item.id, workerId, item.lease_token]
+            await this.outboundRepo.markRetryableFailure(
+              item.id,
+              workerId,
+              item.lease_token,
+              errorMessage,
+              decision.nextAttemptAt ?? new Date(),
+              client
             );
           }
         }, pool);
@@ -572,53 +507,32 @@ export class OutboxDispatcher {
     } = {}
   ): Promise<boolean> {
     return await withWorkerTransaction(workspaceId, async (client) => {
-      const cmdRes = await client.query<{ message_id: string; channel_instance_id: string }>(
-        `SELECT message_id, channel_instance_id FROM public.outbound_commands
-         WHERE id = $1 AND workspace_id = $2 AND status = 'reconciliation_required'
-         FOR UPDATE;`,
-        [commandId, workspaceId]
+      const reconciled = await this.outboundRepo.adminReconcile(
+        workspaceId,
+        commandId,
+        resolution,
+        options,
+        client
       );
 
-      const cmd = cmdRes.rows[0];
-      if (!cmd) {
+      if (!reconciled) {
         return false;
       }
 
       if (resolution === "sent") {
         const externalId = options.externalMessageId || `manual-recon-${Date.now()}`;
         await client.query(
-          `UPDATE public.outbound_commands
-           SET status = 'sent', external_message_id = $1, sent_at = clock_timestamp(),
-               error_message = $2, lease_until = NULL
-           WHERE id = $3;`,
-          [externalId, options.adminNote || "Reconciled externally verified sent", commandId]
-        );
-        await client.query(
           `UPDATE public.messages
            SET delivery_status = 'sent', status_rank = 10, provider_message_id = $1, updated_at = clock_timestamp()
            WHERE id = $2 AND workspace_id = $3 AND channel_instance_id = $4;`,
-          [externalId, cmd.message_id, workspaceId, cmd.channel_instance_id]
+          [externalId, reconciled.messageId, workspaceId, reconciled.channelInstanceId]
         );
       } else if (resolution === "dead_letter") {
-        await client.query(
-          `UPDATE public.outbound_commands
-           SET status = 'dead_letter', error_message = $1, lease_until = NULL
-           WHERE id = $2;`,
-          [options.adminNote || "Reconciled as dead_letter by administrator", commandId]
-        );
         await client.query(
           `UPDATE public.messages
            SET delivery_status = 'failed', status_rank = -1, updated_at = clock_timestamp()
            WHERE id = $1 AND workspace_id = $2 AND channel_instance_id = $3;`,
-          [cmd.message_id, workspaceId, cmd.channel_instance_id]
-        );
-      } else if (resolution === "retry") {
-        await client.query(
-          `UPDATE public.outbound_commands
-           SET status = 'pending', retry_count = 0, next_attempt_at = clock_timestamp(),
-               error_message = $1, lease_until = NULL
-           WHERE id = $2;`,
-          [options.adminNote || "Reconciled: reset to pending for retry", commandId]
+          [reconciled.messageId, workspaceId, reconciled.channelInstanceId]
         );
       }
       return true;
@@ -655,12 +569,12 @@ export class OutboxDispatcher {
 
   /**
    * Automated periodic reconciliation of outbound commands in 'reconciliation_required'.
-   * 1. Claims ambiguous commands with expired/null lease using SKIP LOCKED.
+   * 1. Claims ambiguous commands with expired/null lease using SKIP LOCKED via repository.
    * 2. Checks provider_delivery_events under tenant scope for confirmed status.
-   * 3. If delivery event found: auto-resolves to 'sent' or 'dead_letter'.
+   * 3. If delivery event found: auto-resolves to 'sent' or 'dead_letter' via repository.
    * 4. If no delivery event found after ttlSeconds:
-   *    - If retry_count < max_retries: reschedules to 'pending' for retry.
-   *    - If retry_count >= max_retries: transitions to 'dead_letter' and message to 'failed'.
+   *    - If retry_count < max_retries: reschedules to 'pending' for retry via repository.
+   *    - If retry_count >= max_retries: transitions to 'dead_letter' via repository and message to 'failed'.
    */
   async reconcileBatch(
     pool: Pool,
@@ -669,43 +583,10 @@ export class OutboxDispatcher {
     ttlSeconds = 60,
     signal?: AbortSignal
   ): Promise<number> {
-    const claimQuery = `
-      WITH claimed AS (
-        SELECT id
-        FROM public.outbound_commands
-        WHERE status = 'reconciliation_required'
-          AND (lease_until IS NULL OR lease_until < clock_timestamp())
-        ORDER BY created_at ASC
-        LIMIT $2
-        FOR UPDATE SKIP LOCKED
-      )
-      UPDATE public.outbound_commands o
-      SET lease_until = clock_timestamp() + INTERVAL '30 seconds',
-          lease_token = gen_random_uuid(),
-          worker_id = $1
-      FROM claimed
-      WHERE o.id = claimed.id
-      RETURNING o.id, o.workspace_id, o.channel_instance_id, o.message_id,
-                o.recipient_e164, o.external_message_id, o.created_at,
-                o.retry_count, o.max_retries, o.lease_token::text;
-    `;
-
-    const res = await pool.query<{
-      id: string;
-      workspace_id: string;
-      channel_instance_id: string;
-      message_id: string;
-      recipient_e164: string;
-      external_message_id: string | null;
-      created_at: Date;
-      retry_count: number;
-      max_retries: number;
-      lease_token: string;
-    }>(claimQuery, [workerId, limit]);
-
+    const items = await this.outboundRepo.claimReconciliationBatch(workerId, limit, 30, pool);
     let reconciledCount = 0;
 
-    for (const item of res.rows) {
+    for (const item of items) {
       if (signal?.aborted) break;
 
       try {
@@ -740,15 +621,14 @@ export class OutboxDispatcher {
             const devEvent = eventRes.rows[0]!;
             if (devEvent.status !== "failed") {
               const rank = devEvent.status === "read" ? 30 : devEvent.status === "delivered" ? 20 : 10;
-              await client.query(
-                `UPDATE public.outbound_commands
-                 SET status = 'sent',
-                     external_message_id = COALESCE(external_message_id, $1),
-                     sent_at = COALESCE(sent_at, clock_timestamp()),
-                     lease_until = NULL,
-                     error_message = 'Reconciled: Delivery event confirmed by provider'
-                 WHERE id = $2 AND status = 'reconciliation_required' AND worker_id = $3 AND lease_token = $4::uuid;`,
-                [devEvent.external_message_id, item.id, workerId, item.lease_token]
+              await this.outboundRepo.resolveReconciliationSent(
+                item.id,
+                workerId,
+                item.lease_token,
+                devEvent.external_message_id,
+                "Reconciled: Delivery event confirmed by provider",
+                new Date(),
+                client
               );
               await client.query(
                 `UPDATE public.messages
@@ -759,13 +639,12 @@ export class OutboxDispatcher {
                 [devEvent.status, rank, devEvent.external_message_id, item.message_id, item.workspace_id]
               );
             } else {
-              await client.query(
-                `UPDATE public.outbound_commands
-                 SET status = 'dead_letter',
-                     lease_until = NULL,
-                     error_message = COALESCE($1, 'Reconciled: Delivery failure confirmed by provider')
-                 WHERE id = $2 AND status = 'reconciliation_required' AND worker_id = $3 AND lease_token = $4::uuid;`,
-                [devEvent.error_message, item.id, workerId, item.lease_token]
+              await this.outboundRepo.resolveReconciliationDeadLetter(
+                item.id,
+                workerId,
+                item.lease_token,
+                devEvent.error_message || "Reconciled: Delivery failure confirmed by provider",
+                client
               );
               await client.query(
                 `UPDATE public.messages
@@ -782,11 +661,11 @@ export class OutboxDispatcher {
           const ageSeconds = (Date.now() - new Date(item.created_at).getTime()) / 1000;
           if (ageSeconds < ttlSeconds) {
             // Still within webhook grace period: release lease so future tick can re-evaluate
-            await client.query(
-              `UPDATE public.outbound_commands
-               SET lease_until = NULL
-               WHERE id = $1 AND status = 'reconciliation_required' AND worker_id = $2 AND lease_token = $3::uuid;`,
-              [item.id, workerId, item.lease_token]
+            await this.outboundRepo.releaseReconciliationLease(
+              item.id,
+              workerId,
+              item.lease_token,
+              client
             );
             return;
           }
@@ -794,25 +673,23 @@ export class OutboxDispatcher {
           // 3. TTL expired without delivery confirmation:
           if (item.retry_count < item.max_retries) {
             // Reschedule for clean retry
-            await client.query(
-              `UPDATE public.outbound_commands
-               SET status = 'pending',
-                   retry_count = LEAST(retry_count + 1, max_retries),
-                   next_attempt_at = clock_timestamp() + INTERVAL '10 seconds',
-                   lease_until = NULL,
-                   error_message = 'Reconciled: Timeout without delivery event, rescheduled for retry'
-               WHERE id = $1 AND status = 'reconciliation_required' AND worker_id = $2 AND lease_token = $3::uuid;`,
-              [item.id, workerId, item.lease_token]
+            const nextAttemptAt = new Date(Date.now() + 10000);
+            await this.outboundRepo.resolveReconciliationRetry(
+              item.id,
+              workerId,
+              item.lease_token,
+              nextAttemptAt,
+              "Reconciled: Timeout without delivery event, rescheduled for retry",
+              client
             );
           } else {
             // Max retries reached: permanent dead_letter
-            await client.query(
-              `UPDATE public.outbound_commands
-               SET status = 'dead_letter',
-                   lease_until = NULL,
-                   error_message = 'Reconciled: Reconciliation TTL expired and max retries exhausted'
-               WHERE id = $1 AND status = 'reconciliation_required' AND worker_id = $2 AND lease_token = $3::uuid;`,
-              [item.id, workerId, item.lease_token]
+            await this.outboundRepo.resolveReconciliationDeadLetter(
+              item.id,
+              workerId,
+              item.lease_token,
+              "Reconciled: Reconciliation TTL expired and max retries exhausted",
+              client
             );
             await client.query(
               `UPDATE public.messages
