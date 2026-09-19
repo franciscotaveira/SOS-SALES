@@ -41,7 +41,6 @@ export interface SmokeConfig {
   preventCleanupOnExit?: boolean;
   simulateFailureAtStep?: number;
   execFileFn?: CommandExecutor;
-  execFn?: (cmd: string) => Promise<{ stdout: string; stderr: string }>;
 }
 
 export interface SmokeLifecycleResult {
@@ -72,7 +71,6 @@ export class WahaSmokeRunner {
     this.port = config.port || process.env.PORT_WAHA || "3000";
     this.baseUrl = config.baseUrl || `http://127.0.0.1:${this.port}`;
     this.apiKey = config.apiKey || process.env.WAHA_API_KEY || "smoke_test_api_key_2026";
-    process.env.WAHA_API_KEY = this.apiKey;
 
     const rawContainerName = config.containerName || "sos-v3-waha";
     this.containerName = validateSafeName(rawContainerName, "containerName");
@@ -90,9 +88,6 @@ export class WahaSmokeRunner {
 
     if (config.execFileFn) {
       this.execFile = config.execFileFn;
-    } else if (config.execFn) {
-      const legacyExec = config.execFn;
-      this.execFile = async (file, args) => legacyExec(`${file} ${args.join(" ")}`);
     } else {
       this.execFile = defaultCommandExecutor;
     }

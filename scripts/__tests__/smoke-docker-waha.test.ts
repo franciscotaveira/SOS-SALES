@@ -173,8 +173,8 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
   });
 
   it("should fail cleanup and produce exitCode 1 when docker stop fails", async () => {
-    const mockExec = vi.fn().mockImplementation(async (cmd: string) => {
-      if (cmd.includes("docker stop")) {
+    const mockExecFile = vi.fn().mockImplementation(async (file: string, args: string[]) => {
+      if (file === "docker" && args.includes("stop")) {
         throw new Error("Docker daemon communication error during stop");
       }
       return { stdout: "", stderr: "" };
@@ -183,7 +183,7 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
     const runner = new WahaSmokeRunner({
       port: "3000",
       sessionName: "stop-fail-session",
-      execFn: mockExec,
+      execFileFn: mockExecFile,
     });
 
     (runner as any).containerStartedByTest = true;
@@ -205,8 +205,8 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
   });
 
   it("should fail cleanup and produce exitCode 1 when docker rm fails", async () => {
-    const mockExec = vi.fn().mockImplementation(async (cmd: string) => {
-      if (cmd.includes("docker rm")) {
+    const mockExecFile = vi.fn().mockImplementation(async (file: string, args: string[]) => {
+      if (file === "docker" && args.includes("rm")) {
         throw new Error("Container busy or locked by Docker daemon");
       }
       return { stdout: "", stderr: "" };
@@ -215,7 +215,7 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
     const runner = new WahaSmokeRunner({
       port: "3000",
       sessionName: "rm-fail-session",
-      execFn: mockExec,
+      execFileFn: mockExecFile,
     });
 
     (runner as any).containerStartedByTest = true;
@@ -226,8 +226,8 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
   });
 
   it("should detect and preserve pre-existing container without stopping or removing it", async () => {
-    const mockExec = vi.fn().mockImplementation(async (cmd: string) => {
-      if (cmd.includes("docker ps -a")) {
+    const mockExecFile = vi.fn().mockImplementation(async (file: string, args: string[]) => {
+      if (file === "docker" && args.includes("ps")) {
         return { stdout: "sos-v3-waha\n", stderr: "" };
       }
       return { stdout: "", stderr: "" };
@@ -236,20 +236,20 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
     const runner = new WahaSmokeRunner({
       port: "3000",
       sessionName: "pre-existing-container-test",
-      execFn: mockExec,
+      execFileFn: mockExecFile,
     });
 
     const preExists = await runner.checkPreExistingContainer();
     expect(preExists).toBe(true);
 
     // Run cleanupContainer: because container was NOT started by test, it MUST NOT invoke docker stop or docker rm
-    mockExec.mockClear();
+    mockExecFile.mockClear();
     const cleanup = await runner.cleanupContainer();
     expect(cleanup.success).toBe(true);
     expect(cleanup.preservedResources.some((r) => r.includes("sos-v3-waha"))).toBe(true);
 
-    const stopOrRmCalls = mockExec.mock.calls.filter(([cmd]) => {
-      return String(cmd).includes("docker stop") || String(cmd).includes("docker rm");
+    const stopOrRmCalls = mockExecFile.mock.calls.filter(([file, args]) => {
+      return file === "docker" && (args.includes("stop") || args.includes("rm"));
     });
     expect(stopOrRmCalls).toHaveLength(0);
   });
@@ -372,6 +372,26 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
       } finally {
         fetchSpy.mockRestore();
       }
+    });
+
+    it("should statically guarantee complete absence of exec, execSync, spawn({shell:true}), args.join and shell interpolation in smoke-docker-waha.ts", () => {
+      const scriptPath = path.resolve(__dirname, "../smoke-docker-waha.ts");
+      const source = fs.readFileSync(scriptPath, "utf-8");
+
+      // Verify no legacy child_process exec imports or invocations
+      expect(source).not.toMatch(/\bchild_process\b.*\bexec\b/);
+      expect(source).not.toMatch(/\bexec\s*\(/);
+      expect(source).not.toMatch(/\bexecSync\s*\(/);
+
+      // Verify no shell option in spawn/exec
+      expect(source).not.toMatch(/shell\s*:\s*true/);
+
+      // Verify no args.join or string concatenation for shell commands
+      expect(source).not.toMatch(/args\.join\s*\(/);
+      expect(source).not.toMatch(/\$\{file\}\s+\$\{args/);
+
+      // Verify execFile is imported and used
+      expect(source).toMatch(/import\s*\{\s*execFile\s*\}\s*from\s*"node:child_process"/);
     });
   });
 
