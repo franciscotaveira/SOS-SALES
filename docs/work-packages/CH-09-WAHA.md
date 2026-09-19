@@ -82,8 +82,8 @@ O digest executável do CH-09 incide estritamente sobre os **6 arquivos funciona
 5. `packages/application/src/__tests__/channel-gateway.test.ts` (testes de ciclo de vida de sessão, mídias inbound tipadas e ACKs negativos)
 6. `docker-compose.yml` (definição do serviço waha sob profiles: ["waha"])
 
-- **Fórmula Canônica de Composição:** `<path>:<sha256>\n` em codificação UTF-8 sobre a lista ordenada estável.
-- **Digest Composto Canônico:** `f1227d2ae0015ced5e9a9af3a18abe7af5fccd9d1720bc1cc34bbb336fb262e5` (validado e verificado automaticamente pelo script `scripts/verify-evidence-digests.ts` no Gate 6).
+- **Fórmula Canônica de Composição:** `<path>:<sha256>\n` em codificação UTF-8 sobre os 6 caminhos ordenados lexicograficamente.
+- **Digest Composto Canônico (Lexicográfico):** `ac7174c5d5c4731138af1bd42d178bb303ee8a84158ad5a72036e6cdf45c2bd2` (validado e verificado automaticamente pelo script `scripts/verify-evidence-digests.ts` no Gate 6).
 
 ### Arquivos de Governança Documental
 
