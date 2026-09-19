@@ -11,6 +11,8 @@ import {
   ChannelInstanceInactiveError,
   ChannelCapabilityUnsupportedError,
   QueueRetryPolicy,
+  sanitizeOutboxErrorMessage,
+  resolveCanonicalErrorCode,
 } from "@sos-sales/application";
 import {
   withWorkerTransaction,
@@ -73,6 +75,11 @@ export class OutboxDispatcher {
 
   /**
    * Dispatches a single outbound command explicitly via ChannelDispatchService.
+   *
+   * Invariants:
+   * 1. Lease Fencing: Heartbeat renews lease; if lost, aborts in-flight and rejects finalization.
+   * 2. Sanitized Errors: Zero raw error messages or provider payloads stored in database.
+   * 3. Zero PII Logging: Telephone numbers (masked or unmasked) are NEVER logged.
    */
   async dispatchItem(
     pool: Pool,
@@ -82,6 +89,8 @@ export class OutboxDispatcher {
     secretResolver?: ISigningSecretResolver,
     signal?: AbortSignal
   ): Promise<{ success: boolean; externalMessageId?: string; status: string }> {
+    let heartbeatTimer: NodeJS.Timeout | null = null;
+
     // 0. Crash recovery protection:
     // If the command was claimed from 'processing' (lease had expired), a previous worker
     // may have crashed AFTER the external provider accepted the message.
@@ -92,56 +101,58 @@ export class OutboxDispatcher {
         { commandId: item.id, workerId },
         "Outbox command lease expired while in processing (potential worker crash). Routing to reconciliation_required to prevent duplicate dispatch."
       );
+      const sanitizedCrashError = sanitizeOutboxErrorMessage("reconciliation", "ERR_LEASE_EXPIRED_DURING_PROCESSING");
       await withWorkerTransaction(item.workspace_id, async (client) => {
         await this.outboundRepo.markReconciliationRequired(
           item.id,
           workerId,
           item.lease_token,
-          "LEASE_EXPIRED_DURING_PROCESSING: Routed to reconciliation to prevent duplicate external dispatch after crash",
+          sanitizedCrashError,
           client
         );
       }, pool);
       return { success: false, status: "reconciliation_required" };
     }
 
-    // Reset lease clock immediately upon starting item dispatch
-    const initialLease = await this.renewLease(pool, item.id, workerId, item.lease_token, 30);
-    if (!initialLease) {
-      throw new FencingViolationError(
-        item.id,
-        "Lease expired or was reclaimed before execution"
-      );
-    }
-
-    const abortController = new AbortController();
-    const effectiveSignal = signal
-      ? AbortSignal.any([signal, abortController.signal])
-      : abortController.signal;
-
-    // Start background heartbeat to renew lease every 10 seconds during processing
-    const heartbeatTimer = setInterval(async () => {
-      try {
-        const renewed = await this.renewLease(pool, item.id, workerId, item.lease_token, 30);
-        if (!renewed) {
-          logger.warn(
-            { commandId: item.id, workerId },
-            "Lease lost during heartbeat renewal, aborting in-flight dispatch"
-          );
-          abortController.abort(
-            new FencingViolationError(
-              item.id,
-              "Lease expired or stolen during dispatch heartbeat"
-            )
-          );
-        }
-      } catch (hbErr) {
-        logger.warn({ commandId: item.id, hbErr }, "Failed to renew lease in outbox heartbeat");
-      }
-    }, 10000);
-
     try {
+      // Reset lease clock immediately upon starting item dispatch
+      const initialLease = await this.renewLease(pool, item.id, workerId, item.lease_token, 30);
+      if (!initialLease) {
+        throw new FencingViolationError(
+          item.id,
+          "Lease expired or was reclaimed before execution"
+        );
+      }
+
+      const abortController = new AbortController();
+      const effectiveSignal = signal
+        ? AbortSignal.any([signal, abortController.signal])
+        : abortController.signal;
+
+      // Start background heartbeat to renew lease every 10 seconds during processing
+      heartbeatTimer = setInterval(async () => {
+        try {
+          const renewed = await this.renewLease(pool, item.id, workerId, item.lease_token, 30);
+          if (!renewed) {
+            logger.warn(
+              { commandId: item.id, workerId },
+              "Lease lost during heartbeat renewal, aborting in-flight dispatch"
+            );
+            abortController.abort(
+              new FencingViolationError(
+                item.id,
+                "Lease expired or stolen during dispatch heartbeat"
+              )
+            );
+          }
+        } catch {
+          logger.warn({ commandId: item.id, workerId }, "Failed to renew lease in outbox heartbeat");
+        }
+      }, 10000);
+      heartbeatTimer.unref();
+
       if (effectiveSignal.aborted) {
-        throw new Error("FENCING_PRE_SEND_ABORT: Dispatch was aborted by signal before execution");
+        throw new FencingViolationError(item.id, "Dispatch was aborted by signal before execution");
       }
 
       // Resolve ChannelDispatchService
@@ -188,8 +199,9 @@ export class OutboxDispatcher {
       // PRE-SEND FENCING VALIDATION (CH-02):
       // Verify that the lease is still valid and owned by this worker immediately before external send
       if (effectiveSignal.aborted) {
-        throw new Error(
-          `FENCING_PRE_SEND_ABORT: Dispatch aborted before external send for command ${item.id}`
+        throw new FencingViolationError(
+          item.id,
+          "Dispatch aborted before external send"
         );
       }
       const preSendRenewed = await this.renewLease(pool, item.id, workerId, item.lease_token, 30);
@@ -230,10 +242,10 @@ export class OutboxDispatcher {
           err instanceof ChannelInstanceInactiveError ||
           err instanceof ChannelCapabilityUnsupportedError
         ) {
-          const errCode = (err as any).code || "PERMANENT_DISPATCH_REJECTION";
-          const errMessage = err instanceof Error ? err.message : String(err);
+          const canonicalCode = resolveCanonicalErrorCode(err, "permanent");
+          const sanitizedError = sanitizeOutboxErrorMessage("permanent", canonicalCode);
           logger.warn(
-            { commandId: item.id, workerId, errorCode: errCode },
+            { commandId: item.id, workerId, errorCode: canonicalCode },
             "Permanent dispatch rejection from ChannelDispatchService"
           );
           await withWorkerTransaction(item.workspace_id, async (client) => {
@@ -241,7 +253,7 @@ export class OutboxDispatcher {
               item.id,
               workerId,
               item.lease_token,
-              `[${errCode}] ${errMessage}`,
+              sanitizedError,
               client
             );
             if (item.message_id) {
@@ -262,8 +274,10 @@ export class OutboxDispatcher {
           msg.includes("timeout") ||
           msg.includes("ambiguous")
         ) {
+          const canonicalCode = resolveCanonicalErrorCode(msg, "ambiguous");
+          const sanitizedError = sanitizeOutboxErrorMessage("ambiguous", canonicalCode);
           logger.warn(
-            { commandId: item.id, workerId },
+            { commandId: item.id, workerId, errorCode: canonicalCode },
             "Ambiguous timeout/socket reset during dispatch. Routing to reconciliation_required to prevent duplicate dispatch."
           );
           await withWorkerTransaction(item.workspace_id, async (client) => {
@@ -271,7 +285,7 @@ export class OutboxDispatcher {
               item.id,
               workerId,
               item.lease_token,
-              `[AMBIGUOUS_ERROR] ${msg}`,
+              sanitizedError,
               client
             );
           }, pool);
@@ -351,16 +365,17 @@ export class OutboxDispatcher {
                 sendResult.sentAt,
               ]
             );
-          } catch (evtErr) {
-            logger.warn({ commandId: item.id, workerId, err: evtErr }, "Failed to record outbound delivery event");
+          } catch {
+            logger.warn({ commandId: item.id, workerId }, "Failed to record outbound delivery event");
           }
         }, pool);
 
         return { success: true, externalMessageId: sendResult.externalMessageId, status: "sent" };
       }
 
-      // 4. Handle non-success response
-      const errorMessage = `[${sendResult.category.toUpperCase()}] ${sendResult.errorCode}: ${sendResult.errorMessage}`;
+      // 4. Handle non-success response with centralized sanitization
+      const canonicalErrorCode = resolveCanonicalErrorCode(sendResult.errorCode, sendResult.category);
+      const sanitizedErrorMessage = sanitizeOutboxErrorMessage(sendResult.category, canonicalErrorCode);
 
       if (sendResult.category === "ambiguous") {
         // P0: Ambiguous results (timeout, socket reset) MUST NOT enter normal retry.
@@ -370,7 +385,7 @@ export class OutboxDispatcher {
             item.id,
             workerId,
             item.lease_token,
-            errorMessage,
+            sanitizedErrorMessage,
             client
           );
         }, pool);
@@ -384,7 +399,7 @@ export class OutboxDispatcher {
             item.id,
             workerId,
             item.lease_token,
-            errorMessage,
+            sanitizedErrorMessage,
             client
           );
 
@@ -409,12 +424,13 @@ export class OutboxDispatcher {
           jitterRatio: 0.15,
         });
         if (decision.nextStatus === "dead_letter") {
+          const maxRetrySanitized = sanitizeOutboxErrorMessage("permanent", "ERR_RECONCILIATION_TTL_EXPIRED");
           await withWorkerTransaction(item.workspace_id, async (client) => {
             await this.outboundRepo.markPermanentFailure(
               item.id,
               workerId,
               item.lease_token,
-              errorMessage,
+              maxRetrySanitized,
               client
             );
 
@@ -437,23 +453,29 @@ export class OutboxDispatcher {
           item.id,
           workerId,
           item.lease_token,
-          errorMessage,
+          sanitizedErrorMessage,
           nextAttemptAt,
           client
         );
       }, pool);
       return { success: false, status: "failed" };
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const msg = err instanceof Error ? err.message : String(err);
       const causeMsg = (err instanceof Error && (err as any).cause instanceof Error) ? (err as any).cause.message : "";
-      if (errorMessage.includes("FENCING") || causeMsg.includes("FENCING") || effectiveSignal.aborted) {
+      if (msg.includes("FENCING") || causeMsg.includes("FENCING") || (err instanceof FencingViolationError)) {
         throw err;
       }
-      logger.error({ commandId: item.id, workerId, err }, "Exception during outbox dispatch");
+      const canonicalCode = resolveCanonicalErrorCode(err, "transient");
+      logger.error({ commandId: item.id, workerId, errorCode: canonicalCode }, "Exception during outbox dispatch");
 
       const decision = QueueRetryPolicy.evaluate(item.retry_count, item.max_retries, new Date(), {
         jitterRatio: 0.15,
       });
+      const sanitizedError = sanitizeOutboxErrorMessage(
+        decision.nextStatus === "dead_letter" ? "permanent" : "transient",
+        canonicalCode
+      );
+
       try {
         await withWorkerTransaction(item.workspace_id, async (client) => {
           if (decision.nextStatus === "dead_letter") {
@@ -461,7 +483,7 @@ export class OutboxDispatcher {
               item.id,
               workerId,
               item.lease_token,
-              errorMessage,
+              sanitizedError,
               client
             );
             if (item.message_id) {
@@ -477,19 +499,22 @@ export class OutboxDispatcher {
               item.id,
               workerId,
               item.lease_token,
-              errorMessage,
+              sanitizedError,
               decision.nextAttemptAt ?? new Date(),
               client
             );
           }
         }, pool);
-      } catch (innerErr) {
-        logger.error({ commandId: item.id, innerErr }, "Failed to update failed status for outbox command");
+      } catch {
+        logger.error({ commandId: item.id, workerId }, "Failed to update failed status for outbox command");
       }
 
       return { success: false, status: "failed" };
     } finally {
-      clearInterval(heartbeatTimer);
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
     }
   }
 
@@ -506,12 +531,22 @@ export class OutboxDispatcher {
       adminNote?: string;
     } = {}
   ): Promise<boolean> {
+    const sanitizedNote = options.adminNote
+      ? sanitizeOutboxErrorMessage(
+          resolution === "dead_letter" ? "permanent" : "reconciliation",
+          resolution === "dead_letter" ? "ERR_ADMIN_RESOLVED_DEAD_LETTER" : "ERR_ADMIN_RESOLVED_RETRY"
+        )
+      : undefined;
+
     return await withWorkerTransaction(workspaceId, async (client) => {
       const reconciled = await this.outboundRepo.adminReconcile(
         workspaceId,
         commandId,
         resolution,
-        options,
+        {
+          externalMessageId: options.externalMessageId,
+          adminNote: sanitizedNote || (resolution === "sent" ? "Reconciled: Externally verified sent" : undefined),
+        },
         client
       );
 
@@ -557,10 +592,10 @@ export class OutboxDispatcher {
         await this.dispatchItem(pool, item, workerId, dispatchServiceOrRegistry, secretResolver, signal);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("FENCING")) {
-          logger.warn({ commandId: item.id, workerId, msg }, "Fencing abort or violation during dispatch");
+        if (msg.includes("FENCING") || (err instanceof FencingViolationError)) {
+          logger.warn({ commandId: item.id, workerId }, "Fencing abort or violation during dispatch");
         } else {
-          logger.error({ commandId: item.id, workerId, err }, "Unhandled error during dispatch item");
+          logger.error({ commandId: item.id, workerId }, "Unhandled error during dispatch item");
         }
       }
     }
@@ -639,11 +674,12 @@ export class OutboxDispatcher {
                 [devEvent.status, rank, devEvent.external_message_id, item.message_id, item.workspace_id]
               );
             } else {
+              const sanitizedDevError = sanitizeOutboxErrorMessage("reconciliation", "ERR_DELIVERY_FAILURE_CONFIRMED");
               await this.outboundRepo.resolveReconciliationDeadLetter(
                 item.id,
                 workerId,
                 item.lease_token,
-                devEvent.error_message || "Reconciled: Delivery failure confirmed by provider",
+                sanitizedDevError,
                 client
               );
               await client.query(
@@ -674,21 +710,23 @@ export class OutboxDispatcher {
           if (item.retry_count < item.max_retries) {
             // Reschedule for clean retry
             const nextAttemptAt = new Date(Date.now() + 10000);
+            const sanitizedRetryNote = sanitizeOutboxErrorMessage("reconciliation", "ERR_RECONCILIATION_RETRY");
             await this.outboundRepo.resolveReconciliationRetry(
               item.id,
               workerId,
               item.lease_token,
               nextAttemptAt,
-              "Reconciled: Timeout without delivery event, rescheduled for retry",
+              sanitizedRetryNote,
               client
             );
           } else {
             // Max retries reached: permanent dead_letter
+            const sanitizedExpireNote = sanitizeOutboxErrorMessage("reconciliation", "ERR_RECONCILIATION_TTL_EXPIRED");
             await this.outboundRepo.resolveReconciliationDeadLetter(
               item.id,
               workerId,
               item.lease_token,
-              "Reconciled: Reconciliation TTL expired and max retries exhausted",
+              sanitizedExpireNote,
               client
             );
             await client.query(
@@ -700,8 +738,8 @@ export class OutboxDispatcher {
           }
           reconciledCount++;
         }, pool);
-      } catch (reconErr) {
-        logger.warn({ commandId: item.id, workerId, reconErr }, "Failed to reconcile command");
+      } catch {
+        logger.warn({ commandId: item.id, workerId }, "Failed to reconcile command");
       }
     }
 

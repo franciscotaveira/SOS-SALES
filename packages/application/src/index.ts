@@ -19,3 +19,4 @@ export * from "./channels/security/safe-media-downloader";
 export * from "./channels/errors/channel-dispatch.errors";
 export * from "./channels/services/channel-dispatch.service";
 export * from "./channels/services/channel-health.service";
+export * from "./channels/sanitizers/outbox-error.sanitizer";
