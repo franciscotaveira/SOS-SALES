@@ -1,22 +1,39 @@
-import type { NormalizedMessage } from "@sos-sales/contracts";
+import type {
+  ChannelDeliveryReceipt,
+  ChannelProvider,
+  NormalizedInboundEvent,
+} from "@sos-sales/contracts";
 
-export interface OutboundMessageRequest {
-  workspaceId: string;
-  journeyId: string;
-  recipientPhone: string;
-  body: string;
-  mediaUrl?: string;
-  idempotencyKey: string;
+export interface CredentialLease {
+  readonly credentialId: string;
+  readonly provider: ChannelProvider;
+  readonly expiresAt?: string;
 }
 
-export interface OutboundDeliveryReceipt {
-  providerMessageId: string;
-  status: "sent" | "delivered" | "failed";
-  timestamp: string;
+export interface ChannelInboundContext {
+  readonly channelInstanceId: string;
+  readonly workspaceId: string;
+  readonly rawPayloadHash: string;
+  readonly receivedAt?: string;
+}
+
+export interface OutboundMessageRequest {
+  readonly workspaceId: string;
+  readonly channelInstanceId: string;
+  readonly recipientPhoneE164: string;
+  readonly body: string;
+  readonly mediaUrl?: string;
+  readonly idempotencyKey: string;
 }
 
 export interface IChannelGateway {
-  verifySignature(rawBody: string | Uint8Array, signature: string, secret: string): boolean;
-  normalizeInbound(rawPayload: Record<string, unknown>, workspaceId: string): NormalizedMessage;
-  sendOutbound(request: OutboundMessageRequest): Promise<OutboundDeliveryReceipt>;
+  readonly provider: ChannelProvider;
+  normalizeInbound(
+    rawPayload: Record<string, unknown>,
+    context: ChannelInboundContext
+  ): NormalizedInboundEvent[];
+  sendOutbound(
+    request: OutboundMessageRequest,
+    lease: CredentialLease
+  ): Promise<ChannelDeliveryReceipt>;
 }

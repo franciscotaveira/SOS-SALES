@@ -1,0 +1,84 @@
+{
+  "package_id": "CH-09",
+  "name": "WAHA Operacional",
+  "timestamp": "2026-09-19T08:26:00Z",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH09-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container",
+    "local_redis": "localhost:6389"
+  },
+  "metrics": {
+    "test_files": [
+      "packages/application/src/__tests__/channel-adapters.test.ts",
+      "packages/application/src/__tests__/channel-gateway.test.ts"
+    ],
+    "total_assertions": 110,
+    "assertions_passed": 110,
+    "assertions_failed": 0,
+    "total_test_files_monorepo": 27,
+    "total_assertions_monorepo": 404,
+    "assertions_passed_monorepo": 404,
+    "security_capabilities_verified": [
+      "Secure session lifecycle management (startSession, stopSession, getSession, getQrCode) with isolated credentials via ISigningSecretResolver and fail-closed validation on missing API key",
+      "Robust single-read QR code parsing supporting JSON (qr/raw), plain text, SVG, PNG/JPEG/WebP data URIs, payload size enforcement (512KB), typed rejections (WAHA_UNSUPPORTED_QR_FORMAT), and zero credential leakage",
+      "Outbound media dispatch routed to dedicated endpoints (/api/sendImage, /api/sendVideo, /api/sendVoice, /api/sendFile, /api/sendText)",
+      "SSRF static perimeter guard on WAHA base URLs (rejecting embedded user credentials, alternative/octal/dword/hex IP notation, cloud metadata 169.254.169.254/metadata.google.internal, direct private/reserved IPv4 and IPv6 in production, enforcing HTTPS in production with strict Docker lab/allowlist separation; dynamic DNS resolution, redirect intercept, and DNS rebinding pinning are applied to media download streams via CH-07 downloadMediaStream)",
+      "In-flight fencing abort rethrowing FENCING_IN_FLIGHT_ABORT when params.signal?.aborted triggers during dispatch or session calls",
+      "Deterministic HTTP status classification (transient 429 with parsed Retry-After, 502/503/504; permanent 404 SESSION_NOT_FOUND, 4xx, API_KEY_REQUIRED; ambiguous 408, 425, EMPTY_MESSAGE_ID, network timeout)",
+      "Session lifecycle webhook normalization (session.status, session.qr, session.auth_failure) generating canonical lifecycle events (connected, disconnected, qr_received, auth_failure)",
+      "Accurate inbound media detection via detectMediaType(payload.mediaUrl) classifying audio, video, document, and image",
+      "Delivery status normalization for positive ACKs (sent, delivered, read) and negative ACKs (ack: -1 -> failed) with versioned externalEventId",
+      "Isolated docker-compose profile ('waha') preserving hermetic test baselines"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH09-001",
+      "result": "PASS",
+      "evidence": "WahaAdapter implementa startSession, stopSession, getSession e getQrCode com segredos isolados estritamente dentro de ISigningSecretResolver, leitura única do payload de QR e fail-closed sem API key."
+    },
+    {
+      "ac_id": "AC-CH09-002",
+      "result": "PASS",
+      "evidence": "WahaAdapter despacha mídias para endpoints dedicados (/api/sendImage, /api/sendVideo, /api/sendVoice, /api/sendFile) com validação defensiva contra SSRF em URLs de mídia e guarda perimétrica em baseUrl."
+    },
+    {
+      "ac_id": "AC-CH09-003",
+      "result": "PASS",
+      "evidence": "WahaAdapter relança FENCING_IN_FLIGHT_ABORT em caso de cancelamento/perda de lease e classifica deterministamente 404, 429 com Retry-After, 502/503/504 e 408/425."
+    },
+    {
+      "ac_id": "AC-CH09-004",
+      "result": "PASS",
+      "evidence": "WahaWebhookNormalizer normaliza eventos session.status, session.qr e session.auth_failure em eventos canônicos do tipo lifecycle."
+    },
+    {
+      "ac_id": "AC-CH09-005",
+      "result": "PASS",
+      "evidence": "WahaWebhookNormalizer detecta acuradamente mídias inbound (áudio, vídeo, documento, imagem) e normaliza ACKs negativos como status failed."
+    },
+    {
+      "ac_id": "AC-CH09-006",
+      "result": "PASS",
+      "evidence": "Serviço waha configurado em docker-compose.yml sob profiles: ['waha'], garantindo isolamento hermético do ambiente padrão de CI."
+    },
+    {
+      "ac_id": "AC-CH09-007",
+      "result": "PASS",
+      "evidence": "Suítes de adaptadores (59 testes) e gateway (51 testes) totalizam 110 asserções aprovadas; 27 suítes do monorepo (404 asserções) e 6 gates de CI homologados com sucesso."
+    }
+  ],
+  "verification_commands": [
+    "pnpm vitest run packages/application/src/__tests__/channel-adapters.test.ts packages/application/src/__tests__/channel-gateway.test.ts",
+    "pnpm test:db:run",
+    "pnpm turbo build typecheck",
+    "pnpm ci:gate"
+  ]
+}

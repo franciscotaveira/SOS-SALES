@@ -5,8 +5,10 @@ import { SupabaseJwksIdentityProvider } from "./supabase-jwks-provider";
 export function createIdentityProvider(config: IdentityProviderConfig): IIdentityProvider {
   switch (config.type) {
     case "jwt":
+    case "local-jwt":
       return new JwtIdentityProvider(config);
     case "supabase_jwks":
+    case "supabase-jwks":
       return new SupabaseJwksIdentityProvider(config);
     default:
       throw new Error(

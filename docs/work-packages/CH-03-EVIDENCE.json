@@ -1,0 +1,83 @@
+{
+  "package_id": "CH-03",
+  "name": "Reconciliação e Resiliência com Provedores",
+  "timestamp": "2026-09-19T06:58:00Z",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH03-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container"
+  },
+  "metrics": {
+    "test_file": "apps/worker/src/__tests__/reconciliation-operational.test.ts",
+    "total_assertions": 8,
+    "assertions_passed": 8,
+    "assertions_failed": 0,
+    "total_test_files_monorepo": 25,
+    "total_assertions_monorepo": 306,
+    "reconciliation_mechanisms_tested": [
+      "late delivery webhook auto-reconciliation with known provider_message_id",
+      "late delivery webhook phone-based correlation with null provider_message_id",
+      "late delivery failure auto-reconciliation to dead_letter",
+      "poller recovery via pre-existing provider_delivery_events",
+      "poller lease release within TTL grace period",
+      "poller reschedule to pending when TTL expired and retries available",
+      "poller transition to dead_letter when TTL expired and retries exhausted",
+      "WorkerRuntime tick integration and health metrics reporting"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH03-001",
+      "result": "PASS",
+      "evidence": "Inbound webhook tardio com provider_message_id conhecido transiciona automaticamente o comando de outbox em reconciliation_required para sent e a mensagem para delivered (rank 20)."
+    },
+    {
+      "ac_id": "AC-CH03-002",
+      "result": "PASS",
+      "evidence": "Inbound webhook tardio com provider_message_id inicialmente nulo correlaciona por telefone do destinatario em janela de 15min, costura o externalMessageId na mensagem e comando, e finaliza com sent."
+    },
+    {
+      "ac_id": "AC-CH03-003",
+      "result": "PASS",
+      "evidence": "Inbound webhook tardio reportando falha do provedor transiciona automaticamente a mensagem para failed (rank -1) e o comando de outbox para dead_letter com detalhes de erro preservados."
+    },
+    {
+      "ac_id": "AC-CH03-004",
+      "result": "PASS",
+      "evidence": "Poller automatizado reconcileBatch detecta evento pre-existente em provider_delivery_events e recupera comando ambiguo para sent sem duplicar disparo externo."
+    },
+    {
+      "ac_id": "AC-CH03-005",
+      "result": "PASS",
+      "evidence": "Poller automatizado reconcileBatch libera a lease mantendo status reconciliation_required quando o item ainda esta dentro da janela de carencia TTL (60s)."
+    },
+    {
+      "ac_id": "AC-CH03-006",
+      "result": "PASS",
+      "evidence": "Poller automatizado reconcileBatch re-agenda comando ambiguo para pending para nova tentativa com backoff programado quando o TTL expirou e restam tentativas (retry_count < max_retries)."
+    },
+    {
+      "ac_id": "AC-CH03-007",
+      "result": "PASS",
+      "evidence": "Poller automatizado reconcileBatch transiciona comando ambiguo para dead_letter e mensagem para failed quando o TTL expirou e o teto de tentativas foi esgotado (retry_count >= max_retries)."
+    },
+    {
+      "ac_id": "AC-CH03-008",
+      "result": "PASS",
+      "evidence": "WorkerRuntime integra o ciclo reconcileBatch no runSingleTick, computa outboxReconciled e atualiza as metricas de saude operacional do worker."
+    }
+  ],
+  "limitations": [
+    "Ingress seguro, rate limiting distribuido e verificacao de assinatura HMAC serao consolidados no pacote CH-04.",
+    "Rate limiting distribuido com Redis e semaforos de canal serao consolidados no pacote CH-05."
+  ],
+  "executor": "Gemini 3.8",
+  "reviewer": "Agente SRE & Security Independente",
+  "decision": "ACCEPTED"
+}

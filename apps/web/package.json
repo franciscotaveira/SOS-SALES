@@ -6,11 +6,14 @@
   "scripts": {
     "dev": "vite --port 3400 --host",
     "build": "tsc && vite build",
+    "build:lab": "tsc && vite build --mode lab --outDir dist-lab",
     "preview": "vite preview --port 3400",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@sos-sales/contracts": "workspace:*",
+    "@sos-sales/ui": "workspace:*",
     "lucide-react": "^1.16.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
@@ -19,7 +22,9 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
+    "happy-dom": "^20.14.5",
     "typescript": "^5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^5.0.1"
   }
 }

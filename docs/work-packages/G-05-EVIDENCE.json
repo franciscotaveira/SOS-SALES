@@ -1,0 +1,119 @@
+{
+  "package_id": "G-05",
+  "name": "Auditoria Retrospectiva 1-2.6 e Revalidacao das Iteracoes 2.7 e 3",
+  "timestamp": "2026-09-19T05:58:00Z",
+  "baseline_g00": {
+    "snapshot_path": "/Users/franciscotaveira.ads/Downloads/FT/.chat-sales-recovery/G-00/20260919T045737Z",
+    "sha256sum_digest": "5e6676ee488477242081a2662ed743b538e39c79eafe795862ee3233a4962dbc",
+    "status": "ACCEPTED"
+  },
+  "metrics": {
+    "commits_auditados_total": 6,
+    "commits_retrospectivos": 4,
+    "checkpoints_revalidados": 2,
+    "adrs_cobertas": [
+      "ADR-001",
+      "ADR-002",
+      "ADR-003",
+      "ADR-004",
+      "ADR-005"
+    ],
+    "testes_revalidados_total": 124,
+    "discrepancias_encontradas": 0
+  },
+  "audited_items": [
+    {
+      "evidence_id": "EV-IT01-001",
+      "fase": "Iteracao 1 (Fundacao)",
+      "commit_sha": "2f6a134aa53a525e297469b07435c05b442b50d6",
+      "status": "ACCEPTED",
+      "adrs": ["ADR-001"],
+      "escopo": "Monorepo Turbo, workspaces pnpm, API Fastify basica, Docker Compose e Migration 001.",
+      "garantias_verificadas": "Estrutura modular compilavel, separacao de pacotes de dominio, contratos e aplicacao."
+    },
+    {
+      "evidence_id": "EV-IT02-001",
+      "fase": "Iteracao 2 (Tenant-First)",
+      "commit_sha": "28b9843304dced5d9e7d1e813b8400e684036843",
+      "status": "ACCEPTED",
+      "adrs": ["ADR-002", "ADR-003"],
+      "escopo": "Migration 002 com criacao de papeis sos_app_user / sos_migration_owner, ativacao de FORCE RLS e pacote @sos-sales/auth basico.",
+      "garantias_verificadas": "Zero vazamento cross-tenant comprovado em nivel de motor PostgreSQL."
+    },
+    {
+      "evidence_id": "EV-IT25-001",
+      "fase": "Iteracao 2.5 (Auth Vertical)",
+      "commit_sha": "4483f495f3c153f895309fd8fdcb61e94e900bcb",
+      "status": "ACCEPTED",
+      "adrs": ["ADR-002"],
+      "escopo": "Rotas autenticadas /v1/me e /v1/workspaces, validacao de header X-Workspace-Id tamper-proof e Migration 003.",
+      "garantias_verificadas": "37 testes de integracao Fastify validando 401, 403 e auditoria de tentativas intrusivas."
+    },
+    {
+      "evidence_id": "EV-IT26-001",
+      "fase": "Iteracao 2.6 (Hardening)",
+      "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+      "status": "ACCEPTED",
+      "adrs": ["ADR-002", "ADR-004"],
+      "escopo": "Hardening criptografico RFC 7519 com jose, SupabaseJwksIdentityProvider e Migration 004.",
+      "garantias_verificadas": "51 testes cobrindo rejeicao de alg: none, exp obrigatorio e imutabilidade de audit_events via engine trigger."
+    },
+    {
+      "evidence_id": "EV-IT27-001",
+      "fase": "Iteracao 2.7 (Runner Hermetico)",
+      "commit_sha": "a41e1ab",
+      "status": "ACCEPTED",
+      "adrs": ["ADR-004"],
+      "escopo": "Runner de banco hermetico em container efemero, test-support.ts, sanitizacao de logs de auth e test:db:run.",
+      "garantias_verificadas": "90 testes de DB hermetico e 23 testes unitarios de auth passando com exit code 0 e descarte limpo de recursos."
+    },
+    {
+      "evidence_id": "EV-IT03-001",
+      "fase": "Iteracao 3 (Design System & Web)",
+      "commit_sha": "0605dff",
+      "status": "ACCEPTED",
+      "adrs": ["ADR-001"],
+      "escopo": "Pacote @sos-sales/ui, tokens de design semanticos, componentes acessiveis WCAG 2.2 AA e app Web React com Vite.",
+      "garantias_verificadas": "20 testes de UI, 14 testes de cliente/sessao web, typecheck 17/17 e bundle de producao compilado sem erros."
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-G05-001",
+      "result": "PASS",
+      "evidence": "Commits 2f6a134, 28b9843, 4483f49 e a4d9cf1 foram auditados individualmente e documentados em G-05-AUDIT.md com rastreabilidade por SHA."
+    },
+    {
+      "ac_id": "AC-G05-002",
+      "result": "PASS",
+      "evidence": "Checkpoints das Iteracoes 2.7 (a41e1ab) e 3 (0605dff) foram revalidados com 100% dos testes executados e aprovados nos gates de G-04."
+    },
+    {
+      "ac_id": "AC-G05-003",
+      "result": "PASS",
+      "evidence": "Invariantes de seguranca (FORCE RLS, imutabilidade de auditoria, biblioteca jose RFC 7519) atestadas em todos os estagios."
+    },
+    {
+      "ac_id": "AC-G05-004",
+      "result": "PASS",
+      "evidence": "Todas as macrofases historicas de 0 a 3 no EXECUTION_BOARD.md foram promovidas para ACCEPTED com manifests vinculados."
+    },
+    {
+      "ac_id": "AC-G05-005",
+      "result": "PASS",
+      "evidence": "Manifest consolidado G-05-EVIDENCE.json emitido, estruturado e validado via json.tool."
+    },
+    {
+      "ac_id": "AC-G05-006",
+      "result": "PASS",
+      "evidence": "Pacote G-05 concluido formalmente, habilitando a promocao de G-06 (CI minimo e automacao) para READY."
+    }
+  ],
+  "limitations": [
+    "Os debitos conhecidos da Iteracao 4 (migration 005 e worker leases) permanecem formalmente isolados no commit d4de6ca para saneamento na esteira CH-00..CH-12.",
+    "A execucao em producao permanece categoricamente bloqueada ate o termino dos gates de qualidade e seguranca."
+  ],
+  "executor": "Gemini 3.8",
+  "reviewer": "Agente QA Independente & Agente SRE/Security",
+  "decision": "ACCEPTED"
+}

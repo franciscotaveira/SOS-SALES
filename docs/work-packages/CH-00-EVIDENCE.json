@@ -1,0 +1,63 @@
+{
+  "package_id": "CH-00",
+  "name": "Modelo Minimo de Contato, Thread e Mensagem",
+  "timestamp": "2026-09-19T06:17:00Z",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH00-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container"
+  },
+  "metrics": {
+    "test_file": "packages/database/src/__tests__/messaging-core-models.test.ts",
+    "total_assertions": 17,
+    "assertions_passed": 17,
+    "assertions_failed": 0,
+    "rls_roles_tested": ["sos_app_user", "sos_migration_owner"],
+    "tables_validated": ["contacts", "commercial_threads", "messages"]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH00-001",
+      "result": "PASS",
+      "evidence": "Schemas Zod e tipos TypeScript de Contact, CommercialThread e Message formalizados em @sos-sales/contracts."
+    },
+    {
+      "ac_id": "AC-CH00-002",
+      "result": "PASS",
+      "evidence": "Funcoes de repositorio createOrGetContact, getOrCreateCommercialThread, insertMessage e listThreadMessages implementadas em @sos-sales/database."
+    },
+    {
+      "ac_id": "AC-CH00-003",
+      "result": "PASS",
+      "evidence": "Suite hermetica messaging-core-models.test.ts executada sob sos_app_user com 17 assercoes aprovadas em banco efemero descartavel."
+    },
+    {
+      "ac_id": "AC-CH00-004",
+      "result": "PASS",
+      "evidence": "Assercoes negativas de RLS e chaves estrangeiras compostas comprovaram zero vazamento cross-tenant entre Workspace Alpha e Beta."
+    },
+    {
+      "ac_id": "AC-CH00-005",
+      "result": "PASS",
+      "evidence": "Tentativas de DELETE em contatos, threads e mensagens rejeitadas com erro de permissao para sos_app_user (REVOKE DELETE comprovado)."
+    },
+    {
+      "ac_id": "AC-CH00-006",
+      "result": "PASS",
+      "evidence": "Pipeline local unificado ci:gate executado com 100% de aprovacao nos 6 portoes de qualidade."
+    }
+  ],
+  "limitations": [
+    "Os debitos conhecidos do worker (inbox/outbox leases e RLS permissiva com app.current_workspace_id nulo) serao sanados nos pacotes CH-01 a CH-03.",
+    "Regras comerciais avancadas de CRM (atribuicao, estagios de funil, transicoes de oportunidade) permanecem para a Fase CRM (CRM-01..CRM-03)."
+  ],
+  "executor": "Gemini 3.8",
+  "reviewer": "Agente SRE/Security & Agente QA Independente",
+  "decision": "ACCEPTED"
+}

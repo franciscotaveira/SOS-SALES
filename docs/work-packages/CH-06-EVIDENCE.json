@@ -1,0 +1,72 @@
+{
+  "package_id": "CH-06",
+  "name": "Keyring E2E e Rotatividade de Chaves Mestras",
+  "timestamp": "2026-09-19T07:40:00Z",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH06-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container",
+    "local_redis": "localhost:6389"
+  },
+  "metrics": {
+    "test_files": [
+      "packages/database/src/__tests__/crypto-keyring.test.ts",
+      "apps/worker/src/__tests__/keyring-e2e-rotation.test.ts",
+      "apps/api/src/__tests__/webhook-ingress.test.ts"
+    ],
+    "total_assertions": 36,
+    "assertions_passed": 36,
+    "assertions_failed": 0,
+    "total_test_files_monorepo": 27,
+    "total_assertions_monorepo": 332,
+    "security_capabilities_verified": [
+      "Dynamic versioned Keyring resolution supporting simultaneous 256-bit AES-GCM master keys",
+      "Bidirectional normalization of numeric and string key versions (1, '1', 'v1', 'v2')",
+      "Environment variable parsing from MCT_KEYRING_JSON, KEYRING_JSON and active version overrides",
+      "Guaranteed buffer zeroing (.fill(0)) in finally blocks for keys and decrypted plaintext",
+      "Webhook ingress active key encryption and explicit key_version persistence in channel_webhook_inbox",
+      "DatabaseSigningSecretResolver multi-key decryption supporting rotation of stored credentials",
+      "Automatic fallback across keyring versions in decryptPayload on auth tag mismatch when version is unspecified",
+      "Worker batch claiming and processing of heterogeneous batches (v1 and v2) with zero downtime",
+      "Fail-closed behavior on unknown key versions (e.g. 99) with UNKNOWN_KEY_VERSION error and retry scheduling"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH06-001",
+      "result": "PASS",
+      "evidence": "crypto-payload.ts implementa Keyring, normalizeKeyVersion, getActiveKeyVersion, parseKeyringFromEnv e zeramento seguro de buffers com 13 testes unitarios 100% aprovados."
+    },
+    {
+      "ac_id": "AC-CH06-002",
+      "result": "PASS",
+      "evidence": "buildApp e rotas Fastify utilizam activeKeyVersion para cifrar e persistir payloads no inbox com a coluna key_version correspondente."
+    },
+    {
+      "ac_id": "AC-CH06-003",
+      "result": "PASS",
+      "evidence": "DatabaseSigningSecretResolver aceita keyring e decripta credenciais sob chaves legadas e ativas com fallback automatico em caso de chave nao especificada."
+    },
+    {
+      "ac_id": "AC-CH06-004",
+      "result": "PASS",
+      "evidence": "Worker processa com sucesso lote misto contendo itens cifrados com chave versao 1 e chave versao 2, inserindo mensagens e finalizando status."
+    },
+    {
+      "ac_id": "AC-CH06-005",
+      "result": "PASS",
+      "evidence": "Itens com key_version desconhecido (99) lancam UNKNOWN_KEY_VERSION e sao reagendados sem interromper ou causar crash no runtime do worker."
+    },
+    {
+      "ac_id": "AC-CH06-006",
+      "result": "PASS",
+      "evidence": "Suites crypto-keyring.test.ts, keyring-e2e-rotation.test.ts e total de 27 suites do monorepo (332 assercoes) executadas com 100% de sucesso contra banco hermetico."
+    }
+  ]
+}

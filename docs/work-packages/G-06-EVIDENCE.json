@@ -1,0 +1,108 @@
+{
+  "package_id": "G-06",
+  "name": "CI Minimo e Evidence Manifest",
+  "timestamp": "2026-09-19T06:05:00Z",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-G06-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container"
+  },
+  "pipeline_scorecard": [
+    {
+      "gate_id": "GATE-01",
+      "name": "Document & JSON Schema Integrity",
+      "status": "PASS",
+      "command": "node internal scanner",
+      "details": "Verified all JSON manifests and configs without syntax defects"
+    },
+    {
+      "gate_id": "GATE-02",
+      "name": "Static TypeScript Compilation (turbo typecheck)",
+      "status": "PASS",
+      "command": "pnpm turbo typecheck",
+      "details": "10/10 packages passed tsc --noEmit with zero type errors"
+    },
+    {
+      "gate_id": "GATE-03",
+      "name": "Monorepo Linter (turbo lint)",
+      "status": "PASS",
+      "command": "pnpm turbo lint",
+      "details": "Turbo lint completed with exit code 0"
+    },
+    {
+      "gate_id": "GATE-04",
+      "name": "Monorepo Full Build (turbo build)",
+      "status": "PASS",
+      "command": "pnpm turbo build",
+      "details": "All CJS/ESM libraries and Vite web bundle compiled cleanly in dist/"
+    },
+    {
+      "gate_id": "GATE-05",
+      "name": "Hermetic DB Test Runner (test:db:run)",
+      "status": "PASS",
+      "command": "ALLOW_TEST_DB_ADMIN_OPERATIONS=true pnpm test:db:run",
+      "details": "21 test files (256 assertions) passed against hermetic ephemeral database"
+    },
+    {
+      "gate_id": "GATE-06",
+      "name": "Evidence Manifest Integrity Audit",
+      "status": "PASS",
+      "command": "manifest integrity scanner",
+      "details": "Validated all canonical evidence manifests (G-00 a G-06)"
+    }
+  ],
+  "metrics": {
+    "total_gates": 6,
+    "gates_passed": 6,
+    "gates_failed": 0,
+    "total_test_files": 21,
+    "total_assertions": 256,
+    "packages_in_monorepo": 10,
+    "pipeline_execution_time_seconds": 5.06
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-G06-001",
+      "result": "PASS",
+      "evidence": "Runner unificado scripts/ci-gate-runner.ts implementado e registrado no package.json sob os scripts ci:gate e ci:check."
+    },
+    {
+      "ac_id": "AC-G06-002",
+      "result": "PASS",
+      "evidence": "Execucao sequencial e fail-closed dos 6 portoes de qualidade comprovada com relatorio visual no terminal."
+    },
+    {
+      "ac_id": "AC-G06-003",
+      "result": "PASS",
+      "evidence": "Gate 5 executou a suite hermetica completa test:db:run aprovando 21 arquivos de teste e 256 assercoes com descarte limpo de banco."
+    },
+    {
+      "ac_id": "AC-G06-004",
+      "result": "PASS",
+      "evidence": "Gate 6 realizou a auditoria de integridade referencial de todos os manifests JSON de governanca com exit code 0."
+    },
+    {
+      "ac_id": "AC-G06-005",
+      "result": "PASS",
+      "evidence": "Manifest de evidencia G-06-EVIDENCE.json emitido em conformidade estrita com o schema e indexado em EVIDENCE_INDEX.md."
+    },
+    {
+      "ac_id": "AC-G06-006",
+      "result": "PASS",
+      "evidence": "Transicao formal do pacote G-06 para ACCEPTED e autorizacao do inicio da Fase CH com o pacote CH-00 em READY."
+    }
+  ],
+  "limitations": [
+    "A execucao do Gate 5 depende de container PostgreSQL local ativo com permissoes de criacao de banco efemero.",
+    "Os debitos conhecidos da Iteracao 4 permanecem isolados para resolucao sequencial na esteira CH-00 a CH-12."
+  ],
+  "executor": "Gemini 3.8",
+  "reviewer": "Agente SRE/Security & Agente QA Independente",
+  "decision": "ACCEPTED"
+}

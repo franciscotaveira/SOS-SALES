@@ -2,23 +2,46 @@ import {
   createRemoteJWKSet,
   jwtVerify,
   type JWTVerifyGetKey,
+  errors as joseErrors,
 } from "jose";
-import type { AuthUser, IIdentityProvider, SupabaseJwksConfig } from "./types";
+import type {
+  AuthUser,
+  IIdentityProvider,
+  SupabaseJwksConfig,
+  TokenVerificationResult,
+} from "./types";
 import { logger } from "@sos-sales/observability";
 import type { Role } from "@sos-sales/contracts";
+import { sanitizeAuthError } from "./sanitization";
 
 export class SupabaseJwksIdentityProvider implements IIdentityProvider {
   private readonly getKey: JWTVerifyGetKey;
-  private readonly issuer?: string;
+  private readonly issuer: string;
   private readonly audience: string;
 
   constructor(config: SupabaseJwksConfig, customGetKey?: JWTVerifyGetKey) {
-    if (!config.jwksUri || typeof config.jwksUri !== "string") {
-      throw new Error("SupabaseJwksIdentityProvider: jwksUri is required");
+    if (!config || typeof config !== "object") {
+      throw new Error("SupabaseJwksIdentityProvider: Configuration object is required.");
     }
 
-    this.issuer = config.issuer;
-    this.audience = config.audience || "authenticated";
+    if (!config.jwksUri || typeof config.jwksUri !== "string" || config.jwksUri.trim().length === 0) {
+      throw new Error("SupabaseJwksIdentityProvider: A valid non-empty 'jwksUri' is required.");
+    }
+
+    if (!config.issuer || typeof config.issuer !== "string" || config.issuer.trim().length === 0) {
+      throw new Error("SupabaseJwksIdentityProvider: A valid non-empty 'issuer' is required.");
+    }
+
+    if (
+      !config.audience ||
+      typeof config.audience !== "string" ||
+      config.audience.trim().length === 0
+    ) {
+      throw new Error("SupabaseJwksIdentityProvider: A valid non-empty 'audience' is required.");
+    }
+
+    this.issuer = config.issuer.trim();
+    this.audience = config.audience.trim();
 
     this.getKey =
       customGetKey ||
@@ -28,22 +51,22 @@ export class SupabaseJwksIdentityProvider implements IIdentityProvider {
       });
   }
 
-  public async verifyToken(token: string): Promise<AuthUser | null> {
+  public async verifyTokenDetailed(token: string): Promise<TokenVerificationResult> {
     try {
       if (!token || typeof token !== "string" || token.trim().length === 0) {
-        return null;
+        return { status: "invalid", reason: "Token is empty or missing" };
       }
 
       const { payload } = await jwtVerify(token, this.getKey, {
         algorithms: ["RS256", "ES256"], // Strict: asymmetric algorithms from Supabase Auth JWKS
         issuer: this.issuer,
         audience: this.audience,
-        requiredClaims: ["exp", "sub"],
+        requiredClaims: ["exp", "sub", "iss", "aud"],
         clockTolerance: 0,
       });
 
       if (!payload.sub || typeof payload.sub !== "string") {
-        return null;
+        return { status: "invalid", reason: "Missing subject claim" };
       }
 
       const appMetadata = (payload.app_metadata as Record<string, unknown>) || {};
@@ -52,15 +75,46 @@ export class SupabaseJwksIdentityProvider implements IIdentityProvider {
       const workspaceId =
         (appMetadata.workspace_id as string) || (userMetadata.workspace_id as string) || "";
 
-      return {
+      const user: AuthUser = {
         id: payload.sub,
         email: typeof payload.email === "string" ? payload.email : "",
         role,
         workspaceId,
       };
+
+      return { status: "valid", user };
     } catch (err) {
-      logger.warn({ err }, "Supabase JWKS token verification failed");
-      return null;
+      const errStr =
+        err instanceof Error
+          ? `${err.name} ${err.message} ${String((err as any).cause || "")}`
+          : String(err);
+
+      if (
+        err instanceof joseErrors.JWKSTimeout ||
+        errStr.includes("JWKSTimeout") ||
+        errStr.includes("fetch failed") ||
+        errStr.includes("network") ||
+        errStr.includes("ECONNREFUSED") ||
+        errStr.includes("ETIMEDOUT") ||
+        errStr.includes("ENOTFOUND")
+      ) {
+        const authError = sanitizeAuthError(err, "supabase-jwks");
+        logger.error({ authError }, "Supabase JWKS keystore temporarily unreachable");
+        return {
+          status: "provider_unavailable",
+          reason: "Remote JWKS keystore is temporarily unreachable",
+        };
+      }
+
+      const authError = sanitizeAuthError(err, "supabase-jwks");
+      logger.warn({ authError }, "Supabase JWKS token verification failed");
+      const message = err instanceof Error ? err.message : "Invalid token";
+      return { status: "invalid", reason: message };
     }
+  }
+
+  public async verifyToken(token: string): Promise<AuthUser | null> {
+    const result = await this.verifyTokenDetailed(token);
+    return result.status === "valid" ? result.user : null;
   }
 }

@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -10,5 +11,8 @@ export default defineConfig({
   preview: {
     port: 3400,
     host: "0.0.0.0",
+  },
+  test: {
+    environment: "happy-dom",
   },
 });

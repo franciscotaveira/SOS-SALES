@@ -1,0 +1,79 @@
+{
+  "package_id": "CH-08",
+  "name": "WABA Operacional",
+  "timestamp": "2026-09-19T08:15:00Z",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH08-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container",
+    "local_redis": "localhost:6389"
+  },
+  "metrics": {
+    "test_files": [
+      "packages/application/src/__tests__/channel-adapters.test.ts",
+      "packages/application/src/__tests__/channel-gateway.test.ts"
+    ],
+    "total_assertions": 70,
+    "assertions_passed": 70,
+    "assertions_failed": 0,
+    "total_test_files_monorepo": 27,
+    "total_assertions_monorepo": 364,
+    "security_capabilities_verified": [
+      "Strict 24-hour customer care window enforcement (OUTSIDE_24H_WINDOW_ERROR for expired/unknown free-form text before external send)",
+      "Approved multilingual template message dispatch outside 24h window with components (header, body, buttons)",
+      "Perimetral SSRF Guard validation on template header media parameters (rejects internal/metadata IPs before dispatch)",
+      "Outbound media support (image, audio without caption, video, document with automatic filename extraction from URL pathname)",
+      "Resilient detectMediaType handling query parameters and stripped URL pathnames",
+      "Inbound media resolution via getMediaUrl and getMediaMetadata querying GET /v21.0/${mediaId} with bearer auth in scoped secretResolver callback",
+      "Numeric phoneNumberId validation prohibiting 'me' and non-numeric fallback",
+      "In-flight abort fencing rethrowing FENCING_IN_FLIGHT_ABORT on lease loss",
+      "Deterministic Meta error classification (transient 429/130429 with parsed Retry-After, 5xx; permanent 131026, 132000, 190; ambiguous 408, EMPTY_MESSAGE_ID, network timeout)",
+      "Inbound media webhook normalization extracting mediaId, mimeType, fileSha256, and filename in metadata",
+      "Inbound interactive message normalization for button_reply and list_reply mapping title to body and IDs to metadata",
+      "Versioned externalEventId generation (v1:waba:${externalMessageId}:${status}:${epochSec}) and zero status drop"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH08-001",
+      "result": "PASS",
+      "evidence": "MetaWabaAdapter.sendMessage rejeita textos livres fora da janela de 24 horas (OUTSIDE_24H_WINDOW_ERROR) e autoriza templates aprovados."
+    },
+    {
+      "ac_id": "AC-CH08-002",
+      "result": "PASS",
+      "evidence": "MetaWabaAdapter extrai e envia filename para mensagens de documento e valida componentes de mídia em cabeçalhos de templates contra SSRF."
+    },
+    {
+      "ac_id": "AC-CH08-003",
+      "result": "PASS",
+      "evidence": "MetaWabaAdapter.getMediaUrl e getMediaMetadata resolvem mediaId em URL do CDN da Meta através do ISigningSecretResolver sem vazar credenciais."
+    },
+    {
+      "ac_id": "AC-CH08-004",
+      "result": "PASS",
+      "evidence": "MetaWabaAdapter classifica deterministamente erros transitórios (429/130429 com Retry-After, 5xx), permanentes (131026, 132000, 190) e ambíguos (408, EMPTY_MESSAGE_ID, timeouts), relançando FENCING_IN_FLIGHT_ABORT em caso de aborto."
+    },
+    {
+      "ac_id": "AC-CH08-005",
+      "result": "PASS",
+      "evidence": "WabaWebhookNormalizer extrai metadados completos de mídia (mediaId, mimeType, fileSha256, filename) e normaliza mensagens interativas (button_reply, list_reply)."
+    },
+    {
+      "ac_id": "AC-CH08-006",
+      "result": "PASS",
+      "evidence": "Suítes channel-adapters.test.ts (30 testes), channel-gateway.test.ts (40 testes) e todos os 6 gates de CI (pnpm ci:gate com 364 asserções) aprovados com 100% de sucesso."
+    }
+  ],
+  "verification_commands": [
+    "pnpm vitest run packages/application/src/__tests__/channel-adapters.test.ts packages/application/src/__tests__/channel-gateway.test.ts",
+    "pnpm turbo build typecheck",
+    "pnpm ci:gate"
+  ]
+}

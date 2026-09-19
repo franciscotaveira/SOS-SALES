@@ -25,9 +25,15 @@ describe("JwtIdentityProvider (Hardened Security)", () => {
   it("should reject initialization if secret is missing or shorter than 32 characters (no fallback allowed)", () => {
     expect(() => new JwtIdentityProvider("short-secret")).toThrow(/at least 32 characters/i);
     expect(() => new JwtIdentityProvider("")).toThrow(/at least 32 characters/i);
-    expect(() => new JwtIdentityProvider({ type: "jwt", secret: "1234567890123456789012345678901" })).toThrow(
-      /at least 32 characters/i
-    );
+    expect(
+      () =>
+        new JwtIdentityProvider({
+          type: "local-jwt",
+          secret: "1234567890123456789012345678901",
+          issuer: "sos-sales-v3",
+          audience: "sos-sales-api",
+        })
+    ).toThrow(/at least 32 characters/i);
   });
 
   it("should generate a valid JWT token and verify it back to the original user", async () => {
@@ -201,6 +207,8 @@ describe("createIdentityProvider Factory", () => {
     const provider = createIdentityProvider({
       type: "jwt",
       secret: "012345678901234567890123456789012",
+      issuer: "sos-sales-v3",
+      audience: "sos-sales-api",
     });
     expect(provider).toBeInstanceOf(JwtIdentityProvider);
   });
@@ -209,6 +217,8 @@ describe("createIdentityProvider Factory", () => {
     const provider = createIdentityProvider({
       type: "supabase_jwks",
       jwksUri: "https://test.supabase.co/auth/v1/.well-known/jwks.json",
+      issuer: "https://test.supabase.co/auth/v1",
+      audience: "authenticated",
     });
     expect(provider).toBeInstanceOf(SupabaseJwksIdentityProvider);
   });

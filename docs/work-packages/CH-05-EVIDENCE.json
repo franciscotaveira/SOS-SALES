@@ -1,0 +1,75 @@
+{
+  "package_id": "CH-05",
+  "name": "Rate Limiting Distribuído com Redis e Proxy Confiável",
+  "timestamp": "2026-09-19T07:20:00Z",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH05-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container",
+    "local_redis": "localhost:6389"
+  },
+  "metrics": {
+    "test_files": [
+      "apps/api/src/__tests__/redis-rate-limiter.test.ts"
+    ],
+    "total_assertions": 9,
+    "assertions_passed": 9,
+    "assertions_failed": 0,
+    "total_test_files_monorepo": 26,
+    "total_assertions_monorepo": 321,
+    "security_capabilities_verified": [
+      "Distributed atomic Redis sliding-window execution via Lua script with O(log N) complexity",
+      "Strict quota consistency across multiple simulated API replica nodes",
+      "Sliding window automatic expiration and quota recovery after window expiry",
+      "Graceful degradation to in-memory BoundedTwoTierRateLimiter upon Redis failure with warn log",
+      "Default trusted proxy CIDRs for private networks (127.0.0.1, ::1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)",
+      "Rejection of spoofed X-Forwarded-For headers from untrusted clients when trustProxy is disabled",
+      "RFC 6585 headers (Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining) on HTTP 429",
+      "RFC 9457 Problem Details payload formatting on HTTP 429 Too Many Requests"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH05-001",
+      "result": "PASS",
+      "evidence": "RedisTwoTierRateLimiter garante que multiplas replicas da API compartilham a mesma cota com atomicidade rigorosa atraves de script Lua sliding-window."
+    },
+    {
+      "ac_id": "AC-CH05-002",
+      "result": "PASS",
+      "evidence": "Protecao em dois niveis opera avaliando IP antes de consultas ao Postgres e canal apos a resolucao da credencial de assinatura."
+    },
+    {
+      "ac_id": "AC-CH05-003",
+      "result": "PASS",
+      "evidence": "Falha intencional do no Redis ativa fallback gracioso para BoundedTwoTierRateLimiter em memoria com log de alerta sem gerar excecoes nao tratadas ou drop de webhooks."
+    },
+    {
+      "ac_id": "AC-CH05-004",
+      "result": "PASS",
+      "evidence": "Respostas HTTP 429 contem cabecalhos RFC 6585 Retry-After, X-RateLimit-Limit e X-RateLimit-Remaining: 0 em conjunto com corpo RFC 9457 application/problem+json."
+    },
+    {
+      "ac_id": "AC-CH05-005",
+      "result": "PASS",
+      "evidence": "trustProxy configurado com CIDRs confiaveis extrai IP real via proxy reverso confiavel e ignora headers X-Forwarded-For adulterados de clientes diretos."
+    },
+    {
+      "ac_id": "AC-CH05-006",
+      "result": "PASS",
+      "evidence": "Suites redis-rate-limiter.test.ts (9 testes) e totalidade do monorepo (26 suites, 321 assercoes) 100% aprovadas no runner hermetico."
+    }
+  ],
+  "limitations": [
+    "Keyring E2E com ciclo de vida e rotatividade dinamica de chaves mestras sera consolidado no pacote CH-06.",
+    "Mitigacao de SSRF em download de anexos de midia remota sera consolidada no pacote CH-07."
+  ],
+  "executor": "Gemini 3.8 / MCT OS Kernel v2.0",
+  "reviewer": "Agente SRE & Security Independente"
+}

@@ -9,6 +9,7 @@ import {
   type Permission,
   type IIdentityProvider,
   type IdentityProviderConfig,
+  type TokenVerificationResult,
 } from "@sos-sales/auth";
 import {
   getUserWorkspaces,
@@ -38,44 +39,106 @@ declare module "fastify" {
 const uuidSchema = z.string().uuid();
 
 export interface AuthPluginOptions {
+  providerType?: "local-jwt" | "supabase-jwks";
   identityProvider?: IIdentityProvider;
   identityProviderConfig?: IdentityProviderConfig;
   jwtSecret?: string;
+  issuer?: string;
+  audience?: string;
+  supabaseUrl?: string;
+  jwksUri?: string;
 }
 
 const authPluginCallback: FastifyPluginAsync<AuthPluginOptions> = async (app, options) => {
-  // Resolve identity provider in strict order, with ZERO fallback default secrets
   let identityProvider: IIdentityProvider;
 
   if (options.identityProvider) {
     identityProvider = options.identityProvider;
   } else if (options.identityProviderConfig) {
     identityProvider = createIdentityProvider(options.identityProviderConfig);
-  } else if (options.jwtSecret || process.env.JWT_SECRET) {
-    const secret = (options.jwtSecret || process.env.JWT_SECRET)!.trim();
-    if (secret.length < 32) {
+  } else {
+    // Explicit provider selection: AUTH_PROVIDER is mandatory
+    const providerType = (
+      options.providerType ??
+      process.env.AUTH_PROVIDER ??
+      ""
+    ).trim().toLowerCase();
+
+    if (providerType === "local-jwt") {
+      const secret = (options.jwtSecret ?? process.env.JWT_SECRET ?? "").trim();
+      const issuer = (options.issuer ?? process.env.AUTH_ISSUER ?? "").trim();
+      const audience = (options.audience ?? process.env.AUTH_AUDIENCE ?? "").trim();
+
+      if (!secret || secret.length < 32) {
+        throw new Error(
+          "FATAL: In 'local-jwt' mode, JWT_SECRET must be explicitly provided and be at least 32 characters long."
+        );
+      }
+      if (!issuer) {
+        throw new Error(
+          "FATAL: In 'local-jwt' mode, AUTH_ISSUER must be explicitly provided and non-empty."
+        );
+      }
+      if (!audience) {
+        throw new Error(
+          "FATAL: In 'local-jwt' mode, AUTH_AUDIENCE must be explicitly provided and non-empty."
+        );
+      }
+
+      identityProvider = new JwtIdentityProvider({
+        type: "local-jwt",
+        secret,
+        issuer,
+        audience,
+      });
+    } else if (providerType === "supabase-jwks") {
+      const supabaseUrl = (options.supabaseUrl ?? process.env.SUPABASE_URL ?? "").trim();
+      let jwksUri = (options.jwksUri ?? process.env.SUPABASE_JWKS_URI ?? "").trim();
+      let issuer = (options.issuer ?? process.env.AUTH_ISSUER ?? "").trim();
+      const audience = (
+        options.audience ??
+        process.env.AUTH_AUDIENCE ??
+        "authenticated"
+      ).trim();
+
+      if (!supabaseUrl && !jwksUri) {
+        throw new Error(
+          "FATAL: In 'supabase-jwks' mode, SUPABASE_URL or SUPABASE_JWKS_URI must be provided."
+        );
+      }
+
+      if (supabaseUrl) {
+        try {
+          const parsed = new URL(supabaseUrl);
+          if (!jwksUri) {
+            jwksUri = `${parsed.origin}/auth/v1/.well-known/jwks.json`;
+          }
+          if (!issuer) {
+            issuer = `${parsed.origin}/auth/v1`;
+          }
+        } catch {
+          throw new Error("FATAL: SUPABASE_URL is not a valid URL.");
+        }
+      }
+
+      if (!jwksUri) {
+        throw new Error("FATAL: Could not resolve a valid jwksUri for 'supabase-jwks' mode.");
+      }
+      if (!issuer) {
+        throw new Error("FATAL: Could not resolve a valid issuer for 'supabase-jwks' mode.");
+      }
+
+      identityProvider = new SupabaseJwksIdentityProvider({
+        type: "supabase-jwks",
+        jwksUri,
+        issuer,
+        audience,
+      });
+    } else {
       throw new Error(
-        "FATAL: JWT_SECRET must be at least 32 characters long. Insecure configurations are rejected at boot."
+        `FATAL: AUTH_PROVIDER must be explicitly configured as 'local-jwt' or 'supabase-jwks'. Received: '${providerType || "<empty>"}'. System startup aborted to prevent ambiguous security.`
       );
     }
-    identityProvider = new JwtIdentityProvider({
-      type: "jwt",
-      secret,
-    });
-  } else if (process.env.SUPABASE_JWKS_URI || process.env.SUPABASE_URL) {
-    const jwksUri =
-      process.env.SUPABASE_JWKS_URI ||
-      `${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
-    identityProvider = new SupabaseJwksIdentityProvider({
-      type: "supabase_jwks",
-      jwksUri,
-      issuer: process.env.SUPABASE_URL ? `${process.env.SUPABASE_URL}/auth/v1` : undefined,
-      audience: "authenticated",
-    });
-  } else {
-    throw new Error(
-      "FATAL: No valid authentication provider configured. Either JWT_SECRET (>= 32 chars) or SUPABASE_URL / SUPABASE_JWKS_URI must be provided. Hardcoded fallback secrets are prohibited."
-    );
   }
 
   const rbacPolicy = new RbacAuthorizationPolicy();
@@ -95,14 +158,49 @@ const authPluginCallback: FastifyPluginAsync<AuthPluginOptions> = async (app, op
     }
 
     const token = authHeader.slice(7).trim();
-    const verifiedUser = await identityProvider.verifyToken(token);
 
-    if (!verifiedUser) {
+    // Validate token with detailed error differentiation (AC10)
+    let verification: TokenVerificationResult;
+    if (typeof identityProvider.verifyTokenDetailed === "function") {
+      verification = await identityProvider.verifyTokenDetailed(token);
+    } else {
+      const user = await identityProvider.verifyToken(token);
+      verification = user
+        ? { status: "valid", user }
+        : { status: "invalid", reason: "Token verification returned null" };
+    }
+
+    if (verification.status === "provider_unavailable") {
+      return reply.status(503).send({
+        type: "https://sos-sales.mct.br/errors/service-unavailable",
+        title: "Service Unavailable",
+        status: 503,
+        detail: "Authentication provider is temporarily unreachable",
+        instance: request.url,
+        correlationId: request.id,
+      });
+    }
+
+    if (verification.status === "invalid" || !verification.user) {
       return reply.status(401).send({
         type: "https://sos-sales.mct.br/errors/unauthorized",
         title: "Unauthorized",
         status: 401,
         detail: "Invalid, untrusted or expired JWT token",
+        instance: request.url,
+        correlationId: request.id,
+      });
+    }
+
+    const verifiedUser = verification.user;
+
+    // Strict validation: subject claim MUST be a valid UUID before database query
+    if (!uuidSchema.safeParse(verifiedUser.id).success) {
+      return reply.status(401).send({
+        type: "https://sos-sales.mct.br/errors/unauthorized",
+        title: "Unauthorized",
+        status: 401,
+        detail: "User identity subject claim is not a valid UUID",
         instance: request.url,
         correlationId: request.id,
       });

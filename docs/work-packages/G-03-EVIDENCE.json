@@ -1,0 +1,112 @@
+{
+  "package_id": "G-03",
+  "name": "Plano Detalhado de Reconstrucao e Separacao de Checkpoints",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "timestamp": "2026-09-19T05:42:00Z",
+  "baseline_g00": {
+    "snapshot_path": "/Users/franciscotaveira.ads/Downloads/FT/.chat-sales-recovery/G-00/20260919T045737Z",
+    "sha256sum_digest": "5e6676ee488477242081a2662ed743b538e39c79eafe795862ee3233a4962dbc",
+    "status": "ACCEPTED"
+  },
+  "metrics": {
+    "checkpoints_definidos": 4,
+    "arquivos_alocados_total": 149,
+    "arquivos_exclusivos_alocados": 138,
+    "arquivos_compartilhados_alocados": 11,
+    "discrepancias_de_alocacao": 0
+  },
+  "checkpoints": [
+    {
+      "checkpoint_id": "CP-GOV",
+      "slug": "checkpoint/gov-baseline",
+      "commit_message": "docs(gov): establish canonical project governance and G-00..G-03 artifacts",
+      "arquivos_exclusivos": 19,
+      "arquivos_compartilhados": 1,
+      "gates": [
+        "markdown-link-check",
+        "json-schema-validation",
+        "clean-git-status"
+      ]
+    },
+    {
+      "checkpoint_id": "CP-2.7",
+      "slug": "checkpoint/it27-runner",
+      "commit_message": "feat(auth): consolidate iteration 2.7 auth providers, test runner and db support",
+      "arquivos_exclusivos": 17,
+      "arquivos_compartilhados": 10,
+      "gates": [
+        "pnpm install --lockfile-only",
+        "pnpm typecheck",
+        "pnpm --filter @sos-sales/auth test",
+        "pnpm --filter @sos-sales/database test:db:run",
+        "pnpm --filter @sos-sales/api test"
+      ]
+    },
+    {
+      "checkpoint_id": "CP-3",
+      "slug": "checkpoint/it3-appshell",
+      "commit_message": "feat(ui): consolidate iteration 3 design system, appshell and web application",
+      "arquivos_exclusivos": 64,
+      "arquivos_compartilhados": 2,
+      "gates": [
+        "pnpm install --lockfile-only",
+        "pnpm typecheck",
+        "pnpm --filter @sos-sales/ui test",
+        "pnpm --filter @sos-sales/web test",
+        "pnpm build",
+        "node scripts/verify-browser-qa.mjs"
+      ]
+    },
+    {
+      "checkpoint_id": "CP-4",
+      "slug": "checkpoint/it4-channels",
+      "commit_message": "feat(channels): snapshot iteration 4 channels foundation pending CH-00..CH-12 remediation",
+      "arquivos_exclusivos": 38,
+      "arquivos_compartilhados": 6,
+      "gates": [
+        "pnpm install --lockfile-only",
+        "pnpm typecheck",
+        "pnpm test:channels"
+      ]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-G03-001",
+      "result": "PASS",
+      "evidence": "Roteiro operacional de G-04 formalizado em G-03-RECONSTRUCTION.md com comandos, ordem de execucao e isolamento em worktree secundario."
+    },
+    {
+      "ac_id": "AC-G03-002",
+      "result": "PASS",
+      "evidence": "100% dos 149 arquivos com alteracoes mapeados sem ambiguidade entre os 4 checkpoints (138 exclusivos + 11 compartilhados)."
+    },
+    {
+      "ac_id": "AC-G03-003",
+      "result": "PASS",
+      "evidence": "Mapeamento cirurgico de hunks dos 11 arquivos compartilhados validado contra necessidades de compilacao de cada checkpoint."
+    },
+    {
+      "ac_id": "AC-G03-004",
+      "result": "PASS",
+      "evidence": "Regeneracao deterministica de lockfile via pnpm install --lockfile-only estabelecida como regra inviolavel para commits de codigo."
+    },
+    {
+      "ac_id": "AC-G03-005",
+      "result": "PASS",
+      "evidence": "Estrategia de execucao em worktree temporario estéril garante fail-closed e integridade incondicional do working tree original."
+    },
+    {
+      "ac_id": "AC-G03-006",
+      "result": "PASS",
+      "evidence": "Manifest canônico G-03-EVIDENCE.json estruturado e validado sintaticamente."
+    }
+  ],
+  "limitations": [
+    "G-03 e uma etapa de planejamento e especificacao tecnica; nenhuma alteracao de branch ou git commit foi executada.",
+    "Os debitos tecnicos da Iteracao 4 (senhas em migrations, constraints CHECK, leases de worker) serao isolados no Checkpoint 4 e tratados na esteira CH-00..CH-12."
+  ],
+  "executor": "Gemini 3.8",
+  "reviewer": "Agente QA Independente & Agente SRE/Security",
+  "decision": "ACCEPTED"
+}

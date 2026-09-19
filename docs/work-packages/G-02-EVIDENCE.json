@@ -1,0 +1,50 @@
+{
+  "package_id": "G-02",
+  "name": "Documentos Canonicos de Governanca do Projeto",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "timestamp": "2026-09-19T05:38:00Z",
+  "baseline_g00": {
+    "snapshot_path": "/Users/franciscotaveira.ads/Downloads/FT/.chat-sales-recovery/G-00/20260919T045737Z",
+    "sha256sum_digest": "5e6676ee488477242081a2662ed743b538e39c79eafe795862ee3233a4962dbc",
+    "status": "ACCEPTED"
+  },
+  "metrics": {
+    "documentos_governanca_total": 15,
+    "documentos_revisados": 15,
+    "discrepancias_encontradas": 0
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-G02-001",
+      "result": "PASS",
+      "evidence": "15 documentos canonicos em docs/project/ auditados quanto a integridade referencial, alinhamento de escopo e semantica de estados."
+    },
+    {
+      "ac_id": "AC-G02-002",
+      "result": "PASS",
+      "evidence": "EXECUTION_BOARD.md atualizado com estado factual comprovado (G-00 ACCEPTED, G-01 ACCEPTED, G-02 ACCEPTED, G-03 READY)."
+    },
+    {
+      "ac_id": "AC-G02-003",
+      "result": "PASS",
+      "evidence": "EVIDENCE_INDEX.md atualizado indexando manifests formais EV-G00-001-v3.json, G-01-EVIDENCE.json e G-02-EVIDENCE.json."
+    },
+    {
+      "ac_id": "AC-G02-004",
+      "result": "PASS",
+      "evidence": "Zero divergencias entre o inventario de 149 arquivos de G-01 e os limites documentados em docs/project/."
+    },
+    {
+      "ac_id": "AC-G02-005",
+      "result": "PASS",
+      "evidence": "G-02-EVIDENCE.json emitido, estruturado e validado sintaticamente."
+    }
+  ],
+  "limitations": [
+    "G-02 atua exclusivamente sobre a camada documental e de governanca em docs/.",
+    "As vulnerabilidades operacionais identificadas na Iteracao 4 permanecem isoladas e formalmente registradas no RISK_REGISTER.md para saneamento durante a esteira CH-00..CH-12."
+  ],
+  "executor": "Gemini 3.8",
+  "reviewer": "Agente QA Independente & Agente SRE/Security",
+  "decision": "ACCEPTED"
+}

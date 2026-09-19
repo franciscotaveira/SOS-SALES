@@ -1,0 +1,80 @@
+{
+  "package_id": "CH-01",
+  "name": "RLS do Worker Fail-Closed e Saneamento da Migration 005",
+  "timestamp": "2026-09-19T06:31:00Z",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH01-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container"
+  },
+  "metrics": {
+    "test_file": "packages/database/src/__tests__/worker-rls-fail-closed.test.ts",
+    "total_assertions": 16,
+    "assertions_passed": 16,
+    "assertions_failed": 0,
+    "total_test_files_monorepo": 23,
+    "total_assertions_monorepo": 287,
+    "rls_roles_tested": ["sos_worker_user", "sos_app_user", "sos_migration_owner"],
+    "tables_validated": [
+      "channel_instances",
+      "contacts",
+      "commercial_threads",
+      "messages",
+      "provider_credentials",
+      "provider_delivery_events",
+      "workspaces",
+      "channel_webhook_inbox",
+      "outbound_commands"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH01-001",
+      "result": "PASS",
+      "evidence": "Consultas sob sos_worker_user com app.current_workspace_id nulo retornam 0 linhas em contacts, threads, messages, channels, credentials, delivery_events e workspaces."
+    },
+    {
+      "ac_id": "AC-CH01-002",
+      "result": "PASS",
+      "evidence": "Sessao sob sos_worker_user com app.current_workspace_id = wsA acessa wsA e oculta/rejeita mutacoes em wsB (segregacao cross-tenant estrita comprovada)."
+    },
+    {
+      "ac_id": "AC-CH01-003",
+      "result": "PASS",
+      "evidence": "Polling global (sem workspace) em inbox e outbox restrito a itens pendentes/falhos/expirados; itens finalizados (processed, sent, dead_letter, reconciliation_required) permanecem invisiveis."
+    },
+    {
+      "ac_id": "AC-CH01-004",
+      "result": "PASS",
+      "evidence": "Tentativa de atualizar status para processed ou sent sem app.current_workspace_id e abortada por violacao de WITH CHECK policy."
+    },
+    {
+      "ac_id": "AC-CH01-005",
+      "result": "PASS",
+      "evidence": "Recuperacao de lease expirada em processing quando retry_count = max_retries reivindicada com sucesso via LEAST(retry_count + 1, max_retries) sem violar check_inbox_retry_limit."
+    },
+    {
+      "ac_id": "AC-CH01-006",
+      "result": "PASS",
+      "evidence": "Transicoes terminais para dead_letter e reconciliation_required no limite max_retries concluidas com sucesso."
+    },
+    {
+      "ac_id": "AC-CH01-007",
+      "result": "PASS",
+      "evidence": "Catalogo pg_catalog confirma que sos_worker_user nao possui privilegio de DELETE em nenhuma tabela do schema."
+    }
+  ],
+  "limitations": [
+    "Fencing de leases contra workers concorrentes em nos distintos sera consolidado no pacote CH-02.",
+    "Reconciliacao de status ambiguo com provedores externos HTTP sera consolidada no pacote CH-03."
+  ],
+  "executor": "Gemini 3.8",
+  "reviewer": "Agente SRE & Security Independente",
+  "decision": "ACCEPTED"
+}

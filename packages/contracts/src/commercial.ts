@@ -24,13 +24,35 @@ export type AttributionSource = z.infer<typeof AttributionSourceEnum>;
 export const ContactSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
-  phoneNumber: z.string().regex(/^\+[1-9]\d{1,14}$/, "E.164 phone format required"),
-  displayName: z.string().optional(),
-  avatarUrl: z.string().url().optional(),
+  phoneE164: z.string().regex(/^\+[1-9]\d{6,14}$/, "E.164 phone format required"),
+  phoneNumber: z.string().regex(/^\+[1-9]\d{6,14}$/, "E.164 phone format required").optional(),
+  name: z.string().nullable().optional(),
+  displayName: z.string().nullable().optional(),
+  avatarUrl: z.string().url().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
 export type Contact = z.infer<typeof ContactSchema>;
+
+export const CommercialThreadStatusEnum = z.enum([
+  "active",
+  "waiting_client",
+  "waiting_human",
+  "closed",
+]);
+export type CommercialThreadStatus = z.infer<typeof CommercialThreadStatusEnum>;
+
+export const CommercialThreadSchema = z.object({
+  id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  channelInstanceId: z.string().uuid(),
+  contactId: z.string().uuid(),
+  status: CommercialThreadStatusEnum.default("active"),
+  lastMessageAt: z.string().datetime(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type CommercialThread = z.infer<typeof CommercialThreadSchema>;
 
 export const CommercialJourneySchema = z.object({
   id: z.string().uuid(),

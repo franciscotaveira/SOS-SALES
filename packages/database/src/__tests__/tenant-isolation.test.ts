@@ -1,20 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Pool } from "pg";
+import { createTestDatabasePools, runSafeNegativeDdlTest } from "../test-support";
 
 describe("Tenant Isolation & Row Level Security (RLS) Negative Tests", () => {
-  // Migration owner pool for test setup
-  const ownerPool = new Pool({
-    connectionString:
-      process.env.MIGRATION_DATABASE_URL ||
-      "postgresql://sos_migration_owner:sos_migration_secret_2026@localhost:55440/sos_sales_v3?sslmode=disable",
-  });
-
-  // Restricted application pool (must strictly obey RLS)
-  const appPool = new Pool({
-    connectionString:
-      process.env.DATABASE_URL ||
-      "postgresql://sos_app_user:sos_app_secret_2026@localhost:55440/sos_sales_v3?sslmode=disable",
-  });
+  // Test pools strictly isolated to sos_sales_v3_test database
+  const { appPool, ownerPool } = createTestDatabasePools();
 
   let workspaceAId: string;
   let workspaceBId: string;
@@ -61,17 +50,9 @@ describe("Tenant Isolation & Row Level Security (RLS) Negative Tests", () => {
   });
 
   afterAll(async () => {
-    try {
-      if (workspaceAId && workspaceBId) {
-        await ownerPool.query("ALTER TABLE audit_events DISABLE TRIGGER trg_audit_events_immutable;");
-        await ownerPool.query("DELETE FROM audit_events WHERE workspace_id IN ($1, $2)", [workspaceAId, workspaceBId]);
-        await ownerPool.query("ALTER TABLE audit_events ENABLE TRIGGER trg_audit_events_immutable;");
-        await ownerPool.query("DELETE FROM workspaces WHERE id IN ($1, $2)", [workspaceAId, workspaceBId]);
-      }
-    } finally {
-      await ownerPool.end();
-      await appPool.end();
-    }
+    // Isolated test database: ZERO DISABLE TRIGGER calls. Audit trigger remains active 100% of the time.
+    await ownerPool.end();
+    await appPool.end();
   });
 
   it("should fail-closed when app.current_workspace_id is not set (returns 0 rows)", async () => {
@@ -172,16 +153,20 @@ describe("Tenant Isolation & Row Level Security (RLS) Negative Tests", () => {
     }
   });
 
-  it("should deny DDL execution for sos_app_user (cannot drop or alter tables)", async () => {
+  it("should deny DDL execution for sos_app_user using runSafeNegativeDdlTest (cannot drop or alter tables)", async () => {
     const client = await appPool.connect();
     try {
       await expect(
-        client.query("CREATE TABLE public.attacker_table (id INT);")
+        runSafeNegativeDdlTest(client, "CREATE TABLE public.attacker_table (id INT);")
       ).rejects.toThrow(/permission denied/i);
 
       await expect(
-        client.query("DROP TABLE public.workspaces;")
+        runSafeNegativeDdlTest(client, "DROP TABLE public.workspaces;")
       ).rejects.toThrow(/must be owner/i);
+
+      // Verify that workspaces table remains completely intact and unaffected
+      const checkRes = await client.query("SELECT to_regclass('public.workspaces') as tbl;");
+      expect(checkRes.rows[0].tbl).toBe("workspaces");
     } finally {
       client.release();
     }

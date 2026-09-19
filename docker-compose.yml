@@ -47,9 +47,13 @@ services:
       PORT_API: 4400
       API_HOST: 0.0.0.0
       DATABASE_URL: postgresql://sos_app_user:sos_app_secret_2026@postgres:5432/${POSTGRES_DB:-sos_sales_v3}?sslmode=disable
+      INGRESS_DATABASE_URL: postgresql://sos_ingress_user:sos_ingress_secret_2026@postgres:5432/${POSTGRES_DB:-sos_sales_v3}?sslmode=disable
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: info
       OTEL_SERVICE_NAME: sos-sales-api
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-local-jwt}
+      AUTH_ISSUER: ${AUTH_ISSUER:-sos-sales-v3}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-sos-sales-api}
       JWT_SECRET: ${JWT_SECRET}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_JWKS_URI: ${SUPABASE_JWKS_URI:-}
@@ -77,10 +81,13 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://sos_app_user:sos_app_secret_2026@postgres:5432/${POSTGRES_DB:-sos_sales_v3}?sslmode=disable
+      WORKER_DATABASE_URL: postgresql://sos_worker_user:sos_worker_secret_2026@postgres:5432/${POSTGRES_DB:-sos_sales_v3}?sslmode=disable
+      DATABASE_URL: postgresql://sos_worker_user:sos_worker_secret_2026@postgres:5432/${POSTGRES_DB:-sos_sales_v3}?sslmode=disable
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: info
       OTEL_SERVICE_NAME: sos-sales-worker
+      APP_MASTER_KEY: ${APP_MASTER_KEY:-}
+      MASTER_ENCRYPTION_KEY: ${APP_MASTER_KEY:-}
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/worker-healthy || exit 1"]
       interval: 5s
@@ -112,6 +119,29 @@ services:
         condition: service_healthy
     networks:
       - sos-v3-network
+
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: sos-v3-waha
+    restart: unless-stopped
+    profiles:
+      - waha
+    environment:
+      WHATSAPP_HOOK_URL: http://api:4400/webhooks/whatsapp
+      WHATSAPP_HOOK_EVENTS: message,message.ack,session.status
+      WHATSAPP_API_KEY: ${WAHA_API_KEY:-sos_waha_secret_key_2026}
+      WAHA_ZIP_LOGS: "false"
+      WAHA_LOG_LEVEL: info
+    ports:
+      - "${PORT_WAHA:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/server/version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sos-v3-network
+
 
 networks:
   sos-v3-network:

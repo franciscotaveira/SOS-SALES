@@ -1,0 +1,81 @@
+{
+  "package_id": "CH-07",
+  "name": "SSRF Guard e Download Seguro de Mídia",
+  "timestamp": "2026-09-19T08:00:00Z",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH07-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container",
+    "local_redis": "localhost:6389"
+  },
+  "metrics": {
+    "test_files": [
+      "packages/application/src/__tests__/http-operational-security.test.ts",
+      "packages/application/src/__tests__/channel-adapters.test.ts",
+      "packages/application/src/__tests__/channel-gateway.test.ts"
+    ],
+    "total_assertions": 79,
+    "assertions_passed": 79,
+    "assertions_failed": 0,
+    "total_test_files_monorepo": 27,
+    "total_assertions_monorepo": 347,
+    "security_capabilities_verified": [
+      "SSRF prevention covering all reserved IPv4 ranges (CGNAT 100.64.0.0/10, Benchmarking 198.18.0.0/15, IETF 192.0.0.0/24)",
+      "SSRF prevention covering IPv6 translation (64:ff9b::/96) and documentation (2001:db8::/32)",
+      "Strict blocking of cloud metadata services (169.254.169.254, metadata.google.internal, instance-data)",
+      "Detection of alternative IP representations (decimal integers, octals with leading zeros, hex, URL-encoded hex/decimal, non-4-segment dotted IPs)",
+      "DNS resolution lookup verification across all resolved addresses before connection establishment",
+      "Manual HTTP redirect following up to maxRedirects (3) with mandatory destination re-validation per hop",
+      "Safe media streaming with hard byte capping (maxSizeBytes), immediate socket abort/cancellation and zero memory bloat",
+      "Pre-flight Content-Length check rejecting oversized payloads before reading response body",
+      "MIME type allowlist enforcement protecting against unauthorized file types",
+      "Binary file signature (magic bytes) verification for JPEG, PNG, GIF, WebP, PDF, OGG, MP4, MP3",
+      "Immediate rejection of dangerous formats (Windows PE / MZ, Linux ELF, HTML documents, and embedded scripts)",
+      "Real-time incremental SHA-256 hash generation during stream consumption",
+      "Elimination of ambient NODE_ENV === 'test' bypasses in adapters in favor of explicit allowLocalTest parameter"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH07-001",
+      "result": "PASS",
+      "evidence": "ssrf-guard.ts implementa bloqueio a faixas CGNAT, benchmarking, translation, documentacao e deteccao precisa de formatos alternativos de IP sem falso positivo."
+    },
+    {
+      "ac_id": "AC-CH07-002",
+      "result": "PASS",
+      "evidence": "safeFetchWithSsrfGuard re-valida rigorosamente cada salto de redirecionamento HTTP 3xx e bloqueia qualquer desvio para loopback ou cloud metadata."
+    },
+    {
+      "ac_id": "AC-CH07-003",
+      "result": "PASS",
+      "evidence": "downloadMediaStream e downloadMediaToStream executam streaming com controle estrito de teto (maxSizeBytes) e abort imediato ao exceder cota."
+    },
+    {
+      "ac_id": "AC-CH07-004",
+      "result": "PASS",
+      "evidence": "verifyMediaMagicBytes valida assinaturas binarias legitimas e bloqueia payloads perigosos (executaveis PE/ELF, HTML e scripts) disfarçados de imagem."
+    },
+    {
+      "ac_id": "AC-CH07-005",
+      "result": "PASS",
+      "evidence": "WahaAdapter e utilitarios exigem explicitamente allowLocalTest: true, eliminando checagens silenciosas de NODE_ENV."
+    },
+    {
+      "ac_id": "AC-CH07-006",
+      "result": "PASS",
+      "evidence": "Suíte hermética com 26 testes em http-operational-security.test.ts e 347 testes no monorepo aprovados com 100% de sucesso."
+    }
+  ],
+  "verification_commands": [
+    "pnpm vitest run packages/application/src/__tests__/http-operational-security.test.ts",
+    "pnpm turbo build typecheck",
+    "pnpm ci:gate"
+  ]
+}

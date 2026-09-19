@@ -1,0 +1,82 @@
+{
+  "package_id": "CH-04",
+  "name": "Ingress Seguro e Verificação Criptográfica",
+  "timestamp": "2026-09-19T07:15:00Z",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH04-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container"
+  },
+  "metrics": {
+    "test_files": [
+      "apps/api/src/__tests__/webhook-ingress.test.ts",
+      "apps/api/src/__tests__/ingress-operational-security.test.ts"
+    ],
+    "total_assertions": 24,
+    "assertions_passed": 24,
+    "assertions_failed": 0,
+    "total_test_files_monorepo": 25,
+    "total_assertions_monorepo": 312,
+    "security_capabilities_verified": [
+      "Fastify raw body buffer capture up to 512 KB without mutation",
+      "Meta WABA HMAC-SHA256 signature verification in constant time",
+      "WAHA constant-time token verification via SHA-256 digests",
+      "Meta GET challenge handshake with independent verify_token validation",
+      "Rejection with HTTP 403 when verify_token matches endpointToken or app_secret",
+      "Rejection with HTTP 401 and zero persistence for forged or tampered payloads",
+      "AES-256-GCM envelope encryption with workspace:channel:hash AAD",
+      "Atomic inbox insertion and replay deduplication under sos_ingress_user",
+      "Strict token redaction in RFC 9457 problem details, URLs, and server logs",
+      "Bounded two-tier in-memory rate limiter with max 10,000 keys and LRU eviction"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH04-001",
+      "result": "PASS",
+      "evidence": "GET /v1/webhooks/whatsapp/:endpointToken valida query params com Zod, valida hash do verify_token independente em tempo constante e responde HTTP 200 text/plain com o challenge."
+    },
+    {
+      "ac_id": "AC-CH04-002",
+      "result": "PASS",
+      "evidence": "Tentativas de validacao de challenge com tokens invalidos, ou reutilizando endpointToken ou app_secret, sao rejeitadas categoricamente com HTTP 403 Forbidden."
+    },
+    {
+      "ac_id": "AC-CH04-003",
+      "result": "PASS",
+      "evidence": "POST /v1/webhooks/whatsapp/:endpointToken valida assinaturas HMAC-SHA256 (Meta WABA) e chaves de api (WAHA), rejeitando assinaturas forjadas ou payloads adulterados com HTTP 401 e zero persistencia."
+    },
+    {
+      "ac_id": "AC-CH04-004",
+      "result": "PASS",
+      "evidence": "Webhooks autenticos sao cifrados com AES-256-GCM + AAD e persistidos atomicamente em channel_webhook_inbox sob o papel restrito sos_ingress_user."
+    },
+    {
+      "ac_id": "AC-CH04-005",
+      "result": "PASS",
+      "evidence": "Replay attacks e entregas duplicadas de webhooks retornam HTTP 200 com status 'duplicate' sem gerar linhas adicionais no banco de dados."
+    },
+    {
+      "ac_id": "AC-CH04-006",
+      "result": "PASS",
+      "evidence": "endpointToken e estritamente redigido como [redacted] em todas as respostas de erro RFC 9457 e nos logs de execucao do Fastify em erros de parse ou payload excessivo."
+    },
+    {
+      "ac_id": "AC-CH04-007",
+      "result": "PASS",
+      "evidence": "Limitador de taxa em dois niveis protege IP antes do lookup de banco e canal apos a resolucao, com cardinalidade estritamente limitada a 10.000 chaves."
+    }
+  ],
+  "limitations": [
+    "Rate limiting distribuido em Redis compartilhado entre replicas de API sera consolidado no pacote CH-05.",
+    "Restricao de trustProxy para blocos CIDR de proxies reversos confiaveis sera consolidada no pacote CH-05."
+  ],
+  "executor": "Gemini 3.8 / MCT OS Kernel v2.0",
+  "reviewer": "Agente SRE & Security Independente"
+}

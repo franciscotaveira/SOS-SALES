@@ -1,144 +1,70 @@
-:root {
-  /* Primitive Palette Tokens */
-  --color-action: #00A884;
-  --color-action-hover: #008f70;
-  --color-operational: #2563EB;
-  --color-operational-hover: #1d4ed8;
-  --color-ai: #7C3AED;
-  --color-ai-glow: rgba(124, 58, 237, 0.25);
-  --color-warning: #D97706;
-  --color-danger: #DC2626;
+/* SOS Sales V3 — Canonical Web Stylesheet (MCT OS v2.0) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "@sos-sales/ui/tokens.css";
 
-  /* Dark Theme Surfaces (Sovereign Deep Navy) */
-  --bg-canvas: #070B19;
-  --bg-surface: #0E162B;
-  --bg-surface-elevated: #152243;
-  --bg-surface-glass: rgba(14, 22, 43, 0.75);
-  
-  /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-default: rgba(255, 255, 255, 0.14);
-  --border-focus: var(--color-action);
-
-  /* Typography */
-  --text-primary: #F8FAFC;
-  --text-secondary: #94A3B8;
-  --text-muted: #64748B;
-  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  /* Spacing & Radii */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-full: 9999px;
-  --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-}
-
-* {
+/* ==========================================================================
+   CSS Resets & Foundational Standards
+   ========================================================================== */
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-body {
-  font-family: var(--font-sans);
-  background-color: var(--bg-canvas);
-  color: var(--text-primary);
-  min-height: 100vh;
+html, body {
+  height: 100%;
+  width: 100%;
+  font-family: var(--font-sans, "Inter", system-ui, -apple-system, sans-serif);
+  background-color: var(--bg-canvas, #F8FAFC);
+  color: var(--text-primary, #0F172A);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Glass Card Pattern */
-.glass-card {
-  background: var(--bg-surface-glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-glass);
-  transition: border-color 0.2s ease, transform 0.2s ease;
+#root {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-.glass-card:hover {
-  border-color: var(--border-default);
+/* ==========================================================================
+   Accessible Keyboard Navigation (Focus Rings)
+   ========================================================================== */
+:focus-visible {
+  outline: 2px solid var(--color-action, #00A884);
+  outline-offset: 2px;
 }
 
-/* Status Badges */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+/* ==========================================================================
+   Reduced Motion
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-.badge-ready {
-  background: rgba(0, 168, 132, 0.15);
-  color: var(--color-action);
-  border: 1px solid rgba(0, 168, 132, 0.3);
+/* ==========================================================================
+   Scrollbar Aesthetics
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.badge-operational {
-  background: rgba(37, 99, 235, 0.15);
-  color: var(--color-operational);
-  border: 1px solid rgba(37, 99, 235, 0.3);
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.badge-ai {
-  background: rgba(124, 58, 237, 0.15);
-  color: var(--color-ai);
-  border: 1px solid rgba(124, 58, 237, 0.3);
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong, #CBD5E1);
+  border-radius: 3px;
 }
 
-.badge-warning {
-  background: rgba(217, 119, 6, 0.15);
-  color: var(--color-warning);
-  border: 1px solid rgba(217, 119, 6, 0.3);
-}
-
-/* Buttons */
-.btn-primary {
-  background: var(--color-action);
-  color: #FFFFFF;
-  border: none;
-  border-radius: var(--radius-md);
-  padding: 10px 18px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transition: background-color 0.2s, transform 0.1s;
-}
-
-.btn-primary:hover {
-  background: var(--color-action-hover);
-  transform: translateY(-1px);
-}
-
-.btn-primary:active {
-  transform: translateY(0);
-}
-
-.pulse-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--color-action);
-  box-shadow: 0 0 10px var(--color-action);
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 168, 132, 0.7); }
-  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(0, 168, 132, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 168, 132, 0); }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted, #94A3B8);
 }

@@ -1,0 +1,211 @@
+{
+  "package_id": "G-01",
+  "name": "Inventario Canônico e Rebaseline do Projeto",
+  "commit_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+  "timestamp": "2026-09-19T05:25:33Z",
+  "baseline_g00": {
+    "snapshot_path": "/Users/franciscotaveira.ads/Downloads/FT/.chat-sales-recovery/G-00/20260919T045737Z",
+    "sha256sum_digest": "5e6676ee488477242081a2662ed743b538e39c79eafe795862ee3233a4962dbc",
+    "status": "ACCEPTED"
+  },
+  "metrics": {
+    "arquivos_encontrados": 149,
+    "arquivos_classificados": 149,
+    "arquivos_tracked_modificados": 32,
+    "arquivos_staged": 0,
+    "arquivos_untracked": 117,
+    "arquivos_ignorados_registrados": 38
+  },
+  "contagem_por_pacote": {
+    "Governanca": 19,
+    "Iteracao_2.7": 17,
+    "Iteracao_3": 64,
+    "Iteracao_4": 38,
+    "Shared": 11
+  },
+  "contagem_por_acao": {
+    "KEEP": 116,
+    "REWORK": 22,
+    "SPLIT_HUNKS": 11,
+    "MOVE_TO_GOVERNANCE": 0,
+    "DISCARD_CANDIDATE": 0
+  },
+  "shared_files": [
+    {
+      "path": ".env.example",
+      "hunks_count": 1,
+      "packages": [
+        "Iteracao_2.7",
+        "Iteracao_4"
+      ],
+      "strategy": "Hunk Auth em CP-2.7; Hunk Master Key/Canais em CP-4"
+    },
+    {
+      "path": ".gitignore",
+      "hunks_count": 2,
+      "packages": [
+        "Governanca",
+        "Iteracao_2.7",
+        "Iteracao_3"
+      ],
+      "strategy": "Hunks antecipados para CP-GOV para manter repositório limpo"
+    },
+    {
+      "path": "apps/api/src/index.ts",
+      "hunks_count": 4,
+      "packages": [
+        "Iteracao_2.7",
+        "Iteracao_4"
+      ],
+      "strategy": "Hunk app.ready() em CP-2.7; Webhook routes e Ingress Pool em CP-4"
+    },
+    {
+      "path": "docker-compose.yml",
+      "hunks_count": 3,
+      "packages": [
+        "Iteracao_2.7",
+        "Iteracao_4"
+      ],
+      "strategy": "Envs de Auth em CP-2.7; Ingress/Worker URLs e Service Worker em CP-4"
+    },
+    {
+      "path": "package.json",
+      "hunks_count": 3,
+      "packages": [
+        "Iteracao_2.7",
+        "Iteracao_3"
+      ],
+      "strategy": "Scripts test:db:* e docker:http em CP-2.7; Script test:browser em CP-3"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "hunks_count": 1,
+      "packages": [
+        "Iteracao_2.7",
+        "Iteracao_3",
+        "Iteracao_4"
+      ],
+      "strategy": "Regenerado deterministicamente via pnpm install --lockfile-only a cada checkpoint"
+    },
+    {
+      "path": "packages/database/package.json",
+      "hunks_count": 1,
+      "packages": [
+        "Iteracao_2.7",
+        "Iteracao_4"
+      ],
+      "strategy": "Dependencia @types/pg em devDependencies consolidada em CP-2.7"
+    },
+    {
+      "path": "packages/database/src/client.ts",
+      "hunks_count": 4,
+      "packages": [
+        "Iteracao_2.7",
+        "Iteracao_4"
+      ],
+      "strategy": "Pool app e closeAllPools em CP-2.7; Ingress/Worker pools e lookups em CP-4"
+    },
+    {
+      "path": "packages/database/src/index.ts",
+      "hunks_count": 2,
+      "packages": [
+        "Iteracao_2.7",
+        "Iteracao_4"
+      ],
+      "strategy": "Export test-support em CP-2.7; Exports crypto-payload e secret-resolver em CP-4"
+    },
+    {
+      "path": "packages/observability/src/logger.ts",
+      "hunks_count": 2,
+      "packages": [
+        "Iteracao_2.7",
+        "Iteracao_4"
+      ],
+      "strategy": "Redaction claims/email/sub em CP-2.7; Serializers e redaction webhooks em CP-4"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "hunks_count": 1,
+      "packages": [
+        "Iteracao_4"
+      ],
+      "strategy": "Exports de channel e webhook-ingress consolidados em CP-4"
+    }
+  ],
+  "unknowns": [
+    {
+      "id": "U-01",
+      "title": "Aplicação de Migration 005 Remota",
+      "status": "UNKNOWN/BLOCKED_EXTERNAL",
+      "evidence": "Nenhuma evidencia local de execucao em ambiente persistente; banco V3 e efemero/descartavel."
+    },
+    {
+      "id": "U-02",
+      "title": "Supabase JWKS de Homologação (EXT-01)",
+      "status": "BLOCKED_EXTERNAL",
+      "evidence": "Ambiente remoto real nao disponivel localmente; testes locais cobrem via keystore mock."
+    },
+    {
+      "id": "U-03",
+      "title": "Contas Oficiais Meta WABA (EXT-02/EXT-03)",
+      "status": "BLOCKED_EXTERNAL",
+      "evidence": "Credenciais reais da Meta ausentes no lab; adaptadores cobertos por fixtures canonicas."
+    },
+    {
+      "id": "U-04",
+      "title": "Container WAHA em Docker Lab (EXT-05)",
+      "status": "PLANNED",
+      "evidence": "Profile Docker waha opcional planejado para pacote CH-09 sem acoplar suite hermetica."
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-G01-001",
+      "result": "PASS",
+      "evidence": "100% dos 32 arquivos tracked modificados foram catalogados e classificados individualmente em G-01-INVENTORY.md."
+    },
+    {
+      "ac_id": "AC-G01-002",
+      "result": "PASS",
+      "evidence": "100% dos 117 arquivos untracked foram catalogados e classificados individualmente em G-01-INVENTORY.md sem agrupamentos."
+    },
+    {
+      "ac_id": "AC-G01-003",
+      "result": "PASS",
+      "evidence": "Todos os 3 scripts em scripts/ (test-db-runner.ts, verify-browser-qa.mjs, verify-docker-http.mjs) foram detalhados com conteudo, consumidores e dependencias."
+    },
+    {
+      "ac_id": "AC-G01-004",
+      "result": "PASS",
+      "evidence": "Todos os 11 arquivos compartilhados receberam analise cirurgica hunk a hunk em G-01-INVENTORY.md e G-01-SEPARATION-PLAN.md."
+    },
+    {
+      "ac_id": "AC-G01-005",
+      "result": "PASS",
+      "evidence": "Todas as atribuicoes foram baseadas estritamente em inspecao de conteudo, diffs, imports, exports e relacoes com migrations/ADRs."
+    },
+    {
+      "ac_id": "AC-G01-006",
+      "result": "PASS",
+      "evidence": "Apenas os 4 arquivos autorizados em docs/work-packages/ (G-01-INVENTORY.md, G-01-SEPARATION-PLAN.md, G-01-GATES.md, G-01-EVIDENCE.json) foram criados/atualizados."
+    },
+    {
+      "ac_id": "AC-G01-007",
+      "result": "PASS",
+      "evidence": "Zero operacoes Git mutaveis executadas; git status --porcelain=v2 reflete estritamente o working tree original acrescido apenas dos documentos de saida autorizados."
+    },
+    {
+      "ac_id": "AC-G01-008",
+      "result": "PASS",
+      "evidence": "G-01-SEPARATION-PLAN.md define reconstrucao progressiva em branch isolada com regeneracao de lockfile e rollback garantido para o snapshot G-00."
+    }
+  ],
+  "limitations": [
+    "O pacote G-01 realizou exclusivamente analise e documentacao; codigo-fonte, migrations e configurações nao foram alterados.",
+    "A migracao 005 foi classificada como REWORK para saneamento em CH-01 devido a presenca de senhas em plain text e restricoes CHECK com falhas operacionais conhecidas.",
+    "A execucao completa das suites de teste funcionais e reconstrucao de branch sera realizada estritamente durante o pacote G-04."
+  ],
+  "executor": "Gemini 3.8",
+  "reviewer": "Agente QA Independente & Agente SRE/Security",
+  "decision": "IMPLEMENTED_PENDING_ORCHESTRATOR_ACCEPTANCE"
+}

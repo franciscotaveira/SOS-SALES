@@ -1,0 +1,182 @@
+/**
+ * SOS SALES V3 — DESIGN TOKENS CSS
+ * Canonical Light Theme Default + Dark Navy Sidebar + Dark Theme Alternative
+ */
+
+:root {
+  /* ==========================================================================
+     1. COLOR PALETTE: LIGHT THEME (CANONICAL DEFAULT)
+     ========================================================================== */
+  --bg-canvas: #F8FAFC;            /* Clean Slate 50 background */
+  --bg-surface: #FFFFFF;           /* Pure White card/panel surface */
+  --bg-surface-elevated: #F1F5F9;  /* Slate 100 for hover & table headers */
+  --bg-surface-subtle: #F8FAFC;    /* Subtle inset container */
+
+  /* Structural Dark Navy (Sidebar & Continuity Ribbon) */
+  --bg-sidebar: #0B132B;           /* Sovereign Dark Navy */
+  --bg-sidebar-hover: #152243;     /* Hover & active item */
+  --text-sidebar: #F8FAFC;         /* Sidebar high-contrast text */
+  --text-sidebar-muted: #94A3B8;   /* Sidebar secondary text */
+
+  /* Typography & High-Contrast Ink (WCAG 2.2 AA compliant) */
+  --text-primary: #0F172A;         /* Slate 900 (14.1:1 on #FFFFFF) */
+  --text-secondary: #475569;       /* Slate 600 (5.8:1 on #FFFFFF) */
+  --text-muted: #64748B;           /* Slate 500 (4.6:1 on #FFFFFF) */
+  --text-inverse: #FFFFFF;         /* Pure White on action buttons */
+
+  /* Precision Borders & Lines */
+  --border-subtle: #F1F5F9;        /* Inset divider */
+  --border-default: #E2E8F0;       /* Slate 200 container border */
+  --border-focus: #008069;         /* Action green focus ring */
+
+  /* Operational Semantic Accents */
+  --color-action: #008069;         /* WhatsApp Green (4.89:1 on #FFFFFF - WCAG 2.2 AA compliant) */
+  --color-action-hover: #006E5A;   /* 6.22:1 on #FFFFFF */
+  --color-action-subtle: #E6F4F1;
+  --color-action-border: #80C0B4;
+  --color-action-accent: #00A884;  /* Vibrant accent for dark surfaces */
+
+  --color-operational: #2563EB;    /* Blue — attendance & navigation */
+  --color-operational-hover: #1D4ED8;
+  --color-operational-subtle: #EFF6FF;
+  --color-operational-border: #BFDBFE;
+
+  --color-ai: #7C3AED;             /* Purple — Copilot & AI evidence */
+  --color-ai-hover: #6D28D9;
+  --color-ai-subtle: #F5F3FF;
+  --color-ai-border: #DDD6FE;
+
+  --color-warning: #D97706;        /* Amber — moderate SLA & pending human action */
+  --color-warning-hover: #B45309;
+  --color-warning-subtle: #FFFBEB;
+  --color-warning-border: #FDE68A;
+
+  --color-danger: #DC2626;         /* Red — SLA breach, 401/403, network error */
+  --color-danger-hover: #B91C1C;
+  --color-danger-subtle: #FEF2F2;
+  --color-danger-border: #FECACA;
+
+  /* ==========================================================================
+     2. TYPOGRAPHY
+     ========================================================================== */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --font-size-xs: 0.75rem;    /* 12px */
+  --font-size-sm: 0.875rem;   /* 14px */
+  --font-size-base: 1rem;     /* 16px */
+  --font-size-lg: 1.125rem;   /* 18px */
+  --font-size-xl: 1.25rem;    /* 20px */
+  --font-size-2xl: 1.5rem;    /* 24px */
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ==========================================================================
+     3. SPACING, RADII & SHADOWS
+     ========================================================================== */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+
+  /* Transition timings */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==========================================================================
+   4. ALTERNATIVE DARK THEME (OPTIONAL SCOPED TO [data-theme="dark"])
+   ========================================================================== */
+[data-theme="dark"] {
+  --bg-canvas: #070B19;
+  --bg-surface: #0E162B;
+  --bg-surface-elevated: #152243;
+  --bg-surface-subtle: #090E1F;
+
+  --bg-sidebar: #050813;
+  --bg-sidebar-hover: #0E162B;
+  --text-sidebar: #F8FAFC;
+  --text-sidebar-muted: #94A3B8;
+
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --text-inverse: #070B19;
+
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.2);
+
+  --color-action-subtle: rgba(0, 168, 132, 0.15);
+  --color-action-border: rgba(0, 168, 132, 0.3);
+
+  --color-operational-subtle: rgba(37, 99, 235, 0.15);
+  --color-operational-border: rgba(37, 99, 235, 0.3);
+
+  --color-ai-subtle: rgba(124, 58, 237, 0.15);
+  --color-ai-border: rgba(124, 58, 237, 0.3);
+
+  --color-warning-subtle: rgba(217, 119, 6, 0.15);
+  --color-warning-border: rgba(217, 119, 6, 0.3);
+
+  --color-danger-subtle: rgba(220, 38, 38, 0.15);
+  --color-danger-border: rgba(220, 38, 38, 0.3);
+}
+
+/* ==========================================================================
+   5. BOUNDED CONTAINERS & GLOBAL BASE
+   ========================================================================== */
+.bounded-container {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+/* Accessible focus ring */
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Skeleton animation */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-pulse {
+  animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

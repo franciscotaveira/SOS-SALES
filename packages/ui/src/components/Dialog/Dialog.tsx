@@ -1,0 +1,222 @@
+import { useEffect, useRef, useId, type FC } from "react";
+import { X } from "lucide-react";
+import type { DialogProps } from "./Dialog.types";
+
+export const Dialog: FC<DialogProps> = ({
+  isOpen,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  maxWidth = "520px",
+}) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+  const idPrefix = useId();
+  const titleId = `${idPrefix}-title`;
+  const descId = `${idPrefix}-desc`;
+
+  // Focus trap & Escape listener
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Store active element to restore focus on close
+    previouslyFocusedElementRef.current = document.activeElement as HTMLElement;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+
+      if (e.key === "Tab" && dialogRef.current) {
+        const focusableElements = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusableElements.length === 0) return;
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        const isReverseTab = e.shiftKey || (e.ctrlKey && !e.altKey && !e.metaKey);
+
+        if (isReverseTab) {
+          if (document.activeElement === firstElement && lastElement) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement && firstElement) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    // Initial focus on dialog container or first button
+    const timer = setTimeout(() => {
+      if (dialogRef.current) {
+        const firstFocusable = dialogRef.current.querySelector<HTMLElement>(
+          'button, input, [tabindex]:not([tabindex="-1"])'
+        );
+        if (firstFocusable) {
+          firstFocusable.focus();
+        } else {
+          dialogRef.current.focus();
+        }
+      }
+    }, 50);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      clearTimeout(timer);
+      if (previouslyFocusedElementRef.current) {
+        previouslyFocusedElementRef.current.focus();
+      }
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "16px",
+      }}
+    >
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(11, 15, 23, 0.65)",
+          backdropFilter: "blur(4px)",
+          WebkitBackdropFilter: "blur(4px)",
+        }}
+        aria-hidden="true"
+      />
+
+      {/* Modal Dialog Content */}
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descId : undefined}
+        tabIndex={-1}
+        className="sos-dialog bounded-container"
+        style={{
+          position: "relative",
+          width: "100%",
+          maxWidth,
+          backgroundColor: "var(--bg-surface, #FFFFFF)",
+          borderRadius: "var(--radius-lg, 12px)",
+          boxShadow: "var(--shadow-lg)",
+          display: "flex",
+          flexDirection: "column",
+          maxHeight: "calc(100vh - 32px)",
+          outline: "none",
+          fontFamily: "var(--font-sans, sans-serif)",
+          zIndex: 1,
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            padding: "20px 24px",
+            borderBottom: "1px solid var(--border-default, #E2E8F0)",
+          }}
+        >
+          <div>
+            <h2
+              id={titleId}
+              style={{
+                margin: 0,
+                fontSize: "1.125rem",
+                fontWeight: 600,
+                color: "var(--text-primary, #0F172A)",
+              }}
+            >
+              {title}
+            </h2>
+            {description && (
+              <p
+                id={descId}
+                style={{
+                  margin: "4px 0 0 0",
+                  fontSize: "0.875rem",
+                  color: "var(--text-secondary, #475569)",
+                }}
+              >
+                {description}
+              </p>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar diálogo"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--text-muted, #64748B)",
+              padding: "4px",
+              borderRadius: "var(--radius-sm, 6px)",
+              display: "inline-flex",
+            }}
+          >
+            <X size={20} aria-hidden="true" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div
+          style={{
+            padding: "20px 24px",
+            overflowY: "auto",
+            color: "var(--text-primary, #0F172A)",
+            fontSize: "0.875rem",
+            lineHeight: 1.5,
+          }}
+        >
+          {children}
+        </div>
+
+        {/* Footer */}
+        {footer && (
+          <div
+            style={{
+              padding: "16px 24px",
+              borderTop: "1px solid var(--border-default, #E2E8F0)",
+              backgroundColor: "var(--bg-surface-subtle, #F8FAFC)",
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: "12px",
+              borderBottomLeftRadius: "var(--radius-lg, 12px)",
+              borderBottomRightRadius: "var(--radius-lg, 12px)",
+            }}
+          >
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

@@ -3,6 +3,7 @@ import { z } from "zod";
 export const ChannelProviderEnum = z.enum([
   "meta_waba",
   "waha",
+  "evolution",
   "meta_messenger",
   "meta_instagram",
 ]);
