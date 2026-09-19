@@ -1,12 +1,19 @@
+import { execFileSync } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+
+export interface VerifyEvidenceOptions {
+  mode?: "historical" | "working-tree";
+}
 
 export interface VerificationResult {
   success: boolean;
   checkedFiles: number;
   expectedComposite: string;
   calculatedComposite: string;
+  mode: "historical" | "working-tree";
+  commitSha?: string;
   errors: string[];
   fileHashes: Array<{
     file: string;
@@ -19,7 +26,8 @@ export interface VerificationResult {
 const REPO_ROOT = path.resolve(__dirname, "..");
 
 export function verifyEvidenceDigests(
-  manifestRelativePath = "docs/work-packages/CH-09-EVIDENCE.json"
+  manifestRelativePath = "docs/work-packages/CH-09-EVIDENCE.json",
+  options: VerifyEvidenceOptions = {}
 ): VerificationResult {
   const manifestFullPath = path.join(REPO_ROOT, manifestRelativePath);
   const errors: string[] = [];
@@ -31,6 +39,7 @@ export function verifyEvidenceDigests(
       checkedFiles: 0,
       expectedComposite: "",
       calculatedComposite: "",
+      mode: options.mode || "working-tree",
       errors: [`Manifest file not found: ${manifestRelativePath}`],
       fileHashes: [],
     };
@@ -45,6 +54,7 @@ export function verifyEvidenceDigests(
       checkedFiles: 0,
       expectedComposite: "",
       calculatedComposite: "",
+      mode: options.mode || "working-tree",
       errors: [`Failed to parse JSON manifest ${manifestRelativePath}: ${err.message}`],
       fileHashes: [],
     };
@@ -57,10 +67,21 @@ export function verifyEvidenceDigests(
       checkedFiles: 0,
       expectedComposite: "",
       calculatedComposite: "",
+      mode: options.mode || "working-tree",
       errors: [`Manifest ${manifestRelativePath} is missing 'provenance' object`],
       fileHashes: [],
     };
   }
+
+  const commitSha = manifest.commit_sha || provenance.checkpoint_sha;
+  const isHistoricalManifest =
+    manifest.package_id === "CH-09" ||
+    manifest.verification_mode === "historical" ||
+    manifest.mode === "historical" ||
+    Boolean(options.mode === "historical");
+
+  const mode: "historical" | "working-tree" =
+    options.mode || (isHistoricalManifest ? "historical" : "working-tree");
 
   const scopedCodeSha256: Record<string, string> = provenance.scoped_code_sha256 || {};
   const rawFiles: string[] =
@@ -105,7 +126,7 @@ export function verifyEvidenceDigests(
       continue;
     }
 
-    // Check symlink escape
+    // Check symlink escape if file exists locally
     if (fs.existsSync(fullPath)) {
       try {
         const realPath = fs.realpathSync(fullPath);
@@ -123,9 +144,65 @@ export function verifyEvidenceDigests(
     validatedFiles.push(relativePath);
   }
 
+  // If in historical mode, validate commit exists and is an ancestor of HEAD using safe non-shell git invocation
+  if (mode === "historical") {
+    if (!commitSha || !/^[0-9a-fA-F]{40}$/.test(commitSha)) {
+      errors.push(
+        `Historical mode requires a valid 40-character commit_sha in manifest (found: ${commitSha || "none"})`
+      );
+      return {
+        success: false,
+        checkedFiles: 0,
+        expectedComposite,
+        calculatedComposite: "",
+        mode,
+        commitSha,
+        errors,
+        fileHashes: [],
+      };
+    }
+
+    try {
+      execFileSync("git", ["cat-file", "-e", `${commitSha}^{commit}`], {
+        cwd: REPO_ROOT,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch {
+      errors.push(`Commit ${commitSha} does not exist in git history`);
+      return {
+        success: false,
+        checkedFiles: 0,
+        expectedComposite,
+        calculatedComposite: "",
+        mode,
+        commitSha,
+        errors,
+        fileHashes: [],
+      };
+    }
+
+    try {
+      execFileSync("git", ["merge-base", "--is-ancestor", commitSha, "HEAD"], {
+        cwd: REPO_ROOT,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch {
+      errors.push(`Commit ${commitSha} is not an ancestor of current HEAD`);
+      return {
+        success: false,
+        checkedFiles: 0,
+        expectedComposite,
+        calculatedComposite: "",
+        mode,
+        commitSha,
+        errors,
+        fileHashes: [],
+      };
+    }
+  }
+
   // 3. Enforce deterministic lexicographical sorting for scoped-digest-v1
   const sortedFiles = [...validatedFiles].sort();
-
   const compositeHash = crypto.createHash("sha256");
 
   for (const relativePath of sortedFiles) {
@@ -143,30 +220,51 @@ export function verifyEvidenceDigests(
       continue;
     }
 
-    if (!fs.existsSync(fullPath)) {
-      errors.push(`Required scoped file missing on disk: ${relativePath}`);
-      fileHashes.push({
-        file: relativePath,
-        expectedHash,
-        calculatedHash: "",
-        status: "MISSING",
-      });
-      continue;
-    }
-
     let calculatedHash = "";
-    try {
-      const buffer = fs.readFileSync(fullPath);
+    if (mode === "historical") {
+      let buffer: Buffer;
+      try {
+        buffer = execFileSync("git", ["show", `${commitSha}:${relativePath}`], {
+          cwd: REPO_ROOT,
+          maxBuffer: 20 * 1024 * 1024,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+      } catch {
+        errors.push(`Required scoped file missing at commit ${commitSha}: ${relativePath}`);
+        fileHashes.push({
+          file: relativePath,
+          expectedHash,
+          calculatedHash: "",
+          status: "MISSING",
+        });
+        continue;
+      }
       calculatedHash = crypto.createHash("sha256").update(buffer).digest("hex");
-    } catch (err: any) {
-      errors.push(`Failed to read ${relativePath}: ${err.message}`);
-      fileHashes.push({
-        file: relativePath,
-        expectedHash,
-        calculatedHash,
-        status: "FAIL",
-      });
-      continue;
+    } else {
+      if (!fs.existsSync(fullPath)) {
+        errors.push(`Required scoped file missing on disk: ${relativePath}`);
+        fileHashes.push({
+          file: relativePath,
+          expectedHash,
+          calculatedHash: "",
+          status: "MISSING",
+        });
+        continue;
+      }
+
+      try {
+        const buffer = fs.readFileSync(fullPath);
+        calculatedHash = crypto.createHash("sha256").update(buffer).digest("hex");
+      } catch (err: any) {
+        errors.push(`Failed to read ${relativePath}: ${err.message}`);
+        fileHashes.push({
+          file: relativePath,
+          expectedHash,
+          calculatedHash: "",
+          status: "FAIL",
+        });
+        continue;
+      }
     }
 
     if (calculatedHash !== expectedHash) {
@@ -207,9 +305,30 @@ export function verifyEvidenceDigests(
     checkedFiles: sortedFiles.length,
     expectedComposite,
     calculatedComposite,
+    mode,
+    commitSha: mode === "historical" ? commitSha : undefined,
     errors,
     fileHashes,
   };
+}
+
+function parseCliArgs(): { manifestPath: string; mode?: "historical" | "working-tree" } {
+  const args = process.argv.slice(2);
+  let manifestPath = "docs/work-packages/CH-09-EVIDENCE.json";
+  let mode: "historical" | "working-tree" | undefined;
+
+  for (const arg of args) {
+    if (arg.startsWith("--mode=")) {
+      const val = arg.split("=")[1];
+      if (val === "historical" || val === "working-tree") {
+        mode = val;
+      }
+    } else if (!arg.startsWith("--")) {
+      manifestPath = arg;
+    }
+  }
+
+  return { manifestPath, mode };
 }
 
 function runCli(): void {
@@ -217,10 +336,11 @@ function runCli(): void {
   console.log(" SOS SALES V3 — EVIDENCE DIGEST VERIFIER (scoped-digest-v1)");
   console.log("================================================================================");
 
-  const manifestPath = process.argv[2] || "docs/work-packages/CH-09-EVIDENCE.json";
-  console.log(`Manifest: ${manifestPath}\n`);
+  const { manifestPath, mode } = parseCliArgs();
+  console.log(`Manifest: ${manifestPath}`);
 
-  const res = verifyEvidenceDigests(manifestPath);
+  const res = verifyEvidenceDigests(manifestPath, { mode });
+  console.log(`Mode    : ${res.mode}${res.commitSha ? ` (commit: ${res.commitSha})` : ""}\n`);
 
   for (const fh of res.fileHashes) {
     const statusTag =
@@ -248,7 +368,7 @@ function runCli(): void {
     res.errors.forEach((e) => console.error(`  * ${e}`));
     process.exit(1);
   } else {
-    console.log(`\x1b[32mSUCCESS: All ${res.checkedFiles} files (lexicographical order) and composite digest verified.\x1b[0m`);
+    console.log(`\x1b[32mSUCCESS: All ${res.checkedFiles} files (${res.mode} mode) and composite digest verified.\x1b[0m`);
     process.exit(0);
   }
 }
