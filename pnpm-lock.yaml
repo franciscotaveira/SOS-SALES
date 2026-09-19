@@ -164,6 +164,9 @@ importers:
       '@sos-sales/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@sos-sales/database':
+        specifier: workspace:*
+        version: link:../database
       '@sos-sales/domain':
         specifier: workspace:*
         version: link:../domain

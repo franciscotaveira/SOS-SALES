@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@sos-sales/contracts": "workspace:*",
+    "@sos-sales/database": "workspace:*",
     "@sos-sales/domain": "workspace:*"
   },
   "devDependencies": {

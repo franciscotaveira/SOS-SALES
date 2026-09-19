@@ -16,3 +16,5 @@ export * from "./channels/adapters/waha.adapter";
 export * from "./channels/registry/channel-adapter.registry";
 export * from "./channels/security/ssrf-guard";
 export * from "./channels/security/safe-media-downloader";
+export * from "./channels/errors/channel-dispatch.errors";
+export * from "./channels/services/channel-dispatch.service";
