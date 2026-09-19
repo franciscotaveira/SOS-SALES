@@ -119,6 +119,11 @@ export const CANONICAL_OUTBOX_ERRORS: Record<string, CanonicalErrorDefinition> =
     code: "ERR_POST_SEND_PERSISTENCE_FAILED",
     description: "Provider send confirmed but local post-send persistence failed; awaiting reconciliation",
   },
+  ERR_LEASE_LOST_AFTER_SEND: {
+    category: "reconciliation",
+    code: "ERR_LEASE_LOST_AFTER_SEND",
+    description: "Command lease expired or was lost after provider confirmed send; routed to reconciliation",
+  },
   ERR_DELIVERY_FAILURE_CONFIRMED: {
     category: "reconciliation",
     code: "ERR_DELIVERY_FAILURE_CONFIRMED",

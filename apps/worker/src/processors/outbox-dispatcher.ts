@@ -151,6 +151,7 @@ export class OutboxDispatcher {
     signal?: AbortSignal
   ): Promise<{ success: boolean; externalMessageId?: string; status: string }> {
     let heartbeatTimer: NodeJS.Timeout | null = null;
+    let inFlightHeartbeat: Promise<void> | null = null;
 
     // 0. Crash recovery protection:
     // If the command was claimed from 'processing' (lease had expired), a previous worker
@@ -189,29 +190,53 @@ export class OutboxDispatcher {
       }
 
       const abortController = new AbortController();
-      const effectiveSignal = signal
-        ? AbortSignal.any([signal, abortController.signal])
-        : abortController.signal;
+      if (signal) {
+        if (signal.aborted) {
+          abortController.abort(signal.reason);
+        } else {
+          signal.addEventListener("abort", () => abortController.abort(signal.reason), { once: true });
+        }
+      }
+      const effectiveSignal = abortController.signal;
 
       // Start background heartbeat to renew lease every 10 seconds during processing
-      heartbeatTimer = setInterval(async () => {
-        try {
-          const renewed = await this.renewLease(pool, item.id, workerId, item.lease_token, 30);
-          if (!renewed) {
+      heartbeatTimer = setInterval(() => {
+        if (effectiveSignal.aborted) {
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          return;
+        }
+
+        inFlightHeartbeat = (async () => {
+          try {
+            if (effectiveSignal.aborted) return;
+            const renewed = await this.renewLease(pool, item.id, workerId, item.lease_token, 30);
+            if (!renewed) {
+              logger.warn(
+                { commandId: item.id, workerId },
+                "Lease lost during heartbeat renewal, aborting in-flight dispatch"
+              );
+              abortController.abort(
+                new FencingViolationError(
+                  item.id,
+                  "Lease expired or stolen during dispatch heartbeat"
+                )
+              );
+            }
+          } catch (err: unknown) {
             logger.warn(
-              { commandId: item.id, workerId },
-              "Lease lost during heartbeat renewal, aborting in-flight dispatch"
+              { commandId: item.id, workerId, err: err instanceof Error ? err.message : String(err) },
+              "Heartbeat renewal threw exception; aborting in-flight dispatch (fail-closed)"
             );
             abortController.abort(
               new FencingViolationError(
                 item.id,
-                "Lease expired or stolen during dispatch heartbeat"
+                `Heartbeat renewal exception: ${err instanceof Error ? err.message : String(err)}`
               )
             );
+          } finally {
+            inFlightHeartbeat = null;
           }
-        } catch {
-          logger.warn({ commandId: item.id, workerId }, "Failed to renew lease in outbox heartbeat");
-        }
+        })();
       }, 10000);
       heartbeatTimer.unref();
 
@@ -357,6 +382,57 @@ export class OutboxDispatcher {
         }
 
         throw err;
+      }
+
+      // Await any in-flight heartbeat and stop the timer before evaluating post-send ownership
+      if (inFlightHeartbeat) {
+        try {
+          await inFlightHeartbeat;
+        } catch {
+          // ignore handled error
+        }
+      }
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+
+      // POST-SEND FENCING CHECK (P0-3):
+      // After provider returns, verify ownership before finalization.
+      // If ownership was lost after provider confirmed delivery, route to reconciliation, NEVER retry!
+      const leaseLostDuringSend = effectiveSignal.aborted;
+      const postSendRenewed = !leaseLostDuringSend && (await this.renewLease(pool, item.id, workerId, item.lease_token, 30));
+
+      if (leaseLostDuringSend || !postSendRenewed) {
+        if (sendResult.success) {
+          logger.warn(
+            { commandId: item.id, workerId },
+            "Lease lost or expired during external send after provider confirmed delivery. Routing to reconciliation_required."
+          );
+          const sanitizedPostSendLeaseError = sanitizeOutboxErrorMessage("reconciliation", "ERR_LEASE_LOST_AFTER_SEND");
+          try {
+            await withWorkerTransaction(item.workspace_id, async (client) => {
+              await this.outboundRepo.markPostSendReconciliationRequired(
+                item.id,
+                sendResult.externalMessageId!,
+                sanitizedPostSendLeaseError,
+                client
+              );
+            }, pool);
+          } catch (reconErr: unknown) {
+            logger.error(
+              { commandId: item.id, workerId, err: reconErr instanceof Error ? reconErr.message : String(reconErr) },
+              "Critical: Failed to record post-send lease loss reconciliation state"
+            );
+          }
+          return {
+            success: false,
+            externalMessageId: sendResult.externalMessageId,
+            status: "reconciliation_required",
+          };
+        } else {
+          throw new FencingViolationError(item.id, "Lease lost during dispatch execution");
+        }
       }
 
       // 3. Handle success: Transactional finalization of command, EXACT message, and delivery event
@@ -609,6 +685,13 @@ export class OutboxDispatcher {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
       }
+      if (inFlightHeartbeat) {
+        try {
+          await inFlightHeartbeat;
+        } catch {
+          // ignore
+        }
+      }
     }
   }
 
@@ -623,8 +706,22 @@ export class OutboxDispatcher {
     options: {
       externalMessageId?: string;
       adminNote?: string;
+      actorId?: string;
     } = {}
   ): Promise<boolean> {
+    if (resolution === "sent") {
+      if (
+        !options.externalMessageId ||
+        typeof options.externalMessageId !== "string" ||
+        !options.externalMessageId.trim()
+      ) {
+        throw new Error("ADMIN_RECONCILE_ERROR: externalMessageId is mandatory for manual 'sent' resolution");
+      }
+      if (options.externalMessageId.startsWith("manual-recon-")) {
+        throw new Error("ADMIN_RECONCILE_ERROR: Artificial externalMessageId is strictly prohibited for 'sent' resolution");
+      }
+    }
+
     const sanitizedNote = options.adminNote
       ? sanitizeOutboxErrorMessage(
           resolution === "dead_letter" ? "permanent" : "reconciliation",
@@ -640,32 +737,21 @@ export class OutboxDispatcher {
         {
           externalMessageId: options.externalMessageId,
           adminNote: sanitizedNote || (resolution === "sent" ? "Reconciled: Externally verified sent" : undefined),
+          actorId: options.actorId,
         },
         client
       );
 
-      if (!reconciled) {
-        return false;
-      }
-
-      if (resolution === "sent") {
-        const externalId = options.externalMessageId || `manual-recon-${Date.now()}`;
-        await client.query(
-          `UPDATE public.messages
-           SET delivery_status = 'sent', status_rank = 10, provider_message_id = $1, updated_at = clock_timestamp()
-           WHERE id = $2 AND workspace_id = $3 AND channel_instance_id = $4;`,
-          [externalId, reconciled.messageId, workspaceId, reconciled.channelInstanceId]
-        );
-      } else if (resolution === "dead_letter") {
-        await client.query(
-          `UPDATE public.messages
-           SET delivery_status = 'failed', status_rank = -1, updated_at = clock_timestamp()
-           WHERE id = $1 AND workspace_id = $2 AND channel_instance_id = $3;`,
-          [reconciled.messageId, workspaceId, reconciled.channelInstanceId]
-        );
-      }
-      return true;
+      return Boolean(reconciled);
     }, pool);
+  }
+
+  /**
+   * Reclaims abandoned processing leases and routes them directly to reconciliation_required.
+   * Does NOT touch retry_count. Guarantees expired processing items never re-enter dispatch without reconciliation.
+   */
+  async reclaimExpiredLeases(pool: Pool, limit = 50): Promise<number> {
+    return await this.outboundRepo.reclaimExpiredLeases(limit, pool);
   }
 
   /**
@@ -701,15 +787,14 @@ export class OutboxDispatcher {
    * 1. Claims ambiguous commands with expired/null lease using SKIP LOCKED via repository.
    * 2. Checks provider_delivery_events under tenant scope for confirmed status.
    * 3. If delivery event found: auto-resolves to 'sent' or 'dead_letter' via repository.
-   * 4. If no delivery event found after ttlSeconds:
-   *    - If retry_count < max_retries: reschedules to 'pending' for retry via repository.
-   *    - If retry_count >= max_retries: transitions to 'dead_letter' via repository and message to 'failed'.
+   * 4. If no delivery event found: under P0-4 policy, command remains in 'reconciliation_required'
+   *    (absence of webhook/evidence NEVER auto-retries). Releases lease so future ticks can re-evaluate.
    */
   async reconcileBatch(
     pool: Pool,
     workerId: string,
     limit = 10,
-    ttlSeconds = 60,
+    _ttlSeconds = 60,
     signal?: AbortSignal
   ): Promise<number> {
     const items = await this.outboundRepo.claimReconciliationBatch(workerId, limit, 30, pool);
@@ -787,50 +872,17 @@ export class OutboxDispatcher {
             return;
           }
 
-          // 2. If no delivery event found, check elapsed time against ttlSeconds
-          const ageSeconds = (Date.now() - new Date(item.created_at).getTime()) / 1000;
-          if (ageSeconds < ttlSeconds) {
-            // Still within webhook grace period: release lease so future tick can re-evaluate
-            await this.outboundRepo.releaseReconciliationLease(
-              item.id,
-              workerId,
-              item.lease_token,
-              client
-            );
-            return;
-          }
-
-          // 3. TTL expired without delivery confirmation:
-          if (item.retry_count < item.max_retries) {
-            // Reschedule for clean retry
-            const nextAttemptAt = new Date(Date.now() + 10000);
-            const sanitizedRetryNote = sanitizeOutboxErrorMessage("reconciliation", "ERR_RECONCILIATION_RETRY");
-            await this.outboundRepo.resolveReconciliationRetry(
-              item.id,
-              workerId,
-              item.lease_token,
-              nextAttemptAt,
-              sanitizedRetryNote,
-              client
-            );
-          } else {
-            // Max retries reached: permanent dead_letter
-            const sanitizedExpireNote = sanitizeOutboxErrorMessage("reconciliation", "ERR_RECONCILIATION_TTL_EXPIRED");
-            await this.outboundRepo.resolveReconciliationDeadLetter(
-              item.id,
-              workerId,
-              item.lease_token,
-              sanitizedExpireNote,
-              client
-            );
-            await client.query(
-              `UPDATE public.messages
-               SET delivery_status = 'failed', status_rank = -1, updated_at = clock_timestamp()
-               WHERE id = $1 AND workspace_id = $2;`,
-              [item.message_id, item.workspace_id]
-            );
-          }
-          reconciledCount++;
+          // 2. Inconclusive delivery: no provider delivery event found.
+          // Under P0-4 policy: absence of webhook/evidence NEVER triggers automatic resend.
+          // Command MUST remain in 'reconciliation_required'. Release lease so future ticks
+          // or late webhook arrivals can re-evaluate.
+          await this.outboundRepo.releaseReconciliationLease(
+            item.id,
+            workerId,
+            item.lease_token,
+            client
+          );
+          return;
         }, pool);
       } catch {
         logger.warn({ commandId: item.id, workerId }, "Failed to reconcile command");

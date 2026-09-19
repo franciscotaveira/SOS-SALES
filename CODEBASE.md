@@ -74,7 +74,18 @@
 ### 3.5 Tratamento de Timeouts Ambíguos e Reconciliação
 - Erros de rede inconclusivos (ex: `ETIMEDOUT`, `ECONNRESET`, socket hangup) **NÃO** realizam retentativa imediata cega para evitar envio duplicado de mensagens ao cliente.
 - Comandos com erro ambíguo transitam imediatamente para `reconciliation_required`.
-- O poller periódico de reconciliação (`reconcileBatch`) compara o comando contra `provider_delivery_events` tardios recebidos via webhook antes de liberar nova tentativa ou marcar falha.
+- O poller periódico de reconciliação (`reconcileBatch`) compara o comando contra `provider_delivery_events` tardios recebidos via webhook antes de marcar status final.
+- Ausência de evidência/webhook **NUNCA** causa reenvio automático: o comando permanece em `reconciliation_required` até confirmação oficial ou decisão humana auditada.
+
+#### 3.5.1 Matriz de Estados do Outbox
+- **`pending`**: Comando registrado aguardando claim ou aguardando retentativa temporizada (`next_attempt_at <= clock_timestamp()`).
+- **`processing`**: Reclamado por um worker com posse de lease temporizado (`lease_token`, `lease_until`). Leases expirados são recuperados exclusivamente para `reconciliation_required` por `reclaimExpiredLeases()`.
+- **`sent`**: Confirmação positiva recebida do provedor e persistida atomicamente junto com `messages` e `provider_delivery_events`. Estado terminal de sucesso.
+- **`failed`**: Falha transitória governada com retentativa agendada (`next_attempt_at`, `retry_count < max_retries`). **NOTA:** Não existe estado `retry` no schema PostgreSQL; retentativas usam `failed` com `next_attempt_at`.
+- **`dead_letter`**: Falha definitiva (rejeição permanente do canal ou esgotamento de retentativas). Estado terminal de erro.
+- **`reconciliation_required`**: Estado ambíguo (timeout de rede, queda de socket, perda de lease pós-envio, lease de processamento expirado, ou falha na persistência local pós-envio).
+  - **Reconciliação Automática:** Somente transita para `sent` (se houver delivery event positivo) ou `dead_letter` (se houver evento negativo definitivo). Sem evidência conclusiva, **permanece** em `reconciliation_required` indefinidamente (zero reenvio cego).
+  - **Resolução Humana Auditada:** Executada exclusivamente via `adminReconcile` / `reconcileItem`. Resolução como `sent` exige `externalMessageId` real fornecido pelo operador (proibido identificadores artificiais). Toda resolução gera registro imutável em `audit_events`.
 
 ### 3.6 Integridade Referencial Composta Multi-Tenant
 - A integridade de isolamento é forçada a nível de schema pelas chaves compostas:

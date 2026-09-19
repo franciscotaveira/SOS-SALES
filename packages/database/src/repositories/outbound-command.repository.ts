@@ -216,16 +216,10 @@ export class OutboundCommandRepository {
       WITH claimed AS (
         SELECT id, status AS previous_status
         FROM public.outbound_commands
-        WHERE (
-          (status IN ('pending', 'failed') AND next_attempt_at <= clock_timestamp() AND (lease_until IS NULL OR lease_until < clock_timestamp()))
-          OR
-          (status = 'processing' AND lease_until < clock_timestamp())
-        )
-        AND (
-          (status IN ('pending', 'failed') AND retry_count < max_retries)
-          OR
-          (status = 'processing')
-        )
+        WHERE status IN ('pending', 'failed')
+          AND next_attempt_at <= clock_timestamp()
+          AND (lease_until IS NULL OR lease_until < clock_timestamp())
+          AND retry_count < max_retries
         ORDER BY next_attempt_at ASC
         LIMIT $2
         FOR UPDATE SKIP LOCKED
@@ -438,8 +432,10 @@ export class OutboundCommandRepository {
       )
       UPDATE public.outbound_commands o
       SET status = 'reconciliation_required',
-          error_message = 'LEASE_EXPIRED_RECLAIMED: Processing lease expired without worker completion',
+          error_message = 'ERR_LEASE_EXPIRED_DURING_PROCESSING',
           lease_until = NULL,
+          lease_token = NULL,
+          worker_id = NULL,
           updated_at = clock_timestamp()
       FROM expired
       WHERE o.id = expired.id
@@ -613,6 +609,7 @@ export class OutboundCommandRepository {
 
   /**
    * Administrative reconciliation update on a command in reconciliation_required.
+   * Generates tamper-proof audit_events log.
    */
   async adminReconcile(
     workspaceId: string,
@@ -621,6 +618,7 @@ export class OutboundCommandRepository {
     options: {
       externalMessageId?: string;
       adminNote?: string;
+      actorId?: string;
     } = {},
     client?: Pool | PoolClient
   ): Promise<{ messageId: string; channelInstanceId: string } | null> {
@@ -638,14 +636,31 @@ export class OutboundCommandRepository {
     }
 
     if (resolution === "sent") {
-      const externalId = options.externalMessageId || `manual-recon-${Date.now()}`;
+      if (
+        !options.externalMessageId ||
+        typeof options.externalMessageId !== "string" ||
+        !options.externalMessageId.trim()
+      ) {
+        throw new Error("ADMIN_RECONCILE_ERROR: externalMessageId is mandatory for manual 'sent' resolution");
+      }
+      if (options.externalMessageId.startsWith("manual-recon-")) {
+        throw new Error("ADMIN_RECONCILE_ERROR: Artificial externalMessageId is strictly prohibited for 'sent' resolution");
+      }
       await executor.query(
         `UPDATE public.outbound_commands
          SET status = 'sent', external_message_id = $1, sent_at = clock_timestamp(),
              error_message = $2, lease_until = NULL, updated_at = clock_timestamp()
          WHERE id = $3;`,
-        [externalId, options.adminNote || "Reconciled externally verified sent", commandId]
+        [options.externalMessageId, options.adminNote || "Reconciled externally verified sent", commandId]
       );
+      if (cmd.message_id) {
+        await executor.query(
+          `UPDATE public.messages
+           SET delivery_status = 'sent', status_rank = 10, provider_message_id = $1, updated_at = clock_timestamp()
+           WHERE id = $2 AND workspace_id = $3;`,
+          [options.externalMessageId, cmd.message_id, workspaceId]
+        );
+      }
     } else if (resolution === "dead_letter") {
       await executor.query(
         `UPDATE public.outbound_commands
@@ -653,15 +668,44 @@ export class OutboundCommandRepository {
          WHERE id = $2;`,
         [options.adminNote || "Reconciled as dead_letter by administrator", commandId]
       );
+      if (cmd.message_id) {
+        await executor.query(
+          `UPDATE public.messages
+           SET delivery_status = 'failed', status_rank = -1, updated_at = clock_timestamp()
+           WHERE id = $1 AND workspace_id = $2;`,
+          [cmd.message_id, workspaceId]
+        );
+      }
     } else if (resolution === "retry") {
       await executor.query(
         `UPDATE public.outbound_commands
          SET status = 'pending', retry_count = 0, next_attempt_at = clock_timestamp(),
              error_message = $1, lease_until = NULL, updated_at = clock_timestamp()
          WHERE id = $2;`,
-        [options.adminNote || "Reconciled: reset to pending for retry", commandId]
+        [options.adminNote || "Reconciled: reset to pending for retry by administrator", commandId]
       );
     }
+
+    // Insert immutable audit event
+    const actorId = options.actorId || "00000000-0000-0000-0000-000000000000";
+    await executor.query(
+      `INSERT INTO public.audit_events (
+         workspace_id, actor_id, actor_type, action, resource_type, resource_id, metadata
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7);`,
+      [
+        workspaceId,
+        actorId,
+        "admin",
+        `outbox.reconcile.${resolution}`,
+        "outbound_commands",
+        commandId,
+        JSON.stringify({
+          resolution,
+          externalMessageId: options.externalMessageId || null,
+          adminNote: options.adminNote || null,
+        }),
+      ]
+    );
 
     return { messageId: cmd.message_id, channelInstanceId: cmd.channel_instance_id };
   }

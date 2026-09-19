@@ -323,6 +323,8 @@ export class WorkerRuntime {
 
     // 2. Outbox Dispatching
     try {
+      await this.outboxDispatcher.reclaimExpiredLeases(this.pool, this.batchSize);
+
       const outboxBatch = await this.outboxDispatcher.claimBatch(
         this.pool,
         this.workerId,
