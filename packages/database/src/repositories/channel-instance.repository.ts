@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { getDatabasePool, withTenantTransaction } from "../client";
 import type { ChannelProvider } from "../messaging";
-import { logger } from "@sos-sales/observability";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TOKEN_HASH_REGEX = /^[0-9a-f]{64}$/;
@@ -30,6 +29,24 @@ export class InvalidEndpointTokenError extends Error {
   constructor(message = "Invalid endpoint token format or hash") {
     super(message);
     this.name = "InvalidEndpointTokenError";
+  }
+}
+
+export class MissingIngressPoolError extends Error {
+  readonly code = "MISSING_INGRESS_POOL" as const;
+  constructor(
+    message = "Operation findByEndpointToken requires an ingressPool configured on ChannelInstanceRepository or passed explicitly as a client"
+  ) {
+    super(message);
+    this.name = "MissingIngressPoolError";
+  }
+}
+
+export class ChannelIngressLookupError extends Error {
+  readonly code = "CHANNEL_INGRESS_LOOKUP_ERROR" as const;
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message);
+    this.name = "ChannelIngressLookupError";
   }
 }
 
@@ -66,21 +83,22 @@ export interface CreateChannelInstanceParams {
  * Tenant-First ChannelInstanceRepository for SOS Sales V3.
  *
  * Guarantees:
- * 1. Multi-tenant RLS isolation (app.current_workspace_id enforcement).
+ * 1. Multi-tenant RLS isolation (app.current_workspace_id enforcement via appPool).
  * 2. Explicit instance resolution (no arbitrary "first active" selection).
  * 3. Multi-line support (multiple active instances per provider in same workspace).
- * 4. Zero sensitive data (tokens/credentials) logged.
+ * 4. Zero sensitive data (tokens/credentials) logged or exposed.
+ * 5. Fail-closed ingress resolution using strictly lookup_channel_ingress without fail-open fallback.
+ * 6. Blind enumeration protection (cross-tenant and not-found return identical ChannelInstanceNotFoundError).
  */
 export class ChannelInstanceRepository {
   constructor(
     private readonly pool: Pool = getDatabasePool(),
-    private readonly ingressPool?: Pool,
-    private readonly adminPool?: Pool
+    private readonly ingressPool?: Pool
   ) {}
 
   /**
    * Resolves an explicit channel instance strictly within the tenant boundary.
-   * Returns null if not found or if the instance belongs to another tenant.
+   * Returns null if not found or if the instance belongs to another tenant (RLS fail-closed).
    */
   async findById(
     workspaceId: string,
@@ -109,8 +127,9 @@ export class ChannelInstanceRepository {
   }
 
   /**
-   * Resolves an explicit channel instance or throws a typed error.
-   * Distinguishes between not found and cross-tenant access violations.
+   * Resolves an explicit channel instance or throws ChannelInstanceNotFoundError.
+   * By security design, does not distinguish between non-existent UUIDs and other tenants' UUIDs,
+   * completely preventing external enumeration of cross-tenant resource existence.
    */
   async getById(
     workspaceId: string,
@@ -118,32 +137,14 @@ export class ChannelInstanceRepository {
     client?: PoolClient
   ): Promise<ChannelInstanceRecord> {
     const record = await this.findById(workspaceId, channelInstanceId, client);
-    if (record) {
-      return record;
+    if (!record) {
+      throw new ChannelInstanceNotFoundError(channelInstanceId, workspaceId);
     }
-
-    // Check cross-tenant existence if an admin pool is available
-    if (this.adminPool) {
-      const globalRes = await this.adminPool.query<{ id: string; workspace_id: string }>(
-        `SELECT id, workspace_id FROM public.channel_instances WHERE id = $1;`,
-        [channelInstanceId]
-      );
-
-      const firstRow = globalRes.rows[0];
-      if (firstRow && firstRow.workspace_id !== workspaceId) {
-        logger.warn(
-          { channelInstanceId, requestedWorkspaceId: workspaceId },
-          "Cross-tenant channel access rejected"
-        );
-        throw new ChannelInstanceCrossTenantError(channelInstanceId, workspaceId);
-      }
-    }
-
-    throw new ChannelInstanceNotFoundError(channelInstanceId, workspaceId);
+    return record;
   }
 
   /**
-   * Asserts that an instance record belongs to the requested workspace.
+   * Asserts that an already-loaded instance record belongs to the requested workspace.
    * Throws ChannelInstanceCrossTenantError if mismatched.
    */
   assertTenantOwnership(
@@ -187,7 +188,16 @@ export class ChannelInstanceRepository {
 
   /**
    * Resolves a channel instance by its secret endpoint token (used by webhook ingress).
-   * Computes SHA-256 hash internally and checks active and grace-period tokens.
+   *
+   * Security & Architecture Rules:
+   * 1. Requires an explicit ingressPool (or client) authorized to execute lookup_channel_ingress.
+   * 2. Computes SHA-256 hash internally.
+   * 3. Executes ONLY public.lookup_channel_ingress($1) under least-privilege ingress role.
+   * 4. Connection, permission, or SQL errors are propagated as ChannelIngressLookupError (never swallowed).
+   * 5. Legitimate absence of matching token returns null.
+   * 6. Once workspace_id and instance_id are resolved, loads full record using appPool under withTenantTransaction.
+   * 7. ZERO direct queries to channel_instances with LIMIT 1.
+   * 8. ZERO fail-open fallbacks.
    */
   async findByEndpointToken(
     endpointToken: string,
@@ -197,9 +207,19 @@ export class ChannelInstanceRepository {
       throw new InvalidEndpointTokenError("Endpoint token cannot be empty");
     }
 
+    const lookupPool = client || this.ingressPool;
+    if (!lookupPool) {
+      throw new MissingIngressPoolError();
+    }
+
     const tokenHash = crypto.createHash("sha256").update(endpointToken.trim()).digest("hex");
 
-    const lookupPool = client || this.ingressPool || this.adminPool || this.pool;
+    let rows: Array<{
+      channel_instance_id: string;
+      workspace_id: string;
+      provider: ChannelProvider;
+      is_active: boolean;
+    }>;
 
     try {
       const res = await lookupPool.query<{
@@ -208,49 +228,40 @@ export class ChannelInstanceRepository {
         provider: ChannelProvider;
         is_active: boolean;
       }>("SELECT * FROM public.lookup_channel_ingress($1);", [tokenHash]);
-
-      const row = res.rows[0];
-      if (!row) {
-        return null;
-      }
-
-      // Query full record under tenant transaction
-      return await withTenantTransaction(
-        row.workspace_id,
-        async (tenantClient) => {
-          const full = await tenantClient.query<ChannelInstanceRecord>(
-            `SELECT id, workspace_id, provider, display_name, phone_number_e164,
-                    endpoint_token_hash, previous_token_hash, previous_token_valid_until,
-                    verify_token_hash, credential_id, is_active, created_at, updated_at
-             FROM public.channel_instances
-             WHERE workspace_id = $1 AND id = $2;`,
-            [row.workspace_id, row.channel_instance_id]
-          );
-          return full.rows[0] ?? null;
-        },
-        this.adminPool || this.pool
+      rows = res.rows;
+    } catch (err: unknown) {
+      throw new ChannelIngressLookupError(
+        `Ingress lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+        err
       );
-    } catch {
-      // Fallback to direct query if client has permission
-      const direct = await lookupPool.query<ChannelInstanceRecord>(
-        `SELECT id, workspace_id, provider, display_name, phone_number_e164,
-                endpoint_token_hash, previous_token_hash, previous_token_valid_until,
-                verify_token_hash, credential_id, is_active, created_at, updated_at
-         FROM public.channel_instances
-         WHERE is_active = true
-           AND (
-             endpoint_token_hash = $1
-             OR (previous_token_hash = $1 AND previous_token_valid_until > clock_timestamp())
-           )
-         LIMIT 1;`,
-        [tokenHash]
-      );
-      return direct.rows[0] ?? null;
     }
+
+    const ingressTuple = rows[0];
+    if (!ingressTuple) {
+      return null;
+    }
+
+    // Tenant-first load using appPool under withTenantTransaction
+    return await withTenantTransaction(
+      ingressTuple.workspace_id,
+      async (tenantClient) => {
+        const full = await tenantClient.query<ChannelInstanceRecord>(
+          `SELECT id, workspace_id, provider, display_name, phone_number_e164,
+                  endpoint_token_hash, previous_token_hash, previous_token_valid_until,
+                  verify_token_hash, credential_id, is_active, created_at, updated_at
+           FROM public.channel_instances
+           WHERE workspace_id = $1 AND id = $2;`,
+          [ingressTuple.workspace_id, ingressTuple.channel_instance_id]
+        );
+        return full.rows[0] ?? null;
+      },
+      this.pool
+    );
   }
 
   /**
    * Creates a new channel instance under tenant isolation.
+   * Requires explicit endpointToken OR endpointTokenHash (never generates and discards secret tokens).
    */
   async create(
     params: CreateChannelInstanceParams,
@@ -258,21 +269,51 @@ export class ChannelInstanceRepository {
   ): Promise<ChannelInstanceRecord> {
     this.validateUuid(params.workspaceId, "workspaceId");
 
-    let tokenHash = params.endpointTokenHash;
-    if (params.endpointToken) {
+    // Enforce explicit, non-ambiguous token parameters
+    if (params.endpointToken !== undefined && params.endpointTokenHash !== undefined) {
+      throw new InvalidEndpointTokenError(
+        "Ambiguous token parameters: provide either endpointToken or endpointTokenHash, not both"
+      );
+    }
+
+    if (!params.endpointToken && !params.endpointTokenHash) {
+      throw new InvalidEndpointTokenError(
+        "Missing token: either endpointToken or endpointTokenHash must be provided"
+      );
+    }
+
+    let tokenHash: string;
+    if (params.endpointToken !== undefined) {
+      if (typeof params.endpointToken !== "string" || params.endpointToken.trim().length === 0) {
+        throw new InvalidEndpointTokenError("Endpoint token cannot be empty");
+      }
       tokenHash = crypto.createHash("sha256").update(params.endpointToken.trim()).digest("hex");
-    } else if (!tokenHash) {
-      const rawToken = crypto.randomBytes(32).toString("hex");
-      tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    } else {
+      if (typeof params.endpointTokenHash !== "string" || !TOKEN_HASH_REGEX.test(params.endpointTokenHash)) {
+        throw new InvalidEndpointTokenError(
+          "Endpoint token hash must be exactly 64 lowercase hexadecimal characters"
+        );
+      }
+      tokenHash = params.endpointTokenHash;
     }
 
-    if (!TOKEN_HASH_REGEX.test(tokenHash)) {
-      throw new InvalidEndpointTokenError("Endpoint token hash must be 64 lowercase hexadecimal characters");
+    // Verify token validation
+    let verifyHash: string | null = null;
+    if (params.verifyToken !== undefined && params.verifyTokenHash !== undefined) {
+      throw new Error(
+        "Ambiguous verify token parameters: provide either verifyToken or verifyTokenHash, not both"
+      );
     }
-
-    let verifyHash: string | null = params.verifyTokenHash ?? null;
-    if (params.verifyToken) {
+    if (params.verifyToken !== undefined) {
+      if (typeof params.verifyToken !== "string" || params.verifyToken.trim().length === 0) {
+        throw new Error("Verify token cannot be empty when specified");
+      }
       verifyHash = crypto.createHash("sha256").update(params.verifyToken.trim()).digest("hex");
+    } else if (params.verifyTokenHash !== undefined && params.verifyTokenHash !== null) {
+      if (!TOKEN_HASH_REGEX.test(params.verifyTokenHash)) {
+        throw new Error("Verify token hash must be exactly 64 lowercase hexadecimal characters");
+      }
+      verifyHash = params.verifyTokenHash;
     }
 
     const isActive = params.isActive !== undefined ? params.isActive : true;

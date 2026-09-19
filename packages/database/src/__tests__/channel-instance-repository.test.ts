@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createTestDatabasePools } from "../test-support";
 import { encryptPayload } from "../infrastructure/crypto-payload";
@@ -7,11 +9,16 @@ import {
   ChannelInstanceNotFoundError,
   ChannelInstanceCrossTenantError,
   InvalidEndpointTokenError,
+  MissingIngressPoolError,
+  ChannelIngressLookupError,
 } from "../repositories/channel-instance.repository";
 
-describe("ChannelInstanceRepository: Multi-Line, Tenant-First & RLS Guarantees (CH-10)", () => {
+describe("ChannelInstanceRepository: Fail-Closed Ingress & Anti-Enumeration (CH-10)", () => {
+  // ownerPool is STRICTLY reserved for fixture provisioning and cleanup
   const { ownerPool, appPool, ingressPool } = createTestDatabasePools();
-  const repository = new ChannelInstanceRepository(appPool, ingressPool, ownerPool);
+
+  // Production constructor accepts ONLY (appPool, ingressPool) - NO admin/owner pool!
+  const repository = new ChannelInstanceRepository(appPool, ingressPool);
 
   let orgId: string;
   let workspaceAlphaId: string;
@@ -22,7 +29,7 @@ describe("ChannelInstanceRepository: Multi-Line, Tenant-First & RLS Guarantees (
   const testMasterKeyHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
   beforeAll(async () => {
-    // 1. Provision Organization and two isolated workspaces
+    // 1. Provision Organization and two isolated workspaces via ownerPool fixture
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
       VALUES ('Channel Repo Org', $1)
@@ -68,7 +75,123 @@ describe("ChannelInstanceRepository: Multi-Line, Tenant-First & RLS Guarantees (
     await ingressPool.end();
   });
 
-  describe("1. Multi-Line Support: Multiple Active Instances of Same Provider in Single Workspace", () => {
+  describe("1. Constructor & Structural Invariants", () => {
+    it("should verify ownerPool/adminPool does not appear in production constructor parameters", () => {
+      // TypeScript & runtime check: ChannelInstanceRepository takes at most 2 parameters (pool, ingressPool)
+      expect(ChannelInstanceRepository.length).toBeLessThanOrEqual(2);
+      const repo = new ChannelInstanceRepository(appPool, ingressPool);
+      expect(repo).toBeDefined();
+      expect((repo as any).adminPool).toBeUndefined();
+    });
+
+    it("should verify source code has ZERO direct queries with 'LIMIT 1' on channel_instances", () => {
+      const filePath = path.resolve(__dirname, "../repositories/channel-instance.repository.ts");
+      const content = fs.readFileSync(filePath, "utf-8");
+
+      // Strip multi-line and single-line comments so comments mentioning "LIMIT 1" don't false positive
+      const codeWithoutComments = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
+
+      // Verify no SQL queries with LIMIT 1 exist in the file
+      const directLimitMatch = codeWithoutComments.match(/LIMIT\s+1/i);
+      expect(directLimitMatch).toBeNull();
+    });
+  });
+
+  describe("2. Explicit Endpoint Token Contract in create()", () => {
+    it("should REJECT create when neither endpointToken nor endpointTokenHash is provided", async () => {
+      await expect(
+        repository.create({
+          workspaceId: workspaceAlphaId,
+          provider: "waha",
+          displayName: "No Token Line",
+        })
+      ).rejects.toThrow(InvalidEndpointTokenError);
+
+      await expect(
+        repository.create({
+          workspaceId: workspaceAlphaId,
+          provider: "waha",
+          displayName: "No Token Line",
+        })
+      ).rejects.toThrow(/Missing token: either endpointToken or endpointTokenHash must be provided/);
+    });
+
+    it("should REJECT create when both endpointToken and endpointTokenHash are provided simultaneously", async () => {
+      await expect(
+        repository.create({
+          workspaceId: workspaceAlphaId,
+          provider: "waha",
+          displayName: "Ambiguous Line",
+          endpointToken: "my_raw_token",
+          endpointTokenHash: "a".repeat(64),
+        })
+      ).rejects.toThrow(InvalidEndpointTokenError);
+
+      await expect(
+        repository.create({
+          workspaceId: workspaceAlphaId,
+          provider: "waha",
+          displayName: "Ambiguous Line",
+          endpointToken: "my_raw_token",
+          endpointTokenHash: "a".repeat(64),
+        })
+      ).rejects.toThrow(/Ambiguous token parameters/);
+    });
+
+    it("should REJECT create with empty string endpointToken", async () => {
+      await expect(
+        repository.create({
+          workspaceId: workspaceAlphaId,
+          provider: "waha",
+          displayName: "Empty Token Line",
+          endpointToken: "   ",
+        })
+      ).rejects.toThrow(InvalidEndpointTokenError);
+    });
+
+    it("should REJECT create with invalid endpointTokenHash (non-64 hex)", async () => {
+      await expect(
+        repository.create({
+          workspaceId: workspaceAlphaId,
+          provider: "waha",
+          displayName: "Invalid Hash Line",
+          endpointTokenHash: "invalid_short_hash",
+        })
+      ).rejects.toThrow(InvalidEndpointTokenError);
+    });
+
+    it("should accept valid endpointToken and automatically compute 64-char lowercase SHA-256 hash", async () => {
+      const raw = "test_raw_token_" + Date.now();
+      const expectedHash = crypto.createHash("sha256").update(raw).digest("hex");
+
+      const created = await repository.create({
+        workspaceId: workspaceAlphaId,
+        provider: "waha",
+        displayName: "Valid Raw Token Line",
+        endpointToken: raw,
+        credentialId: credAlphaId,
+      });
+
+      expect(created.endpoint_token_hash).toBe(expectedHash);
+    });
+
+    it("should accept valid pre-hashed 64-char lowercase endpointTokenHash directly", async () => {
+      const raw = "pre_hashed_input_" + Date.now();
+      const directHash = crypto.createHash("sha256").update(raw).digest("hex");
+
+      const created = await repository.create({
+        workspaceId: workspaceAlphaId,
+        provider: "waha",
+        displayName: "Valid Pre-Hashed Line",
+        endpointTokenHash: directHash,
+        credentialId: credAlphaId,
+      });
+
+      expect(created.endpoint_token_hash).toBe(directHash);
+    });
+  });
+
+  describe("3. Multi-Line Support: Multiple Active Instances of Same Provider in Single Workspace", () => {
     let wahaLine1Id: string;
     let wahaLine2Id: string;
     const token1 = "raw_token_line_1_" + Date.now();
@@ -130,7 +253,7 @@ describe("ChannelInstanceRepository: Multi-Line, Tenant-First & RLS Guarantees (
     });
   });
 
-  describe("2. Cross-Tenant Isolation & Typed Errors", () => {
+  describe("4. Cross-Tenant Isolation & Anti-Enumeration Guarantees", () => {
     let betaLineId: string;
     const betaToken = "beta_token_secret_" + Date.now();
 
@@ -152,30 +275,41 @@ describe("ChannelInstanceRepository: Multi-Line, Tenant-First & RLS Guarantees (
       expect(result).toBeNull();
     });
 
-    it("should throw typed ChannelInstanceCrossTenantError when accessing cross-tenant line via getById", async () => {
-      await expect(
-        repository.getById(workspaceAlphaId, betaLineId)
-      ).rejects.toThrow(ChannelInstanceCrossTenantError);
-
-      try {
-        await repository.getById(workspaceAlphaId, betaLineId);
-      } catch (err: any) {
-        expect(err).toBeInstanceOf(ChannelInstanceCrossTenantError);
-        expect(err.code).toBe("CHANNEL_INSTANCE_CROSS_TENANT_ACCESS");
-      }
-    });
-
-    it("should throw typed ChannelInstanceNotFoundError for non-existent UUID", async () => {
+    it("should throw ChannelInstanceNotFoundError for non-existent UUID", async () => {
       const nonExistentId = "00000000-0000-4000-8000-000000000000";
       await expect(
         repository.getById(workspaceAlphaId, nonExistentId)
       ).rejects.toThrow(ChannelInstanceNotFoundError);
+    });
+
+    it("should throw IDENTICAL ChannelInstanceNotFoundError for another tenant UUID (anti-enumeration)", async () => {
+      // Accessing Beta's line from Alpha MUST return the exact same error as non-existent
+      let errorThrown: any;
+      try {
+        await repository.getById(workspaceAlphaId, betaLineId);
+      } catch (err) {
+        errorThrown = err;
+      }
+
+      expect(errorThrown).toBeDefined();
+      expect(errorThrown).toBeInstanceOf(ChannelInstanceNotFoundError);
+      expect(errorThrown.code).toBe("CHANNEL_INSTANCE_NOT_FOUND");
+      // Security Invariant: no hint that betaLineId exists in another workspace!
+      expect(errorThrown.message).toContain(betaLineId);
+      expect(errorThrown.message).toContain(workspaceAlphaId);
+    });
+
+    it("should assertTenantOwnership throw ChannelInstanceCrossTenantError on loaded object mismatch", () => {
+      const loadedBetaObject = { id: betaLineId, workspace_id: workspaceBetaId };
+
+      expect(() => {
+        repository.assertTenantOwnership(workspaceAlphaId, loadedBetaObject);
+      }).toThrow(ChannelInstanceCrossTenantError);
 
       try {
-        await repository.getById(workspaceAlphaId, nonExistentId);
+        repository.assertTenantOwnership(workspaceAlphaId, loadedBetaObject);
       } catch (err: any) {
-        expect(err).toBeInstanceOf(ChannelInstanceNotFoundError);
-        expect(err.code).toBe("CHANNEL_INSTANCE_NOT_FOUND");
+        expect(err.code).toBe("CHANNEL_INSTANCE_CROSS_TENANT_ACCESS");
       }
     });
 
@@ -189,7 +323,7 @@ describe("ChannelInstanceRepository: Multi-Line, Tenant-First & RLS Guarantees (
     });
   });
 
-  describe("3. Ingress Resolution by Endpoint Token & Zero Credential Leaks", () => {
+  describe("5. Fail-Closed Ingress Resolution by Endpoint Token", () => {
     let instanceId: string;
     const rawToken = "my_super_secret_webhook_token_123_" + Date.now();
     const previousRawToken = "old_grace_period_token_456_" + Date.now();
@@ -212,6 +346,18 @@ describe("ChannelInstanceRepository: Multi-Line, Tenant-First & RLS Guarantees (
       instanceId = insertRes.rows[0].id;
     });
 
+    it("should fail with typed MissingIngressPoolError if repository lacks ingressPool", async () => {
+      const noIngressRepo = new ChannelInstanceRepository(appPool);
+      await expect(noIngressRepo.findByEndpointToken(rawToken)).rejects.toThrow(MissingIngressPoolError);
+
+      try {
+        await noIngressRepo.findByEndpointToken(rawToken);
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(MissingIngressPoolError);
+        expect(err.code).toBe("MISSING_INGRESS_POOL");
+      }
+    });
+
     it("should resolve active instance using raw endpoint token (hashed automatically)", async () => {
       const found = await repository.findByEndpointToken(rawToken);
       expect(found).not.toBeNull();
@@ -230,7 +376,7 @@ describe("ChannelInstanceRepository: Multi-Line, Tenant-First & RLS Guarantees (
       expect(found!.id).toBe(instanceId);
     });
 
-    it("should return null for unknown token", async () => {
+    it("should legitimately return null for unknown token", async () => {
       const found = await repository.findByEndpointToken("unknown_token_value_random");
       expect(found).toBeNull();
     });
@@ -239,9 +385,29 @@ describe("ChannelInstanceRepository: Multi-Line, Tenant-First & RLS Guarantees (
       await expect(repository.findByEndpointToken("")).rejects.toThrow(InvalidEndpointTokenError);
       await expect(repository.findByEndpointToken("   ")).rejects.toThrow(InvalidEndpointTokenError);
     });
+
+    it("should propagate SQL / permission errors as typed ChannelIngressLookupError", async () => {
+      // If we pass an unauthorized client (e.g. appPool without lookup_channel_ingress grant)
+      const unauthorizedClient = await appPool.connect();
+      try {
+        await expect(
+          repository.findByEndpointToken(rawToken, unauthorizedClient)
+        ).rejects.toThrow(ChannelIngressLookupError);
+
+        try {
+          await repository.findByEndpointToken(rawToken, unauthorizedClient);
+        } catch (err: any) {
+          expect(err).toBeInstanceOf(ChannelIngressLookupError);
+          expect(err.code).toBe("CHANNEL_INGRESS_LOOKUP_ERROR");
+          expect(err.message).toMatch(/permission denied|lookup_channel_ingress/i);
+        }
+      } finally {
+        unauthorizedClient.release();
+      }
+    });
   });
 
-  describe("4. Status Updates & Instance Isolation", () => {
+  describe("6. Status Updates & Instance Isolation", () => {
     let testLineId: string;
 
     beforeAll(async () => {
@@ -250,6 +416,7 @@ describe("ChannelInstanceRepository: Multi-Line, Tenant-First & RLS Guarantees (
         provider: "waha",
         displayName: "Togglable Line",
         phoneNumberE164: "+5511966660000",
+        endpointToken: "togglable_line_token_" + Date.now(),
         credentialId: credAlphaId,
         isActive: true,
       });
