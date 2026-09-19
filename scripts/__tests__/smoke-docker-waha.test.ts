@@ -89,7 +89,7 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
       // Attempt deletion: because it was NOT created by test, it MUST NOT make DELETE call
       fetchSpy.mockClear();
       const preserved = await runner.deleteSessionViaApi();
-      expect(preserved).toBe(true);
+      expect(preserved.success).toBe(true);
 
       // Verify no DELETE request was dispatched
       const deleteCalls = fetchSpy.mock.calls.filter(([callUrl, opts]) => {
@@ -120,7 +120,7 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
 
     try {
       const deleted = await runner.deleteSessionViaApi();
-      expect(deleted).toBe(true);
+      expect(deleted.success).toBe(true);
 
       const deleteCalls = fetchSpy.mock.calls.filter(([callUrl, opts]) => {
         return opts?.method === "DELETE" && String(callUrl).includes("ephemeral-test-session");
@@ -129,5 +129,128 @@ describe("WAHA Smoke Runner Truthfulness & Robustness (CH-10)", () => {
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+
+  it("should fail cleanup and produce exitCode 1 when session DELETE API returns error", async () => {
+    const runner = new WahaSmokeRunner({
+      port: "3000",
+      sessionName: "failing-delete-session",
+    });
+
+    (runner as any).sessionCreatedByTest = true;
+
+    // Mock fetch to simulate 500 error on DELETE and STOP
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response(JSON.stringify({ message: "Internal server error deleting session" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    try {
+      const cleanup = await runner.cleanupContainer();
+      expect(cleanup.success).toBe(false);
+      expect(cleanup.errors.length).toBeGreaterThanOrEqual(1);
+      expect(cleanup.errors[0]).toContain("Failed to delete session");
+
+      // Verify Step 8 records failure
+      await runner.runStep("8. Targeted cleanup of container and test session", async () => {
+        if (!cleanup.success) {
+          return {
+            status: "FAIL",
+            details: `Cleanup failed: ${cleanup.errors.join("; ")}`,
+          };
+        }
+        return { status: "PASS", details: "ok" };
+      });
+
+      const verdict = runner.evaluateVerdict();
+      expect(verdict.success).toBe(false);
+      expect(verdict.exitCode).toBe(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("should fail cleanup and produce exitCode 1 when docker stop fails", async () => {
+    const mockExec = vi.fn().mockImplementation(async (cmd: string) => {
+      if (cmd.includes("docker stop")) {
+        throw new Error("Docker daemon communication error during stop");
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const runner = new WahaSmokeRunner({
+      port: "3000",
+      sessionName: "stop-fail-session",
+      execFn: mockExec,
+    });
+
+    (runner as any).containerStartedByTest = true;
+
+    const cleanup = await runner.cleanupContainer();
+    expect(cleanup.success).toBe(false);
+    expect(cleanup.errors.some((e) => e.includes("Failed to stop container"))).toBe(true);
+
+    const verdict = runner.evaluateVerdict();
+    // Verify that failures in cleanup reflect in exitCode 1
+    runner.results.push({
+      step: "8. Targeted cleanup of container and test session",
+      status: "FAIL",
+      details: cleanup.errors.join("; "),
+    });
+    const finalVerdict = runner.evaluateVerdict();
+    expect(finalVerdict.success).toBe(false);
+    expect(finalVerdict.exitCode).toBe(1);
+  });
+
+  it("should fail cleanup and produce exitCode 1 when docker rm fails", async () => {
+    const mockExec = vi.fn().mockImplementation(async (cmd: string) => {
+      if (cmd.includes("docker rm")) {
+        throw new Error("Container busy or locked by Docker daemon");
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const runner = new WahaSmokeRunner({
+      port: "3000",
+      sessionName: "rm-fail-session",
+      execFn: mockExec,
+    });
+
+    (runner as any).containerStartedByTest = true;
+
+    const cleanup = await runner.cleanupContainer();
+    expect(cleanup.success).toBe(false);
+    expect(cleanup.errors.some((e) => e.includes("Failed to remove container"))).toBe(true);
+  });
+
+  it("should detect and preserve pre-existing container without stopping or removing it", async () => {
+    const mockExec = vi.fn().mockImplementation(async (cmd: string) => {
+      if (cmd.includes("docker ps -a")) {
+        return { stdout: "sos-v3-waha\n", stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const runner = new WahaSmokeRunner({
+      port: "3000",
+      sessionName: "pre-existing-container-test",
+      execFn: mockExec,
+    });
+
+    const preExists = await runner.checkPreExistingContainer();
+    expect(preExists).toBe(true);
+
+    // Run cleanupContainer: because container was NOT started by test, it MUST NOT invoke docker stop or docker rm
+    mockExec.mockClear();
+    const cleanup = await runner.cleanupContainer();
+    expect(cleanup.success).toBe(true);
+    expect(cleanup.preservedResources.some((r) => r.includes("sos-v3-waha"))).toBe(true);
+
+    const stopOrRmCalls = mockExec.mock.calls.filter(([cmd]) => {
+      return String(cmd).includes("docker stop") || String(cmd).includes("docker rm");
+    });
+    expect(stopOrRmCalls).toHaveLength(0);
   });
 });

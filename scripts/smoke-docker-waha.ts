@@ -18,6 +18,7 @@ export interface SmokeConfig {
   sessionName?: string;
   preventCleanupOnExit?: boolean;
   simulateFailureAtStep?: number;
+  execFn?: (cmd: string) => Promise<{ stdout: string; stderr: string }>;
 }
 
 export interface SmokeLifecycleResult {
@@ -38,13 +39,16 @@ export class WahaSmokeRunner {
   public readonly sessionName: string;
   public readonly simulateFailureAtStep?: number;
   public readonly results: StepResult[] = [];
+  public containerPreExisted = false;
   private sessionCreatedByTest = false;
   private containerStartedByTest = false;
+  private readonly exec: (cmd: string) => Promise<{ stdout: string; stderr: string }>;
 
   constructor(config: SmokeConfig = {}) {
     this.port = config.port || process.env.PORT_WAHA || "3000";
     this.baseUrl = config.baseUrl || `http://127.0.0.1:${this.port}`;
     this.apiKey = config.apiKey || process.env.WAHA_API_KEY || "smoke_test_api_key_2026";
+    process.env.WAHA_API_KEY = this.apiKey;
     this.containerName = config.containerName || "sos-v3-waha";
     this.sessionName =
       config.sessionName ||
@@ -53,6 +57,7 @@ export class WahaSmokeRunner {
     this.simulateFailureAtStep =
       config.simulateFailureAtStep ||
       (process.env.SMOKE_SIMULATE_FAILURE_STEP ? parseInt(process.env.SMOKE_SIMULATE_FAILURE_STEP, 10) : undefined);
+    this.exec = config.execFn || execAsync;
   }
 
   async runStep(
@@ -102,6 +107,18 @@ export class WahaSmokeRunner {
     }
   }
 
+  async checkPreExistingContainer(): Promise<boolean> {
+    try {
+      const { stdout } = await this.exec(
+        `docker ps -a --filter "name=^/${this.containerName}$" --format "{{.Names}}"`
+      );
+      const names = stdout.trim().split("\n").map((n) => n.trim()).filter(Boolean);
+      return names.includes(this.containerName);
+    } catch {
+      return false;
+    }
+  }
+
   async checkPreExistingSession(): Promise<boolean> {
     try {
       const res = await fetch(`${this.baseUrl}/api/sessions?all=true`, {
@@ -116,24 +133,32 @@ export class WahaSmokeRunner {
     return false;
   }
 
-  async deleteSessionViaApi(): Promise<boolean> {
+  async deleteSessionViaApi(): Promise<{ success: boolean; error?: string }> {
     if (!this.sessionCreatedByTest) {
       // Pre-existing session or session not created by test: preserve it!
-      return true;
+      return { success: true };
     }
 
+    let lastError = "";
+
+    // 1. Try DELETE /api/sessions/{session}
     try {
-      // 1. Try DELETE /api/sessions/{session}
       const deleteRes = await fetch(`${this.baseUrl}/api/sessions/${this.sessionName}`, {
         method: "DELETE",
         headers: { "X-Api-Key": this.apiKey },
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(15000),
       });
       if (deleteRes.ok || deleteRes.status === 404) {
-        return true;
+        return { success: true };
       }
+      const text = await deleteRes.text().catch(() => "");
+      lastError = `DELETE: ${deleteRes.status} ${text}`.trim();
+    } catch (err) {
+      lastError = `DELETE: ${err instanceof Error ? err.message : String(err)}`;
+    }
 
-      // 2. Fallback to POST /api/sessions/stop
+    // 2. Fallback to POST /api/sessions/stop
+    try {
       const stopRes = await fetch(`${this.baseUrl}/api/sessions/stop`, {
         method: "POST",
         headers: {
@@ -141,26 +166,73 @@ export class WahaSmokeRunner {
           "X-Api-Key": this.apiKey,
         },
         body: JSON.stringify({ name: this.sessionName, logout: true }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(15000),
       });
-      return stopRes.ok || stopRes.status === 404;
-    } catch {
-      return false;
+      if (stopRes.ok || stopRes.status === 404) {
+        return { success: true };
+      }
+      const text = await stopRes.text().catch(() => "");
+      lastError += `, STOP: ${stopRes.status} ${text}`.trim();
+    } catch (err) {
+      lastError += `, STOP: ${err instanceof Error ? err.message : String(err)}`;
     }
+
+    return {
+      success: false,
+      error: `Failed to delete session '${this.sessionName}' via API (${lastError})`,
+    };
   }
 
-  async cleanupContainer(): Promise<void> {
-    // Delete session via API before container shutdown if still running
-    await this.deleteSessionViaApi();
+  async cleanupContainer(): Promise<{
+    success: boolean;
+    cleanedResources: string[];
+    preservedResources: string[];
+    errors: string[];
+  }> {
+    const cleanedResources: string[] = [];
+    const preservedResources: string[] = [];
+    const errors: string[] = [];
 
+    // 1. Session cleanup
+    if (this.sessionCreatedByTest) {
+      const sessionDelete = await this.deleteSessionViaApi();
+      if (sessionDelete.success) {
+        cleanedResources.push(`Session '${this.sessionName}' (via REST API)`);
+      } else {
+        errors.push(sessionDelete.error || `Failed to delete session '${this.sessionName}'`);
+      }
+    } else {
+      preservedResources.push(`Session '${this.sessionName}' (pre-existing)`);
+    }
+
+    // 2. Container cleanup
     if (this.containerStartedByTest) {
       try {
-        await execAsync(`docker stop -t 3 ${this.containerName}`);
-      } catch {}
+        await this.exec(`docker stop -t 3 ${this.containerName}`);
+        cleanedResources.push(`Container '${this.containerName}' (stopped)`);
+      } catch (err) {
+        errors.push(`Failed to stop container '${this.containerName}': ${err instanceof Error ? err.message : String(err)}`);
+      }
+
       try {
-        await execAsync(`docker rm -f ${this.containerName}`);
-      } catch {}
+        await this.exec(`docker rm -f ${this.containerName}`);
+        cleanedResources.push(`Container '${this.containerName}' (removed)`);
+      } catch (err) {
+        errors.push(`Failed to remove container '${this.containerName}': ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } else {
+      preservedResources.push(`Container '${this.containerName}' (pre-existing)`);
     }
+
+    // Volume is always preserved
+    preservedResources.push("Volume 'sos_v3_waha_sessions' (data persistence)");
+
+    return {
+      success: errors.length === 0,
+      cleanedResources,
+      preservedResources,
+      errors,
+    };
   }
 
   evaluateVerdict(): { success: boolean; exitCode: number } {
@@ -204,7 +276,7 @@ export class WahaSmokeRunner {
 
     let dockerAvailable = false;
     try {
-      const { stdout } = await execAsync("docker info --format '{{.ServerVersion}}'");
+      const { stdout } = await this.exec("docker info --format '{{.ServerVersion}}'");
       if (stdout.trim()) {
         dockerAvailable = true;
         console.log(`Docker daemon detected: version ${stdout.trim()}`);
@@ -227,7 +299,7 @@ export class WahaSmokeRunner {
     try {
       // 1. Render compose config
       const step1 = await this.runStep("1. Render docker compose config", async () => {
-        const { stdout } = await execAsync("docker compose --profile waha config");
+        const { stdout } = await this.exec("docker compose --profile waha config");
         if (stdout.includes("sos-v3-waha")) {
           return { status: "PASS", details: "Compose configuration parsed successfully without syntax errors" };
         }
@@ -238,10 +310,22 @@ export class WahaSmokeRunner {
         return this.abortPipeline();
       }
 
+      // Check pre-existing container before starting to preserve external containers
+      this.containerPreExisted = await this.checkPreExistingContainer();
+      if (this.containerPreExisted) {
+        console.log(`\n[BLOCKED_EXTERNAL] Pre-existing container '${this.containerName}' detected; preserving it and aborting smoke to maintain isolation.`);
+        this.results.push({
+          step: "2. Start isolated WAHA container",
+          status: "BLOCKED_EXTERNAL",
+          details: `Pre-existing container '${this.containerName}' prevents isolated test execution. Remove or stop it manually to run smoke test.`,
+        });
+        return this.abortPipeline();
+      }
+
       // 2. Start WAHA container
       const step2 = await this.runStep("2. Start isolated WAHA container", async () => {
-        const env = { ...process.env, WAHA_API_KEY: this.apiKey };
-        await execAsync("docker compose --profile waha up -d waha", { env });
+        process.env.WAHA_API_KEY = this.apiKey;
+        await this.exec(`WAHA_API_KEY="${this.apiKey}" docker compose --profile waha up -d waha`);
         this.containerStartedByTest = true;
         return { status: "PASS", details: `Container ${this.containerName} started in background` };
       });
@@ -352,7 +436,7 @@ export class WahaSmokeRunner {
 
       // 6. Restart container to test persistence
       const step6 = await this.runStep("6. Restart container to test volume persistence", async () => {
-        await execAsync(`docker restart ${this.containerName}`);
+        await this.exec(`docker restart ${this.containerName}`);
         return { status: "PASS", details: `Container ${this.containerName} restarted cleanly` };
       });
 
@@ -395,10 +479,25 @@ export class WahaSmokeRunner {
     } finally {
       // 8. Targeted cleanup guaranteed by finally
       await this.runStep("8. Targeted cleanup of container and test session", async () => {
-        await this.cleanupContainer();
+        const cleanup = await this.cleanupContainer();
+        const details = [
+          `Cleaned: [${cleanup.cleanedResources.join(", ") || "none"}]`,
+          `Preserved: [${cleanup.preservedResources.join(", ") || "none"}]`,
+          cleanup.errors.length > 0 ? `Errors: [${cleanup.errors.join("; ")}]` : null,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+
+        if (!cleanup.success) {
+          return {
+            status: "FAIL",
+            details: `Cleanup failed to completely remove test resources: ${details}`,
+          };
+        }
+
         return {
           status: "PASS",
-          details: `Container ${this.containerName} stopped/removed and test session cleaned up (pre-existing preserved)`,
+          details,
         };
       });
     }
