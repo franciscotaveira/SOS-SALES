@@ -1,7 +1,7 @@
 # CH-09 — WAHA Operacional
 
 > Nome do arquivo: `CH-09-WAHA.md`  
-> Estado: `ACCEPTED` — Homologado com checkpoint imutável `9577e17b5508efe671d195756a27b6948c908f5b` e 110 testes aprovados.
+> Estado: `ACCEPTED` — Homologado e consolidado no Integration Checkpoint IC-01 (commit `9577e17b5508efe671d195756a27b6948c908f5b`), com digest de escopo próprio e 110 testes aprovados.
 
 ---
 
@@ -10,7 +10,7 @@
 - **Parent objective:** Programa SOS Sales V3 — Motor de Comunicação (Fase CH)
 - **Estado:** `ACCEPTED`
 - **Owner:** Gemini 3.8 (Executor Principal)
-- **Reviewer:** Agente SRE & Security Independente
+- **Reviewer:** Agente Independente de Auditoria de Segurança e Qualidade de Código (ver `docs/audits/ch-09/INDEPENDENT_REVIEW.md`)
 - **Dependências:** `CH-00` (Modelos Mínimos), `CH-01` (RLS Fail-Closed), `CH-02` (Fencing Concorrente), `CH-03` (Reconciliação e Resiliência), `CH-04` (Ingress Seguro), `CH-05` (Rate Limiting Distribuído), `CH-06` (Keyring E2E), `CH-07` (SSRF Guard & Mídia Segura)
 - **ADRs Vinculadas:** ADR-002 (Auth Strategy & Tenancy), ADR-005 (Channel Gateway & Inbox/Outbox)
 - **Roadmap Gate:** `| CH-09 | WAHA operacional | CH-02/06/07 | sessão, QR, status, ack, reconexão e endpoints dedicados |`
@@ -67,14 +67,18 @@ Implementar e homologar a camada operacional completa para o canal **WhatsApp HT
 
 ---
 
-## Arquivos sob ownership
+## Arquivos sob ownership e Proveniência (Integration Checkpoint IC-01)
+
+O código deste pacote foi consolidado no **Integration Checkpoint IC-01** (`9577e17b5508efe671d195756a27b6948c908f5b`), documentado em `docs/project/INTEGRATION_CHECKPOINT_IC-01.md` e manifesto `docs/project/IC-01-MANIFEST.json`. Os 8 arquivos sob ownership estrito do CH-09 são:
 
 1. `packages/application/src/channels/adapters/waha.adapter.ts` (métodos de sessão startSession, stopSession, getSession, getQrCode com single-read e tipagem estrita, roteamento de mídias para endpoints dedicados, SSRF guard perimétrico e classificação determinística de erros)
 2. `packages/application/src/channels/normalizers/waha-normalizer.ts` (normalização de ciclo de vida de sessão, detecção precisa de mídias inbound e tratamento de ACKs incluindo falhas negativas)
 3. `packages/application/src/channels/fixtures/waha-fixtures.ts` (fixtures autênticas para áudio, vídeo, documento, ACK com falha, status de sessão, QR code e auth_failure)
-4. `docker-compose.yml` (definição do serviço waha sob profiles: ["waha"])
-5. `packages/application/src/__tests__/channel-adapters.test.ts` (testes de startSession, stopSession, getSession, getQrCode em múltiplos formatos, limite de payload, single body read, abort em voo e erros HTTP)
-6. `packages/application/src/__tests__/channel-gateway.test.ts` (testes de ciclo de vida de sessão, mídias inbound tipadas e ACKs negativos)
+4. `packages/application/src/__tests__/channel-adapters.test.ts` (testes de startSession, stopSession, getSession, getQrCode em múltiplos formatos, limite de payload, single body read, abort em voo e erros HTTP)
+5. `packages/application/src/__tests__/channel-gateway.test.ts` (testes de ciclo de vida de sessão, mídias inbound tipadas e ACKs negativos)
+6. `docker-compose.yml` (definição do serviço waha sob profiles: ["waha"])
+7. `docs/work-packages/CH-09-WAHA.md` (este documento de especificação)
+8. `docs/work-packages/CH-09-EVIDENCE.json` (manifesto de evidência estruturada e hashes de escopo)
 
 ---
 

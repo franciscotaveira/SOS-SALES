@@ -5,6 +5,35 @@
   "commit_sha": "9577e17b5508efe671d195756a27b6948c908f5b",
   "branch": "codex/iteration-2.7",
   "evidence_id": "EV-CH09-001",
+  "provenance": {
+    "checkpoint_type": "integration_checkpoint",
+    "checkpoint_id": "IC-01",
+    "checkpoint_sha": "9577e17b5508efe671d195756a27b6948c908f5b",
+    "parent_sha": "a4d9cf13ad8885f2948bf51e1048947845ec38b7",
+    "governance_sha": "d086d081b51cfc106ca9a81dbc82e952d2326543",
+    "provenance_doc": "docs/project/INTEGRATION_CHECKPOINT_IC-01.md",
+    "manifest_doc": "docs/project/IC-01-MANIFEST.json",
+    "audit_doc": "docs/audits/ch-09/INDEPENDENT_REVIEW.md",
+    "scoped_ownership_files": [
+      "packages/application/src/channels/adapters/waha.adapter.ts",
+      "packages/application/src/channels/normalizers/waha-normalizer.ts",
+      "packages/application/src/channels/fixtures/waha-fixtures.ts",
+      "packages/application/src/__tests__/channel-adapters.test.ts",
+      "packages/application/src/__tests__/channel-gateway.test.ts",
+      "docker-compose.yml",
+      "docs/work-packages/CH-09-WAHA.md",
+      "docs/work-packages/CH-09-EVIDENCE.json"
+    ],
+    "scoped_code_sha256": {
+      "packages/application/src/channels/adapters/waha.adapter.ts": "d8115ea62dfdca0e63d84d907924f32a34335e280722d3f72af1d5bb58947520",
+      "packages/application/src/channels/normalizers/waha-normalizer.ts": "6f003c096a03ee86d6b4a4b95f36873233bbdf08942c1b51e340f4a323b4f521",
+      "packages/application/src/channels/fixtures/waha-fixtures.ts": "234e0d5b226d8ba8a736a83978ecfbd264004cc6a98bb436f69526dc05f46dea",
+      "packages/application/src/__tests__/channel-adapters.test.ts": "278a501ee47b144fcaa6224d2f7ac5d0e045a4cb7df0b5c3ddbb7bdfc1d83d83",
+      "packages/application/src/__tests__/channel-gateway.test.ts": "e52e8b85017a8963a27c4c4cf25f0315ff2648d79792d8e7c404c43ab771183b",
+      "docker-compose.yml": "c88f017903637af31152efdc78ebd8ecc0f25b361e430bfe7ec20aaa6049443b"
+    },
+    "scoped_composite_code_sha256": "129759d5718dfd0eb305faef339965d8c6b24505f5fc274ef43d46a6f1d2df0c"
+  },
   "environment": {
     "node_version": "v24.11.0",
     "pnpm_version": "11.7.0",
