@@ -355,34 +355,94 @@ describe("ChannelDispatchService: Explicit Multi-Provider Outbound Routing (CH-1
     });
   });
 
-  describe("3. Observability Hygiene & Anti-Leakage", () => {
-    it("should sanitize logs and NEVER log unmasked phone, body text, or tokens", async () => {
+  describe("3. Observability Hygiene & Anti-Leakage (P0-2)", () => {
+    it("should sanitize logs and NEVER log unmasked phone, partially masked phone, idempotency keys, or bodies", async () => {
       const { service, logEntries } = createTestSetup();
 
       const sensitivePhone = "+5511998877665";
       const sensitiveBody = "Sensitive customer contract details";
+      const sensitiveIdempotencyKey = "idemp-clean-log-99999";
 
       await service.dispatchOutbound(workspaceAlphaId, wahaInstanceLine1.id, {
         recipientE164: sensitivePhone,
         body: sensitiveBody,
-        idempotencyKey: "idemp-clean-log",
+        idempotencyKey: sensitiveIdempotencyKey,
       });
 
       expect(logEntries.length).toBeGreaterThan(0);
 
-      // Initiation log must contain masked phone
+      // Initiation log must NOT contain recipientMasked or idempotencyKey
       const initLog = logEntries.find((e) => e.msg === "Initiating outbound channel dispatch");
       expect(initLog).toBeDefined();
-      expect(JSON.stringify(initLog)).toContain(maskRecipientPhone(sensitivePhone));
+      expect(initLog?.meta).not.toHaveProperty("recipientMasked");
+      expect(initLog?.meta).not.toHaveProperty("idempotencyKey");
 
-      // All logs must NEVER leak unmasked phone, sensitive body, or secret tokens
+      // All logs must NEVER leak unmasked phone, partially masked phone, sensitive body, idempotencyKey, or secret tokens
       for (const entry of logEntries) {
         const fullLogJson = JSON.stringify(entry);
         expect(fullLogJson).not.toContain(sensitivePhone);
+        expect(fullLogJson).not.toContain(maskRecipientPhone(sensitivePhone));
         expect(fullLogJson).not.toContain(sensitiveBody);
+        expect(fullLogJson).not.toContain(sensitiveIdempotencyKey);
         expect(fullLogJson).not.toContain("a".repeat(64));
         expect(fullLogJson).not.toContain("test_secret");
       }
+    });
+
+    it("should redact raw adapter exception from public error and logs while keeping cause internally", async () => {
+      const { service, wahaSendMessageMock, logEntries } = createTestSetup();
+
+      const rawSecretLeakError = new Error("Fatal crash: DB password=super_secret at /var/run/waha.sock");
+      wahaSendMessageMock.mockRejectedValueOnce(rawSecretLeakError);
+
+      let thrownError: any;
+      try {
+        await service.dispatchOutbound(workspaceAlphaId, wahaInstanceLine1.id, {
+          recipientE164: "+5511999998888",
+          body: "Hello",
+          idempotencyKey: "idemp-leak-test",
+        });
+      } catch (err) {
+        thrownError = err;
+      }
+
+      expect(thrownError).toBeDefined();
+      // Public message must NOT contain raw exception text
+      expect(thrownError.message).not.toContain("super_secret");
+      expect(thrownError.message).not.toContain("/var/run/waha.sock");
+      expect(thrownError.message).toContain("waha");
+      expect(thrownError.message).toContain(wahaInstanceLine1.id);
+      // Cause is preserved internally
+      expect(thrownError.cause).toBe(rawSecretLeakError);
+
+      // Log must NOT contain raw exception text
+      const errLog = logEntries.find((e) => e.level === "error");
+      expect(errLog).toBeDefined();
+      expect(JSON.stringify(errLog)).not.toContain("super_secret");
+      expect(JSON.stringify(errLog)).not.toContain("/var/run/waha.sock");
+      expect(errLog?.meta).not.toHaveProperty("error");
+    });
+
+    it("should redact sendResult.errorMessage from provider rejection warn logs", async () => {
+      const { service, wahaSendMessageMock, logEntries } = createTestSetup();
+
+      wahaSendMessageMock.mockResolvedValueOnce({
+        success: false,
+        category: "transient",
+        errorCode: "WAHA_INTERNAL_FAIL",
+        errorMessage: "Raw stack trace error: host 10.0.0.1 failed",
+      });
+
+      await service.dispatchOutbound(workspaceAlphaId, wahaInstanceLine1.id, {
+        recipientE164: "+5511999998888",
+        body: "Hello",
+        idempotencyKey: "idemp-warn-test",
+      });
+
+      const warnLog = logEntries.find((e) => e.level === "warn");
+      expect(warnLog).toBeDefined();
+      expect(warnLog?.meta).not.toHaveProperty("errorMessage");
+      expect(JSON.stringify(warnLog)).not.toContain("10.0.0.1");
     });
 
     it("should verify phone masking utility correctly redacts middle digits", () => {

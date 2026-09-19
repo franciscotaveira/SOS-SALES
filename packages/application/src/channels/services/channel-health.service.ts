@@ -16,6 +16,12 @@ export type ChannelHealthState =
   | "inactive"
   | "unknown";
 
+export interface ChannelHealthEvidence {
+  readonly status: string;
+  readonly checkedAt: string;
+  readonly endpointReachable: boolean;
+}
+
 export interface ChannelHealthReport {
   readonly workspaceId: string;
   readonly channelInstanceId: string;
@@ -25,7 +31,7 @@ export interface ChannelHealthReport {
   readonly reasonCode: string;
   readonly reasonMessage?: string;
   readonly availableCapabilities: readonly string[];
-  readonly lastKnownTechnicalEvidence?: Record<string, unknown>;
+  readonly lastKnownTechnicalEvidence?: ChannelHealthEvidence;
 }
 
 export interface ChannelHealthServiceOptions {
@@ -142,6 +148,15 @@ export class ChannelHealthService {
     if (typeof adapter.checkHealth === "function") {
       try {
         const custom = await adapter.checkHealth(instance.id, workspaceId, this.secretResolver);
+        const evidenceStatus =
+          typeof custom.technicalEvidence?.status === "string"
+            ? custom.technicalEvidence.status
+            : custom.state.toUpperCase();
+        const endpointReachable =
+          typeof custom.technicalEvidence?.endpointReachable === "boolean"
+            ? custom.technicalEvidence.endpointReachable
+            : (custom.state === "healthy" || custom.state === "degraded");
+
         return {
           workspaceId,
           channelInstanceId: instance.id,
@@ -151,9 +166,13 @@ export class ChannelHealthService {
           reasonCode: custom.reasonCode,
           reasonMessage: custom.reasonMessage,
           availableCapabilities: custom.capabilities || (instance.provider === "meta_waba" ? ["text", "media", "template"] : ["text", "media"]),
-          lastKnownTechnicalEvidence: custom.technicalEvidence,
+          lastKnownTechnicalEvidence: {
+            status: evidenceStatus,
+            checkedAt: timestamp,
+            endpointReachable,
+          },
         };
-      } catch (err) {
+      } catch {
         return {
           workspaceId,
           channelInstanceId: instance.id,
@@ -161,9 +180,13 @@ export class ChannelHealthService {
           state: "unavailable",
           timestamp,
           reasonCode: "ADAPTER_HEALTH_CHECK_FAILED",
-          reasonMessage: err instanceof Error ? err.message : String(err),
+          reasonMessage: "Adapter health check probe failed to respond",
           availableCapabilities: [],
-          lastKnownTechnicalEvidence: { error: String(err) },
+          lastKnownTechnicalEvidence: {
+            status: "UNAVAILABLE",
+            checkedAt: timestamp,
+            endpointReachable: false,
+          },
         };
       }
     }
@@ -239,9 +262,9 @@ export class ChannelHealthService {
             reasonMessage: "WAHA session is authenticated and connected to WhatsApp engine",
             availableCapabilities: ["text", "media", "qr_code"],
             lastKnownTechnicalEvidence: {
-              session: sessionInfo.name || targetSession,
               status: rawStatus,
-              me: sessionInfo.me,
+              checkedAt: timestamp,
+              endpointReachable: true,
             },
           };
         }
@@ -257,8 +280,9 @@ export class ChannelHealthService {
             reasonMessage: `WAHA session is in '${rawStatus}' state (awaiting QR scan or boot)`,
             availableCapabilities: ["qr_code"],
             lastKnownTechnicalEvidence: {
-              session: targetSession,
               status: rawStatus,
+              checkedAt: timestamp,
+              endpointReachable: true,
             },
           };
         }
@@ -273,11 +297,12 @@ export class ChannelHealthService {
           reasonMessage: `WAHA session is disconnected or stopped (status: ${rawStatus})`,
           availableCapabilities: [],
           lastKnownTechnicalEvidence: {
-            session: targetSession,
             status: rawStatus,
+            checkedAt: timestamp,
+            endpointReachable: true,
           },
         };
-      } catch (err) {
+      } catch {
         return {
           workspaceId,
           channelInstanceId: instance.id,
@@ -285,10 +310,12 @@ export class ChannelHealthService {
           state: "unavailable",
           timestamp,
           reasonCode: "WAHA_NODE_UNREACHABLE",
-          reasonMessage: `Failed to query WAHA engine: ${err instanceof Error ? err.message : String(err)}`,
+          reasonMessage: "WAHA engine endpoint is unreachable or returned an error",
           availableCapabilities: [],
           lastKnownTechnicalEvidence: {
-            error: err instanceof Error ? err.message : String(err),
+            status: "UNREACHABLE",
+            checkedAt: timestamp,
+            endpointReachable: false,
           },
         };
       }
@@ -313,13 +340,11 @@ export class ChannelHealthService {
     timestamp: string
   ): Promise<ChannelHealthReport> {
     let hasValidCreds = false;
-    let phoneNumberId = "";
 
     if (this.secretResolver.useWabaOutboundCredentials) {
       await this.secretResolver.useWabaOutboundCredentials(instance.id, workspaceId, (creds) => {
         if (creds?.accessToken && creds?.phoneNumberId) {
           hasValidCreds = true;
-          phoneNumberId = creds.phoneNumberId;
         }
       });
     }
@@ -349,7 +374,9 @@ export class ChannelHealthService {
       reasonMessage: "WABA credentials structurally valid; external Graph API probe requires EXT-03",
       availableCapabilities: ["text", "media", "template"],
       lastKnownTechnicalEvidence: {
-        phoneNumberIdConfigured: Boolean(phoneNumberId),
+        status: "PENDING_PROBE",
+        checkedAt: timestamp,
+        endpointReachable: false,
       },
     };
   }

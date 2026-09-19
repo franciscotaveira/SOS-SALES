@@ -139,16 +139,13 @@ export class ChannelDispatchService {
       );
     }
 
-    // 6. Sanitized observability log (zero PII, zero tokens/hashes)
-    const maskedPhone = maskRecipientPhone(payload.recipientE164);
+    // 6. Sanitized observability log (zero PII, zero tokens/hashes, zero idempotency keys)
     this.logger?.info("Initiating outbound channel dispatch", {
       workspaceId,
       channelInstanceId: instance.id,
       provider: instance.provider,
-      recipientMasked: maskedPhone,
       hasMedia: Boolean(payload.mediaUrl),
       hasTemplate: Boolean(payload.template),
-      idempotencyKey: payload.idempotencyKey,
     });
 
     const sendParams: OutboundSendParams = {
@@ -170,20 +167,26 @@ export class ChannelDispatchService {
     try {
       sendResult = await adapter.sendMessage(sendParams, this.secretResolver);
     } catch (err) {
-      // Safe error wrapping: preserve cause internally, expose safe message
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      // Safe error wrapping: preserve cause internally, expose safe message and provider/channelInstanceId
       this.logger?.error("Channel adapter threw an exception during dispatch", {
         workspaceId,
         channelInstanceId: instance.id,
         provider: instance.provider,
-        error: errorMsg,
       });
 
+      const errorMsg = err instanceof Error ? err.message : String(err);
       if (errorMsg.includes("ECONNREFUSED") || errorMsg.includes("ETIMEDOUT") || errorMsg.includes("Network error")) {
-        throw new ChannelProviderUnavailableError(instance.provider, "Network connectivity error connecting to channel engine", err);
+        throw new ChannelProviderUnavailableError(
+          instance.provider,
+          "Channel provider temporarily unavailable",
+          err
+        );
       }
 
-      throw new ChannelDispatchFailedError(`Dispatch failed on provider '${instance.provider}': ${errorMsg}`, err);
+      throw new ChannelDispatchFailedError(
+        `Dispatch failed on provider '${instance.provider}' for channel instance '${instance.id}'`,
+        err
+      );
     }
 
     // 8. Result inspection and logging
@@ -201,8 +204,6 @@ export class ChannelDispatchService {
         provider: instance.provider,
         category: sendResult.category,
         errorCode: sendResult.errorCode,
-        // errorMessage is safe provider message, not raw secrets
-        errorMessage: sendResult.errorMessage,
       });
     }
 

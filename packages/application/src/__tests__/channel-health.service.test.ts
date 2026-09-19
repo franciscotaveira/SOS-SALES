@@ -207,7 +207,9 @@ describe("ChannelHealthService: Evidence-Based Channel Health Evaluation (CH-10)
     const report = await service.evaluateChannelHealth(workspaceAlphaId, wahaInstance.id);
     expect(report.state).toBe("healthy");
     expect(report.reasonCode).toBe("CUSTOM_ENGINE_OK");
-    expect(report.lastKnownTechnicalEvidence).toEqual({ cluster: "node-1" });
+    expect(report.lastKnownTechnicalEvidence?.status).toBe("HEALTHY");
+    expect(report.lastKnownTechnicalEvidence?.endpointReachable).toBe(true);
+    expect(report.lastKnownTechnicalEvidence).not.toHaveProperty("cluster");
   });
 
   it("reports state 'unavailable' when adapter.checkHealth throws an unexpected error", async () => {
@@ -234,7 +236,11 @@ describe("ChannelHealthService: Evidence-Based Channel Health Evaluation (CH-10)
     const report = await service.evaluateChannelHealth(workspaceAlphaId, wahaInstance.id);
     expect(report.state).toBe("unavailable");
     expect(report.reasonCode).toBe("ADAPTER_HEALTH_CHECK_FAILED");
-    expect(report.reasonMessage).toContain("Internal adapter health check crash");
+    expect(report.reasonMessage).toBe("Adapter health check probe failed to respond");
+    expect(report.reasonMessage).not.toContain("Internal adapter health check crash");
+    expect(report.lastKnownTechnicalEvidence?.status).toBe("UNAVAILABLE");
+    expect(report.lastKnownTechnicalEvidence?.endpointReachable).toBe(false);
+    expect(report.lastKnownTechnicalEvidence).not.toHaveProperty("error");
   });
 
   it("WAHA: reports 'misconfigured' when apiKey cannot be resolved from vault", async () => {
@@ -288,11 +294,13 @@ describe("ChannelHealthService: Evidence-Based Channel Health Evaluation (CH-10)
     expect(report.state).toBe("healthy");
     expect(report.reasonCode).toBe("WAHA_SESSION_WORKING");
     expect(report.availableCapabilities).toEqual(["text", "media", "qr_code"]);
-    expect(report.lastKnownTechnicalEvidence).toEqual({
-      session: "default",
-      status: "WORKING",
-      me: { id: "5511999991111@c.us" },
-    });
+    expect(report.lastKnownTechnicalEvidence?.status).toBe("WORKING");
+    expect(report.lastKnownTechnicalEvidence?.endpointReachable).toBe(true);
+    expect(typeof report.lastKnownTechnicalEvidence?.checkedAt).toBe("string");
+    // Verify zero PII / non-allowlisted fields
+    expect(report.lastKnownTechnicalEvidence).not.toHaveProperty("me");
+    expect(report.lastKnownTechnicalEvidence).not.toHaveProperty("session");
+    expect(JSON.stringify(report.lastKnownTechnicalEvidence)).not.toContain("5511999991111");
   });
 
   it("WAHA: reports 'degraded' when getSession returns status 'SCAN_QR_CODE' or 'STARTING'", async () => {
@@ -321,6 +329,9 @@ describe("ChannelHealthService: Evidence-Based Channel Health Evaluation (CH-10)
     expect(report.state).toBe("degraded");
     expect(report.reasonCode).toBe("WAHA_SESSION_SCAN_QR_CODE");
     expect(report.availableCapabilities).toEqual(["qr_code"]);
+    expect(report.lastKnownTechnicalEvidence?.status).toBe("SCAN_QR_CODE");
+    expect(report.lastKnownTechnicalEvidence?.endpointReachable).toBe(true);
+    expect(report.lastKnownTechnicalEvidence).not.toHaveProperty("session");
   });
 
   it("WAHA: reports 'unavailable' when getSession returns 'STOPPED' or throws network failure", async () => {
@@ -347,7 +358,11 @@ describe("ChannelHealthService: Evidence-Based Channel Health Evaluation (CH-10)
     const report = await service.evaluateChannelHealth(workspaceAlphaId, wahaInstance.id);
     expect(report.state).toBe("unavailable");
     expect(report.reasonCode).toBe("WAHA_NODE_UNREACHABLE");
-    expect(report.reasonMessage).toContain("ECONNREFUSED");
+    expect(report.reasonMessage).toBe("WAHA engine endpoint is unreachable or returned an error");
+    expect(report.reasonMessage).not.toContain("ECONNREFUSED");
+    expect(report.lastKnownTechnicalEvidence?.status).toBe("UNREACHABLE");
+    expect(report.lastKnownTechnicalEvidence?.endpointReachable).toBe(false);
+    expect(report.lastKnownTechnicalEvidence).not.toHaveProperty("error");
   });
 
   it("WAHA: never assumes healthy when getSession is not available; reports 'unknown'", async () => {
@@ -421,5 +436,8 @@ describe("ChannelHealthService: Evidence-Based Channel Health Evaluation (CH-10)
     expect(report.state).toBe("unknown");
     expect(report.reasonCode).toBe("EXTERNAL_PROBE_PENDING");
     expect(report.availableCapabilities).toContain("template");
+    expect(report.lastKnownTechnicalEvidence?.status).toBe("PENDING_PROBE");
+    expect(report.lastKnownTechnicalEvidence?.endpointReachable).toBe(false);
+    expect(report.lastKnownTechnicalEvidence).not.toHaveProperty("phoneNumberIdConfigured");
   });
 });
