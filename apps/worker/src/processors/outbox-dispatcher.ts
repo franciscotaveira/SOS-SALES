@@ -361,35 +361,39 @@ export class OutboxDispatcher {
 
       // 3. Handle success: Transactional finalization of command, EXACT message, and delivery event
       if (sendResult.success) {
-        await withWorkerTransaction(item.workspace_id, async (client) => {
-          // Fencing: Update outbound command ensuring lease_token and worker_id match via repository
-          await this.outboundRepo.markSent(
-            item.id,
-            workerId,
-            item.lease_token,
-            sendResult.externalMessageId!,
-            sendResult.sentAt ?? new Date(),
-            client
-          );
-
-          // P0: STRICTLY update ONLY the exact single message associated with this command
-          if (item.message_id) {
-            await client.query(
-              `UPDATE public.messages
-               SET delivery_status = 'sent', status_rank = 10, provider_message_id = $1, updated_at = clock_timestamp()
-               WHERE id = $2 AND workspace_id = $3 AND channel_instance_id = $4;`,
-              [sendResult.externalMessageId, item.message_id, item.workspace_id, item.channel_instance_id]
-            );
-          }
-
-          // Step 6: Record delivery event append-only
-          try {
+        try {
+          await withWorkerTransaction(item.workspace_id, async (client) => {
+            // Step 1: Verify channel instance and provider (fail-closed, no fallback)
             const chanRes = await client.query<{ provider: string }>(
-              "SELECT provider FROM public.channel_instances WHERE id = $1 AND workspace_id = $2;",
+              "SELECT provider FROM public.channel_instances WHERE id = $1 AND workspace_id = $2 AND is_active = true;",
               [item.channel_instance_id, item.workspace_id]
             );
-            const provider = chanRes.rows[0]?.provider || "meta_waba";
+            const provider = chanRes.rows[0]?.provider;
+            if (!provider) {
+              throw new ChannelInstanceNotFoundError(item.channel_instance_id, item.workspace_id);
+            }
 
+            // Step 2: Fencing update to 'sent'
+            await this.outboundRepo.markSent(
+              item.id,
+              workerId,
+              item.lease_token,
+              sendResult.externalMessageId!,
+              sendResult.sentAt ?? new Date(),
+              client
+            );
+
+            // Step 3: Strictly update single message
+            if (item.message_id) {
+              await client.query(
+                `UPDATE public.messages
+                 SET delivery_status = 'sent', status_rank = 10, provider_message_id = $1, updated_at = clock_timestamp()
+                 WHERE id = $2 AND workspace_id = $3 AND channel_instance_id = $4;`,
+                [sendResult.externalMessageId, item.message_id, item.workspace_id, item.channel_instance_id]
+              );
+            }
+
+            // Step 4: Record delivery event append-only without swallowing errors
             const rawEvent = JSON.stringify({
               externalMessageId: sendResult.externalMessageId,
               sentAt: sendResult.sentAt,
@@ -422,15 +426,45 @@ export class OutboxDispatcher {
                 enc.encryptedBase64,
                 enc.ivBase64,
                 enc.authTagBase64,
-                sendResult.sentAt,
+                sendResult.sentAt ?? new Date(),
               ]
             );
-          } catch {
-            logger.warn({ commandId: item.id, workerId }, "Failed to record outbound delivery event");
-          }
-        }, pool);
+          }, pool);
 
-        return { success: true, externalMessageId: sendResult.externalMessageId, status: "sent" };
+          return { success: true, externalMessageId: sendResult.externalMessageId, status: "sent" };
+        } catch (postSendErr: unknown) {
+          // Provider send succeeded, but local transactional finalization failed.
+          // Incomplete transaction rolled back automatically.
+          // Persist state reconciliation_required in new transaction to preserve externalMessageId and prevent duplicate dispatch!
+          const errorDetail = postSendErr instanceof Error ? postSendErr.message : String(postSendErr);
+          logger.error(
+            { commandId: item.id, workerId, err: errorDetail },
+            "Post-send persistence failed after provider confirmation. Routing to reconciliation_required to preserve externalMessageId and prevent duplicate dispatch."
+          );
+
+          const sanitizedPostSendError = sanitizeOutboxErrorMessage("reconciliation", "ERR_POST_SEND_PERSISTENCE_FAILED");
+          try {
+            await withWorkerTransaction(item.workspace_id, async (client) => {
+              await this.outboundRepo.markPostSendReconciliationRequired(
+                item.id,
+                sendResult.externalMessageId!,
+                sanitizedPostSendError,
+                client
+              );
+            }, pool);
+          } catch (reconErr: unknown) {
+            logger.error(
+              { commandId: item.id, workerId, err: reconErr instanceof Error ? reconErr.message : String(reconErr) },
+              "Critical: Failed to record post-send reconciliation state after rollback"
+            );
+          }
+
+          return {
+            success: false,
+            externalMessageId: sendResult.externalMessageId,
+            status: "reconciliation_required",
+          };
+        }
       }
 
       // 4. Handle non-success response with centralized sanitization

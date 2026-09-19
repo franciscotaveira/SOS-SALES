@@ -393,6 +393,31 @@ export class OutboundCommandRepository {
   }
 
   /**
+   * Persists a command into reconciliation_required after provider confirmed send
+   * but local post-send transactional finalization failed, preserving external_message_id.
+   */
+  async markPostSendReconciliationRequired(
+    commandId: string,
+    externalMessageId: string,
+    errorMessage: string,
+    client?: Pool | PoolClient
+  ): Promise<void> {
+    const executor = client || this.pool;
+    await executor.query(
+      `UPDATE public.outbound_commands
+       SET status = 'reconciliation_required',
+           external_message_id = COALESCE($1, external_message_id),
+           error_message = $2,
+           lease_until = NULL,
+           lease_token = NULL,
+           worker_id = NULL,
+           updated_at = clock_timestamp()
+       WHERE id = $3;`,
+      [externalMessageId, errorMessage, commandId]
+    );
+  }
+
+  /**
    * Reclaims abandoned processing leases and routes them safely to reconciliation_required
    * to guarantee zero blind duplicate external dispatches after crashes.
    */
