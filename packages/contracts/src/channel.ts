@@ -128,6 +128,7 @@ export const OutboundChannelCommandSchema = z.object({
   mediaUrl: z.string().url().optional(),
   template: WabaTemplateMessageSchema.optional(),
   idempotencyKey: z.string().min(1),
+  payloadFingerprint: z.string().regex(SHA256_HEX_REGEX).nullable().optional(),
   status: OutboundCommandStatusEnum,
   retryCount: z.number().int().min(0),
   maxRetries: z.number().int().min(0),
@@ -142,6 +143,62 @@ export const OutboundChannelCommandSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 export type OutboundChannelCommand = z.infer<typeof OutboundChannelCommandSchema>;
+
+/**
+ * Public outbound dispatch request schema.
+ * Strict: rejects any unauthorized or injected authority fields (workspaceId, actorId, role, permissions) with HTTP 400.
+ */
+export const PublicOutboundRequestSchema = z
+  .object({
+    recipientPhoneE164: z
+      .string()
+      .regex(E164_PHONE_REGEX, "E.164 phone format required (e.g. +5511999998888)"),
+    contentType: z.enum(["text", "image", "audio", "video", "document", "template"]),
+    body: z.string().min(1).max(4096),
+    mediaUrl: z.string().url().optional(),
+    template: WabaTemplateMessageSchema.optional(),
+    idempotencyKey: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(
+        /^[a-zA-Z0-9_-]+$/,
+        "idempotencyKey must be alphanumeric with dashes or underscores"
+      ),
+  })
+  .strict();
+export type PublicOutboundRequest = z.infer<typeof PublicOutboundRequestSchema>;
+
+/**
+ * Trusted server-side outbound context derived strictly from JWT, route params, and RBAC authorization.
+ */
+export const TrustedOutboundContextSchema = z.object({
+  workspaceId: z.string().uuid(),
+  channelInstanceId: z.string().uuid(),
+  actorId: z.string().uuid(),
+  role: z.enum(["owner", "admin", "manager", "operator"]),
+  permissions: z.array(z.string()),
+  ipAddress: z.string().optional(),
+  userAgent: z.string().optional(),
+});
+export type TrustedOutboundContext = z.infer<typeof TrustedOutboundContextSchema>;
+
+/**
+ * Canonical produce outbound output schema returned by the transactional producer.
+ */
+export const ProduceOutboundOutputSchema = z.object({
+  messageId: z.string().uuid(),
+  commandId: z.string().uuid(),
+  threadId: z.string().uuid(),
+  contactId: z.string().uuid(),
+  idempotencyKey: z.string(),
+  status: OutboundCommandStatusEnum,
+  deliveryStatus: MessageDeliveryStatusEnum,
+  isIdempotentReplay: z.boolean(),
+  createdAt: z.string().datetime(),
+});
+export type ProduceOutboundOutput = z.infer<typeof ProduceOutboundOutputSchema>;
+
 
 export const ChannelDeliveryReceiptSchema = z.object({
   externalMessageId: z.string().min(1),
