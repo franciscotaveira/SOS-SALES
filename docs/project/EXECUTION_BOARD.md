@@ -1,6 +1,6 @@
 # Execution Board — Estado Factual
 
-> Atualizado em 19 de setembro de 2026.  
+> Atualizado em 20 de setembro de 2026.  
 > O board descreve fatos do repositório, não intenção.
 
 ## Snapshot atual
@@ -33,7 +33,8 @@
 | CH-07 | ACCEPTED | SSRF guard e download seguro de mídia | EV-CH07-001 validado; mitigação de SSRF contra IPs privados/loopback/CGNAT/benchmarking, stream piping com teto de tamanho rígido (maxSizeBytes), verificação de magic bytes e zero bypass ambiental (79 asserções) |
 | CH-08 | ACCEPTED | WABA operacional | EV-CH08-001 validado; janela 24h, templates multilíngues com SSRF guard, documentos com filename, getMediaUrl seguro contra CDN Meta, classificação determinística de erros e mensagens interativas (70 asserções) |
 | CH-09 | ACCEPTED | WAHA operacional | EV-CH09-001 validado; contido no Integration Checkpoint IC-01 (`9577e17`), com digest de escopo próprio e 110 asserções aprovadas |
-| CH-10 | READY | Docker dual-engine | desbloqueado após fechamento formal e homologação do CH-09; pronto para execução |
+| CH-10 | ACCEPTED | Docker dual-engine | EV-CH10-001 validado; dual-engine operacional, ChannelDispatchService fail-closed, concorrência atômica FOR UPDATE com proteção contra regressão de estado terminal em post-send reconciliation, fencing e 526 testes passando (35 suítes) |
+| CH-11 | READY | Produtor transacional de outbound | Desbloqueado após encerramento formal e homologação do CH-10; pronto para execução |
 
 ## Estado por macrofase
 
@@ -46,7 +47,7 @@
 | Iteração 2.6 — Hardening | ACCEPTED | EV-IT26-001; commit `a4d9cf1` auditado com biblioteca jose e trigger imutável |
 | Iteração 2.7 — Runner | ACCEPTED | EV-IT27-001; commit `a41e1ab` revalidado com 90 testes em DB hermético |
 | Iteração 3 — Design/AppShell | ACCEPTED | EV-IT03-001; commit `0605dff` revalidado com @sos-sales/ui e web app |
-| Iteração 4 — Canais | IN_PROGRESS | commit `d4de6ca` isolado; saneamento ativo na esteira CH-00..CH-12 (CH-00..CH-04 ACCEPTED) |
+| Iteração 4 — Canais | IN_PROGRESS | commit `d4de6ca` isolado; saneamento ativo na esteira CH-00..CH-12 (CH-00..CH-10 ACCEPTED) |
 | CRM Core | PLANNED | não iniciar antes de CH-12 |
 | Cockpit real | PLANNED | UI atual é fundação, não operação real |
 | Meta/CAPI | PLANNED | sem loop fechado comprovado |
@@ -67,7 +68,7 @@
 - Rate limiting distribuído Redis não está integrado (resolvido no CH-05 via RedisTwoTierRateLimiter e Lua sliding window).
 - `trustProxy` precisa ser restrito (resolvido no CH-05 via resolveTrustProxy e CIDRs privados padrão).
 - keyring existe como primitive, não E2E (resolvido no CH-06 via Keyring versionado, activeKeyVersion no ingress e worker heterogêneo).
-- Docker dual-engine não está comprovado (objeto do CH-10).
+- Docker dual-engine não está comprovado (resolvido no CH-10 via Docker Compose com pinning por digest, ChannelDispatchService com roteamento explícito, zero fallback silencioso, saneamento de concorrência com fencing atômico e prova de 526 testes herméticos).
 - não existe produtor runtime transacional de outbound (objeto do CH-11).
 - templates não foram comprovados de serviço de aplicação até HTTP (objeto do CH-12).
 
@@ -163,6 +164,9 @@ Ao final de cada pacote:
 17. **Pacote CH-09:**
    - Manifest: `docs/work-packages/CH-09-EVIDENCE.json` (`EV-CH09-001`).
    - Evidência: Adaptador `WahaAdapter` operacional com gestão de ciclo de vida de sessões (`startSession`, `stopSession`, `getSession`, `getQrCode`) consumindo credenciais estritamente no escopo isolado de `ISigningSecretResolver` sem vazamento; parsing robusto de QR Code com leitura única via `arrayBuffer`, suporte a JSON (`qr`/`raw`), texto plano, SVG, data URI binária (PNG/JPEG/WebP) e erro tipado `WAHA_UNSUPPORTED_QR_FORMAT` com teto de 512KB; roteamento de mídia para endpoints dedicados da WAHA (`/api/sendImage`, `/api/sendVideo`, `/api/sendVoice`, `/api/sendFile`, `/api/sendText`) com validação defensiva SSRF perimétrica contra URLs maliciosas e notações ofuscadas; re-lançamento de `FENCING_IN_FLIGHT_ABORT` em caso de cancelamento em voo ou perda de lease e classificação determinística de status HTTP 404 (`SESSION_NOT_FOUND`), 429 (com parsing de `Retry-After`), 502/503/504 (transient) e 408/425/`EMPTY_MESSAGE_ID` (ambiguous); `WahaWebhookNormalizer` com normalização de eventos de ciclo de vida (`session.status`, `session.qr`, `session.auth_failure`) gerando eventos canônicos do tipo `lifecycle` (`connected`, `disconnected`, `qr_received`, `auth_failure`), detecção precisa de mídias inbound (`image`, `video`, `audio`, `document`) e tratamento de ACKs negativos como `status: "failed"`; serviço `waha` adicionado ao `docker-compose.yml` sob `profiles: ["waha"]` preservando a hermeticidade da base de CI; 110 asserções de teste aprovadas em `channel-adapters.test.ts` (59 testes) e `channel-gateway.test.ts` (51 testes), e total de 404 asserções no monorepo (27 suítes) com 100% de sucesso nos 6 portões de qualidade (`pnpm ci:gate`); artefatos consolidados no Integration Checkpoint IC-01 (`9577e17b5508efe671d195756a27b6948c908f5b`) com proveniência em `INTEGRATION_CHECKPOINT_IC-01.md`, manifest de máquina `IC-01-MANIFEST.json` e digest de escopo próprio em `CH-09-EVIDENCE.json`.
+18. **Pacote CH-10:**
+   - Manifest: `docs/work-packages/CH-10-EVIDENCE.json` (`EV-CH10-001`) e `docs/work-packages/CH-10-DUAL-ENGINE.md`.
+   - Evidência: Coexistência operacional comprovada dos dois motores (`meta_waba` e `waha`); Docker Compose com serviço `waha` hermético fixado por digest OCI oficial (`devlikeapro/waha:latest-2026.8.2@sha256:527ff3d6...`), sem modo privilegiado (`privileged: false`, zero `SYS_ADMIN`), restrito a `127.0.0.1:3000` e volume persistente nomeado; repositório `ChannelInstanceRepository` tenant-first suportando múltiplas linhas ativas por workspace com testes de isolamento cross-tenant e timing oracle mitigation; `ChannelDispatchService` com roteamento explícito obrigatório por `(workspaceId, channelInstanceId)`, política estrita fail-closed e zero fallback silencioso entre provedores; `ChannelHealthService` baseado exclusivamente em evidência técnica allowlisted e redação irrestrita de PII; script de smoke test Docker com segurança aprimorada (eliminação total de shell interpolation via `execFileAsync` e limpeza atômica em bloco `finally`); eliminação definitiva do bloqueio residual P0 de concorrência em `markPostSendReconciliationRequired` mediante CTE atômica com lock pessimista `FOR UPDATE` em `(id, workspace_id)`, garantia de monotonicidade contra regressão de estados terminais (`sent`, `dead_letter`), fencing de lease (`worker_id`, `lease_token`), preservação canônica de `external_message_id` e retorno de 5 desfechos explícitos integrados com política fail-closed e zero blind resend no `OutboxDispatcher`; 35 arquivos de teste e 526 asserções aprovadas com exit code 0 na suíte hermética (`pnpm test:db:run`) e 100% de sucesso nos 6 portões de qualidade (`pnpm ci:check`); limitações operacionais documentadas: validação com aparelho físico e pareamento de QR com WhatsApp real permanecem categorizados como `BLOCKED_EXTERNAL` (EXT-05), V3 não promovida a produção, V2 e servidores VPS 100% intocados.
 
 
 

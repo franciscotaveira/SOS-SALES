@@ -1,0 +1,94 @@
+{
+  "package_id": "CH-10",
+  "name": "Docker Dual-Engine & Coexistência Operacional",
+  "timestamp": "2026-09-20T11:30:00Z",
+  "commit_sha": "6126ab64f16388eeb187a7aa95c37ca9121bb9fc",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH10-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container",
+    "local_redis": "localhost:6389"
+  },
+  "metrics": {
+    "test_files": [
+      "packages/database/src/__tests__/channel-instance-repository.test.ts",
+      "packages/database/src/__tests__/outbound-command-repository.test.ts",
+      "packages/application/src/__tests__/channel-dispatch.service.test.ts",
+      "packages/application/src/__tests__/channel-health.service.test.ts",
+      "scripts/__tests__/smoke-docker-waha.test.ts",
+      "apps/worker/src/__tests__/outbox-dispatch-service-integration.test.ts",
+      "apps/worker/src/__tests__/outbox-zero-blind-resend.test.ts"
+    ],
+    "total_assertions_package": 122,
+    "assertions_passed_package": 122,
+    "assertions_failed_package": 0,
+    "total_test_files_monorepo": 35,
+    "total_assertions_monorepo": 526,
+    "assertions_passed_monorepo": 526,
+    "security_capabilities_verified": [
+      "Hardenized Docker Compose specification with pinned OCI digest for WAHA (sha256:527ff3d6...), zero privileged mode, zero SYS_ADMIN, loopback port binding (127.0.0.1:3000), and named persistent volume",
+      "Tenant-first ChannelInstanceRepository supporting multi-line active configurations per workspace, strictly prohibiting adminPool bypass and verifying RLS isolation with indistinguishable enumeration timing oracles",
+      "Explicit instance routing in ChannelDispatchService strictly requiring (workspaceId, channelInstanceId), with fail-closed semantics and zero automatic silent fallback between providers",
+      "Allowlisted non-PII evidence reporting in ChannelHealthService eliminating leaked WhatsApp JIDs, tokens, and raw error messages",
+      "Hardened smoke test script eliminating shell string interpolation via execFileAsync and guaranteeing execution of container cleanup in finally block with distinct exit codes (0 for pass, 1 for fail, 2 for blocked external)",
+      "Atomic CTE with pessimistic FOR UPDATE lock in markPostSendReconciliationRequired eliminating Time-of-Check to Time-of-Use (TOCTOU) concurrency regressions",
+      "Strict monotonic transition protection preventing terminal states (sent, dead_letter) from being regressed to reconciliation_required by late compensation handlers",
+      "Deterministic worker lease fencing rejecting state mutations with ownership_lost upon lease theft or expiration",
+      "Canonical preservation of confirmed external_message_id without overwriting with null, blank, or placeholder identifiers",
+      "Fail-closed dispatcher compensation handling in OutboxDispatcher: already_sent -> idempotent success, already_dead_letter -> failed, ownership_lost -> FencingViolationError (zero blind resend), invalid_state -> fail-closed error"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH10-001",
+      "result": "PASS",
+      "evidence": "Serviço WAHA hermético configurado em docker-compose.yml com digest fixado por SHA-256, sem privilégios elevados, porta restrita a 127.0.0.1:3000 e volume persistente."
+    },
+    {
+      "ac_id": "AC-CH10-002",
+      "result": "PASS",
+      "evidence": "ChannelInstanceRepository gerencia instâncias tenant-safe com suporte a multi-line e resolução determinística por channelInstanceId sem seleção arbitrária de primeira linha."
+    },
+    {
+      "ac_id": "AC-CH10-003",
+      "result": "PASS",
+      "evidence": "ChannelDispatchService despacha mensagens com roteamento explícito, sem fallback silencioso entre provedores e com redação estrita de PII em logs e erros."
+    },
+    {
+      "ac_id": "AC-CH10-004",
+      "result": "PASS",
+      "evidence": "ChannelHealthService avalia saúde operacional baseado exclusivamente em evidência técnica allowlisted, sem vazar JIDs de sessão ou mensagens brutas de erro."
+    },
+    {
+      "ac_id": "AC-CH10-005",
+      "result": "PASS",
+      "evidence": "Script de smoke test Docker elimina command injection usando execFileAsync com arrays literais e executa limpeza atômica em bloco finally."
+    },
+    {
+      "ac_id": "AC-CH10-006",
+      "result": "PASS",
+      "evidence": "markPostSendReconciliationRequired executa CTE atômica com lock FOR UPDATE, garantindo monotonicidade absoluta contra regressão de sent/dead_letter, fencing de lease e 5 retornos explícitos."
+    },
+    {
+      "ac_id": "AC-CH10-007",
+      "result": "PASS",
+      "evidence": "OutboxDispatcher trata os 5 retornos pós-envio sem falsear sucesso em memória e lança FencingViolationError em caso de lease roubada, prevenindo reenvio cego."
+    },
+    {
+      "ac_id": "AC-CH10-008",
+      "result": "PASS",
+      "evidence": "Suíte hermética do monorepo aprova 35 arquivos e 526 testes com exit code 0 e 100% de sucesso nos 6 portões de qualidade (pnpm ci:check)."
+    }
+  ],
+  "verification_commands": [
+    "pnpm vitest run packages/database/src/__tests__/outbound-command-repository.test.ts",
+    "pnpm test:db:run",
+    "pnpm turbo build typecheck lint",
+    "pnpm ci:check"
+  ]
+}

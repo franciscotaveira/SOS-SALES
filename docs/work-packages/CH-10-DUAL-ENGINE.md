@@ -1,17 +1,17 @@
 # CH-10 — Docker Dual-Engine & Coexistência Operacional
 
 > Nome do arquivo: `CH-10-DUAL-ENGINE.md`  
-> Estado: `COMPLETED` — Fases 1, 2 e 3 Concluídas (v1.3.0).<br>
-> Versão do Plano: `1.3.0`<br>
-> Data de Registro: 19 de setembro de 2026  
-> Escopo de Execução: Fases 1, 2 e 3 — Fundação Docker WAHA, Repositório Multi-Linha, ChannelDispatchService e ChannelHealthService.
+> Estado: `ACCEPTED` — Conclusão Formal (Fases 1, 2, 3 e Fechamento P0 de Concorrência Monotônica).<br>
+> Versão do Plano: `2.0.0`<br>
+> Data de Registro: 20 de setembro de 2026  
+> Escopo de Execução: Fases 1, 2 e 3 — Fundação Docker WAHA, Repositório Multi-Linha, ChannelDispatchService, ChannelHealthService e Retificação P0 de Concorrência Monotônica em Post-Send Reconciliation.
 
 ---
 
 ## 1. Identidade e Metadados do Pacote
 
 - **Parent Objective:** Programa SOS Sales V3 — Motor de Canais de Comunicação (Fase CH)
-- **Estado:** `READY` (Plano reconciliado para execução imediata das Fases 1 e 2)
+- **Estado:** `ACCEPTED` (Homologação formal após saneamento do bloqueio residual P0 de concorrência)
 - **Arquitetura & Lead:** Gemini 3.8 (@orchestrator)
 - **Agentes Especializados Envolvidos:**
   - `Agente de Arquitetura`: Revisão do modelo multi-provider e multi-line; garantia de seleção explícita por `channelInstanceId` (proibição de seleção arbitrária de "primeira instância ativa").
@@ -452,3 +452,68 @@ docker rm sos-v3-waha
 | Pacote Application Completo | `packages/application/src/__tests__/*.test.ts` | 168 testes | PASS |
 
 ---
+
+## 14. Relatório de Fechamento Formal: Eliminação do Bloqueio P0 Residual de Concorrência e Transições Monotônicas
+
+### 14.1 Diagnóstico do Bloqueio Residual P0
+- **Vulnerabilidade Identificada:** O método `markPostSendReconciliationRequired()` em `packages/database/src/repositories/outbound-command.repository.ts` realizava anteriormente uma atualização direta por `WHERE id = $3`, sem validação de tenant (`workspace_id`), sem validação de fencing de lease (`worker_id`, `lease_token`) e sem proteção contra regressão de estados terminais.
+- **Vetor de Concorrência Crítico:** Caso um webhook concorrente de entrega (ou de falha terminal) atualizasse o registro para `sent` ou `dead_letter`, um manipulador de compensação tardio de despacho pós-envio podia regredir o status de `sent` de volta para `reconciliation_required`. Além disso, a chamada podia sobrescrever ou limpar um `external_message_id` confirmado ou permitir a um worker com lease roubada/expirada alterar o estado do registro.
+
+### 14.2 Solução Arquitetural Implementada (Commit 1: `a9f2edf`)
+1. **CTE Atômica com Lock Pessimista (`FOR UPDATE`):**
+   - A operação agora adquire lock exclusivo na linha via `SELECT status, worker_id, lease_token, external_message_id FROM outbound_commands WHERE id = $2 AND workspace_id = $1 FOR UPDATE`.
+   - Previne qualquer Time-of-Check to Time-of-Use (TOCTOU).
+2. **Proteção Monotônica contra Regressão de Estado Terminal:**
+   - Se o registro já estiver em `sent`, nenhuma mutação é feita e a função retorna deterministamente `{ outcome: "already_sent" }`.
+   - Se o registro já estiver em `dead_letter`, nenhuma mutação é feita e a função retorna deterministamente `{ outcome: "already_dead_letter" }`.
+3. **Fencing Atômico de Propriedade:**
+   - A transição para `reconciliation_required` só é autorizada se o comando estiver em `status = 'processing'` E pertencer ao mesmo worker (`worker_id = $5`) E possuir o mesmo token de lease (`lease_token::text = $6`), OU se já estiver previamente em `reconciliation_required`.
+   - Se a lease tiver sido reivindicada por outro worker (roubo ou reaproveitamento após expiração), a mutação é abortada e a função retorna `{ outcome: "ownership_lost" }`.
+4. **Preservação Canônica de `external_message_id`:**
+   - O campo é atualizado com `COALESCE(o.external_message_id, NULLIF($3, ''))`, garantindo que um ID confirmado jamais seja sobrescrito por strings vazias ou nulas e que valores confirmados permaneçam imutáveis.
+5. **Matriz de 5 Desfechos Explícitos:**
+   - `transitioned_to_reconciliation`: Transição atômica realizada com sucesso.
+   - `already_sent`: Comando já finalizado com sucesso por webhook ou ACK concorrente.
+   - `already_dead_letter`: Comando já finalizado em falha terminal.
+   - `ownership_lost`: Perda de lease para outro worker (fencing violation).
+   - `invalid_state`: Estado incompatível para transição (ex: `pending`).
+6. **Integração no `OutboxDispatcher` (`apps/worker/src/processors/outbox-dispatcher.ts`):**
+   - Os dois pontos de chamada pós-envio (verificação de lease expirada pós-envio e bloco catch pós-falha de `markSent`) utilizam a assinatura fencada `(workspaceId, commandId, workerId, leaseToken, externalMessageId, error, client)`.
+   - O helper determinístico `handlePostSendReconciliationOutcome` trata rigorosamente cada retorno:
+     - `transitioned_to_reconciliation`: Registra reconciliação necessária e retorna status `reconciliation_required`.
+     - `already_sent`: Trata como sucesso idempotente (zero reenvio cego).
+     - `already_dead_letter`: Trata como falha terminal registrada (`failed`).
+     - `ownership_lost`: Lança `FencingViolationError` (fail-closed estrito; zero blind resend; proíbe falsear sucesso ou declarar `reconciliation_required` em memória se o banco não foi alterado).
+     - `invalid_state`: Lança erro explícito fail-closed.
+
+### 14.3 Comprovação e Suíte de Testes Herméticos (Commit 2: `6126ab6`)
+- **10 Testes Canônicos de Concorrência e Monotonicidade (`outbound-command-repository.test.ts`):**
+  - `Test A`: Caminho feliz transiciona de `processing` para `reconciliation_required` e persiste `external_message_id`.
+  - `Test B`: Monotonicidade estrita: comando em `sent` NÃO regride para `reconciliation_required` e preserva `external_message_id`.
+  - `Test C`: Monotonicidade estrita: comando em `dead_letter` NÃO regride para `reconciliation_required`.
+  - `Test D`: Fencing estrito: rejeita com `ownership_lost` se `worker_id` for de outro worker (lease roubada).
+  - `Test E`: Fencing estrito: rejeita com `ownership_lost` se `lease_token` divergir.
+  - `Test F`: Isolamento multi-tenant: rejeita com `invalid_state` se `workspace_id` for de outro tenant sob RLS.
+  - `Test G`: Rejeita com `invalid_state` se comando estiver em status inválido (`pending`).
+  - `Test H`: Idempotência sob `reconciliation_required`: chamadas adicionais preservam integridade.
+  - `Test I`: Preservação de `external_message_id` preexistente quando nova chamada passa string vazia.
+  - `Test J`: Reconciliação posterior via `claimReconciliationBatch` localiza e processa o comando em `reconciliation_required`.
+- **Suítes de Integração do Worker Atualizadas:**
+  - `outbox-dispatch-service-integration.test.ts`: Teste 14 comprova o lançamento de `FencingViolationError` e ausência de mutação indevida quando a lease é roubada por outro worker; Teste 14b comprova o tratamento de aborto em voo via `AbortController` quando a lease expira sem roubo (persistindo `reconciliation_required`).
+  - `outbox-zero-blind-resend.test.ts`: P0-3 atualizado para asserção de fail-closed com `FencingViolationError` em lease roubada e teste companheiro validando expiração de lease sem roubo.
+
+### 14.4 Consolidação de Métricas e Portões de CI
+- **Execução Hermética do Banco (`pnpm test:db:run`):**
+  - 35 arquivos de teste executados.
+  - 526 testes unitários e de integração aprovados (0 falhas).
+- **Verificação Estática Monorepo:**
+  - `pnpm turbo typecheck`: 17 tarefas concluídas com 100% de sucesso.
+  - `pnpm turbo lint`: 0 erros de linting.
+  - `pnpm turbo build`: 10 pacotes compilados com sucesso.
+- **Portões de CI (`pnpm ci:check`):**
+  - Todos os 6 portões de qualidade aprovados em 16.3s (Exit code: 0).
+
+### 14.5 Fronteiras e Limitações Arquiteturais
+- **Fronteira EXT-05:** Conexões com aparelhos celulares físicos e pareamento de QR Code com contas reais de WhatsApp permanecem estritamente como dependência externa `BLOCKED_EXTERNAL` (EXT-05), a serem homologadas no CH-12.
+- **Soberania do Ambiente:** O SOS Sales V3 permanece restrito ao ambiente de desenvolvimento/lab local. O SOS Sales V2 e os servidores VPS de produção não foram tocados, mantendo 100% de isolamento e zero risco à operação ativa.
+- **Próximo Pacote:** CH-10 formalmente fechado e homologado como `ACCEPTED`. CH-11 marcado como `READY`.
