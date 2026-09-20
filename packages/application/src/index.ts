@@ -20,3 +20,7 @@ export * from "./channels/errors/channel-dispatch.errors";
 export * from "./channels/services/channel-dispatch.service";
 export * from "./channels/services/channel-health.service";
 export * from "./channels/sanitizers/outbox-error.sanitizer";
+export * from "./ports/transactional-outbound-producer.port";
+export * from "./channels/sanitizers/canonical-fingerprint";
+export * from "./channels/errors/outbound-producer.errors";
+export * from "./channels/services/transactional-outbound-producer.service";
