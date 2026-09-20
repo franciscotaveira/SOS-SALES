@@ -1,8 +1,8 @@
 # CH-11 — Produtor Transacional de Outbound
 
 > Nome do arquivo: `CH-11-TRANSACTIONAL-PRODUCER.md`  
-> Estado: `READY` — Especificação técnica canônica homologada com fingerprint persistido e trust boundary estrito.  
-> Baseline de referência: `6e7a733`  
+> Estado: `ACCEPTED` — Implementado e verificado com evidência EV-CH11-001.  
+> Baseline de referência: `e8178bf`  
 > Data de homologação: 20 de setembro de 2026
 
 ---
@@ -10,7 +10,7 @@
 ## Identidade
 
 - **Parent objective:** Programa SOS Sales V3 — Motor de Comunicação (Fase CH)
-- **Estado:** `READY` (Homologado para execução)
+- **Estado:** `ACCEPTED` (Implementado e verificado)
 - **Owner:** Gemini 3.8 (Planejamento e Especificação Técnica Canônica)
 - **Reviewers:** Architecture Agent, Database Specialist, Backend Specialist, Security Reviewer, QA Reviewer, Independent Reviewer
 - **Dependências:**

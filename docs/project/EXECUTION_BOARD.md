@@ -34,7 +34,7 @@
 | CH-08 | ACCEPTED | WABA operacional | EV-CH08-001 validado; janela 24h, templates multilíngues com SSRF guard, documentos com filename, getMediaUrl seguro contra CDN Meta, classificação determinística de erros e mensagens interativas (70 asserções) |
 | CH-09 | ACCEPTED | WAHA operacional | EV-CH09-001 validado; contido no Integration Checkpoint IC-01 (`9577e17`), com digest de escopo próprio e 110 asserções aprovadas |
 | CH-10 | ACCEPTED | Docker dual-engine | EV-CH10-001 validado; dual-engine operacional, ChannelDispatchService fail-closed, concorrência atômica FOR UPDATE com proteção contra regressão terminal, fencing estrito de expiração de lease com clock_timestamp(), contrato Truth in Data de IDs persistidos e 536 testes passando (35 suítes) |
-| CH-11 | READY | Produtor transacional de outbound | Planejamento técnico canônico homologado (CH-11-TRANSACTIONAL-PRODUCER.md); pronto para execução atômica |
+| CH-11 | ACCEPTED | Produtor transacional de outbound | EV-CH11-001 validado; persistência atômica { message + command + audit }, idempotência com payload_fingerprint imutável, trust boundary .strict(), replay com INNER JOIN e 563 testes passando (38 suítes) |
 
 ## Estado por macrofase
 
@@ -47,7 +47,7 @@
 | Iteração 2.6 — Hardening | ACCEPTED | EV-IT26-001; commit `a4d9cf1` auditado com biblioteca jose e trigger imutável |
 | Iteração 2.7 — Runner | ACCEPTED | EV-IT27-001; commit `a41e1ab` revalidado com 90 testes em DB hermético |
 | Iteração 3 — Design/AppShell | ACCEPTED | EV-IT03-001; commit `0605dff` revalidado com @sos-sales/ui e web app |
-| Iteração 4 — Canais | IN_PROGRESS | commit `d4de6ca` isolado; saneamento ativo na esteira CH-00..CH-12 (CH-00..CH-10 ACCEPTED) |
+| Iteração 4 — Canais | IN_PROGRESS | commit `d4de6ca` isolado; saneamento ativo na esteira CH-00..CH-12 (CH-00..CH-11 ACCEPTED) |
 | CRM Core | PLANNED | não iniciar antes de CH-12 |
 | Cockpit real | PLANNED | UI atual é fundação, não operação real |
 | Meta/CAPI | PLANNED | sem loop fechado comprovado |
@@ -69,7 +69,7 @@
 - `trustProxy` precisa ser restrito (resolvido no CH-05 via resolveTrustProxy e CIDRs privados padrão).
 - keyring existe como primitive, não E2E (resolvido no CH-06 via Keyring versionado, activeKeyVersion no ingress e worker heterogêneo).
 - Docker dual-engine não está comprovado (resolvido no CH-10 via Docker Compose com pinning por digest, ChannelDispatchService com roteamento explícito, zero fallback silencioso, saneamento de concorrência com fencing atômico e prova de 526 testes herméticos).
-- não existe produtor runtime transacional de outbound (objeto do CH-11).
+- não existe produtor runtime transacional de outbound (resolvido no CH-11 via TransactionalOutboundProducerService, atomicity unit of work sob RLS, fingerprint persistido e replay canônico com INNER JOIN).
 - templates não foram comprovados de serviço de aplicação até HTTP (objeto do CH-12).
 
 ## Próxima fila
@@ -167,6 +167,9 @@ Ao final de cada pacote:
 18. **Pacote CH-10:**
    - Manifest: `docs/work-packages/CH-10-EVIDENCE.json` (`EV-CH10-001`) e `docs/work-packages/CH-10-DUAL-ENGINE.md`.
    - Evidência: Coexistência operacional comprovada dos dois motores (`meta_waba` e `waha`); Docker Compose com serviço `waha` hermético fixado por digest OCI oficial (`devlikeapro/waha:latest-2026.8.2@sha256:527ff3d6...`), sem modo privilegiado (`privileged: false`, zero `SYS_ADMIN`), restrito a `127.0.0.1:3000` e volume persistente nomeado; repositório `ChannelInstanceRepository` tenant-first suportando múltiplas linhas ativas por workspace com testes de isolamento cross-tenant e timing oracle mitigation; `ChannelDispatchService` com roteamento explícito obrigatório por `(workspaceId, channelInstanceId)`, política estrita fail-closed e zero fallback silencioso entre provedores; `ChannelHealthService` baseado exclusivamente em evidência técnica allowlisted e redação irrestrita de PII; script de smoke test Docker com segurança aprimorada (eliminação total de shell interpolation via `execFileAsync` e limpeza atômica em bloco `finally`); eliminação definitiva do bloqueio residual P0 de concorrência em `markPostSendReconciliationRequired` mediante CTE atômica com lock pessimista `FOR UPDATE` em `(id, workspace_id)`, garantia de monotonicidade contra regressão de estados terminais (`sent`, `dead_letter`), fencing de lease (`worker_id`, `lease_token`), preservação canônica de `external_message_id` e retorno de 5 desfechos explícitos integrados com política fail-closed e zero blind resend no `OutboxDispatcher`; 35 arquivos de teste e 526 asserções aprovadas com exit code 0 na suíte hermética (`pnpm test:db:run`) e 100% de sucesso nos 6 portões de qualidade (`pnpm ci:check`); limitações operacionais documentadas: validação com aparelho físico e pareamento de QR com WhatsApp real permanecem categorizados como `BLOCKED_EXTERNAL` (EXT-05), V3 não promovida a produção, V2 e servidores VPS 100% intocados.
+19. **Pacote CH-11:**
+   - Manifest: `docs/work-packages/CH-11-EVIDENCE.json` (`EV-CH11-001`) e `docs/work-packages/CH-11-TRANSACTIONAL-PRODUCER.md`.
+   - Evidência: Produtor transacional de outbound operacional (`TransactionalOutboundProducerService` e `TransactionalOutboundProducerRepository`); transação atômica única `{ message + outbound_command + audit_event }` sob contexto RLS do tenant (`withTenantTransaction`) com rollback total em qualquer ponto de falha; trust boundary perimétrico rigoroso com `PublicOutboundRequestSchema.strict()` rejeitando campos de autoridade injetados (`workspaceId`, `actorId`, `role`, `permissions`) com HTTP 400; origem canônica unívoca de idempotência via `body.idempotencyKey`; fingerprint SHA-256 canônico gerado com normalização NFKC, ordenação profunda de chaves de componentes e trim de espaços, persistido em coluna dedicada `payload_fingerprint text` da tabela `outbound_commands` (Migration 006) com constraint nomeada `chk_outbound_payload_fingerprint` e detecção de schema drift; zero concessão de `UPDATE` na tabela `outbound_commands` para a role `sos_app_user`; replay idempotente determinístico com consulta explícita via `INNER JOIN` entre `outbound_commands`, `messages` e `commercial_threads` sem `SELECT *`, recuperando `contact_id` e `delivery_status`; tratamento fail-closed para comandos legados com fingerprint nulo (`LegacyIdempotencyRecordError`, HTTP 409); resolução de concorrência com `ON CONFLICT DO NOTHING`, rollback de corrida concorrente e replay seguro; guarda SSRF perimétrica executada antes de abrir transação de banco rejeitando IPs privados, loopback e metadados de nuvem; isolamento cross-tenant retornando HTTP 404 indistinguível; controle de permissões por role (analyst rejeitado com HTTP 403); comando produzido compatível e consumido com sucesso pelo worker CH-10; 27 asserções de teste do pacote aprovadas em 3 suítes dedicadas e 563 asserções em 38 arquivos no monorepo com 100% de sucesso nos 6 portões de qualidade (`pnpm ci:check`).
 
 
 

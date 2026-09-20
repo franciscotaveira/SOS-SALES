@@ -1,0 +1,153 @@
+{
+  "package_id": "CH-11",
+  "name": "Produtor Transacional de Outbound",
+  "timestamp": "2026-09-20T23:10:00Z",
+  "commit_sha": "6aa0a8b7116dcfb208d65cf8345016b4aa9bf7f3",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH11-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container",
+    "local_redis": "localhost:6389"
+  },
+  "metrics": {
+    "test_files": [
+      "packages/database/src/__tests__/transactional-outbound-producer.test.ts",
+      "packages/application/src/__tests__/transactional-outbound-producer.service.test.ts",
+      "apps/api/src/__tests__/outbound-messages-routes.test.ts"
+    ],
+    "total_assertions_package": 27,
+    "assertions_passed_package": 27,
+    "assertions_failed_package": 0,
+    "total_test_files_monorepo": 38,
+    "total_assertions_monorepo": 563,
+    "assertions_passed_monorepo": 563,
+    "security_capabilities_verified": [
+      "Strict trust boundary with PublicOutboundRequestSchema.strict() rejecting injected authority fields (workspaceId, actorId, role, permissions) with HTTP 400 Bad Request",
+      "Single canonical idempotency origin sourced exclusively from body.idempotencyKey without header ambiguity",
+      "Deterministic SHA-256 canonical payload fingerprinting with NFKC normalization, deep object key sorting, and whitespace trimming",
+      "PostgreSQL Migration 006 with named constraint chk_outbound_payload_fingerprint, schema drift detection, and zero UPDATE grant for sos_app_user",
+      "Atomic unit of work { message + outbound_command + audit_event } under tenant RLS withTenantTransaction(workspaceId)",
+      "Transactional rollback on any failure point (contact/thread upsert, command insertion, audit recording)",
+      "Deterministic concurrency resolution using ON CONFLICT (workspace_id, idempotency_key) DO NOTHING with clean rollback and replay",
+      "Explicit replay projection query with INNER JOIN (outbound_commands, messages, commercial_threads) returning contact_id and delivery_status without SELECT *",
+      "Fail-closed handling for legacy NULL payload_fingerprint records with LegacyIdempotencyRecordError (HTTP 409)",
+      "Timing-safe constant-time fingerprint comparison (crypto.timingSafeEqual)",
+      "Pre-transaction SSRF protection guard rejecting private, loopback, link-local, and cloud metadata URLs prior to opening database connections",
+      "Cross-tenant isolation returning indistinguishable 404 Not Found without leaking instance existence across workspaces",
+      "Role-based access control requiring operator or admin permissions (analyst rejected with HTTP 403 Forbidden)",
+      "Worker compatibility verifying produced outbound commands are successfully claimed and locked by CH-10 OutboxDispatcher"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH11-001",
+      "result": "PASS",
+      "evidence": "Produção atômica de 1 message + 1 outbound_command + 1 audit_event (outbound.enqueued) em transação única PostgreSQL com rollback integral em caso de falha em qualquer etapa."
+    },
+    {
+      "ac_id": "AC-CH11-002",
+      "result": "PASS",
+      "evidence": "10 requisições concorrentes com a mesma chave de idempotência geram exatamente 1 conjunto persistido e 9 replays idênticos sem duplicação de mensagens ou comandos."
+    },
+    {
+      "ac_id": "AC-CH11-003",
+      "result": "PASS",
+      "evidence": "Replay idempotente com mesmo fingerprint retorna exatamente os IDs canônicos persistidos (messageId, commandId, contactId, threadId) recuperados via INNER JOIN explícito."
+    },
+    {
+      "ac_id": "AC-CH11-004",
+      "result": "PASS",
+      "evidence": "Replay com idempotencyKey idêntica mas payload diferente rejeita com HTTP 409 Conflict (IdempotencyConflictError)."
+    },
+    {
+      "ac_id": "AC-CH11-005",
+      "result": "PASS",
+      "evidence": "Comando legado com payload_fingerprint nulo falha fechado com HTTP 409 Conflict (LegacyIdempotencyRecordError)."
+    },
+    {
+      "ac_id": "AC-CH11-006",
+      "result": "PASS",
+      "evidence": "Tentativa de injeção de campos de autoridade no corpo da requisição (workspaceId, actorId, role) é rejeitada pelo schema estrito com HTTP 400 Bad Request."
+    },
+    {
+      "ac_id": "AC-CH11-007",
+      "result": "PASS",
+      "evidence": "Tentativa de acesso cross-tenant a instâncias de canal de outro workspace retorna HTTP 404 Not Found indistinguível sem vazar oráculos de existência."
+    },
+    {
+      "ac_id": "AC-CH11-008",
+      "result": "PASS",
+      "evidence": "Usuário autenticado com role de menor privilégio (analyst) é bloqueado pelo guard de permissões com HTTP 403 Forbidden."
+    },
+    {
+      "ac_id": "AC-CH11-009",
+      "result": "PASS",
+      "evidence": "URLs de mídia suspeitas (loopback 127.0.0.1, rede privada 10.0.0.0/8, cloud metadata 169.254.169.254, non-https) são bloqueadas pelo SSRF guard antes de abrir transação no banco."
+    },
+    {
+      "ac_id": "AC-CH11-010",
+      "result": "PASS",
+      "evidence": "A role de banco sos_app_user permanece sem permissão de UPDATE na tabela outbound_commands, preservando o modelo imutável append-only."
+    },
+    {
+      "ac_id": "AC-CH11-011",
+      "result": "PASS",
+      "evidence": "Comando produzido pelo produtor transacional CH-11 é elegível para claim e é consumido pelo worker CH-10 com status 'processing' e lease ativa."
+    },
+    {
+      "ac_id": "AC-CH11-012",
+      "result": "PASS",
+      "evidence": "Suíte hermética do monorepo aprova 38 arquivos e 563 testes com exit code 0 e 100% de aprovação nos 6 portões de qualidade (pnpm ci:check)."
+    }
+  ],
+  "provenance": {
+    "checkpoint_sha": "6aa0a8b7116dcfb208d65cf8345016b4aa9bf7f3",
+    "verification_mode": "working-tree",
+    "scoped_code_files": [
+      "apps/api/src/__tests__/outbound-messages-routes.test.ts",
+      "apps/api/src/index.ts",
+      "apps/api/src/routes/outbound-messages.routes.ts",
+      "packages/application/src/__tests__/transactional-outbound-producer.service.test.ts",
+      "packages/application/src/channels/sanitizers/canonical-fingerprint.ts",
+      "packages/application/src/channels/services/transactional-outbound-producer.service.ts",
+      "packages/application/src/index.ts",
+      "packages/application/src/ports/transactional-outbound-producer.port.ts",
+      "packages/contracts/src/channel.ts",
+      "packages/database/migrations/006_outbound_payload_fingerprint.sql",
+      "packages/database/src/__tests__/transactional-outbound-producer.test.ts",
+      "packages/database/src/helpers.ts",
+      "packages/database/src/index.ts",
+      "packages/database/src/repositories/transactional-outbound-producer.repository.ts"
+    ],
+    "scoped_code_sha256": {
+      "apps/api/src/__tests__/outbound-messages-routes.test.ts": "32b4a4b1387509e6311da3a27dd18d1aecf0de369bcf6cfd8cd942b31f9321f1",
+      "apps/api/src/index.ts": "2cf6168b81ed0569bbc8c4da8f2219b5a009ad71dc0412d214fbd07d0093a482",
+      "apps/api/src/routes/outbound-messages.routes.ts": "4362438200f33e0503c891ff802406026970631e7d979dcc7316d22cc542920a",
+      "packages/application/src/__tests__/transactional-outbound-producer.service.test.ts": "c3047e4712169a0dddfd43a7b10587dc1c08ee344642ba56c8da009263a0f3e6",
+      "packages/application/src/channels/sanitizers/canonical-fingerprint.ts": "8d028010e547ab5cf39f16c54a3ee423c308225491cb7daf706bba9142c81b06",
+      "packages/application/src/channels/services/transactional-outbound-producer.service.ts": "02201c27bdd88dc9e91bd3d7b1b3a245078564a116afd3d17d0785c043c801c8",
+      "packages/application/src/index.ts": "48096b9959a7fa34aada8625e4e75af65805a99f064b4777e67c256ad4cd8dc5",
+      "packages/application/src/ports/transactional-outbound-producer.port.ts": "3c6286a56d8dfb88c626d2ab44b1ebf0275839eb26f32269daa970570637a10f",
+      "packages/contracts/src/channel.ts": "eded3e6535e1599f57c50dc6b78183cf1ead1caeb14c0017512d93816c291b9f",
+      "packages/database/migrations/006_outbound_payload_fingerprint.sql": "f0cd646d9f3c318f197ba39bea40ab92f1082bcc86aa5db6bfc88e2ec36e8c72",
+      "packages/database/src/__tests__/transactional-outbound-producer.test.ts": "14d3299ff2a9cf069f958ead098c18f22b7725a32c9efb823dde3c97602d44c6",
+      "packages/database/src/helpers.ts": "050e45377dc2e230521156c7bcb435a0d9bfed47686117e0c1fd679246c7711a",
+      "packages/database/src/index.ts": "9078be2599bae7fbba0c30abedfae346a30c872920e9fe5a6b7b1783936c691a",
+      "packages/database/src/repositories/transactional-outbound-producer.repository.ts": "5c80c390c24a70da1d137f9b0ec3c470d20f326a5133a79c0eeb68685498c616"
+    },
+    "scoped_composite_code_sha256": "737285272338b2e8926eea2766f47fcc36d8f12652941db98d8b00a95740fee3"
+  },
+  "verification_commands": [
+    "pnpm vitest run packages/database/src/__tests__/transactional-outbound-producer.test.ts",
+    "pnpm vitest run packages/application/src/__tests__/transactional-outbound-producer.service.test.ts",
+    "pnpm vitest run apps/api/src/__tests__/outbound-messages-routes.test.ts",
+    "pnpm test:db:run",
+    "pnpm turbo build typecheck lint",
+    "pnpm ci:check"
+  ]
+}
