@@ -182,6 +182,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(workspaceRoutes);
   await app.register(outboundMessagesRoutes, {
     producerService: options.outboundProducerService,
+    rateLimiter: effectiveRateLimiter,
+    rateLimitMax: options.rateLimitMax,
+    rateLimitWindowMs: options.rateLimitWindowMs,
   });
 
   // Liveness Check

@@ -43,5 +43,4 @@ CREATE INDEX IF NOT EXISTS idx_outbound_commands_fingerprint
 
 -- 4. Reafirmação explícita de Menor Privilégio:
 -- sos_app_user possui estritamente SELECT, INSERT em outbound_commands.
--- Zero concessão de UPDATE para sos_app_user.
-REVOKE UPDATE, DELETE ON TABLE public.outbound_commands FROM sos_app_user;
+REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.outbound_commands FROM sos_app_user;

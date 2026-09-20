@@ -28,14 +28,37 @@ export class BoundedTwoTierRateLimiter {
   }
 
   isIpAllowed(ip: string): boolean {
-    return this.checkLimit(`ip:${ip}`, this.maxIpRequests);
+    return this.checkIpLimit(ip).allowed;
   }
 
   isChannelAllowed(channelId: string): boolean {
-    return this.checkLimit(`ch:${channelId}`, this.maxChannelRequests);
+    return this.checkChannelLimit(channelId).allowed;
   }
 
-  private checkLimit(key: string, limit: number): boolean {
+  checkIpLimit(ip: string): RateLimitCheckResult {
+    return this.checkLimitWithDetails(`ip:${ip}`, this.maxIpRequests);
+  }
+
+  checkChannelLimit(channelId: string): RateLimitCheckResult {
+    return this.checkLimitWithDetails(`ch:${channelId}`, this.maxChannelRequests);
+  }
+
+  checkOutboundIpLimit(ip: string): RateLimitCheckResult {
+    return this.checkLimitWithDetails(`outbound:ip:${ip}`, this.maxIpRequests);
+  }
+
+  checkOutboundTenantLimit(params: {
+    workspaceId: string;
+    actorId: string;
+    channelInstanceId: string;
+  }): RateLimitCheckResult {
+    return this.checkLimitWithDetails(
+      `outbound:tenant:${params.workspaceId}:${params.actorId}:${params.channelInstanceId}`,
+      this.maxChannelRequests
+    );
+  }
+
+  private checkLimitWithDetails(key: string, limit: number): RateLimitCheckResult {
     const now = Date.now();
     let timestamps = this.hits.get(key);
 
@@ -50,12 +73,26 @@ export class BoundedTwoTierRateLimiter {
     const valid = timestamps.filter((t) => now - t < this.windowMs);
     if (valid.length >= limit) {
       this.hits.set(key, valid);
-      return false;
+      const oldest = valid[0] ?? now;
+      const resetMs = Math.max(0, oldest + this.windowMs - now);
+      return {
+        allowed: false,
+        remaining: 0,
+        resetMs,
+        limit,
+      };
     }
 
     valid.push(now);
     this.hits.set(key, valid);
-    return true;
+    const oldest = valid[0] ?? now;
+    const resetMs = Math.max(0, oldest + this.windowMs - now);
+    return {
+      allowed: true,
+      remaining: Math.max(0, limit - valid.length),
+      resetMs,
+      limit,
+    };
   }
 
   private evictExpiredOrOldest(now: number): void {
@@ -95,6 +132,12 @@ export interface IRateLimiter {
   isChannelAllowed(channelId: string): Promise<boolean> | boolean;
   checkIpLimit?(ip: string): Promise<RateLimitCheckResult> | RateLimitCheckResult;
   checkChannelLimit?(channelId: string): Promise<RateLimitCheckResult> | RateLimitCheckResult;
+  checkOutboundIpLimit?(ip: string): Promise<RateLimitCheckResult> | RateLimitCheckResult;
+  checkOutboundTenantLimit?(params: {
+    workspaceId: string;
+    actorId: string;
+    channelInstanceId: string;
+  }): Promise<RateLimitCheckResult> | RateLimitCheckResult;
   reset?(): Promise<void> | void;
 }
 
@@ -182,6 +225,24 @@ export class RedisTwoTierRateLimiter implements IRateLimiter {
     const key = `${this.keyPrefix}:ch:${channelId}`;
     return this.executeSlidingWindow(key, this.maxChannelRequests, () =>
       this.fallbackLimiter.isChannelAllowed(channelId)
+    );
+  }
+
+  async checkOutboundIpLimit(ip: string): Promise<RateLimitCheckResult> {
+    const key = `${this.keyPrefix}:outbound:ip:${ip}`;
+    return this.executeSlidingWindow(key, this.maxIpRequests, () =>
+      this.fallbackLimiter.checkOutboundIpLimit(ip).allowed
+    );
+  }
+
+  async checkOutboundTenantLimit(params: {
+    workspaceId: string;
+    actorId: string;
+    channelInstanceId: string;
+  }): Promise<RateLimitCheckResult> {
+    const key = `${this.keyPrefix}:outbound:tenant:${params.workspaceId}:${params.actorId}:${params.channelInstanceId}`;
+    return this.executeSlidingWindow(key, this.maxChannelRequests, () =>
+      this.fallbackLimiter.checkOutboundTenantLimit(params).allowed
     );
   }
 

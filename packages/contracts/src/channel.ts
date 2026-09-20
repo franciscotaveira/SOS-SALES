@@ -177,7 +177,7 @@ export const TrustedOutboundContextSchema = z.object({
   channelInstanceId: z.string().uuid(),
   actorId: z.string().uuid(),
   role: z.enum(["owner", "admin", "manager", "operator"]),
-  permissions: z.array(z.string()),
+  permissions: z.array(z.string()).optional(),
   ipAddress: z.string().optional(),
   userAgent: z.string().optional(),
 });
