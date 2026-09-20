@@ -10,7 +10,9 @@ import { rawBodyPlugin } from "./plugins/raw-body.plugin";
 import { meRoutes } from "./routes/me.routes";
 import { workspaceRoutes } from "./routes/workspace.routes";
 import { webhookRoutes } from "./routes/webhook.routes";
-import type { ISigningSecretResolver } from "@sos-sales/application";
+import { outboundMessagesRoutes } from "./routes/outbound-messages.routes";
+import type { ISigningSecretResolver, ITransactionalOutboundProducerService } from "@sos-sales/application";
+
 
 let redisClient: Redis | null = null;
 export function getRedisClient(): Redis {
@@ -66,6 +68,7 @@ export interface BuildAppOptions {
   rateLimiter?: IRateLimiter;
   keyPrefix?: string;
   trustProxy?: boolean | string | string[];
+  outboundProducerService?: ITransactionalOutboundProducerService;
 }
 
 export function sanitizeUrl(rawUrl: string | undefined): string {
@@ -177,6 +180,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   // Register Domain Routes
   await app.register(meRoutes);
   await app.register(workspaceRoutes);
+  await app.register(outboundMessagesRoutes, {
+    producerService: options.outboundProducerService,
+  });
 
   // Liveness Check
   app.get("/health", async () => {
