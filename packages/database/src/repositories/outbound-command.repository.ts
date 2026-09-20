@@ -96,6 +96,22 @@ export class OutboundCommandValidationError extends Error {
   }
 }
 
+export type PostSendReconciliationOutcome =
+  | "transitioned_to_reconciliation"
+  | "already_sent"
+  | "already_dead_letter"
+  | "ownership_lost"
+  | "invalid_state";
+
+export interface MarkPostSendReconciliationParams {
+  workspaceId: string;
+  commandId: string;
+  workerId: string;
+  leaseToken: string;
+  externalMessageId: string;
+  errorMessage: string;
+}
+
 /**
  * OutboundCommandRepository
  *
@@ -387,28 +403,133 @@ export class OutboundCommandRepository {
   }
 
   /**
-   * Persists a command into reconciliation_required after provider confirmed send
-   * but local post-send transactional finalization failed, preserving external_message_id.
+   * Monotonically transitions an outbound command to 'reconciliation_required' post-send,
+   * strictly preventing terminal state regression ('sent' or 'dead_letter'),
+   * enforcing atomic fencing, and preserving confirmed externalMessageId.
    */
   async markPostSendReconciliationRequired(
+    params: MarkPostSendReconciliationParams,
+    client?: Pool | PoolClient
+  ): Promise<PostSendReconciliationOutcome>;
+  async markPostSendReconciliationRequired(
+    workspaceId: string,
     commandId: string,
+    workerId: string,
+    leaseToken: string,
     externalMessageId: string,
     errorMessage: string,
     client?: Pool | PoolClient
-  ): Promise<void> {
-    const executor = client || this.pool;
-    await executor.query(
-      `UPDATE public.outbound_commands
-       SET status = 'reconciliation_required',
-           external_message_id = COALESCE($1, external_message_id),
-           error_message = $2,
-           lease_until = NULL,
-           lease_token = NULL,
-           worker_id = NULL,
-           updated_at = clock_timestamp()
-       WHERE id = $3;`,
-      [externalMessageId, errorMessage, commandId]
-    );
+  ): Promise<PostSendReconciliationOutcome>;
+  async markPostSendReconciliationRequired(
+    workspaceIdOrParams: string | MarkPostSendReconciliationParams,
+    commandIdOrClient?: string | Pool | PoolClient,
+    workerId?: string,
+    leaseToken?: string,
+    externalMessageId?: string,
+    errorMessage?: string,
+    client?: Pool | PoolClient
+  ): Promise<PostSendReconciliationOutcome> {
+    let workspaceId: string;
+    let commandId: string;
+    let wId: string;
+    let lToken: string;
+    let extMsgId: string;
+    let errMsg: string;
+    let executor: Pool | PoolClient;
+
+    if (typeof workspaceIdOrParams === "object") {
+      workspaceId = workspaceIdOrParams.workspaceId;
+      commandId = workspaceIdOrParams.commandId;
+      wId = workspaceIdOrParams.workerId;
+      lToken = workspaceIdOrParams.leaseToken;
+      extMsgId = workspaceIdOrParams.externalMessageId;
+      errMsg = workspaceIdOrParams.errorMessage;
+      executor = (commandIdOrClient as Pool | PoolClient) || this.pool;
+    } else {
+      workspaceId = workspaceIdOrParams;
+      commandId = commandIdOrClient as string;
+      wId = workerId!;
+      lToken = leaseToken!;
+      extMsgId = externalMessageId!;
+      errMsg = errorMessage!;
+      executor = client || this.pool;
+    }
+
+    const isValidUuid = (val?: string): boolean =>
+      typeof val === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
+    if (!isValidUuid(commandId) || !isValidUuid(workspaceId)) {
+      return "invalid_state";
+    }
+
+    const query = `
+      WITH current_row AS (
+        SELECT id, workspace_id, status, worker_id, lease_token, external_message_id
+        FROM public.outbound_commands
+        WHERE id = $1 AND workspace_id = $2
+        FOR UPDATE
+      ),
+      updated AS (
+        UPDATE public.outbound_commands o
+        SET status = 'reconciliation_required',
+            external_message_id = COALESCE(o.external_message_id, NULLIF($3, '')),
+            error_message = $4,
+            lease_until = NULL,
+            lease_token = NULL,
+            worker_id = NULL,
+            updated_at = clock_timestamp()
+        FROM current_row c
+        WHERE o.id = c.id
+          AND (
+            (c.status = 'processing' AND c.worker_id = $5 AND c.lease_token::text = $6)
+            OR (c.status = 'reconciliation_required' AND (c.worker_id IS NULL OR (c.worker_id = $5 AND c.lease_token::text = $6)))
+          )
+        RETURNING o.id, o.status AS new_status, o.external_message_id AS new_ext_id
+      )
+      SELECT 
+        c.status AS initial_status,
+        c.worker_id AS initial_worker_id,
+        c.lease_token::text AS initial_lease_token,
+        c.external_message_id AS initial_ext_id,
+        u.new_status,
+        u.new_ext_id
+      FROM current_row c
+      LEFT JOIN updated u ON u.id = c.id;
+    `;
+
+    const res = await executor.query<{
+      initial_status: string;
+      initial_worker_id: string | null;
+      initial_lease_token: string | null;
+      initial_ext_id: string | null;
+      new_status: string | null;
+      new_ext_id: string | null;
+    }>(query, [commandId, workspaceId, extMsgId, errMsg, wId, lToken]);
+
+    if (res.rows.length === 0) {
+      return "invalid_state";
+    }
+
+    const row = res.rows[0]!;
+
+    if (row.initial_status === "sent") {
+      return "already_sent";
+    }
+
+    if (row.initial_status === "dead_letter") {
+      return "already_dead_letter";
+    }
+
+    if (row.new_status === "reconciliation_required" || row.initial_status === "reconciliation_required") {
+      return "transitioned_to_reconciliation";
+    }
+
+    if (row.initial_status === "processing") {
+      return "ownership_lost";
+    }
+
+    return "invalid_state";
   }
 
   /**

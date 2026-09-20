@@ -22,6 +22,7 @@ import {
   FencingViolationError,
   encryptPayload,
   DatabaseSigningSecretResolver,
+  PostSendReconciliationOutcome,
 } from "@sos-sales/database";
 import { logger } from "@sos-sales/observability";
 
@@ -411,10 +412,14 @@ export class OutboxDispatcher {
             "Lease lost or expired during external send after provider confirmed delivery. Routing to reconciliation_required."
           );
           const sanitizedPostSendLeaseError = sanitizeOutboxErrorMessage("reconciliation", "ERR_LEASE_LOST_AFTER_SEND");
+          let outcome: PostSendReconciliationOutcome;
           try {
-            await withWorkerTransaction(item.workspace_id, async (client) => {
-              await this.outboundRepo.markPostSendReconciliationRequired(
+            outcome = await withWorkerTransaction(item.workspace_id, async (client) => {
+              return await this.outboundRepo.markPostSendReconciliationRequired(
+                item.workspace_id,
                 item.id,
+                workerId,
+                item.lease_token,
                 sendResult.externalMessageId!,
                 sanitizedPostSendLeaseError,
                 client
@@ -425,12 +430,9 @@ export class OutboxDispatcher {
               { commandId: item.id, workerId, err: reconErr instanceof Error ? reconErr.message : String(reconErr) },
               "Critical: Failed to record post-send lease loss reconciliation state"
             );
+            throw reconErr;
           }
-          return {
-            success: false,
-            externalMessageId: sendResult.externalMessageId,
-            status: "reconciliation_required",
-          };
+          return this.handlePostSendReconciliationOutcome(outcome, item.id, sendResult.externalMessageId);
         } else {
           throw new FencingViolationError(item.id, "Lease lost during dispatch execution");
         }
@@ -520,10 +522,14 @@ export class OutboxDispatcher {
           );
 
           const sanitizedPostSendError = sanitizeOutboxErrorMessage("reconciliation", "ERR_POST_SEND_PERSISTENCE_FAILED");
+          let outcome: PostSendReconciliationOutcome;
           try {
-            await withWorkerTransaction(item.workspace_id, async (client) => {
-              await this.outboundRepo.markPostSendReconciliationRequired(
+            outcome = await withWorkerTransaction(item.workspace_id, async (client) => {
+              return await this.outboundRepo.markPostSendReconciliationRequired(
+                item.workspace_id,
                 item.id,
+                workerId,
+                item.lease_token,
                 sendResult.externalMessageId!,
                 sanitizedPostSendError,
                 client
@@ -534,13 +540,10 @@ export class OutboxDispatcher {
               { commandId: item.id, workerId, err: reconErr instanceof Error ? reconErr.message : String(reconErr) },
               "Critical: Failed to record post-send reconciliation state after rollback"
             );
+            throw reconErr;
           }
 
-          return {
-            success: false,
-            externalMessageId: sendResult.externalMessageId,
-            status: "reconciliation_required",
-          };
+          return this.handlePostSendReconciliationOutcome(outcome, item.id, sendResult.externalMessageId);
         }
       }
 
@@ -892,5 +895,44 @@ export class OutboxDispatcher {
     }
 
     return reconciledCount;
+  }
+
+  private handlePostSendReconciliationOutcome(
+    outcome: PostSendReconciliationOutcome,
+    commandId: string,
+    externalMessageId?: string
+  ): { success: boolean; externalMessageId?: string; status: string } {
+    if (outcome === "already_sent") {
+      logger.info({ commandId }, "Post-send reconciliation detected command is already sent (idempotent success)");
+      return {
+        success: true,
+        externalMessageId,
+        status: "sent",
+      };
+    }
+
+    if (outcome === "already_dead_letter") {
+      logger.warn({ commandId }, "Post-send reconciliation detected command is already dead_letter");
+      return {
+        success: false,
+        externalMessageId,
+        status: "dead_letter",
+      };
+    }
+
+    if (outcome === "ownership_lost") {
+      logger.error({ commandId }, "Post-send reconciliation rejected: lease ownership lost");
+      throw new FencingViolationError(commandId, "Lease ownership lost during post-send reconciliation");
+    }
+
+    if (outcome === "transitioned_to_reconciliation") {
+      return {
+        success: false,
+        externalMessageId,
+        status: "reconciliation_required",
+      };
+    }
+
+    throw new Error(`INVALID_OUTBOX_STATE: Post-send reconciliation rejected with state '${outcome}'`);
   }
 }
