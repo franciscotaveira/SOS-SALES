@@ -915,6 +915,277 @@ describe("CH-10: Outbox → Worker → ChannelDispatchService Integration & Resi
     expect(cmdCheck.rows[0].external_message_id).toBe(expectedExtId);
   });
 
+  it("14c. should route to reconciliation_required and preserve externalMessageId when lease_until expires in PostgreSQL real clock without theft", async () => {
+    const idempotencyKey = `idemp-racy-expire-clock-${Date.now()}`;
+    const { commandId, messageId } = await createMessageAndCommand({
+      workspaceId: workspaceAId,
+      channelInstanceId: lineCommercialId,
+      recipientE164: "+5511988887777",
+      idempotencyKey,
+    });
+
+    const dispatcher = new OutboxDispatcher();
+    const registry = new ChannelAdapterRegistry();
+    const expectedExtId = `wamid.expired-pgclock-${Date.now()}`;
+
+    // Note: Signal is NOT aborted here. We test real PostgreSQL clock expiry.
+    const mockExpiringAdapter: IChannelAdapter = {
+      provider: "meta_waba",
+      async sendMessage(): Promise<ChannelSendResult> {
+        // Expire lease directly in PostgreSQL with clock_timestamp()
+        await ownerPool.query(
+          "UPDATE outbound_commands SET lease_until = clock_timestamp() - INTERVAL '5 seconds' WHERE id = $1",
+          [commandId]
+        );
+        return {
+          success: true,
+          externalMessageId: expectedExtId,
+          sentAt: new Date(),
+        };
+      },
+    };
+    registry.register(mockExpiringAdapter);
+
+    const secretResolver = new DatabaseSigningSecretResolver({
+      pool: workerPool,
+      masterKeyHex: testMasterKey,
+    });
+
+    const claimed = await dispatcher.claimBatch(workerPool, "worker-expiring-clock", 10);
+    const item = claimed.find((c) => c.id === commandId);
+    expect(item).toBeDefined();
+
+    const result = await dispatcher.dispatchItem(
+      workerPool,
+      item!,
+      "worker-expiring-clock",
+      registry,
+      secretResolver
+    );
+    expect(result.success).toBe(false);
+    expect(result.status).toBe("reconciliation_required");
+    expect(result.externalMessageId).toBe(expectedExtId);
+
+    // Verify messages table remained 'queued'
+    const msgCheck = await ownerPool.query("SELECT delivery_status FROM messages WHERE id = $1", [messageId]);
+    expect(msgCheck.rows[0].delivery_status).toBe("queued");
+
+    // Verify outbound_commands table transitioned to 'reconciliation_required' preserving externalMessageId
+    const cmdCheck = await ownerPool.query(
+      "SELECT status, external_message_id FROM outbound_commands WHERE id = $1",
+      [commandId]
+    );
+    expect(cmdCheck.rows[0].status).toBe("reconciliation_required");
+    expect(cmdCheck.rows[0].external_message_id).toBe(expectedExtId);
+  });
+
+  it("14d. should throw FencingViolationError and NOT alter record when lease expired and concurrently reclaimed", async () => {
+    const idempotencyKey = `idemp-reclaimed-clock-${Date.now()}`;
+    const { commandId, messageId } = await createMessageAndCommand({
+      workspaceId: workspaceAId,
+      channelInstanceId: lineCommercialId,
+      recipientE164: "+5511988887777",
+      idempotencyKey,
+    });
+
+    const dispatcher = new OutboxDispatcher();
+    const registry = new ChannelAdapterRegistry();
+    const localExtId = `wamid.local-late-${Date.now()}`;
+
+    const mockReclaimedAdapter: IChannelAdapter = {
+      provider: "meta_waba",
+      async sendMessage(): Promise<ChannelSendResult> {
+        // Concurrently reassign ownership to a new worker with new lease_token
+        await ownerPool.query(
+          `UPDATE outbound_commands
+           SET lease_until = clock_timestamp() + INTERVAL '30 seconds',
+               worker_id = 'worker-reclaimer-concurrent',
+               lease_token = gen_random_uuid(),
+               status = 'processing'
+           WHERE id = $1`,
+          [commandId]
+        );
+        return {
+          success: true,
+          externalMessageId: localExtId,
+          sentAt: new Date(),
+        };
+      },
+    };
+    registry.register(mockReclaimedAdapter);
+
+    const secretResolver = new DatabaseSigningSecretResolver({
+      pool: workerPool,
+      masterKeyHex: testMasterKey,
+    });
+
+    const claimed = await dispatcher.claimBatch(workerPool, "worker-original-expired", 10);
+    const item = claimed.find((c) => c.id === commandId);
+    expect(item).toBeDefined();
+
+    await expect(
+      dispatcher.dispatchItem(
+        workerPool,
+        item!,
+        "worker-original-expired",
+        registry,
+        secretResolver
+      )
+    ).rejects.toThrow(FencingViolationError);
+
+    // Verify DB was NOT altered by late worker: worker_id remains 'worker-reclaimer-concurrent'
+    const cmdCheck = await ownerPool.query(
+      "SELECT status, worker_id, external_message_id FROM outbound_commands WHERE id = $1",
+      [commandId]
+    );
+    expect(cmdCheck.rows[0].status).toBe("processing");
+    expect(cmdCheck.rows[0].worker_id).toBe("worker-reclaimer-concurrent");
+    expect(cmdCheck.rows[0].external_message_id).toBeNull();
+
+    // Verify messages table remained 'queued'
+    const msgCheck = await ownerPool.query("SELECT delivery_status FROM messages WHERE id = $1", [messageId]);
+    expect(msgCheck.rows[0].delivery_status).toBe("queued");
+  });
+
+  it("14e. should return canonical persisted externalMessageId from database when already_sent is detected", async () => {
+    const idempotencyKey = `idemp-canonical-webhook-${Date.now()}`;
+    const { commandId, messageId } = await createMessageAndCommand({
+      workspaceId: workspaceAId,
+      channelInstanceId: lineCommercialId,
+      recipientE164: "+5511988887777",
+      idempotencyKey,
+    });
+
+    const dispatcher = new OutboxDispatcher();
+    const registry = new ChannelAdapterRegistry();
+    const canonicalWebhookExtId = `wamid.webhook-canonical-${Date.now()}`;
+    const localAttemptExtId = `wamid.local-divergent-${Date.now()}`;
+
+    const mockWebhookRaceAdapter: IChannelAdapter = {
+      provider: "meta_waba",
+      async sendMessage(): Promise<ChannelSendResult> {
+        // Simulate concurrent webhook writing 'sent' with canonical ID A
+        await ownerPool.query(
+          `UPDATE outbound_commands
+           SET status = 'sent',
+               external_message_id = $1,
+               worker_id = NULL,
+               lease_token = NULL
+           WHERE id = $2`,
+          [canonicalWebhookExtId, commandId]
+        );
+        await ownerPool.query(
+          `UPDATE messages
+           SET delivery_status = 'sent',
+               provider_message_id = $1
+           WHERE id = $2`,
+          [canonicalWebhookExtId, messageId]
+        );
+        return {
+          success: true,
+          externalMessageId: localAttemptExtId,
+          sentAt: new Date(),
+        };
+      },
+    };
+    registry.register(mockWebhookRaceAdapter);
+
+    const secretResolver = new DatabaseSigningSecretResolver({
+      pool: workerPool,
+      masterKeyHex: testMasterKey,
+    });
+
+    const claimed = await dispatcher.claimBatch(workerPool, "worker-webhook-race", 10);
+    const item = claimed.find((c) => c.id === commandId);
+    expect(item).toBeDefined();
+
+    const result = await dispatcher.dispatchItem(
+      workerPool,
+      item!,
+      "worker-webhook-race",
+      registry,
+      secretResolver
+    );
+
+    // Truth in Data: result must return the canonical persisted ID A from DB, NOT local attempt ID B!
+    expect(result.success).toBe(true);
+    expect(result.status).toBe("sent");
+    expect(result.externalMessageId).toBe(canonicalWebhookExtId);
+    expect(result.externalMessageId).not.toBe(localAttemptExtId);
+
+    // Verify DB still holds canonical ID A
+    const cmdCheck = await ownerPool.query(
+      "SELECT status, external_message_id FROM outbound_commands WHERE id = $1",
+      [commandId]
+    );
+    expect(cmdCheck.rows[0].status).toBe("sent");
+    expect(cmdCheck.rows[0].external_message_id).toBe(canonicalWebhookExtId);
+  });
+
+  it("14f. should fail closed with DATA_INCONSISTENCY when already_sent lacks external_message_id in database", async () => {
+    const idempotencyKey = `idemp-missing-extid-${Date.now()}`;
+    const { commandId } = await createMessageAndCommand({
+      workspaceId: workspaceAId,
+      channelInstanceId: lineCommercialId,
+      recipientE164: "+5511988887777",
+      idempotencyKey,
+    });
+
+    const dispatcher = new OutboxDispatcher();
+    const registry = new ChannelAdapterRegistry();
+    const localExtId = `wamid.local-${Date.now()}`;
+
+    const mockCorruptAdapter: IChannelAdapter = {
+      provider: "meta_waba",
+      async sendMessage(): Promise<ChannelSendResult> {
+        // Concurrently mark 'sent' but corruptly leave external_message_id NULL
+        await ownerPool.query(
+          `UPDATE outbound_commands
+           SET status = 'sent',
+               external_message_id = NULL,
+               worker_id = NULL,
+               lease_token = NULL
+           WHERE id = $1`,
+          [commandId]
+        );
+        return {
+          success: true,
+          externalMessageId: localExtId,
+          sentAt: new Date(),
+        };
+      },
+    };
+    registry.register(mockCorruptAdapter);
+
+    const secretResolver = new DatabaseSigningSecretResolver({
+      pool: workerPool,
+      masterKeyHex: testMasterKey,
+    });
+
+    const claimed = await dispatcher.claimBatch(workerPool, "worker-corrupt", 10);
+    const item = claimed.find((c) => c.id === commandId);
+    expect(item).toBeDefined();
+
+    // Must fail closed with DATA_INCONSISTENCY and NOT retry
+    await expect(
+      dispatcher.dispatchItem(
+        workerPool,
+        item!,
+        "worker-corrupt",
+        registry,
+        secretResolver
+      )
+    ).rejects.toThrow(/DATA_INCONSISTENCY/);
+
+    // Verify status remained 'sent' (no corrupted attempt to reset or retry)
+    const cmdCheck = await ownerPool.query(
+      "SELECT status, external_message_id FROM outbound_commands WHERE id = $1",
+      [commandId]
+    );
+    expect(cmdCheck.rows[0].status).toBe("sent");
+    expect(cmdCheck.rows[0].external_message_id).toBeNull();
+  });
+
   it("15. should verify OutboundCommandRepository handles persistent idempotency and conflict detection", async () => {
     const repo = new OutboundCommandRepository(ownerPool);
     const idempotencyKey = `idemp-canonical-${Date.now()}`;

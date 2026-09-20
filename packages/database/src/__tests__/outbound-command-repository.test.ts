@@ -528,7 +528,9 @@ describe("OutboundCommandRepository (CH-10)", () => {
         );
       }, workerPool);
 
-      expect(outcome).toBe("transitioned_to_reconciliation");
+      expect(outcome.outcome).toBe("transitioned_to_reconciliation");
+      expect(outcome.persistedExternalMessageId).toBe(extMsgId);
+      expect(outcome.persistedStatus).toBe("reconciliation_required");
 
       const check = await ownerPool.query(
         "SELECT status, worker_id, lease_token, lease_until, external_message_id, error_message FROM outbound_commands WHERE id = $1;",
@@ -565,7 +567,9 @@ describe("OutboundCommandRepository (CH-10)", () => {
         );
       }, workerPool);
 
-      expect(outcome).toBe("already_sent");
+      expect(outcome.outcome).toBe("already_sent");
+      expect(outcome.persistedExternalMessageId).toBe(confirmedExtId);
+      expect(outcome.persistedStatus).toBe("sent");
 
       const check = await ownerPool.query(
         "SELECT status, external_message_id FROM outbound_commands WHERE id = $1;",
@@ -596,7 +600,8 @@ describe("OutboundCommandRepository (CH-10)", () => {
         );
       }, workerPool);
 
-      expect(outcome).toBe("already_dead_letter");
+      expect(outcome.outcome).toBe("already_dead_letter");
+      expect(outcome.persistedStatus).toBe("dead_letter");
 
       const check = await ownerPool.query(
         "SELECT status, error_message FROM outbound_commands WHERE id = $1;",
@@ -622,7 +627,8 @@ describe("OutboundCommandRepository (CH-10)", () => {
         );
       }, workerPool);
 
-      expect(outcome).toBe("ownership_lost");
+      expect(outcome.outcome).toBe("ownership_lost");
+      expect(outcome.persistedStatus).toBe("processing");
 
       const check = await ownerPool.query(
         "SELECT status, worker_id, lease_token, external_message_id FROM outbound_commands WHERE id = $1;",
@@ -648,7 +654,8 @@ describe("OutboundCommandRepository (CH-10)", () => {
         );
       }, workerPool);
 
-      expect(outcome).toBe("ownership_lost");
+      expect(outcome.outcome).toBe("ownership_lost");
+      expect(outcome.persistedStatus).toBe("processing");
 
       const check = await ownerPool.query(
         "SELECT status, worker_id, lease_token, external_message_id FROM outbound_commands WHERE id = $1;",
@@ -675,7 +682,7 @@ describe("OutboundCommandRepository (CH-10)", () => {
         );
       }, workerPool);
 
-      expect(outcome).toBe("invalid_state");
+      expect(outcome.outcome).toBe("invalid_state");
 
       const check = await ownerPool.query(
         "SELECT status, worker_id, lease_token, external_message_id FROM outbound_commands WHERE id = $1;",
@@ -715,7 +722,9 @@ describe("OutboundCommandRepository (CH-10)", () => {
         );
       }, workerPool);
 
-      expect(outcome).toBe("already_sent");
+      expect(outcome.outcome).toBe("already_sent");
+      expect(outcome.persistedExternalMessageId).toBe(webhookExtId);
+      expect(outcome.persistedStatus).toBe("sent");
 
       const check = await ownerPool.query(
         "SELECT status, external_message_id FROM outbound_commands WHERE id = $1;",
@@ -755,8 +764,9 @@ describe("OutboundCommandRepository (CH-10)", () => {
         }, workerPool),
       ]);
 
-      expect(outcome1).toBe("transitioned_to_reconciliation");
-      expect(outcome2).toBe("transitioned_to_reconciliation");
+      const outcomeTypes = [outcome1.outcome, outcome2.outcome];
+      expect(outcomeTypes).toContain("transitioned_to_reconciliation");
+      expect(outcomeTypes).toContain("ownership_lost");
 
       const check = await ownerPool.query(
         "SELECT status, external_message_id, lease_until, worker_id FROM outbound_commands WHERE id = $1;",
@@ -791,7 +801,8 @@ describe("OutboundCommandRepository (CH-10)", () => {
         );
       }, workerPool);
 
-      expect(outcome).toBe("transitioned_to_reconciliation");
+      expect(outcome.outcome).toBe("transitioned_to_reconciliation");
+      expect(outcome.persistedExternalMessageId).toBe(originalConfirmedId);
 
       const check = await ownerPool.query(
         "SELECT status, external_message_id FROM outbound_commands WHERE id = $1;",
@@ -818,7 +829,7 @@ describe("OutboundCommandRepository (CH-10)", () => {
           client
         );
       }, workerPool);
-      expect(outcome).toBe("transitioned_to_reconciliation");
+      expect(outcome.outcome).toBe("transitioned_to_reconciliation");
 
       // Verify normal pending claim ignores reconciliation_required items
       const pendingBatch = await repo.claimPendingBatch("worker-regular", 10, 30, workerPool);
@@ -838,6 +849,195 @@ describe("OutboundCommandRepository (CH-10)", () => {
       const foundInRecon = reconBatch.find((c) => c.id === cmd.id);
       expect(foundInRecon).toBeDefined();
       expect(foundInRecon?.external_message_id).toBe(extMsgId);
+    });
+
+    it("K. markProcessing falha e NÃO renova lease quando lease_until expirou no PostgreSQL (clock real)", async () => {
+      const { cmd, workerId, leaseToken } = await createClaimedCommand("test-k");
+
+      // Expire lease directly in PostgreSQL using real clock timestamp
+      await ownerPool.query(
+        "UPDATE outbound_commands SET lease_until = clock_timestamp() - interval '5 seconds' WHERE id = $1;",
+        [cmd.id]
+      );
+
+      // Attempt heartbeat renewal on expired lease
+      const renewed = await withWorkerTransaction(workspaceId, async (client) => {
+        return repo.markProcessing(cmd.id, workerId, leaseToken, 30, client);
+      }, workerPool);
+
+      // Must fail to renew
+      expect(renewed).toBe(false);
+
+      // Verify in DB that lease was NOT renewed into the future
+      const check = await ownerPool.query(
+        "SELECT lease_until, clock_timestamp() AS now_ts FROM outbound_commands WHERE id = $1;",
+        [cmd.id]
+      );
+      expect(new Date(check.rows[0].lease_until).getTime()).toBeLessThan(new Date(check.rows[0].now_ts).getTime());
+    });
+
+    it("L. markSent rejeita lease expirada com FencingViolationError (clock real)", async () => {
+      const { cmd, workerId, leaseToken } = await createClaimedCommand("test-l");
+      const extMsgId = `wamid.test-l-${Date.now()}`;
+
+      // Expire lease directly in PostgreSQL
+      await ownerPool.query(
+        "UPDATE outbound_commands SET lease_until = clock_timestamp() - interval '5 seconds' WHERE id = $1;",
+        [cmd.id]
+      );
+
+      // Attempt to finalize as sent after expiration
+      await expect(
+        withWorkerTransaction(workspaceId, async (client) => {
+          return repo.markSent(cmd.id, workerId, leaseToken, extMsgId, new Date(), client);
+        }, workerPool)
+      ).rejects.toThrow(FencingViolationError);
+
+      // Verify status in DB did NOT become 'sent'
+      const check = await ownerPool.query("SELECT status FROM outbound_commands WHERE id = $1;", [cmd.id]);
+      expect(check.rows[0].status).toBe("processing");
+    });
+
+    it("M. Provider confirma após expiração da lease sem reclaim: transiciona para reconciliation_required e preserva ID", async () => {
+      const { cmd, workerId, leaseToken } = await createClaimedCommand("test-m");
+      const extMsgId = `wamid.test-m-${Date.now()}`;
+
+      // Expire lease directly in PostgreSQL without reclaim
+      await ownerPool.query(
+        "UPDATE outbound_commands SET lease_until = clock_timestamp() - interval '5 seconds' WHERE id = $1;",
+        [cmd.id]
+      );
+
+      // Worker executes post-send reconciliation compensation
+      const outcome = await withWorkerTransaction(workspaceId, async (client) => {
+        return repo.markPostSendReconciliationRequired(
+          workspaceId,
+          cmd.id,
+          workerId,
+          leaseToken,
+          extMsgId,
+          "Lease expired during external send",
+          client
+        );
+      }, workerPool);
+
+      expect(outcome.outcome).toBe("transitioned_to_reconciliation");
+      expect(outcome.persistedExternalMessageId).toBe(extMsgId);
+      expect(outcome.persistedStatus).toBe("reconciliation_required");
+
+      // Verify in DB
+      const check = await ownerPool.query(
+        "SELECT status, external_message_id, lease_until, worker_id, lease_token FROM outbound_commands WHERE id = $1;",
+        [cmd.id]
+      );
+      expect(check.rows[0].status).toBe("reconciliation_required");
+      expect(check.rows[0].external_message_id).toBe(extMsgId);
+      expect(check.rows[0].lease_until).toBeNull();
+      expect(check.rows[0].worker_id).toBeNull();
+      expect(check.rows[0].lease_token).toBeNull();
+    });
+
+    it("N. Provider confirma após reclaim concorrente: retorna ownership_lost e NÃO altera o registro", async () => {
+      const { cmd, workerId, leaseToken } = await createClaimedCommand("test-n");
+      const lateExtId = `wamid.test-n-late-${Date.now()}`;
+
+      // Expire lease in PostgreSQL
+      await ownerPool.query(
+        "UPDATE outbound_commands SET lease_until = clock_timestamp() - interval '5 seconds' WHERE id = $1;",
+        [cmd.id]
+      );
+
+      // Another process reclaims the expired lease
+      await ownerPool.query(
+        `UPDATE outbound_commands 
+         SET status = 'reconciliation_required', error_message = 'ERR_RECLAIMED_CONCURRENTLY',
+             worker_id = NULL, lease_token = NULL, lease_until = NULL, updated_at = clock_timestamp()
+         WHERE id = $1;`,
+        [cmd.id]
+      );
+
+      // Original worker attempts post-send reconciliation with its old lease token
+      const outcome = await withWorkerTransaction(workspaceId, async (client) => {
+        return repo.markPostSendReconciliationRequired(
+          workspaceId,
+          cmd.id,
+          workerId,
+          leaseToken,
+          lateExtId,
+          "Late post-send attempt",
+          client
+        );
+      }, workerPool);
+
+      expect(outcome.outcome).toBe("ownership_lost");
+      expect(outcome.persistedStatus).toBe("reconciliation_required");
+
+      // Verify database record was NOT overwritten by the late worker
+      const check = await ownerPool.query(
+        "SELECT status, error_message, external_message_id FROM outbound_commands WHERE id = $1;",
+        [cmd.id]
+      );
+      expect(check.rows[0].status).toBe("reconciliation_required");
+      expect(check.rows[0].error_message).toBe("ERR_RECLAIMED_CONCURRENTLY");
+      expect(check.rows[0].external_message_id).toBeNull();
+    });
+
+    it("O. Webhook grava sent com ID A enquanto tentativa local possui ID B: retorna ID A canônico", async () => {
+      const { cmd, workerId, leaseToken } = await createClaimedCommand("test-o");
+      const canonicalIdA = `wamid.canonical-id-a-${Date.now()}`;
+      const localIdB = `wamid.local-id-b-${Date.now()}`;
+
+      // Concurrent webhook writes sent with ID A
+      await ownerPool.query(
+        `UPDATE outbound_commands
+         SET status = 'sent', external_message_id = $1, sent_at = clock_timestamp(),
+             worker_id = NULL, lease_token = NULL, lease_until = NULL, updated_at = clock_timestamp()
+         WHERE id = $2;`,
+        [canonicalIdA, cmd.id]
+      );
+
+      // Local worker compensation runs with ID B
+      const outcome = await withWorkerTransaction(workspaceId, async (client) => {
+        return repo.markPostSendReconciliationRequired(
+          workspaceId,
+          cmd.id,
+          workerId,
+          leaseToken,
+          localIdB,
+          "Local post-send persistence failure",
+          client
+        );
+      }, workerPool);
+
+      expect(outcome.outcome).toBe("already_sent");
+      // MUST return canonical ID A from the database, never local ID B!
+      expect(outcome.persistedExternalMessageId).toBe(canonicalIdA);
+      expect(outcome.persistedStatus).toBe("sent");
+    });
+
+    it("P. markRetryableFailure e markPermanentFailure rejeitam lease expirada com FencingViolationError", async () => {
+      const { cmd: cmd1, workerId: w1, leaseToken: lt1 } = await createClaimedCommand("test-p1");
+      const { cmd: cmd2, workerId: w2, leaseToken: lt2 } = await createClaimedCommand("test-p2");
+
+      // Expire both leases in PostgreSQL
+      await ownerPool.query(
+        "UPDATE outbound_commands SET lease_until = clock_timestamp() - interval '5 seconds' WHERE id IN ($1, $2);",
+        [cmd1.id, cmd2.id]
+      );
+
+      // markRetryableFailure must reject expired lease
+      await expect(
+        withWorkerTransaction(workspaceId, async (client) => {
+          return repo.markRetryableFailure(cmd1.id, w1, lt1, "Transient network drop", new Date(), client);
+        }, workerPool)
+      ).rejects.toThrow(FencingViolationError);
+
+      // markPermanentFailure must reject expired lease
+      await expect(
+        withWorkerTransaction(workspaceId, async (client) => {
+          return repo.markPermanentFailure(cmd2.id, w2, lt2, "Permanent unrecoverable error", client);
+        }, workerPool)
+      ).rejects.toThrow(FencingViolationError);
     });
   });
 });
