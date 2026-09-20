@@ -1,3 +1,4 @@
+import type { Pool, PoolClient } from "pg";
 import { getDatabasePool } from "./client";
 
 export interface UserWorkspaceMembership {
@@ -31,13 +32,17 @@ export async function getUserWorkspaces(userId: string): Promise<UserWorkspaceMe
   return res.rows;
 }
 
+
 /**
  * Records an audit event even during rejected cross-tenant requests.
  * Uses SECURITY DEFINER function to ensure tamper-proof logging under FORCE RLS.
  */
-export async function recordSecurityAuditEvent(params: SecurityAuditEventParams): Promise<string> {
-  const pool = getDatabasePool();
-  const res = await pool.query<{ record_security_audit_event: string }>(
+export async function recordSecurityAuditEvent(
+  params: SecurityAuditEventParams,
+  client?: Pool | PoolClient
+): Promise<string> {
+  const runner = client || getDatabasePool();
+  const res = await runner.query<{ record_security_audit_event: string }>(
     `SELECT record_security_audit_event(
       $1::uuid,
       $2::uuid,
@@ -67,3 +72,4 @@ export async function recordSecurityAuditEvent(params: SecurityAuditEventParams)
   }
   return row.record_security_audit_event;
 }
+

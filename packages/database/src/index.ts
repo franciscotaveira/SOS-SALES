@@ -6,5 +6,6 @@ export * from "./infrastructure/crypto-payload";
 export * from "./infrastructure/database-signing-secret-resolver";
 export * from "./repositories/channel-instance.repository";
 export * from "./repositories/outbound-command.repository";
+export * from "./repositories/transactional-outbound-producer.repository";
 export { Pool, type PoolClient } from "pg";
 
