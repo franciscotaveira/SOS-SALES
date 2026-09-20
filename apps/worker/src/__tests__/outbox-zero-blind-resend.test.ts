@@ -7,6 +7,7 @@ import {
   createTestDatabasePools,
   encryptPayload,
   DatabaseSigningSecretResolver,
+  FencingViolationError,
 } from "@sos-sales/database";
 import {
   ChannelAdapterRegistry,
@@ -285,17 +286,87 @@ describe("Outbox Zero Blind Resend & Ambiguous Delivery Invariants (CH-10)", () 
       const targetItem = claimed.find((c) => c.id === commandId);
       expect(targetItem).toBeDefined();
 
+      // Post-send fencing detected stolen lease: ownership_lost causes FencingViolationError (fails closed, zero blind resend)
+      await expect(
+        dispatcher.dispatchItem(
+          workerPool,
+          targetItem!,
+          "test-heartbeat-worker",
+          registry,
+          secretResolver
+        )
+      ).rejects.toThrow(FencingViolationError);
+
+      const checkCmd = await ownerPool.query(
+        "SELECT status, worker_id, external_message_id FROM outbound_commands WHERE id = $1;",
+        [commandId]
+      );
+      expect(checkCmd.rows[0].status).toBe("processing");
+      expect(checkCmd.rows[0].worker_id).toBe("rogue-thief");
+    });
+
+    it("should route to reconciliation_required and preserve externalMessageId when lease expires during send without theft", async () => {
+      const msgRes = await ownerPool.query(`
+        INSERT INTO messages (
+          workspace_id, channel_instance_id, thread_id, provider, direction,
+          sender_e164, recipient_e164, content_type, body, delivery_status, status_rank
+        ) VALUES (
+          $1, $2, $3, 'meta_waba', 'outbound',
+          '+5511999993333', '+5511999994444', 'text', 'Test expire no theft body', 'queued', 0
+        ) RETURNING id;
+      `, [workspaceId, channelInstanceId, baseThreadId]);
+      const messageId = msgRes.rows[0].id;
+
+      const outboxRes = await ownerPool.query(`
+        INSERT INTO outbound_commands (
+          workspace_id, channel_instance_id, thread_id, message_id, recipient_e164,
+          body, idempotency_key, status, retry_count, max_retries
+        ) VALUES (
+          $1, $2, $3, $4, '+5511999994444',
+          'Test expire no theft body', $5, 'pending', 0, 3
+        ) RETURNING id;
+      `, [workspaceId, channelInstanceId, baseThreadId, messageId, `expire-notheft-${Date.now()}`]);
+      const commandId = outboxRes.rows[0].id;
+
+      const expectedExtId = `wamid.notheft-${Date.now()}`;
+      const controller = new AbortController();
+      const fakeAdapter: IChannelAdapter = {
+        provider: "meta_waba",
+        sendMessage: async (_params: OutboundSendParams): Promise<ChannelSendResult> => {
+          controller.abort(new Error("Heartbeat timeout during send"));
+          return {
+            success: true,
+            externalMessageId: expectedExtId,
+            sentAt: new Date(),
+          };
+        },
+      };
+
+      const registry = new ChannelAdapterRegistry();
+      registry.register(fakeAdapter);
+
+      const secretResolver = new DatabaseSigningSecretResolver({
+        pool: workerPool,
+        masterKeyHex: testMasterKey,
+      });
+
+      const dispatcher = new OutboxDispatcher({ masterKeyHex: testMasterKey });
+      const claimed = await dispatcher.claimBatch(workerPool, "test-expire-worker", 10);
+      const targetItem = claimed.find((c) => c.id === commandId);
+      expect(targetItem).toBeDefined();
+
       const result = await dispatcher.dispatchItem(
         workerPool,
         targetItem!,
-        "test-heartbeat-worker",
+        "test-expire-worker",
         registry,
-        secretResolver
+        secretResolver,
+        controller.signal
       );
 
-      // Post-send fencing detected lost lease: routed to reconciliation_required, NEVER retry!
+      // Post-send fencing detected expired lease: routed to reconciliation_required, NEVER retry!
       expect(result.status).toBe("reconciliation_required");
-      expect(result.externalMessageId).toBeDefined();
+      expect(result.externalMessageId).toBe(expectedExtId);
 
       const checkCmd = await ownerPool.query(
         "SELECT status, error_message, external_message_id FROM outbound_commands WHERE id = $1;",
@@ -303,7 +374,7 @@ describe("Outbox Zero Blind Resend & Ambiguous Delivery Invariants (CH-10)", () 
       );
       expect(checkCmd.rows[0].status).toBe("reconciliation_required");
       expect(checkCmd.rows[0].error_message).toContain("ERR_LEASE_LOST_AFTER_SEND");
-      expect(checkCmd.rows[0].external_message_id).toBe(result.externalMessageId);
+      expect(checkCmd.rows[0].external_message_id).toBe(expectedExtId);
     });
   });
 
