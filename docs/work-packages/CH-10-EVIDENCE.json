@@ -1,8 +1,8 @@
 {
   "package_id": "CH-10",
   "name": "Docker Dual-Engine & Coexistência Operacional",
-  "timestamp": "2026-09-20T11:30:00Z",
-  "commit_sha": "6126ab64f16388eeb187a7aa95c37ca9121bb9fc",
+  "timestamp": "2026-09-20T14:55:00Z",
+  "commit_sha": "c58aaa77a8e35e5f38f075448d9c6aac1c8974af",
   "branch": "codex/iteration-2.7",
   "evidence_id": "EV-CH10-001",
   "environment": {
@@ -24,12 +24,12 @@
       "apps/worker/src/__tests__/outbox-dispatch-service-integration.test.ts",
       "apps/worker/src/__tests__/outbox-zero-blind-resend.test.ts"
     ],
-    "total_assertions_package": 122,
-    "assertions_passed_package": 122,
+    "total_assertions_package": 132,
+    "assertions_passed_package": 132,
     "assertions_failed_package": 0,
     "total_test_files_monorepo": 35,
-    "total_assertions_monorepo": 526,
-    "assertions_passed_monorepo": 526,
+    "total_assertions_monorepo": 536,
+    "assertions_passed_monorepo": 536,
     "security_capabilities_verified": [
       "Hardenized Docker Compose specification with pinned OCI digest for WAHA (sha256:527ff3d6...), zero privileged mode, zero SYS_ADMIN, loopback port binding (127.0.0.1:3000), and named persistent volume",
       "Tenant-first ChannelInstanceRepository supporting multi-line active configurations per workspace, strictly prohibiting adminPool bypass and verifying RLS isolation with indistinguishable enumeration timing oracles",
@@ -40,7 +40,9 @@
       "Strict monotonic transition protection preventing terminal states (sent, dead_letter) from being regressed to reconciliation_required by late compensation handlers",
       "Deterministic worker lease fencing rejecting state mutations with ownership_lost upon lease theft or expiration",
       "Canonical preservation of confirmed external_message_id without overwriting with null, blank, or placeholder identifiers",
-      "Fail-closed dispatcher compensation handling in OutboxDispatcher: already_sent -> idempotent success, already_dead_letter -> failed, ownership_lost -> FencingViolationError (zero blind resend), invalid_state -> fail-closed error"
+      "Fail-closed dispatcher compensation handling in OutboxDispatcher: already_sent -> idempotent success, already_dead_letter -> failed, ownership_lost -> FencingViolationError (zero blind resend), invalid_state -> fail-closed error",
+      "PostgreSQL real-clock fencing (lease_until >= clock_timestamp()) enforced across markProcessing, markSent, markRetryableFailure, markPermanentFailure, and markReconciliationRequired, preventing heartbeat resurrection of expired leases",
+      "Canonical Truth-in-Data post-send contract: PostSendReconciliationOutcome transports { outcome, persistedExternalMessageId, persistedStatus }, returning canonical persisted ID from PostgreSQL on already_sent, failing closed on missing ID (DATA_INCONSISTENCY), and logging divergence"
     ]
   },
   "acceptance_criteria": [
@@ -82,11 +84,17 @@
     {
       "ac_id": "AC-CH10-008",
       "result": "PASS",
-      "evidence": "Suíte hermética do monorepo aprova 35 arquivos e 526 testes com exit code 0 e 100% de sucesso nos 6 portões de qualidade (pnpm ci:check)."
+      "evidence": "Suíte hermética do monorepo aprova 35 arquivos e 536 testes com exit code 0 e 100% de sucesso nos 6 portões de qualidade (pnpm ci:check)."
+    },
+    {
+      "ac_id": "AC-CH10-009",
+      "result": "PASS",
+      "evidence": "Fencing de expiração de lease no relógio real do PostgreSQL impede renovação por heartbeat de leases expiradas e retorno de já enviado devolve o ID canônico persistido sob Truth in Data."
     }
   ],
   "verification_commands": [
     "pnpm vitest run packages/database/src/__tests__/outbound-command-repository.test.ts",
+    "pnpm vitest run apps/worker/src/__tests__/outbox-dispatch-service-integration.test.ts",
     "pnpm test:db:run",
     "pnpm turbo build typecheck lint",
     "pnpm ci:check"

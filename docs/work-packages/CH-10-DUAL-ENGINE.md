@@ -517,3 +517,56 @@ docker rm sos-v3-waha
 - **Fronteira EXT-05:** Conexões com aparelhos celulares físicos e pareamento de QR Code com contas reais de WhatsApp permanecem estritamente como dependência externa `BLOCKED_EXTERNAL` (EXT-05), a serem homologadas no CH-12.
 - **Soberania do Ambiente:** O SOS Sales V3 permanece restrito ao ambiente de desenvolvimento/lab local. O SOS Sales V2 e os servidores VPS de produção não foram tocados, mantendo 100% de isolamento e zero risco à operação ativa.
 - **Próximo Pacote:** CH-10 formalmente fechado e homologado como `ACCEPTED`. CH-11 marcado como `READY`.
+
+---
+
+## 15. Errata e Retificação Técnica de Auditoria (Pós-cd359a1): Bloqueios de Lease Expirada e Truth in Data
+
+### 15.1 Reconhecimento de Insuficiência Técnica do Commit cd359a1
+O fechamento anterior no commit `cd359a1` foi submetido a auditoria estrita que identificou dois bloqueios técnicos residuais que impediam o encerramento do CH-10:
+1. **Bloqueio 1 (Lease Expirada Podia Ser Revivida):** O método `OutboundCommandRepository.markProcessing()` validava `worker_id` e `lease_token`, porém não exigia `lease_until >= clock_timestamp()`. Dessa forma, um worker tardio/antigo com heartbeat atrasado podia renovar e ressuscitar uma lease cujo tempo já havia expirado no PostgreSQL. Da mesma forma, finalizações dependentes de posse (`markSent`, `markRetryableFailure`, `markPermanentFailure`, `markReconciliationRequired`) não checavam a vigência da lease contra o relógio real do PostgreSQL.
+2. **Bloqueio 2 (Divergência de ID em Memória vs Banco / Truth in Data):** No cenário `already_sent`, o método `handlePostSendReconciliationOutcome()` devolvia o `externalMessageId` da tentativa local de envio em vez do identificador canônico registrado no banco de dados (ex: gravado previamente por webhook). Se o ID do webhook divergisse do ID local, a memória contradizia a persistência. Adicionalmente, caso um comando constasse como `sent` no banco sem `external_message_id`, o sistema não falhava fechado.
+
+### 15.2 Solução Implementada (Commit 1: `6db2690`)
+1. **Fencing Estrito com Relógio Real do PostgreSQL (`clock_timestamp()`):**
+   - Adicionada a cláusula `AND lease_until >= clock_timestamp()` nas queries de mutação de estado de `outbound_commands`:
+     - `markProcessing()` (proíbe heartbeat de ressuscitar lease expirada);
+     - `markSent()` (rejeita finalização com `FencingViolationError` se lease expirou);
+     - `markRetryableFailure()` (rejeita retry se lease expirou);
+     - `markPermanentFailure()` (rejeita transição para dead_letter se lease expirou);
+     - `markReconciliationRequired()` (exige lease vigente).
+   - Em caso de expiração durante o envio:
+     - Se o provedor confirmou e a lease não foi roubada/reivindicada (`c.worker_id = $5 AND c.lease_token::text = $6`), transiciona atomicamente para `reconciliation_required` preservando `external_message_id`;
+     - Se outro worker/reclaimer já assumiu (`worker_id` ou `lease_token` divergentes), retorna `ownership_lost`, lança `FencingViolationError` e não altera o registro no banco;
+     - Zero retry automático para estados ambíguos.
+2. **Contrato Canônico `PostSendReconciliationOutcome` e Truth in Data:**
+   - Contrato reestruturado para transportar:
+     ```ts
+     export interface PostSendReconciliationOutcome {
+       outcome: PostSendReconciliationOutcomeType;
+       persistedExternalMessageId: string | null;
+       persistedStatus: string | null;
+     }
+     ```
+   - Em `already_sent`, o despachante (`OutboxDispatcher`) devolve obrigatoriamente o `persistedExternalMessageId` do banco de dados (ID canônico).
+   - Em caso de divergência entre o ID local e o ID do banco, emite log explícito de aviso (`warn`) e nunca oculta a divergência.
+   - Caso `persistedExternalMessageId` esteja nulo ou vazio em `already_sent`, lança erro fail-closed imediato: `DATA_INCONSISTENCY: Outbound command '${commandId}' is marked 'sent' but lacks a canonical external_message_id`, sem qualquer tentativa de retry ou mutação indevida.
+
+### 15.3 Provas Empíricas e Bateria de Testes (Commit 2: `c58aaa7`)
+- **6 Novos Testes no Repositório PostgreSQL (`outbound-command-repository.test.ts`):**
+  - `Test K`: `markProcessing` falha e não renova lease quando `lease_until` expirou no PostgreSQL com relógio real (`clock_timestamp`).
+  - `Test L`: `markSent` rejeita lease expirada com `FencingViolationError`.
+  - `Test M`: Provedor confirma após expiração da lease sem reclaim: comando vai para `reconciliation_required` e preserva ID.
+  - `Test N`: Provedor confirma após reclaim concorrente: retorna `ownership_lost` e não altera o registro.
+  - `Test O`: Webhook grava `sent` com ID A enquanto tentativa local possui ID B: retorna ID A canônico do banco.
+  - `Test P`: `markRetryableFailure` e `markPermanentFailure` rejeitam lease expirada com `FencingViolationError`.
+- **4 Novos Testes de Integração no Worker (`outbox-dispatch-service-integration.test.ts`):**
+  - `Test 14c`: Provedor confirma após `lease_until` expirar no PostgreSQL (clock real, sem AbortController) sem furto: roteia para `reconciliation_required` e preserva `externalMessageId`.
+  - `Test 14d`: Provedor confirma após reclaim concorrente: lança `FencingViolationError` e não altera o registro.
+  - `Test 14e`: Webhook grava `sent` com ID A enquanto tentativa local tem ID B: dispatcher retorna ID A canônico.
+  - `Test 14f`: `already_sent` sem `external_message_id` no banco falha fechado com erro `DATA_INCONSISTENCY` e zero retry.
+
+### 15.4 Consolidação das Métricas Finais
+- Suíte Hermética do Banco (`pnpm test:db:run`): 35 arquivos de teste, **536 testes aprovados** (0 falhas).
+- Portões de CI (`pnpm ci:check`): 6/6 portões aprovados com exit code 0.
+- Veredito Final: CH-10 formalmente retificado e aceito como `ACCEPTED`. CH-11 permanece em `READY`.
