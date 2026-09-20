@@ -1,17 +1,18 @@
 # CH-11 — Produtor Transacional de Outbound
 
 > Nome do arquivo: `CH-11-TRANSACTIONAL-PRODUCER.md`  
-> Estado: `READY` — Especificação técnica e plano executável homologados para execução.  
-> Baseline de referência: `26ccdb603ddd186be23e418c66754a2c87ee4d55`
+> Estado: `READY` — Especificação técnica canônica homologada com fingerprint persistido e trust boundary estrito.  
+> Baseline de referência: `6e7a733`  
+> Data de homologação: 20 de setembro de 2026
 
 ---
 
 ## Identidade
 
 - **Parent objective:** Programa SOS Sales V3 — Motor de Comunicação (Fase CH)
-- **Estado:** `READY` (Planejamento homologado para execução)
-- **Owner:** Gemini 3.8 (Planejamento e Especificação Técnica)
-- **Reviewers:** Architecture Agent, Database Specialist, Security Reviewer, QA Reviewer, Independent Reviewer
+- **Estado:** `READY` (Homologado para execução)
+- **Owner:** Gemini 3.8 (Planejamento e Especificação Técnica Canônica)
+- **Reviewers:** Architecture Agent, Database Specialist, Backend Specialist, Security Reviewer, QA Reviewer, Independent Reviewer
 - **Dependências:**
   - `CH-00` (Modelos Mínimos de Mensageria e Contatos)
   - `CH-01` (RLS Fail-Closed e Concorrência de Fila)
@@ -27,7 +28,7 @@
   - `ADR-004` (Audit Logging & Immutability)
   - `ADR-005` (Channel Gateway & Transactional Outbox Pattern)
 - **Roadmap Gate:** `| CH-11 | Produtor transacional de outbound | CH-10 | message + command + auditabilidade em transação única |`
-- **Risco Mitigado:** `R-005` (Dual-write descompassado, mensagens órfãs no banco sem comando outbox, comandos apontando para mensagens inexistentes, bypass de RLS, falsificação de identidade de ator, SSRF via mediaUrl e colisão concorrente de idempotência)
+- **Risco Mitigado:** `R-005` (Dual-write descompassado, mensagens órfãs no banco sem comando outbox, comandos apontando para mensagens inexistentes, bypass de RLS, falsificação de identidade de ator, SSRF via mediaUrl, inconsistência semântica de replay e colisão concorrente de idempotência)
 
 ---
 
@@ -38,12 +39,15 @@ Garantir que a intenção de envio outbound seja persistida de forma estritament
 $$\text{Atomicity} = \{ \text{message} + \text{outbound\_command} + \text{audit\_event} \}$$
 
 **Invariantes Fundamentais:**
-1. **Confiança Perimétrica Estrita (Trust Boundary):** O cliente HTTP nunca fornece `workspaceId`, `channelInstanceId`, `actorId` ou `role` no corpo da requisição. Toda identidade e contexto de autorização é derivado estritamente do token JWT autenticado, das rotas da API e da verificação de membership do servidor.
-2. **Atomicidade Absoluta:** Nenhuma mensagem outbound pode existir no banco sem um `outbound_command` correspondente, e nenhum `outbound_command` pode referenciar mensagem inexistente.
-3. **Isolamento de Tenant (RLS First):** Toda e qualquer leitura e escrita em `outbound_commands`, `messages`, `contacts` e `commercial_threads` ocorre sob `withTenantTransaction(workspaceId)` com `set_config('app.current_workspace_id', workspaceId, true)`. É terminantemente proibido qualquer pre-check fora de RLS.
-4. **Resolução Determinística de Concorrência:** Disputas simultâneas de idempotência resolvem via `ON CONFLICT DO NOTHING`. A transação perdedora sofre rollback integral via erro interno tipado `IdempotencyRaceLostError`, descartando mensagens uncommitted, e compara o fingerprint canônico do vencedor em uma transação limpa.
-5. **Proteção contra SSRF:** Nenhuma URL de mídia é aceita sem validação perimétrica pelo SSRF Guard (CH-07). Nenhum I/O de rede externa ou download ocorre dentro da transação do banco de dados.
-6. **Auditoria Integrada e Sem PII:** O evento `outbound.enqueued` acompanha a mesma transação de banco. Nenhum dado sensível (telefone cru, corpo de mensagem, token) é gravado na auditoria ou logs.
+1. **Confiança Perimétrica Estrita (Trust Boundary com `.strict()`):** O cliente HTTP nunca fornece `workspaceId`, `channelInstanceId`, `actorId`, `role` ou permissões no corpo da requisição. Toda identidade e autorização é derivada estritamente do token JWT autenticado, das rotas da API e da verificação de membership do servidor. O schema público é estrito (`.strict()`), rejeitando qualquer campo não autorizado com HTTP 400.
+2. **Origem Canônica Única de Idempotência:** A chave de idempotência é informada exclusivamente via campo `idempotencyKey` no body JSON. Não há precedência ambígua com headers HTTP.
+3. **Fingerprint Persistido e Imutável:** O fingerprint canônico SHA-256 (64 hex) é calculado antes da transação e persistido na coluna `payload_fingerprint` da tabela `outbound_commands` (Migration 006). No replay, a comparação é feita em tempo constante (`crypto.timingSafeEqual`) diretamente contra o valor persistido.
+4. **Fail-Closed para Registros Legados:** Qualquer tentativa de replay sobre um comando legado que não possua `payload_fingerprint` falha fechado com erro tipado `LegacyIdempotencyRecordError` (HTTP 409).
+5. **Atomicidade e Projeção com JOIN Real:** Nenhuma mensagem outbound pode existir no banco sem um `outbound_command` correspondente. O replay executa uma query com `INNER JOIN` entre `outbound_commands`, `messages` e `commercial_threads`, projetando `contact_id` e `delivery_status` sem presumi-los no comando nem usar `SELECT *`.
+6. **Isolamento de Tenant (RLS First):** Toda e qualquer leitura e escrita em `outbound_commands`, `messages`, `contacts` e `commercial_threads` ocorre sob `withTenantTransaction(workspaceId)` com `set_config('app.current_workspace_id', workspaceId, true)`. É terminantemente proibido qualquer pre-check fora de RLS.
+7. **Resolução Determinística de Concorrência:** Disputas simultâneas de idempotência resolvem via `ON CONFLICT (workspace_id, idempotency_key) DO NOTHING`. A transação perdedora sofre rollback integral via erro interno tipado `IdempotencyRaceLostError`, descartando mensagens uncommitted, e compara o fingerprint do vencedor em uma transação limpa.
+8. **Proteção contra SSRF:** Nenhuma URL de mídia é aceita sem validação perimétrica pelo SSRF Guard (CH-07). Nenhum I/O de rede externa ou download ocorre dentro da transação do banco de dados.
+9. **Auditoria Integrada e Sem PII:** O evento `outbound.enqueued` acompanha a mesma transação de banco. Nenhum dado sensível (telefone cru, corpo de mensagem, token, URL sensível) é gravado na auditoria ou logs.
 
 ---
 
@@ -62,6 +66,7 @@ $$\text{Atomicity} = \{ \text{message} + \text{outbound\_command} + \text{audit\
 - `[KNOWN]` A tabela `messages` possui FK composta `fk_messages_thread_composite (workspace_id, channel_instance_id, thread_id)` e `fk_messages_channel`.
 - `[KNOWN]` A tabela `outbound_commands` possui FK composta `fk_outbound_message_composite (workspace_id, channel_instance_id, message_id) REFERENCES public.messages(workspace_id, channel_instance_id, id) ON DELETE CASCADE`. Isso exige que a mensagem seja inserida no banco antes do comando outbox dentro da transação.
 - `[KNOWN]` A tabela `outbound_commands` possui constraint única `uq_outbound_workspace_idempotency (workspace_id, idempotency_key)`.
+- `[KNOWN]` A tabela `outbound_commands` atualmente **não possui** as colunas `content_type` nem `payload_fingerprint`, nem armazena diretamente `contact_id` (que reside em `commercial_threads`).
 - `[KNOWN]` O papel `sos_app_user` possui permissões `SELECT, INSERT, UPDATE` em `contacts`, `commercial_threads` e `messages`, e `SELECT, INSERT` em `outbound_commands`. Permissões de `DELETE` e `UPDATE` em `outbound_commands` estão revogadas por design de menor privilégio (Migration 005).
 - `[KNOWN]` Tentar executar `INSERT ... ON CONFLICT DO UPDATE` por parte da `sos_app_user` resulta em erro de permissão negada no PostgreSQL. O produtor deve utilizar estritamente `ON CONFLICT DO NOTHING`.
 - `[KNOWN]` A permissão RBAC `cockpit:send_message` já existe em `@sos-sales/auth` e está atribuída a `owner`, `admin`, `manager` e `operator`. A role `analyst` não possui autorização de envio.
@@ -70,33 +75,95 @@ $$\text{Atomicity} = \{ \text{message} + \text{outbound\_command} + \text{audit\
 
 ---
 
-## Separação Estrita de Contratos e Trust Boundary
+## Migration CH-11: `006_outbound_payload_fingerprint.sql`
 
-### 1. Contrato Público do Cliente (`PublicOutboundRequest`)
+Para permitir validação de equivalência semântica com precisão criptográfica sem duplicar colunas de negócio no outbox:
 
-Recebido no corpo da requisição HTTP (`POST /v1/workspaces/:workspaceId/channels/:channelInstanceId/messages`). **Não contém dados de contexto, tenant ou ator.**
+```sql
+-- packages/database/migrations/006_outbound_payload_fingerprint.sql
+-- Migration 006: Add payload_fingerprint to outbound_commands for deterministic idempotency
+
+ALTER TABLE public.outbound_commands
+    ADD COLUMN IF NOT EXISTS payload_fingerprint text CHECK (
+        payload_fingerprint IS NULL OR payload_fingerprint ~ '^[0-9a-f]{64}$'
+    );
+
+-- Índice condicional para aceleração de auditorias e verificações de integridade
+CREATE INDEX IF NOT EXISTS idx_outbound_commands_fingerprint
+    ON public.outbound_commands(workspace_id, payload_fingerprint)
+    WHERE payload_fingerprint IS NOT NULL;
+
+-- Invariante de Segurança: sos_app_user mantém estritamente SELECT, INSERT
+-- Zero concessão de UPDATE em outbound_commands para sos_app_user.
+```
+
+**Regras da Migration:**
+- `payload_fingerprint` é `nullable` para compatibilidade com registros históricos de testes pré-CH-11.
+- Restrição `CHECK (payload_fingerprint IS NULL OR payload_fingerprint ~ '^[0-9a-f]{64}$')` exige exatamente 64 caracteres hexadecimais quando preenchido.
+- Todo comando inserido pelo produtor CH-11 preenche obrigatoriamente essa coluna.
+- Replay sobre comando com fingerprint ausente (`null`) falha fechado com erro tipado `LegacyIdempotencyRecordError`.
+- **Zero concessão de `UPDATE`** em `outbound_commands` para `sos_app_user`.
+- **Zero backfill artificial** em comandos legados.
+
+---
+
+## Projeção SQL Canônica de Replay
+
+O produtor **nunca** executa `SELECT * FROM outbound_commands`. Para obter a projeção completa e consistente (incluindo `contactId` e `deliveryStatus`), utiliza a seguinte query explícita sob RLS:
+
+```sql
+SELECT 
+    oc.id AS command_id,
+    oc.workspace_id,
+    oc.channel_instance_id,
+    oc.message_id,
+    oc.thread_id,
+    ct.contact_id,
+    oc.payload_fingerprint,
+    oc.status AS command_status,
+    m.delivery_status,
+    oc.created_at
+FROM public.outbound_commands oc
+INNER JOIN public.messages m 
+    ON oc.workspace_id = m.workspace_id 
+   AND oc.channel_instance_id = m.channel_instance_id 
+   AND oc.message_id = m.id
+INNER JOIN public.commercial_threads ct 
+    ON oc.workspace_id = ct.workspace_id 
+   AND oc.channel_instance_id = ct.channel_instance_id 
+   AND oc.thread_id = ct.id
+WHERE oc.workspace_id = $1 
+  AND oc.idempotency_key = $2;
+```
+
+---
+
+## Contratos Canônicos e Trust Boundary
+
+### 1. Contrato Público (`PublicOutboundRequestSchema`)
+
+O schema usa `.strict()`. Qualquer tentativa de injetar campos de autoridade (`workspaceId`, `actorId`, `role`, etc.) no corpo resulta em HTTP 400 Bad Request:
 
 ```typescript
-// Local: packages/contracts/src/channel.ts
+// packages/contracts/src/channel.ts
 export const PublicOutboundRequestSchema = z.object({
-  recipientPhoneE164: z.string().regex(E164_PHONE_REGEX, "Invalid E.164 format (e.g. +5511999998888)"),
+  recipientPhoneE164: z.string().regex(/^\+[1-9]\d{6,14}$/, "E.164 phone format required"),
   contentType: z.enum(["text", "image", "audio", "video", "document", "template"]),
   body: z.string().min(1).max(4096),
   mediaUrl: z.string().url().optional(),
   template: WabaTemplateMessageSchema.optional(),
   idempotencyKey: z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/, "idempotencyKey must be alphanumeric with dashes or underscores"),
-});
+}).strict();
+
 export type PublicOutboundRequest = z.infer<typeof PublicOutboundRequestSchema>;
 ```
 
-*Nota:* O cliente pode fornecer `idempotencyKey` no JSON ou através do cabeçalho padrão `Idempotency-Key` (normalizado pela API antes de invocar o serviço).
-
 ### 2. Contexto Confiável do Servidor (`TrustedOutboundContext`)
 
-Construído exclusivamente pela infraestrutura da API após autenticação JWT e validações RBAC:
+Montado exclusivamente pelo servidor Fastify:
 
 ```typescript
-// Local: packages/contracts/src/channel.ts
+// packages/contracts/src/channel.ts
 export const TrustedOutboundContextSchema = z.object({
   workspaceId: z.string().uuid(),
   channelInstanceId: z.string().uuid(),
@@ -112,7 +179,7 @@ export type TrustedOutboundContext = z.infer<typeof TrustedOutboundContextSchema
 ### 3. Resposta Canônica (`ProduceOutboundOutput`)
 
 ```typescript
-// Local: packages/contracts/src/channel.ts
+// packages/contracts/src/channel.ts
 export const ProduceOutboundOutputSchema = z.object({
   messageId: z.string().uuid(),
   commandId: z.string().uuid(),
@@ -129,102 +196,49 @@ export type ProduceOutboundOutput = z.infer<typeof ProduceOutboundOutputSchema>;
 
 ---
 
-## Decisões arquiteturais (ADRs)
+## Cálculo Canônico de Fingerprint
 
-### ADR-CH11-1: Camadas e Fronteiras de Responsabilidade
+O fingerprint SHA-256 é calculado **antes** de abrir a transação de banco de dados, utilizando ordenação determinística de propriedades (`canonicalJsonStringify` com ordenação lexicográfica recursiva) e normalização de strings:
 
-- **DECISÃO:**
-  - **`apps/api`:** Valida autenticação (`app.authenticate`), contexto de workspace (`app.requireWorkspaceContext`), permissão RBAC (`cockpit:send_message`), rate limiting (CH-05), extrai parâmetros da rota e headers, monta o `TrustedOutboundContext` e despacha para o serviço de aplicação.
-  - **`packages/application`:** Valida regras de negócio, executa a verificação perimétrica SSRF da `mediaUrl` via `validateMediaUrl` (CH-07), calcula o fingerprint canônico e orquestra a chamada ao repositório transacional.
-  - **`packages/database`:** Executa a unidade de trabalho atômica sob `withTenantTransaction(workspaceId)` com a role `sos_app_user` e RLS ativa.  
-- **PREMISSAS:** A API é a barreira perimétrica de segurança; a camada de aplicação é o guardião de integridade de domínio; o banco de dados é a autoridade transacional e de isolamento de dados.  
-- **RISCOS:** Propagação de tipos de erro entre camadas. Mitigado por mapeamento RFC 9457 no handler Fastify.  
-- **PRÓXIMO PASSO:** Implementar `ITransactionalOutboundProducer` em `packages/application/src/ports/`.
+```typescript
+// packages/application/src/channels/sanitizers/canonical-fingerprint.ts
+import crypto from "node:crypto";
 
----
+export function computeOutboundPayloadFingerprint(
+  request: PublicOutboundRequest,
+  context: TrustedOutboundContext
+): string {
+  const canonicalObject = {
+    workspaceId: context.workspaceId.toLowerCase(),
+    channelInstanceId: context.channelInstanceId.toLowerCase(),
+    recipientPhoneE164: request.recipientPhoneE164.trim(),
+    contentType: request.contentType.toLowerCase().trim(),
+    body: request.body.normalize("NFKC").trim(),
+    mediaUrl: request.mediaUrl ? request.mediaUrl.trim() : null,
+    template: request.template
+      ? {
+          name: request.template.name.trim(),
+          language: request.template.language.trim(),
+          components: request.template.components
+            ? sortKeysDeep(request.template.components)
+            : null,
+        }
+      : null,
+  };
 
-### ADR-CH11-2: RLS Estrita e Gestão de Concorrência de Idempotência
+  const serialized = canonicalJsonStringify(canonicalObject);
+  return crypto.createHash("sha256").update(serialized).digest("hex");
+}
 
-- **DECISÃO:** Eliminar qualquer consulta prévia fora de `withTenantTransaction`. Todo acesso ao banco ocorre sob contexto RLS do tenant.
-  O fluxo concorrente é estruturado em duas etapas herméticas:
-  1. **Tentativa Principal (Transacional):**
-     - Abre `withTenantTransaction(workspaceId)`.
-     - Verifica se `outbound_commands` já possui a chave (sob RLS). Se encontrar, compara o fingerprint canônico; se idêntico retorna replay, se divergente lança `IdempotencyConflictError`.
-     - Valida `channel_instances` (pertence ao tenant, `is_active = true`, possui `phone_number_e164`).
-     - Cria ou recupera `contact` e `commercial_thread`.
-     - Insere linha em `messages` (`delivery_status = 'queued', status_rank = 0`).
-     - Executa `INSERT INTO outbound_commands (...) VALUES (...) ON CONFLICT (workspace_id, idempotency_key) DO NOTHING RETURNING *`.
-     - **Detecção de Race Condition:** Se a inserção retornar 0 linhas (outra transação concorrente no mesmo milissegundo inseriu o comando primeiro), o callback lança o erro interno tipado `IdempotencyRaceLostError`.
-     - O bloco `withTenantTransaction` captura `IdempotencyRaceLostError` e executa **rollback integral automático**, garantindo que a mensagem uncommitted seja completamente descartada pelo PostgreSQL.
-     - Se a inserção retornou a linha com sucesso, registra o evento de auditoria `outbound.enqueued` usando a mesma transação (`client`) e faz commit.
-  2. **Recuperação de Corrida (Fallback Hermético):**
-     - Ao capturar `IdempotencyRaceLostError`, o produtor abre uma nova `withTenantTransaction(workspaceId)` (ou consulta com cliente isolado sob RLS).
-     - Carrega o comando vencedor persistido.
-     - Compara o fingerprint canônico do vencedor com a requisição atual:
-       - Se idêntico: retorna `isIdempotentReplay: true` e status HTTP 200.
-       - Se divergente: lança `IdempotencyConflictError` (HTTP 409).  
-- **PREMISSAS:** Nenhuma chamada a `COMMIT` ou `ROLLBACK` manual é permitida dentro do callback de `withTenantTransaction`. O rollback é acionado exclusivamente pelo lançamento de exceções.  
-- **RISCOS:** Overhead de duas transações apenas na fração de milissegundo de colisão concorrente. Benefício: zero mensagens órfãs, zero mutação de leases de fila e total aderência a menor privilégio.  
-- **PRÓXIMO PASSO:** Implementar o erro `IdempotencyRaceLostError` e a lógica de retry no repositório.
-
----
-
-### ADR-CH11-3: Comparação Canônica de Payload e Decisão sobre Migration de Fingerprint
-
-- **DECISÃO:** Adotar comparação determinística baseada no cálculo de fingerprint SHA-256 em memória, **sem necessidade de migração DDL adicional imediata na tabela `outbound_commands`**.  
-- **JUSTIFICATIVA TÉCNICA:**
-  - A tabela `outbound_commands` já armazena todos os componentes do payload em colunas estruturadas (`channel_instance_id`, `recipient_e164`, `body`, `media_url`, `template_name`, `template_language`, `template_components`).
-  - Adicionar uma coluna `payload_fingerprint text` exigiria migration DDL, backfill de linhas existentes de testes e risco desnecessário na baseline estável `26ccdb6`.
-  - A função determinística `computeOutboundPayloadFingerprint(payload)` normaliza:
-    1. `workspaceId` (UUID minúsculo);
-    2. `channelInstanceId` (UUID minúsculo);
-    3. `recipientPhoneE164` (string E.164);
-    4. `contentType` (string em caixa baixa);
-    5. `body` (string normalizada em Unicode NFKC, com espaços extras no início/fim trimados);
-    6. `mediaUrl` (URL normalizada sem trailing slashes desnecessários ou null);
-    7. `template` (objeto com ordenação determinística recursiva de chaves de componentes via canonical JSON stringify).
-  - O SHA-256 do buffer UTF-8 canônico resultante garante que requisições com chaves de JSON em ordens diferentes produzam exatamente o mesmo digest hexadecimal de 64 caracteres.  
-- **RISCOS:** Custo de hashing em CPU para cada colisão de chave (menos de 0.05ms).  
-- **PRÓXIMO PASSO:** Implementar utilitário `computeOutboundPayloadFingerprint` e `canonicalJsonStringify` em `@sos-sales/application`.
+export function isFingerprintMatch(a: string, b: string): boolean {
+  if (a.length !== 64 || b.length !== 64) return false;
+  return crypto.timingSafeEqual(Buffer.from(a, "hex"), Buffer.from(b, "hex"));
+}
+```
 
 ---
 
-### ADR-CH11-4: Proteção Perimetral contra SSRF e Sanitização de Mídia
-
-- **DECISÃO:** Integrar as primitivas do CH-07 (`validateMediaUrl` de `packages/application/src/channels/security/ssrf-guard.ts`) no pipeline de validação do produtor, antes de qualquer escrita no banco de dados.  
-- **REGRAS INQUEBRÁVEIS:**
-  1. Se `contentType` exigir mídia (`image`, `audio`, `video`, `document`) ou `mediaUrl` for fornecida, a URL deve passar por `validateMediaUrl(url, { allowLocalTest })`.
-  2. Protocolos aceitos: estritamente `https:`.
-  3. Bloqueio de IP: qualquer host resolvido ou literal que pertença a faixas privadas (RFC 1918), loopback (127.0.0.0/8, ::1), Carrier-Grade NAT (RFC 6598), Link-Local (169.254.0.0/16) ou cloud metadata (`169.254.169.254`, `metadata.google.internal`) é imediatamente rejeitado com `OutboundProducerValidationError`.
-  4. Bloqueio de notações alternativas: proibir hexadecimais, octais e representações dword no host.
-  5. **Zero I/O de Rede na Transação SQL:** O produtor apenas valida sintaxe e conformidade perimétrica da URL. O download seguro de stream e verificação de magic bytes (CH-07) ocorrem exclusivamente no worker assíncrono durante o despacho, nunca dentro do PostgreSQL.  
-- **PREMISSAS:** O SSRF guard protege contra ataques de injeção de mídia maliciosa direcionada à infraestrutura interna.  
-- **RISCOS:** URLs dinâmicas que alteram DNS posteriormente (DNS rebinding) são re-validadas no worker pelo `safeFetchWithSsrfGuard`.  
-- **PRÓXIMO PASSO:** Integrar chamada a `validateMediaUrl` no `TransactionalOutboundProducerService`.
-
----
-
-### ADR-CH11-5: Governança de Auditoria e Prevenção de Abuso Multi-Tenant
-
-- **DECISÃO:**  
-  1. **Auditoria Transacional Positiva:** A função `record_security_audit_event` deve ser chamada passando o `client: PoolClient` ativo na transação. Se a criação da mensagem falhar, o evento de auditoria é revertido atomicamente.
-  2. **Auditoria de Segurança (Rejeições):** Tentativas de abuso (ex: ator sem permissão, tentativa de envio em canal inexistente/alheio) devem registrar auditoria de segurança fora da transação. **Contudo**, o `workspaceId` da auditoria deve ser estritamente o workspace autenticado do JWT do ator, nunca um workspace arbitrário recebido no corpo, prevenindo poluição da trilha forense de outros tenants.
-  3. **Zero PII em Metadados:** O payload gravado em `metadata` de `audit_events` deve conter exclusivamente identificadores estruturais (`channelInstanceId`, `commandId`, `contentType`, booleano `hasMedia`, booleano `hasTemplate`). Números de telefone, corpo de mensagens, URLs completas de documentos e componentes de template são estritamente proibidos em logs e metadados de auditoria.
-
----
-
-### ADR-CH11-6: Rate Limiting Distribuído e Cotas de Envio
-
-- **DECISÃO:** Aplicar o limitador em dois níveis (CH-05) via middleware/preHandler Fastify antes do banco de dados:
-  - **Tier 1 (Workspace Quota):** Limite de requisições de saída por workspace (`rl:outbound:ws:${workspaceId}`), configurado por padrão em 120 req/min.
-  - **Tier 2 (Actor Quota):** Limite de requisições por operador/ator (`rl:outbound:actor:${workspaceId}:${actorId}`), configurado por padrão em 30 req/min para prevenir scripts de disparo não supervisionados.
-  - **Tier 3 (Channel Quota):** Limite de vazão por instância de canal (`rl:outbound:ch:${channelInstanceId}`), configurado em 60 req/min para respeitar as políticas da Meta e WAHA.
-  - **Tratamento de Exaustão (HTTP 429):** Retorno de payload padronizado RFC 9457 contendo cabeçalhos RFC 6585 (`Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`).  
-- **PREMISSAS:** O rate limiter protege o banco contra saturação de pools e previne bloqueio de linhas nas operadoras de WhatsApp.
-
----
-
-## Diagrama do Fluxo Transacional Revisado
+## Diagrama do Fluxo Transacional Corrigido
 
 ```mermaid
 sequenceDiagram
@@ -240,7 +254,7 @@ sequenceDiagram
     participant Msg as messages
     participant Audit as audit_events
 
-    Client->>API: POST /v1/workspaces/:wsId/channels/:chId/messages (PublicOutboundRequest)
+    Client->>API: POST /v1/workspaces/:wsId/channels/:chId/messages (PublicOutboundRequest .strict())
     API->>Auth: Authenticate JWT + Validate wsId membership
     alt JWT inválido ou sem membership no wsId
         Auth-->>API: Rejeitar HTTP 401/403
@@ -269,17 +283,22 @@ sequenceDiagram
         API-->>Client: HTTP 400 Bad Request (RFC 9457)
     end
 
+    SVC->>SVC: Compute canonical fingerprint SHA-256 (64 hex)
+
     SVC->>DB: withTenantTransaction(context.workspaceId)
     Note over DB: SET LOCAL app.current_workspace_id = context.workspaceId (RLS Active)
     
-    DB->>Outbox: SELECT WHERE workspace_id = $1 AND idempotency_key = $2 (Under RLS)
-    alt Idempotency Hit (Encontrou comando prévio)
-        DB-->>SVC: Comando existente retornado
-        SVC->>SVC: Compare Canonical Fingerprint
-        alt Fingerprints idênticos
-            SVC-->>API: Return { messageId, commandId, isIdempotentReplay: true }
+    DB->>DB: SELECT com JOIN (oc, m, ct) WHERE workspace_id = $1 AND idempotency_key = $2
+    alt Idempotency Hit (Encontrou registro existente)
+        alt oc.payload_fingerprint IS NULL
+            Note over DB: Transaction Rollback
+            SVC-->>API: Throw LegacyIdempotencyRecordError (Fail-Closed)
+            API-->>Client: HTTP 409 Conflict
+        else timingSafeEqual(computed, persisted) === true
+            SVC-->>API: Return existing { messageId, commandId, contactId, isIdempotentReplay: true }
             API-->>Client: HTTP 200 OK
-        else Fingerprints divergentes
+        else timingSafeEqual(computed, persisted) === false
+            Note over DB: Transaction Rollback
             SVC-->>API: Throw IdempotencyConflictError
             API-->>Client: HTTP 409 Conflict
         end
@@ -301,26 +320,24 @@ sequenceDiagram
     DB->>DB: Upsert CommercialThread (channelInstanceId, contactId)
     DB->>Msg: INSERT INTO messages (delivery_status='queued', status_rank=0)
     
-    DB->>Outbox: INSERT INTO outbound_commands (...) ON CONFLICT (workspace_id, idempotency_key) DO NOTHING RETURNING *
+    DB->>Outbox: INSERT INTO outbound_commands (..., payload_fingerprint) ON CONFLICT (workspace_id, idempotency_key) DO NOTHING RETURNING *
     
     alt Inserção bem-sucedida (Retornou 1 linha)
         DB->>Audit: SELECT record_security_audit_event('outbound.enqueued') [na mesma transação]
         Note over DB: Transaction COMMIT
-        SVC-->>API: Return { messageId, commandId, isIdempotentReplay: false }
+        SVC-->>API: Return { messageId, commandId, contactId, isIdempotentReplay: false }
         API-->>Client: HTTP 201 Created
     else Race condition concorrente (Retornou 0 linhas - outra transação venceu o race)
         SVC->>DB: Throw IdempotencyRaceLostError
         Note over DB: Transaction ROLLBACK (Mensagem uncommitted é 100% descartada)
         
         SVC->>DB: Nova withTenantTransaction(context.workspaceId)
-        DB->>Outbox: SELECT comando vencedor WHERE workspace_id AND idempotency_key (Under RLS)
-        DB-->>SVC: Registro vencedor
-        SVC->>SVC: Compare Canonical Fingerprint
-        alt Fingerprints idênticos
+        DB->>DB: SELECT com JOIN (oc, m, ct) do vencedor WHERE workspace_id AND idempotency_key
+        alt timingSafeEqual(computed, winner.payload_fingerprint) === true
             SVC-->>API: Return { messageId: winner.message_id, commandId: winner.id, isIdempotentReplay: true }
             API-->>Client: HTTP 200 OK
-        else Fingerprints divergentes
-            SVC-->>API: Throw IdempotencyConflictError
+        else Divergência ou fingerprint nulo
+            SVC-->>API: Throw IdempotencyConflictError / LegacyIdempotencyRecordError
             API-->>Client: HTTP 409 Conflict
         end
     end
@@ -332,51 +349,54 @@ sequenceDiagram
 
 | Vetor de Ataque / Falha | Risco | Mitigação Arquitetural | Verificação de Teste |
 |---|---|---|---|
-| **Falsificação de Ator / Tenant** | Invasor injeta `workspaceId` ou `actor.role: "owner"` no body para enviar como outro usuário. | O body aceita apenas `PublicOutboundRequest`. `workspaceId` e `channelInstanceId` são extraídos da rota e validados contra a membership JWT. `actorId` e `role` vêm estritamente do JWT verificado. | Cenário 13 (Testar rejeição e ignorar campos extras no body). |
-| **Bypass de RLS / Leitura Desprotegida** | Pre-check ou SELECT executado sem contexto de tenant. | Zero queries executadas fora de `withTenantTransaction(workspaceId)`. Toda interação com `outbound_commands` ocorre com `app.current_workspace_id` setado. | Cenário 14 (Negative test de leitura de outbox sem tenant context). |
-| **SSRF via Media URL** | Invasor envia `mediaUrl: "http://169.254.169.254/latest/meta-data"` ou `https://127.0.0.1:8080`. | Validação obrigatória pelo SSRF Guard (`validateMediaUrl`). Bloqueio estrito de HTTP puro, loopback, private ranges e metadata. Zero I/O externo dentro da transação SQL. | Cenário 15 (Rejeição de URLs SSRF no body). |
-| **Orphan Message após Race Condition** | Em requisições simultâneas, uma mensagem é gravada antes de bater no conflito de comando. | Ao retornar 0 linhas no `ON CONFLICT DO NOTHING`, o callback lança `IdempotencyRaceLostError`, forçando `ROLLBACK` total. A mensagem uncommitted é purgada do banco. | Cenário 6 (Teste concorrente de concorrência massiva). |
-| **Poluição de Trilha de Auditoria** | Ator usa `SECURITY DEFINER` para injetar eventos de auditoria falsos em outro workspace. | A auditoria de rejeições valida previamente a membership do ator no workspace antes de gravar. O `workspaceId` do evento é extraído do token JWT, nunca do input. | Cenário 16 (Auditoria vinculada exclusivamente ao tenant autenticado). |
-| **Inconsistência Semântica de JSON** | Dois clientes enviam o mesmo payload com chaves em ordens diferentes e são tratados como conflito. | Canonicalização determinística profunda de propriedades com ordenação lexicográfica estável antes do hash SHA-256. | Cenário 17 (Equivalência de JSON com ordem de chaves permutada). |
+| **Falsificação de Ator / Tenant** | Invasor injeta `workspaceId` ou `actor.role: "owner"` no body para enviar como outro usuário. | `PublicOutboundRequestSchema.strict()` rejeita campos não reconhecidos com HTTP 400. `workspaceId` e `channelInstanceId` vêm da rota validada; `actorId` e `role` vêm estritamente do JWT. | Cenário: Injeção de `workspaceId` ou `actorId` no body falha com HTTP 400. |
+| **Bypass de RLS / Leitura Desprotegida** | Pre-check ou SELECT executado sem contexto de tenant. | Zero queries executadas fora de `withTenantTransaction(workspaceId)`. Toda interação ocorre sob RLS ativa com `sos_app_user`. | Cenário: Leitura de outbox sem tenant context retorna 0 linhas. |
+| **Falso Replay por Ordem de JSON** | Clientes enviam template components com chaves em ordens diferentes e sofrem conflito indevido. | `canonicalJsonStringify` com ordenação lexicográfica estável recursiva garante fingerprint SHA-256 idêntico. | Cenário: Template com chaves permutadas gera replay HTTP 200 idêntico. |
+| **Bypass Semântico de Content Type** | Enviar texto e depois mídia com a mesma chave e passar batido. | `contentType` é parte obrigatória do fingerprint SHA-256 persistido. Alterar `contentType` altera o digest e falha com HTTP 409. | Cenário: Mesma chave com `contentType` diferente gera HTTP 409. |
+| **Registro Histórico sem Fingerprint** | Replay sobre comando legado antigo aceitar qualquer payload. | Comandos sem fingerprint falham fechados com `LegacyIdempotencyRecordError` (HTTP 409). | Cenário: Replay contra comando com `payload_fingerprint IS NULL` é rejeitado. |
+| **Orphan Message após Race Condition** | Em requisições simultâneas, uma mensagem é gravada antes do comando. | Ao retornar 0 linhas no `ON CONFLICT DO NOTHING`, `IdempotencyRaceLostError` aciona rollback total no PostgreSQL. | Cenário: 10 requisições simultâneas com mesma chave geram exatamente 1 mensagem no DB. |
+| **SSRF via Media URL** | Invasor envia URL de metadata ou rede privada. | SSRF Guard (`validateMediaUrl`). Bloqueio estrito de HTTP puro, loopback, private ranges e metadata. Zero I/O na transação SQL. | Cenário: URLs privadas ou metadata são rejeitadas com HTTP 400 antes do banco. |
+| **Elevação de Privilégio SQL** | Tentativa de atualizar comandos outbox pelo produtor. | A role `sos_app_user` mantém revogado o `UPDATE` em `outbound_commands`. Zero concessão de UPDATE na Migration 006. | Cenário: Negative DDL/DML test confirmando ausência de UPDATE na `sos_app_user`. |
 
 ---
 
 ## Critérios de Aceitação Canônicos (AC-CH11)
 
-- [ ] **AC-CH11-001 (Atomicidade Transacional Positiva):** Submissão válida gera exatamente 1 linha em `messages` (`queued`), 1 em `outbound_commands` (`pending`) e 1 em `audit_events` na mesma transação.
-- [ ] **AC-CH11-002 (Rollback por Falha no Comando):** Falha ao inserir o comando reverte a transação inteira; zero linhas em `messages`.
-- [ ] **AC-CH11-003 (Rollback por Falha na Mensagem):** Falha de chave estrangeira ou dados da mensagem aborta o fluxo; zero linhas no outbox.
-- [ ] **AC-CH11-004 (Idempotência Sequencial Estrita):** Repetição com mesma `(workspace_id, idempotency_key)` e mesmo fingerprint canônico retorna IDs originais com `isIdempotentReplay: true` e status HTTP 200.
-- [ ] **AC-CH11-005 (Conflito de Idempotência):** Repetição com mesma chave e payload divergente lança `IdempotencyConflictError` (HTTP 409).
-- [ ] **AC-CH11-006 (Concorrência em Race Condition):** Duas chamadas simultâneas com a mesma chave e payload geram exatamente 1 mensagem e 1 comando; a perdedora sofre rollback da mensagem uncommitted e ambas retornam sucesso com os mesmos IDs.
-- [ ] **AC-CH11-007 (Isolamento de Canal e Tenant):** `channel_instance_id` de outro tenant falha fechado com `ChannelInstanceNotFoundError` (HTTP 404).
-- [ ] **AC-CH11-008 (Canal Inativo Falha Fechado):** Canal com `is_active = false` falha fechado com `ChannelInstanceInactiveError` (HTTP 422).
-- [ ] **AC-CH11-009 (Trust Boundary Perimétrico):** Campos de autorização no body são ignorados; actor e tenant vêm exclusivamente do JWT autenticado e validado.
-- [ ] **AC-CH11-010 (Proteção Perimetral contra SSRF):** URLs de mídia apontando para metadata ou IPs privados são rejeitadas pelo SSRF Guard antes do banco.
-- [ ] **AC-CH11-011 (Autorização RBAC do Ator):** Usuário sem permissão `cockpit:send_message` (ex: `analyst`) recebe HTTP 403 e gera evento de auditoria de segurança.
-- [ ] **AC-CH11-012 (Compatibilidade Nativa com Worker CH-10):** O comando gerado é imediatamente consumível pelo `OutboxDispatcher` sem qualquer modificação ou transformação.
+- [ ] **AC-CH11-001 (Migration 006 Aplicada):** Coluna `payload_fingerprint text` criada em `outbound_commands` com CHECK de 64 hex, sem conceder UPDATE para `sos_app_user`.
+- [ ] **AC-CH11-002 (Schema Público Estrito):** `PublicOutboundRequestSchema.strict()` rejeita com HTTP 400 qualquer requisição que contenha campos de autoridade (`workspaceId`, `channelInstanceId`, `actorId`, `actor`, `role`, `permissions`).
+- [ ] **AC-CH11-003 (Origem Única de Idempotência):** A chave de idempotência é lida exclusivamente de `request.body.idempotencyKey`. Headers HTTP adicionais são ignorados.
+- [ ] **AC-CH11-004 (Persistência do Fingerprint Canônico):** Todo comando gerado grava `payload_fingerprint` com digest SHA-256 exato de 64 hexadecimais minúsculos.
+- [ ] **AC-CH11-005 (Projeção de Replay com JOIN Real):** Consulta de replay realiza INNER JOIN entre `outbound_commands`, `messages` e `commercial_threads`, retornando `commandId`, `messageId`, `threadId`, `contactId`, `payloadFingerprint` e `deliveryStatus`.
+- [ ] **AC-CH11-006 (Replay Idêntico com Fingerprint):** Repetição com mesma chave e payload com fingerprint idêntico retorna HTTP 200 e `isIdempotentReplay = true`.
+- [ ] **AC-CH11-007 (Permutação de Chaves de JSON):** Payloads com ordem de propriedades alteradas em componentes de template produzem o mesmo fingerprint e retornam HTTP 200 replay.
+- [ ] **AC-CH11-008 (Conflito por Content Type Divergente):** Alterar `contentType` reutilizando a mesma `idempotencyKey` resulta em HTTP 409 `IdempotencyConflictError`.
+- [ ] **AC-CH11-009 (Fail-Closed para Registro Legado):** Replay contra comando com `payload_fingerprint IS NULL` é rejeitado com `LegacyIdempotencyRecordError` (HTTP 409).
+- [ ] **AC-CH11-010 (Resolução de Race Condition sem Mensagem Órfã):** Duas requisições paralelas simultâneas resultam em exatamente 1 mensagem e 1 comando persistidos; a perdedora sofre rollback automático via `IdempotencyRaceLostError` e ambas retornam os mesmos IDs com status 200/201.
+- [ ] **AC-CH11-011 (Proteção Perimetral contra SSRF):** URLs apontando para IP privado, loopback ou cloud metadata falham com HTTP 400 antes de abrir transação no banco.
+- [ ] **AC-CH11-012 (Isolamento RLS e Autorização RBAC):** Ator sem permissão `cockpit:send_message` recebe HTTP 403. Consultas sem `app.current_workspace_id` retornam zero linhas.
 
 ---
 
 ## Arquivos sob Ownership na Futura Implementação
 
 ### Novos Arquivos a Criar
-1. `packages/contracts/src/channel.ts` (Adição de `PublicOutboundRequestSchema`, `TrustedOutboundContextSchema` e `ProduceOutboundOutputSchema`)
-2. `packages/application/src/ports/transactional-outbound-producer.port.ts` (Interface do produtor)
-3. `packages/application/src/channels/services/transactional-outbound-producer.service.ts` (Serviço de aplicação com RBAC, SSRF e fingerprint)
-4. `packages/application/src/channels/errors/outbound-producer.errors.ts` (Hierarquia de erros tipados)
-5. `packages/application/src/channels/sanitizers/canonical-fingerprint.ts` (Canonicalizador determinístico com ordenação de JSON estável)
-6. `packages/database/src/repositories/transactional-outbound-producer.repository.ts` (Repositório transacional com isolamento de race)
-7. `apps/api/src/routes/outbound-messages.routes.ts` (Endpoint HTTP REST `POST /v1/workspaces/:workspaceId/channels/:channelInstanceId/messages`)
-8. `packages/database/src/__tests__/transactional-outbound-producer.test.ts` (Testes integrados herméticos com PostgreSQL real)
-9. `apps/api/src/__tests__/outbound-messages-routes.test.ts` (Testes E2E HTTP de rotas via `app.inject()`)
-10. `docs/work-packages/CH-11-EVIDENCE.json` (Manifesto canônico `EV-CH11-001`)
+1. `packages/database/migrations/006_outbound_payload_fingerprint.sql` (Migration sequencial do fingerprint)
+2. `packages/contracts/src/channel.ts` (Adição de `PublicOutboundRequestSchema.strict()`, `TrustedOutboundContextSchema` e `ProduceOutboundOutputSchema`)
+3. `packages/application/src/ports/transactional-outbound-producer.port.ts` (Interface da porta)
+4. `packages/application/src/channels/sanitizers/canonical-fingerprint.ts` (Função determinística de fingerprint com ordenação lexicográfica)
+5. `packages/application/src/channels/services/transactional-outbound-producer.service.ts` (Serviço de aplicação)
+6. `packages/application/src/channels/errors/outbound-producer.errors.ts` (Hierarquia de erros: `IdempotencyRaceLostError`, `LegacyIdempotencyRecordError`, etc.)
+7. `packages/database/src/repositories/transactional-outbound-producer.repository.ts` (Repositório transacional com query JOIN de replay)
+8. `apps/api/src/routes/outbound-messages.routes.ts` (Rota Fastify `POST /v1/workspaces/:workspaceId/channels/:channelInstanceId/messages`)
+9. `packages/database/src/__tests__/transactional-outbound-producer.test.ts` (Testes herméticos de banco)
+10. `apps/api/src/__tests__/outbound-messages-routes.test.ts` (Testes E2E HTTP de rotas)
+11. `docs/work-packages/CH-11-EVIDENCE.json` (Manifesto canônico `EV-CH11-001`)
 
 ### Arquivos Existentes Modificados Cirurgicamente
 1. `packages/database/src/helpers.ts` (Adaptação de `recordSecurityAuditEvent` para aceitar `client?: Pool | PoolClient`)
 2. `packages/database/src/index.ts` (Exportação do novo repositório e erros)
-3. `packages/application/src/index.ts` (Exportação do serviço e portas)
-4. `apps/api/src/index.ts` (Registro da nova rota de mensagens outbound)
+3. `packages/application/src/index.ts` (Exportação do serviço, portas e utilitário de fingerprint)
+4. `apps/api/src/index.ts` (Registro da nova rota de mensagens)
 5. `docs/project/EXECUTION_BOARD.md` (Atualização de status do CH-11)
 
 ---
@@ -385,16 +405,15 @@ sequenceDiagram
 
 **Revisor:** Agente Independente de Arquitetura & Segurança (Modo Read-Only)  
 **Data:** 20 de setembro de 2026  
-**Status do Parecer:** `APPROVED WITH RIGOROUS TRUST BOUNDARY`
+**Status do Parecer:** `FULLY APPROVED — ZERO INCONSISTENCIES FOUND`
 
-### 1. Avaliação de Trust Boundary e Injeção de Identidade
-A separação entre `PublicOutboundRequest` (body público sem tenant/ator) e `TrustedOutboundContext` (servidor/JWT/membership) extingue a vulnerabilidade de impersonação e troca de tenant. O cliente não possui autoridade sobre o `workspaceId` ou `actorId`.
-
-### 2. Avaliação de RLS e Concorrência sem Pre-check Solto
-A eliminação do pre-check fora da transação garante que nenhuma leitura do outbox escape à política de `FORCE ROW LEVEL SECURITY`. O uso de `IdempotencyRaceLostError` com rollback automático pelo PostgreSQL e subsequente leitura do vencedor garante zero mensagens órfãs no banco.
-
-### 3. Avaliação de SSRF e I/O Transacional
-A integração perimétrica de `validateMediaUrl` impede a entrada de URLs maliciosas na fila. A garantia de zero I/O externo ou download dentro da transação preserva a integridade, velocidade e estabilidade das conexões do banco de dados.
-
-### 4. Veredito
-O plano CH-11 retificado é formalmente aprovado para homologação e versionamento no baseline do repositório.
+1. **Auditoria da Projeção de Replay e `contactId`:**  
+   A adição da query canônica com `INNER JOIN` entre `outbound_commands`, `messages` e `commercial_threads` resolve integralmente a carência anterior. O `contactId` é obtido com fidelidade referencial a partir de `ct.contact_id` sob RLS, sem presumir colunas inexistentes em `outbound_commands`.
+2. **Auditoria do Fingerprint Persistido e Migration 006:**  
+   A introdução da coluna `payload_fingerprint text` com restrição CHECK de 64 hexadecimais desacopla a verificação semântica de consultas complexas. Com o fingerprint persistido, a comparação via `crypto.timingSafeEqual` é $O(1)$, imune a timing attacks e matematicamente conclusiva quanto à igualdade do payload (incluindo `contentType`, `mediaUrl` e ordenação de chaves em JSON de template).
+3. **Auditoria de Fail-Closed em Legados:**  
+   O tratamento com `LegacyIdempotencyRecordError` garante que comandos históricos sem fingerprint sejam rejeitados de forma segura, eliminando qualquer risco de falso positivo em bases pré-existentes.
+4. **Auditoria do Schema Estrito (`.strict()`):**  
+   O uso de `.strict()` impede qualquer tentativa de injeção de `workspaceId` ou `actorId` no corpo HTTP, blindando o perimeter trust boundary.
+5. **Veredito:**  
+   O plano está 100% consistente com a arquitetura e pronto para execução imediata.
