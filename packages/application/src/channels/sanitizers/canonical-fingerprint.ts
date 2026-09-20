@@ -34,24 +34,26 @@ export function canonicalJsonStringify(data: unknown): string {
 
 /**
  * Computes a deterministic SHA-256 canonical payload fingerprint (64 hex characters).
- * Includes trusted context (workspaceId, channelInstanceId) and validated payload.
- * Normalizes Unicode to NFKC and trims string fields.
+ * Uses exact values as persisted/dispatched:
+ * - Preserves user strings exactly: no trim or NFKC normalization on body, mediaUrl, or template name/language.
+ * - Recursively sorts object keys lexicographically while preserving array element order.
+ * - Sourced strictly from trusted context and validated payload.
  */
 export function computeOutboundPayloadFingerprint(
   request: PublicOutboundRequest,
   context: Pick<TrustedOutboundContext, "workspaceId" | "channelInstanceId">
 ): string {
   const canonicalObject = {
-    workspaceId: context.workspaceId.toLowerCase().trim(),
-    channelInstanceId: context.channelInstanceId.toLowerCase().trim(),
-    recipientPhoneE164: request.recipientPhoneE164.trim(),
-    contentType: request.contentType.toLowerCase().trim(),
-    body: request.body.normalize("NFKC").trim(),
-    mediaUrl: request.mediaUrl ? request.mediaUrl.trim() : null,
+    workspaceId: context.workspaceId,
+    channelInstanceId: context.channelInstanceId,
+    recipientPhoneE164: request.recipientPhoneE164,
+    contentType: request.contentType,
+    body: request.body,
+    mediaUrl: request.mediaUrl ?? null,
     template: request.template
       ? {
-          name: request.template.name.trim(),
-          language: request.template.language.trim(),
+          name: request.template.name,
+          language: request.template.language,
           components: request.template.components
             ? sortKeysDeep(request.template.components)
             : null,
