@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import crypto from "node:crypto";
 import { createTestDatabasePools } from "@sos-sales/database";
 import { SignJWT } from "@sos-sales/auth";
 import { buildApp } from "../index";
+import { BoundedTwoTierRateLimiter } from "../services/redis-rate-limiter";
 import type { FastifyInstance } from "fastify";
 
 describe("Outbound Messages Routes Integration (CH-11)", () => {
@@ -263,6 +264,44 @@ describe("Outbound Messages Routes Integration (CH-11)", () => {
       expect(errorBody.title).toBe("Conflict");
       expect(errorBody.detail).toMatch(/Idempotency key/);
     });
+
+    it("should return HTTP 409 Conflict when replaying with subtle whitespace difference (exact semantics without trim)", async () => {
+      const idempotencyKey = `exact-sem-${Date.now()}`;
+      // 1. Initial send
+      const res1 = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/channels/${channelAId}/messages`,
+        headers: {
+          authorization: `Bearer ${operatorToken}`,
+          "x-workspace-id": workspaceAId,
+        },
+        payload: {
+          recipientPhoneE164: "+5511999991234",
+          contentType: "text",
+          body: "Mensagem Exata",
+          idempotencyKey,
+        },
+      });
+      expect(res1.statusCode).toBe(201);
+
+      // 2. Replay with leading/trailing spaces in body
+      const res2 = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/channels/${channelAId}/messages`,
+        headers: {
+          authorization: `Bearer ${operatorToken}`,
+          "x-workspace-id": workspaceAId,
+        },
+        payload: {
+          recipientPhoneE164: "+5511999991234",
+          contentType: "text",
+          body: " Mensagem Exata ",
+          idempotencyKey,
+        },
+      });
+      expect(res2.statusCode).toBe(409);
+      expect(res2.json().title).toBe("Conflict");
+    });
   });
 
   describe("2. Security Boundary & Strict Schema", () => {
@@ -381,6 +420,287 @@ describe("Outbound Messages Routes Integration (CH-11)", () => {
       const errorBody = res.json();
       expect(errorBody.title).toBe("Unprocessable Entity");
       expect(errorBody.detail).toMatch(/is marked as inactive/);
+    });
+
+    it("should return HTTP 403 Forbidden when activeRole is missing or user has no workspace membership", async () => {
+      const orphanUserId = crypto.randomUUID();
+      await ownerPool.query(
+        `INSERT INTO users (id, email, name) VALUES ($1, $2, 'Orphan') ON CONFLICT DO NOTHING;`,
+        [orphanUserId, `orphan-${Date.now()}@mct.br`]
+      );
+      const orphanToken = await new SignJWT({
+        email: "orphan@mct.br",
+        role: "operator",
+        workspaceId: workspaceAId,
+      })
+        .setProtectedHeader({ alg: "HS256" })
+        .setSubject(orphanUserId)
+        .setIssuer(testIssuer)
+        .setAudience(testAudience)
+        .setExpirationTime("1h")
+        .sign(crypto.createSecretKey(Buffer.from(jwtSecret, "utf-8")));
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/channels/${channelAId}/messages`,
+        headers: {
+          authorization: `Bearer ${orphanToken}`,
+          "x-workspace-id": workspaceAId,
+        },
+        payload: {
+          recipientPhoneE164: "+5511999990001",
+          contentType: "text",
+          body: "Orphan message",
+          idempotencyKey: `orphan-${Date.now()}`,
+        },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("should return HTTP 403 and never reach producerService when activeRole is invalid", async () => {
+      const invalidRoleUserId = crypto.randomUUID();
+      await ownerPool.query(
+        `INSERT INTO users (id, email, name) VALUES ($1, $2, 'Guest User') ON CONFLICT DO NOTHING;`,
+        [invalidRoleUserId, `guest-${Date.now()}@mct.br`]
+      );
+      await ownerPool.query(
+        `INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1, $2, 'guest') ON CONFLICT DO NOTHING;`,
+        [workspaceAId, invalidRoleUserId]
+      );
+      const invalidRoleToken = await new SignJWT({
+        email: "guest@mct.br",
+        role: "guest",
+        workspaceId: workspaceAId,
+      })
+        .setProtectedHeader({ alg: "HS256" })
+        .setSubject(invalidRoleUserId)
+        .setIssuer(testIssuer)
+        .setAudience(testAudience)
+        .setExpirationTime("1h")
+        .sign(crypto.createSecretKey(Buffer.from(jwtSecret, "utf-8")));
+
+      const mockProducer = {
+        produce: vi.fn(),
+      };
+
+      const testApp = await buildApp({
+        providerType: "local-jwt",
+        jwtSecret,
+        issuer: testIssuer,
+        audience: testAudience,
+        outboundProducerService: mockProducer as any,
+      });
+
+      const res = await testApp.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/channels/${channelAId}/messages`,
+        headers: {
+          authorization: `Bearer ${invalidRoleToken}`,
+          "x-workspace-id": workspaceAId,
+        },
+        payload: {
+          recipientPhoneE164: "+5511999990001",
+          contentType: "text",
+          body: "Invalid role probe",
+          idempotencyKey: `invalid-role-${Date.now()}`,
+        },
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(mockProducer.produce).not.toHaveBeenCalled();
+      await testApp.close();
+    });
+  });
+
+  describe("4. Distributed Rate Limiting (IRateLimiter)", () => {
+    it("should enforce per-IP rate limit returning HTTP 429 with correct headers and block producer call", async () => {
+      const mockProducer = {
+        produce: vi.fn().mockResolvedValue({
+          messageId: crypto.randomUUID(),
+          commandId: crypto.randomUUID(),
+          threadId: crypto.randomUUID(),
+          contactId: crypto.randomUUID(),
+          idempotencyKey: "rate-key",
+          status: "pending",
+          deliveryStatus: "queued",
+          isIdempotentReplay: false,
+          createdAt: new Date().toISOString(),
+        }),
+      };
+
+      const testRateLimiter = new BoundedTwoTierRateLimiter({
+        maxIpRequests: 2,
+        maxChannelRequests: 10,
+        windowMs: 60_000,
+      });
+
+      const rateLimitApp = await buildApp({
+        providerType: "local-jwt",
+        jwtSecret,
+        issuer: testIssuer,
+        audience: testAudience,
+        rateLimiter: testRateLimiter,
+        rateLimitMax: 2,
+        rateLimitWindowMs: 60_000,
+        outboundProducerService: mockProducer as any,
+      });
+
+      // 1st request -> 201
+      const res1 = await rateLimitApp.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/channels/${channelAId}/messages`,
+        headers: {
+          authorization: `Bearer ${operatorToken}`,
+          "x-workspace-id": workspaceAId,
+        },
+        payload: {
+          recipientPhoneE164: "+5511999990001",
+          contentType: "text",
+          body: "Req 1",
+          idempotencyKey: `rl-ip-1-${Date.now()}`,
+        },
+      });
+      expect(res1.statusCode).toBe(201);
+      expect(res1.headers["x-ratelimit-limit"]).toBeDefined();
+
+      // 2nd request -> 201
+      const res2 = await rateLimitApp.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/channels/${channelAId}/messages`,
+        headers: {
+          authorization: `Bearer ${operatorToken}`,
+          "x-workspace-id": workspaceAId,
+        },
+        payload: {
+          recipientPhoneE164: "+5511999990001",
+          contentType: "text",
+          body: "Req 2",
+          idempotencyKey: `rl-ip-2-${Date.now()}`,
+        },
+      });
+      expect(res2.statusCode).toBe(201);
+
+      // 3rd request from same IP -> 429 Too Many Requests
+      const res3 = await rateLimitApp.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/channels/${channelAId}/messages`,
+        headers: {
+          authorization: `Bearer ${operatorToken}`,
+          "x-workspace-id": workspaceAId,
+        },
+        payload: {
+          recipientPhoneE164: "+5511999990001",
+          contentType: "text",
+          body: "Req 3",
+          idempotencyKey: `rl-ip-3-${Date.now()}`,
+        },
+      });
+      expect(res3.statusCode).toBe(429);
+      expect(res3.headers["retry-after"]).toBeDefined();
+      expect(res3.headers["x-ratelimit-limit"]).toBe("2");
+      expect(res3.headers["x-ratelimit-remaining"]).toBe("0");
+
+      const body3 = res3.json();
+      expect(body3.title).toBe("Too Many Requests");
+      expect(body3.detail).toMatch(/client IP/i);
+
+      // Verify producer was only called twice (not called for the blocked 3rd request)
+      expect(mockProducer.produce).toHaveBeenCalledTimes(2);
+
+      await rateLimitApp.close();
+    });
+
+    it("should enforce per-composite actor/channel rate limit and ensure workspaces do not share quota", async () => {
+      const testRateLimiter = new BoundedTwoTierRateLimiter({
+        maxIpRequests: 100,
+        maxChannelRequests: 2,
+        windowMs: 60_000,
+      });
+
+      const rateLimitApp = await buildApp({
+        providerType: "local-jwt",
+        jwtSecret,
+        issuer: testIssuer,
+        audience: testAudience,
+        rateLimiter: testRateLimiter,
+        rateLimitMax: 100,
+        rateLimitWindowMs: 60_000,
+      });
+
+      // Provision operator in Workspace B as well
+      await ownerPool.query(`
+        INSERT INTO workspace_memberships (workspace_id, user_id, role)
+        VALUES ($1, $2, 'operator')
+        ON CONFLICT DO NOTHING;
+      `, [workspaceBId, userOperatorId]);
+
+      const operatorTokenWsB = await new SignJWT({
+        email: "operator@mct.br",
+        role: "operator",
+        workspaceId: workspaceBId,
+      })
+        .setProtectedHeader({ alg: "HS256" })
+        .setSubject(userOperatorId)
+        .setIssuer(testIssuer)
+        .setAudience(testAudience)
+        .setExpirationTime("1h")
+        .sign(crypto.createSecretKey(Buffer.from(jwtSecret, "utf-8")));
+
+      // 2 requests under Workspace A on channelA
+      for (let i = 1; i <= 2; i++) {
+        const res = await rateLimitApp.inject({
+          method: "POST",
+          url: `/v1/workspaces/${workspaceAId}/channels/${channelAId}/messages`,
+          headers: {
+            authorization: `Bearer ${operatorToken}`,
+            "x-workspace-id": workspaceAId,
+          },
+          payload: {
+            recipientPhoneE164: "+5511999990001",
+            contentType: "text",
+            body: `Msg A${i}`,
+            idempotencyKey: `wsA-lim-${i}-${Date.now()}`,
+          },
+        });
+        expect(res.statusCode).toBe(201);
+      }
+
+      // 3rd request under Workspace A -> 429
+      const res3 = await rateLimitApp.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/channels/${channelAId}/messages`,
+        headers: {
+          authorization: `Bearer ${operatorToken}`,
+          "x-workspace-id": workspaceAId,
+        },
+        payload: {
+          recipientPhoneE164: "+5511999990001",
+          contentType: "text",
+          body: "Msg A3",
+          idempotencyKey: `wsA-lim-3-${Date.now()}`,
+        },
+      });
+      expect(res3.statusCode).toBe(429);
+      expect(res3.json().detail).toMatch(/actor and channel in workspace/i);
+
+      // Now send under Workspace B on channelB: MUST SUCCEED (quota is isolated per workspace)
+      const resWsB = await rateLimitApp.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceBId}/channels/${channelBId}/messages`,
+        headers: {
+          authorization: `Bearer ${operatorTokenWsB}`,
+          "x-workspace-id": workspaceBId,
+        },
+        payload: {
+          recipientPhoneE164: "+5511999990001",
+          contentType: "text",
+          body: "Msg B1",
+          idempotencyKey: `wsB-lim-1-${Date.now()}`,
+        },
+      });
+      expect(resWsB.statusCode).toBe(201);
+
+      await rateLimitApp.close();
     });
   });
 });

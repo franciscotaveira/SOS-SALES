@@ -115,26 +115,83 @@ describe("TransactionalOutboundProducerService (CH-11 Application & Security)", 
       expect(isFingerprintMatch(fpText, fpImage)).toBe(false);
     });
 
-    it("should normalize NFKC and trim whitespace in body and phones", () => {
-      const requestRaw: PublicOutboundRequest = {
+    it("should produce different fingerprints for 'Olá' and ' Olá ' (exact user string preservation without trim)", () => {
+      const requestA: PublicOutboundRequest = {
         recipientPhoneE164: "+5511999990001",
         contentType: "text",
-        body: "  Hello \u0041\u030A  ", // A with ring (composite)
-        idempotencyKey: "norm-key",
+        body: "Olá",
+        idempotencyKey: "exact-key",
       };
 
-      const requestNormalized: PublicOutboundRequest = {
+      const requestB: PublicOutboundRequest = {
         recipientPhoneE164: "+5511999990001",
         contentType: "text",
-        body: "Hello \u00C5", // Å (normalized single codepoint)
-        idempotencyKey: "norm-key",
+        body: " Olá ",
+        idempotencyKey: "exact-key",
       };
 
-      const fpRaw = computeOutboundPayloadFingerprint(requestRaw, trustedContext);
-      const fpNorm = computeOutboundPayloadFingerprint(requestNormalized, trustedContext);
-      expect(fpRaw).toBe(fpNorm);
-      expect(fpRaw).toMatch(/^[0-9a-f]{64}$/);
+      const fpA = computeOutboundPayloadFingerprint(requestA, trustedContext);
+      const fpB = computeOutboundPayloadFingerprint(requestB, trustedContext);
+      expect(fpA).not.toBe(fpB);
+      expect(isFingerprintMatch(fpA, fpB)).toBe(false);
+    });
 
+    it("should produce different fingerprints for distinct Unicode representations without implicit NFKC", () => {
+      const requestComposite: PublicOutboundRequest = {
+        recipientPhoneE164: "+5511999990001",
+        contentType: "text",
+        body: "Hello \u0041\u030A", // A with ring (composite sequence)
+        idempotencyKey: "unicode-key",
+      };
+
+      const requestPrecomposed: PublicOutboundRequest = {
+        recipientPhoneE164: "+5511999990001",
+        contentType: "text",
+        body: "Hello \u00C5", // Å (precomposed single codepoint)
+        idempotencyKey: "unicode-key",
+      };
+
+      const fpComposite = computeOutboundPayloadFingerprint(requestComposite, trustedContext);
+      const fpPrecomposed = computeOutboundPayloadFingerprint(requestPrecomposed, trustedContext);
+      expect(fpComposite).not.toBe(fpPrecomposed);
+      expect(isFingerprintMatch(fpComposite, fpPrecomposed)).toBe(false);
+    });
+
+    it("should produce different fingerprints when template component array order differs", () => {
+      const request1: PublicOutboundRequest = {
+        recipientPhoneE164: "+5511999990001",
+        contentType: "template",
+        body: "Template text",
+        template: {
+          name: "order_update",
+          language: "pt_BR",
+          components: [
+            { type: "header" },
+            { type: "body" },
+          ],
+        },
+        idempotencyKey: "arr-key",
+      };
+
+      const request2: PublicOutboundRequest = {
+        recipientPhoneE164: "+5511999990001",
+        contentType: "template",
+        body: "Template text",
+        template: {
+          name: "order_update",
+          language: "pt_BR",
+          components: [
+            { type: "body" },
+            { type: "header" },
+          ],
+        },
+        idempotencyKey: "arr-key",
+      };
+
+      const fp1 = computeOutboundPayloadFingerprint(request1, trustedContext);
+      const fp2 = computeOutboundPayloadFingerprint(request2, trustedContext);
+      expect(fp1).not.toBe(fp2);
+      expect(isFingerprintMatch(fp1, fp2)).toBe(false);
     });
   });
 
