@@ -1291,7 +1291,9 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
                 title={`Todas as conversas (${journeysList.length})`}
               >
                 <span>💬 Todas</span>
-                <span className="text-[9.5px] font-mono px-1 py-0.2 rounded-full bg-slate-100 text-slate-700 font-bold">{journeysList.length}</span>
+                <span className="text-[9.5px] font-mono px-1 py-0.2 rounded-full bg-slate-100 text-slate-700 font-bold">
+                  {journeysList.length}{nextJourneyCursor ? '+' : ''}
+                </span>
               </button>
               <button
                 type="button"
@@ -1391,6 +1393,18 @@ export const LiveCockpitView: React.FC<LiveCockpitViewProps> = ({
                   >
                     Ver todas as conversas ({journeysList.length})
                   </button>
+                )}
+                {queueTab !== 'priorities' && nextJourneyCursor && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => void loadMoreJourneys()}
+                      disabled={loadingMoreJourneys}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-[#00A884] hover:underline cursor-pointer"
+                    >
+                      {loadingMoreJourneys ? "Buscando mais conversas..." : "Carregar mais conversas do servidor"}
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -2807,6 +2821,7 @@ function LiveJourneyBody({
                   }
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && draftText.trim()) {
                     e.preventDefault();
+                    if (actionInProgress || outboundSubmitLockRef.current) return;
                     await submitDraft();
                   }
                 }}
