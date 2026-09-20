@@ -96,12 +96,18 @@ export class OutboundCommandValidationError extends Error {
   }
 }
 
-export type PostSendReconciliationOutcome =
+export type PostSendReconciliationOutcomeType =
   | "transitioned_to_reconciliation"
   | "already_sent"
   | "already_dead_letter"
   | "ownership_lost"
   | "invalid_state";
+
+export interface PostSendReconciliationOutcome {
+  outcome: PostSendReconciliationOutcomeType;
+  persistedExternalMessageId: string | null;
+  persistedStatus: string | null;
+}
 
 export interface MarkPostSendReconciliationParams {
   workspaceId: string;
@@ -270,6 +276,7 @@ export class OutboundCommandRepository {
 
   /**
    * Extends the lease for an in-flight command (heartbeat).
+   * Strictly requires unexpired lease (lease_until >= clock_timestamp()) to prevent resurrecting abandoned leases.
    */
   async markProcessing(
     commandId: string,
@@ -283,7 +290,7 @@ export class OutboundCommandRepository {
       `UPDATE public.outbound_commands
        SET lease_until = clock_timestamp() + ($1 || ' seconds')::interval,
            updated_at = clock_timestamp()
-       WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
+       WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid AND lease_until >= clock_timestamp();`,
       [Math.max(1, extendSeconds), commandId, workerId, leaseToken]
     );
     return (res.rowCount ?? 0) > 0;
@@ -294,6 +301,7 @@ export class OutboundCommandRepository {
    *
    * Invariant: Must be executed under tenant RLS context (e.g. within withWorkerTransaction)
    * because RLS policy blocks status = 'sent' when app.current_workspace_id is NULL.
+   * Requires active, unexpired lease (lease_until >= clock_timestamp()).
    */
   async markSent(
     commandId: string,
@@ -312,7 +320,7 @@ export class OutboundCommandRepository {
            lease_until = NULL,
            error_message = NULL,
            updated_at = clock_timestamp()
-       WHERE id = $3 AND status = 'processing' AND worker_id = $4 AND lease_token = $5::uuid;`,
+       WHERE id = $3 AND status = 'processing' AND worker_id = $4 AND lease_token = $5::uuid AND lease_until >= clock_timestamp();`,
       [externalMessageId, sentAt, commandId, workerId, leaseToken]
     );
 
@@ -323,6 +331,7 @@ export class OutboundCommandRepository {
 
   /**
    * Marks a command for retry with exponential backoff after a transient failure.
+   * Requires active, unexpired lease (lease_until >= clock_timestamp()).
    */
   async markRetryableFailure(
     commandId: string,
@@ -340,7 +349,7 @@ export class OutboundCommandRepository {
            error_message = $2,
            lease_until = NULL,
            updated_at = clock_timestamp()
-       WHERE id = $3 AND status = 'processing' AND worker_id = $4 AND lease_token = $5::uuid;`,
+       WHERE id = $3 AND status = 'processing' AND worker_id = $4 AND lease_token = $5::uuid AND lease_until >= clock_timestamp();`,
       [nextAttemptAt, errorMessage, commandId, workerId, leaseToken]
     );
 
@@ -351,6 +360,7 @@ export class OutboundCommandRepository {
 
   /**
    * Permanently marks a command as dead_letter (unrecoverable or exhausted retries).
+   * Requires active, unexpired lease (lease_until >= clock_timestamp()).
    */
   async markPermanentFailure(
     commandId: string,
@@ -366,7 +376,7 @@ export class OutboundCommandRepository {
            error_message = $1,
            lease_until = NULL,
            updated_at = clock_timestamp()
-       WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
+       WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid AND lease_until >= clock_timestamp();`,
       [errorMessage, commandId, workerId, leaseToken]
     );
 
@@ -378,6 +388,7 @@ export class OutboundCommandRepository {
   /**
    * Marks a command as reconciliation_required when external response was ambiguous
    * (e.g. network timeout or socket reset where external provider may have received the message).
+   * Requires active, unexpired lease (lease_until >= clock_timestamp()).
    */
   async markReconciliationRequired(
     commandId: string,
@@ -393,7 +404,7 @@ export class OutboundCommandRepository {
            error_message = $1,
            lease_until = NULL,
            updated_at = clock_timestamp()
-       WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
+       WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid AND lease_until >= clock_timestamp();`,
       [errorMessage, commandId, workerId, leaseToken]
     );
 
@@ -460,12 +471,16 @@ export class OutboundCommandRepository {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 
     if (!isValidUuid(commandId) || !isValidUuid(workspaceId)) {
-      return "invalid_state";
+      return {
+        outcome: "invalid_state",
+        persistedExternalMessageId: null,
+        persistedStatus: null,
+      };
     }
 
     const query = `
       WITH current_row AS (
-        SELECT id, workspace_id, status, worker_id, lease_token, external_message_id
+        SELECT id, workspace_id, status, worker_id, lease_token, lease_until, external_message_id
         FROM public.outbound_commands
         WHERE id = $1 AND workspace_id = $2
         FOR UPDATE
@@ -481,9 +496,11 @@ export class OutboundCommandRepository {
             updated_at = clock_timestamp()
         FROM current_row c
         WHERE o.id = c.id
+          AND c.worker_id = $5
+          AND c.lease_token::text = $6
           AND (
-            (c.status = 'processing' AND c.worker_id = $5 AND c.lease_token::text = $6)
-            OR (c.status = 'reconciliation_required' AND (c.worker_id IS NULL OR (c.worker_id = $5 AND c.lease_token::text = $6)))
+            c.status = 'processing'
+            OR c.status = 'reconciliation_required'
           )
         RETURNING o.id, o.status AS new_status, o.external_message_id AS new_ext_id
       )
@@ -508,28 +525,52 @@ export class OutboundCommandRepository {
     }>(query, [commandId, workspaceId, extMsgId, errMsg, wId, lToken]);
 
     if (res.rows.length === 0) {
-      return "invalid_state";
+      return {
+        outcome: "invalid_state",
+        persistedExternalMessageId: null,
+        persistedStatus: null,
+      };
     }
 
     const row = res.rows[0]!;
 
     if (row.initial_status === "sent") {
-      return "already_sent";
+      return {
+        outcome: "already_sent",
+        persistedExternalMessageId: row.initial_ext_id,
+        persistedStatus: "sent",
+      };
     }
 
     if (row.initial_status === "dead_letter") {
-      return "already_dead_letter";
+      return {
+        outcome: "already_dead_letter",
+        persistedExternalMessageId: row.initial_ext_id,
+        persistedStatus: "dead_letter",
+      };
     }
 
-    if (row.new_status === "reconciliation_required" || row.initial_status === "reconciliation_required") {
-      return "transitioned_to_reconciliation";
+    if (row.new_status === "reconciliation_required") {
+      return {
+        outcome: "transitioned_to_reconciliation",
+        persistedExternalMessageId: row.new_ext_id,
+        persistedStatus: "reconciliation_required",
+      };
     }
 
-    if (row.initial_status === "processing") {
-      return "ownership_lost";
+    if (row.initial_status === "processing" || row.initial_status === "reconciliation_required") {
+      return {
+        outcome: "ownership_lost",
+        persistedExternalMessageId: row.initial_ext_id,
+        persistedStatus: row.initial_status,
+      };
     }
 
-    return "invalid_state";
+    return {
+      outcome: "invalid_state",
+      persistedExternalMessageId: row.initial_ext_id,
+      persistedStatus: row.initial_status,
+    };
   }
 
   /**

@@ -636,7 +636,12 @@ export class OutboxDispatcher {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       const causeMsg = (err instanceof Error && (err as any).cause instanceof Error) ? (err as any).cause.message : "";
-      if (msg.includes("FENCING") || causeMsg.includes("FENCING") || (err instanceof FencingViolationError)) {
+      if (
+        msg.includes("FENCING") ||
+        causeMsg.includes("FENCING") ||
+        (err instanceof FencingViolationError) ||
+        msg.includes("DATA_INCONSISTENCY")
+      ) {
         throw err;
       }
       const canonicalCode = resolveCanonicalErrorCode(err, "transient");
@@ -898,37 +903,65 @@ export class OutboxDispatcher {
   }
 
   private handlePostSendReconciliationOutcome(
-    outcome: PostSendReconciliationOutcome,
+    outcomeResult: PostSendReconciliationOutcome,
     commandId: string,
-    externalMessageId?: string
+    localExternalMessageId?: string
   ): { success: boolean; externalMessageId?: string; status: string } {
+    const { outcome, persistedExternalMessageId, persistedStatus } = outcomeResult;
+
     if (outcome === "already_sent") {
-      logger.info({ commandId }, "Post-send reconciliation detected command is already sent (idempotent success)");
+      if (!persistedExternalMessageId || persistedExternalMessageId.trim() === "") {
+        logger.error(
+          { commandId, persistedStatus },
+          "Data inconsistency: Command is marked 'sent' in database but external_message_id is missing"
+        );
+        throw new Error(
+          `DATA_INCONSISTENCY: Outbound command '${commandId}' is marked 'sent' but lacks a canonical external_message_id`
+        );
+      }
+
+      if (localExternalMessageId && localExternalMessageId !== persistedExternalMessageId) {
+        logger.warn(
+          { commandId, localExternalMessageId, persistedExternalMessageId },
+          "External message ID divergence detected: Local send attempt had different ID than canonical persisted ID from webhook/concurrent send"
+        );
+      }
+
+      logger.info(
+        { commandId, externalMessageId: persistedExternalMessageId },
+        "Post-send reconciliation detected command is already sent (idempotent success with canonical ID)"
+      );
       return {
         success: true,
-        externalMessageId,
+        externalMessageId: persistedExternalMessageId,
         status: "sent",
       };
     }
 
     if (outcome === "already_dead_letter") {
-      logger.warn({ commandId }, "Post-send reconciliation detected command is already dead_letter");
+      logger.warn(
+        { commandId, persistedExternalMessageId },
+        "Post-send reconciliation detected command is already dead_letter"
+      );
       return {
         success: false,
-        externalMessageId,
+        externalMessageId: persistedExternalMessageId ?? localExternalMessageId,
         status: "dead_letter",
       };
     }
 
     if (outcome === "ownership_lost") {
-      logger.error({ commandId }, "Post-send reconciliation rejected: lease ownership lost");
+      logger.error(
+        { commandId, persistedStatus, persistedExternalMessageId },
+        "Post-send reconciliation rejected: lease ownership lost"
+      );
       throw new FencingViolationError(commandId, "Lease ownership lost during post-send reconciliation");
     }
 
     if (outcome === "transitioned_to_reconciliation") {
       return {
         success: false,
-        externalMessageId,
+        externalMessageId: persistedExternalMessageId ?? localExternalMessageId,
         status: "reconciliation_required",
       };
     }
