@@ -15,10 +15,11 @@ import {
   generateTestRunDatabaseName,
   TEST_DB_DEFAULT,
   TEST_PORT_DEFAULT,
+  acquireOutboxTestLock,
 } from "../test-support";
 import { Pool } from "pg";
 
-describe("TAREFA A: Isolamento Estrito do Banco de Testes e Runner Seguro (R01 — R05)", () => {
+describe("TAREFA A: Isolamento Estrito do Banco de Testes e Runner Seguro (R01 — R05)", { timeout: 30000 }, () => {
   const sentinelPassword = "sentinel_super_secret_db_pass_999!";
   const testPort = process.env.TEST_DB_PORT || TEST_PORT_DEFAULT;
   const invalidTestPort = testPort === "5432" ? "5433" : "5432";
@@ -540,6 +541,26 @@ describe("TAREFA A: Isolamento Estrito do Banco de Testes e Runner Seguro (R01 �
         } else {
           delete process.env.ALLOW_TEST_DB_ADMIN_OPERATIONS;
         }
+      }
+    });
+  });
+
+  describe("Outbox Test Lock Isolation (acquireOutboxTestLock)", () => {
+    it("should acquire exclusive advisory lock and release cleanly", async () => {
+      const { ownerPool } = createTestDatabasePools();
+      try {
+        const lock1 = await acquireOutboxTestLock(ownerPool);
+        expect(lock1).toBeDefined();
+
+        // Release lock
+        await lock1.release();
+
+        // Should be able to acquire again immediately
+        const lock2 = await acquireOutboxTestLock(ownerPool);
+        expect(lock2).toBeDefined();
+        await lock2.release();
+      } finally {
+        await ownerPool.end();
       }
     });
   });

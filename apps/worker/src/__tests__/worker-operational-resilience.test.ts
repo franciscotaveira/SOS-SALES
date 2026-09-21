@@ -5,6 +5,8 @@ import {
   encryptPayload,
   withWorkerTransaction,
   DatabaseSigningSecretResolver,
+  acquireOutboxTestLock,
+  type OutboxTestLock,
 } from "@sos-sales/database";
 import {
   ChannelAdapterRegistry,
@@ -19,6 +21,8 @@ describe("Worker Operational Resilience & P0/P1 Edge Case Verification", () => {
   const { ownerPool, workerPool } = createTestDatabasePools();
   const testMasterKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+  let outboxLock: OutboxTestLock;
+  let orgId: string;
   let workspaceId: string;
   let channelInstanceId: string;
   let credentialId: string;
@@ -26,13 +30,16 @@ describe("Worker Operational Resilience & P0/P1 Edge Case Verification", () => {
   let baseThreadId: string;
 
   beforeAll(async () => {
+    // 0. Acquire exclusive global queue test lock
+    outboxLock = await acquireOutboxTestLock(ownerPool);
+
     // 1. Provision Organization and Workspace using ownerPool
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
       VALUES ('Resilience Test Org', $1)
       RETURNING id;
     `, [`org-resil-${Date.now()}`]);
-    const orgId = orgRes.rows[0].id;
+    orgId = orgRes.rows[0].id;
 
     const wsRes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
@@ -88,6 +95,7 @@ describe("Worker Operational Resilience & P0/P1 Edge Case Verification", () => {
   });
 
   afterAll(async () => {
+    await outboxLock.release();
     await workerPool.end();
     await ownerPool.end();
   });

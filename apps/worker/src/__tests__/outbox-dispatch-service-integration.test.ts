@@ -10,6 +10,8 @@ import {
   OutboundCommandRepository,
   IdempotencyConflictError,
   FencingViolationError,
+  acquireOutboxTestLock,
+  type OutboxTestLock,
 } from "@sos-sales/database";
 import {
   ChannelAdapterRegistry,
@@ -29,6 +31,8 @@ describe("CH-10: Outbox → Worker → ChannelDispatchService Integration & Resi
   const { ownerPool, workerPool } = createTestDatabasePools();
   const testMasterKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+  let outboxLock: OutboxTestLock;
+  let orgId: string;
   let workspaceAId: string;
   let workspaceBId: string;
   let lineCommercialId: string;
@@ -103,13 +107,16 @@ describe("CH-10: Outbox → Worker → ChannelDispatchService Integration & Resi
   }
 
   beforeAll(async () => {
+    // 0. Acquire exclusive global queue test lock
+    outboxLock = await acquireOutboxTestLock(ownerPool);
+
     // 1. Provision Organizations and Workspaces
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
       VALUES ('CH10 Integration Org', $1)
       RETURNING id;
     `, [`org-ch10-${Date.now()}`]);
-    const orgId = orgRes.rows[0].id;
+    orgId = orgRes.rows[0].id;
 
     const wsARes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
@@ -221,6 +228,7 @@ describe("CH-10: Outbox → Worker → ChannelDispatchService Integration & Resi
   });
 
   afterAll(async () => {
+    await outboxLock.release();
     await workerPool.end();
     await ownerPool.end();
   });

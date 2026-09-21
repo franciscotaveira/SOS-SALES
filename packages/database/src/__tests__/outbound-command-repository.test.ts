@@ -1,8 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import crypto from "node:crypto";
 import {
   createTestDatabasePools,
   withWorkerTransaction,
+  acquireOutboxTestLock,
+  type OutboxTestLock,
 } from "../index";
 import {
   OutboundCommandRepository,
@@ -15,6 +17,8 @@ describe("OutboundCommandRepository (CH-10)", () => {
   const { ownerPool, workerPool } = createTestDatabasePools();
   const repo = new OutboundCommandRepository(workerPool);
 
+  let outboxLock: OutboxTestLock;
+  let orgId: string;
   let workspaceId: string;
   let channelInstanceId: string;
   let contactId: string;
@@ -22,13 +26,16 @@ describe("OutboundCommandRepository (CH-10)", () => {
   let messageId: string;
 
   beforeAll(async () => {
+    // 0. Acquire exclusive global queue test lock and clean queue
+    outboxLock = await acquireOutboxTestLock(ownerPool);
+
     // 1. Provision Workspace
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
       VALUES ('Repo Test Org', $1)
       RETURNING id;
     `, [`org-repo-${Date.now()}`]);
-    const orgId = orgRes.rows[0].id;
+    orgId = orgRes.rows[0].id;
 
     const wsRes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
@@ -78,8 +85,14 @@ describe("OutboundCommandRepository (CH-10)", () => {
     messageId = msgRes.rows[0].id;
   });
 
+  beforeEach(async () => {
+    await ownerPool.query("DELETE FROM public.outbound_commands WHERE workspace_id = $1;", [workspaceId]);
+  });
+
   afterAll(async () => {
     await ownerPool.query("DELETE FROM workspaces WHERE id = $1;", [workspaceId]);
+    await ownerPool.query("DELETE FROM organizations WHERE id = $1;", [orgId]);
+    await outboxLock.release();
     await ownerPool.end();
     await workerPool.end();
   });

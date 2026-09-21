@@ -8,6 +8,8 @@ import {
   encryptPayload,
   DatabaseSigningSecretResolver,
   FencingViolationError,
+  acquireOutboxTestLock,
+  type OutboxTestLock,
 } from "@sos-sales/database";
 import {
   ChannelAdapterRegistry,
@@ -38,16 +40,18 @@ function runEvidenceVerifier(manifestRelativePath?: string): { success: boolean;
   } catch (err: any) {
     return {
       success: false,
-      stdout: err.stdout ? String(err.stdout) : "",
-      stderr: err.stderr ? String(err.stderr) : (err.message || ""),
+      stdout: err.stdout ? err.stdout.toString() : "",
+      stderr: err.stderr ? err.stderr.toString() : err.message,
     };
   }
 }
 
-describe("Outbox Zero Blind Resend & Ambiguous Delivery Invariants (CH-10)", () => {
+describe("Zero Blind Resend & Post-Send Reconciliation Invariants (EV-CRIT-002)", () => {
   const { ownerPool, workerPool } = createTestDatabasePools();
   const testMasterKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+  let outboxLock: OutboxTestLock;
+  let orgId: string;
   let workspaceId: string;
   let channelInstanceId: string;
   let credentialId: string;
@@ -55,13 +59,16 @@ describe("Outbox Zero Blind Resend & Ambiguous Delivery Invariants (CH-10)", () 
   let baseThreadId: string;
 
   beforeAll(async () => {
+    // 0. Acquire exclusive global queue test lock
+    outboxLock = await acquireOutboxTestLock(ownerPool);
+
     // 1. Provision Organization and Workspace using ownerPool
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
       VALUES ('Zero Blind Resend Org', $1)
       RETURNING id;
     `, [`org-zbr-${Date.now()}`]);
-    const orgId = orgRes.rows[0].id;
+    orgId = orgRes.rows[0].id;
 
     const wsRes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
@@ -117,6 +124,7 @@ describe("Outbox Zero Blind Resend & Ambiguous Delivery Invariants (CH-10)", () 
   });
 
   afterAll(async () => {
+    await outboxLock.release();
     await workerPool.end();
     await ownerPool.end();
   });

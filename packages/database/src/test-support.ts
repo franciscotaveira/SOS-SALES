@@ -876,4 +876,38 @@ export async function executeTestRunnerSession(
   };
 }
 
+export const GLOBAL_OUTBOX_TEST_LOCK_ID = 88888801;
 
+export interface OutboxTestLock {
+  client: PoolClient;
+  release: () => Promise<void>;
+}
+
+/**
+ * Provides deterministic queue isolation for integration test suites
+ * that exercise the global public.outbound_commands queue.
+ *
+ * Uses a PostgreSQL session-level advisory lock to serialize consumers
+ * of the global queue across test suites, cleans stale/leftover records
+ * on acquisition, and cleans records on release.
+ */
+export async function acquireOutboxTestLock(ownerPool: Pool): Promise<OutboxTestLock> {
+  const client = await ownerPool.connect();
+  await client.query("SELECT pg_advisory_lock($1);", [GLOBAL_OUTBOX_TEST_LOCK_ID]);
+  await client.query("DELETE FROM public.outbound_commands;");
+
+  let released = false;
+  return {
+    client,
+    release: async () => {
+      if (released) return;
+      released = true;
+      try {
+        await client.query("DELETE FROM public.outbound_commands;");
+        await client.query("SELECT pg_advisory_unlock($1);", [GLOBAL_OUTBOX_TEST_LOCK_ID]);
+      } finally {
+        client.release();
+      }
+    },
+  };
+}

@@ -4,6 +4,8 @@ import {
   createTestDatabasePools,
   encryptPayload,
   DatabaseSigningSecretResolver,
+  acquireOutboxTestLock,
+  type OutboxTestLock,
 } from "@sos-sales/database";
 import {
   ChannelAdapterRegistry,
@@ -18,6 +20,8 @@ describe("CH-02 — Multi-Worker Concurrency, Distributed Lease, Heartbeat & Fen
   const { ownerPool, workerPool } = createTestDatabasePools();
   const testMasterKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+  let outboxLock: OutboxTestLock;
+  let orgId: string;
   let workspaceId: string;
   let channelInstanceId: string;
   let credentialId: string;
@@ -25,13 +29,16 @@ describe("CH-02 — Multi-Worker Concurrency, Distributed Lease, Heartbeat & Fen
   let threadId: string;
 
   beforeAll(async () => {
+    // 0. Acquire exclusive global queue test lock
+    outboxLock = await acquireOutboxTestLock(ownerPool);
+
     // 1. Provision Organization and Workspace
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
       VALUES ('Concurrency Test Org', $1)
       RETURNING id;
     `, [`org-conc-${Date.now()}`]);
-    const orgId = orgRes.rows[0].id;
+    orgId = orgRes.rows[0].id;
 
     const wsRes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
@@ -87,6 +94,7 @@ describe("CH-02 — Multi-Worker Concurrency, Distributed Lease, Heartbeat & Fen
   });
 
   afterAll(async () => {
+    await outboxLock.release();
     await workerPool.end();
     await ownerPool.end();
   });
