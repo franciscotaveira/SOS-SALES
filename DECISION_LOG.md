@@ -1176,3 +1176,10 @@ O incidente de horários fictícios no workspace SOS revelou fallback local e ex
 ## 18/09/2026 — Refinamento delimitado de tracking e diagnóstico WABA Haven
 
 Candidato local libera somente configuração/teste/descoberta tracking autenticados no domínio, mantendo backfill/simulação e acesso direto por IP bloqueados. Validado por 36 testes e nove chamadas via proxy temporário no Docker Lab; publicação pendente do fluxo versionado. Consulta Graph confirma número Haven DISCONNECTED/ON_PREMISE e assinatura somente CRM TX APP; não migrar nem registrar número automaticamente. Segredo STA no runtime exige alinhamento com a assinatura/credencial reais antes de declarar entrada oficial homologada. Evidências em docs/audits/2026-09-18-haven-meta-tracking-refinement.md.
+
+## 2026-09-21 — Fronteira fail-closed do Receptionist e autorização explícita de links
+
+- **Problema:** o runtime e o simulador aceitavam texto sem o envelope obrigatório de decisão e atribuíam uma intenção segura por inferência. Além disso, URLs presentes em conhecimento livre eram implicitamente autorizadas, e o nome do agente (`Sofia`) liberava links canônicos do SOS Sales.
+- **Decisão:** saída sem envelope válido retorna `RECEPTIONIST_INVALID_MODEL_OUTPUT` antes de qualquer efeito no provedor. Conhecimento, nome do workspace e nome do agente não concedem autorização de URL. Links comerciais só podem vir de campos publicados explicitamente aprovados; checkout SOS continua restrito ao workspace canônico e a um plano Cakto ativo validado por `resolveSosCheckout`.
+- **Governança:** falha de formato permanece retryable pelo outbox e observável; nenhuma resposta autônoma é enviada sem classificação válida. Identidade textual nunca substitui autorização por tenant.
+- **Validação:** 438 testes unitários da API, typecheck, Docker Lab `/ready` com sete dependências `ok` e canário controlado de 10 passos concluído com zero bots ativos ao final. Produção não alterada; promoção ao VPS exige build/preflight e aprovação humana.

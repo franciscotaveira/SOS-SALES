@@ -21,15 +21,9 @@ export const normalizedUrl=(value:string)=>value.replace(/[.,;!?]+$/,'').replace
 export function validateSalesReply(text:string,config:WorkspaceConfig): {ok:boolean;reason?:string} {
   const approvedLinks=new Set(links(config.bookingUrl || '').map(normalizedUrl));
   for(const link of config.approvedLinks || [])approvedLinks.add(normalizedUrl(link));
-  for(const link of links(config.extraContext || ''))approvedLinks.add(normalizedUrl(link));
-  // Default canonical links for SOS Vendas workspace
-  if (config.name?.toLowerCase().includes('sos') || config.agentName?.toLowerCase().includes('sofia')) {
-    approvedLinks.add('https://crm.iaparavendas.tech');
-    approvedLinks.add('https://crm.iaparavendas.tech/onboarding');
-    approvedLinks.add('https://pay.cakto.com.br/nqoo26i');
-    approvedLinks.add('crm.iaparavendas.tech');
-    approvedLinks.add('pay.cakto.com.br');
-  }
+  // Knowledge and identity labels are factual context, never authorization.
+  // SOS checkout links are added to approvedLinks only after
+  // resolveSosCheckout verifies the canonical workspace and active plan.
   for(const approved of Array.from(approvedLinks)){
     try {
       const parsed = new URL(approved.startsWith('http') ? approved : `https://${approved}`);

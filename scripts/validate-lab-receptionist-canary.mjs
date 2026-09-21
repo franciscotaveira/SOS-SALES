@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S npx tsx
 /**
  * SOS Sales — NVIDIA Receptionist Lab Canary Gate Validator
  *

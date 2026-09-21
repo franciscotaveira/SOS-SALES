@@ -4,7 +4,7 @@ import { agentRoutes } from '../../src/interfaces/http/routes/agent-routes.js';
 
 const workspaceId = '10000000-0000-4000-8000-000000000001';
 
-function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>, failModels = false, role = 'owner') {
+function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>, failModels = false, role = 'owner', modelContent = '{"intent":"inquiry","escalate":false,"sendBookingFlow":false}\nResposta final do simulador.') {
   const app = Fastify({ logger: false });
   const query = queryMock || vi.fn().mockImplementation((sql: string) => {
     if (sql.includes('workspace_intelligence_bundles')) {
@@ -44,7 +44,7 @@ function buildRouteApp(queryMock?: ReturnType<typeof vi.fn>, failModels = false,
 
   const generateChatCompletion = failModels
     ? vi.fn().mockRejectedValue(new Error('Model unavailable'))
-    : vi.fn().mockResolvedValue({ content: '{"intent":"inquiry","escalate":false,"sendBookingFlow":false}\nResposta final do simulador.', model: 'nvidia-test-model' });
+    : vi.fn().mockResolvedValue({ content: modelContent, model: 'nvidia-test-model' });
   app.register(agentRoutes, {
     authenticator: { verifyAccessToken: vi.fn().mockResolvedValue({ userId: '30000000-0000-4000-8000-000000000003' }) },
     workspaceDirectory: { listForActor: vi.fn().mockResolvedValue([{ id: workspaceId, name: 'Workspace', slug: 'workspace', role }]) },
@@ -125,6 +125,17 @@ describe('Agent Simulator Routes (Meta Business AI Pattern)', () => {
       headers: { authorization: 'Bearer valid.jwt.token' }, payload: { message: 'Quero agendar uma sessão no spa' } });
     expect(response.statusCode).toBe(503);
     expect(response.json().code).toBe('RECEPTIONIST_NIM_UNAVAILABLE');
+    expect(response.json().agentResponse).toBeUndefined();
+    await app.close();
+  });
+
+  it('fails closed when a model returns text without the decision envelope', async () => {
+    const { app } = buildRouteApp(undefined, false, 'owner', 'Resposta sem envelope de decisão.');
+    const response = await app.inject({ method: 'POST',
+      url: `/api/v1/workspaces/${workspaceId}/agent/simulator/chat`,
+      headers: { authorization: 'Bearer valid.jwt.token' }, payload: { message: 'Quero conhecer os planos.' } });
+    expect(response.statusCode).toBe(502);
+    expect(response.json().code).toBe('RECEPTIONIST_INVALID_MODEL_OUTPUT');
     expect(response.json().agentResponse).toBeUndefined();
     await app.close();
   });

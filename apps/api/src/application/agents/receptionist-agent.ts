@@ -1363,25 +1363,10 @@ export class ReceptionistAgent {
 
     let decision = parseReceptionistDecision(rawResponse);
     if (!decision) {
-      const cleanContent = (rawResponse || '')
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/^(?:Here's a thinking process:[\s\S]*?\n\n|Thinking Process:[\s\S]*?\n\n)/i, '')
-        .trim();
-      if (cleanContent.length > 0 && !cleanContent.startsWith('{') && cleanContent.length <= MAX_AUTONOMOUS_REPLY_LENGTH) {
-        decision = {
-          intent: 'greeting',
-          reply: HumanizerKernel.humanizeReply(cleanContent),
-          escalate: false,
-          sendBookingFlow: false,
-        };
-        console.info('[ReceptionistAgent] recovered_conversational_reply_without_envelope', {
-          workspaceId: input.workspaceId,
-          journeyId: input.journeyId,
-        });
-      } else {
-        // Invalid model output is also safe to retry: no provider call happened.
-        throw new Error('RECEPTIONIST_INVALID_MODEL_OUTPUT');
-      }
+      // The classification envelope is the model trust boundary. Plain text
+      // cannot be assigned a safe intent, so no provider effect is allowed.
+      // The durable outbox may retry; repeated failures remain observable.
+      throw new Error('RECEPTIONIST_INVALID_MODEL_OUTPUT');
     }
     let validation = validateSalesReply(decision.reply, wsConfig);
     if (!validation.ok && validation.reason === 'unapproved_link') {

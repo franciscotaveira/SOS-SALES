@@ -467,6 +467,25 @@ describe('ReceptionistAgent untrusted-model safety policy', () => {
       expect(errorSpy).toHaveBeenCalled();
     });
 
+    it('fails closed before any provider effect when the model omits the decision envelope', async () => {
+      vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
+      const query = runtimeQuery();
+      const nim = {
+        isConfigured: () => true,
+        generateChatCompletion: vi.fn().mockResolvedValue({
+          content: 'Claro! Vou responder sem classificar a intenção.',
+          model: 'test-model',
+          latencyMs: 9,
+        }),
+      };
+      const waba = { sendText: vi.fn(), sendFlow: vi.fn() };
+      const agent = new ReceptionistAgent({ nim: nim as any, waba: waba as any, query });
+
+      await expect(agent.handleInbound(input)).rejects.toThrow('RECEPTIONIST_INVALID_MODEL_OUTPUT');
+      expect(waba.sendText).not.toHaveBeenCalled();
+      expect(waba.sendFlow).not.toHaveBeenCalled();
+    });
+
     it('pauses the journey and does not fabricate success when WABA delivery is unconfirmed', async () => {
       vi.stubEnv('RECEPTIONIST_ENABLED', 'true');
       const query = runtimeQuery();

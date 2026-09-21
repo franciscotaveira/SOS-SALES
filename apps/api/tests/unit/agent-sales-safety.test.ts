@@ -13,6 +13,8 @@ describe('published commercial facts and reply boundaries',()=>{
   it.each(['R$ 10 a 50','12x 49,90','-20','NaN','1,234.56',Infinity,{},''])('rejects ambiguous price %s',value=>expect(moneyMinor(value)).toBeUndefined());
   it.each(['R$ 1,00 hoje','Fica 100 reais.','https://evil.invalid/pay','https://pay.cakto.com.br/oferta?recipient=evil','pagamento confirmado','Sua conta foi ativada','Desconto aprovado','Não se preocupe, sua conta foi ativada.'])('blocks unsupported reply %s',reply=>expect(validateSalesReply(reply,config).ok).toBe(false));
   it('accepts the exact published amount and official link',()=>expect(validateSalesReply('R$ 1.234,56. Acesse https://pay.cakto.com.br/oferta',config).ok).toBe(true));
+  it('does not authorize a link merely because knowledge mentions it',()=>expect(validateSalesReply('Acesse https://docs.example.test/oferta',{...config,approvedLinks:[],extraContext:'Documento publicado: https://docs.example.test/oferta'})).toEqual({ok:false,reason:'unapproved_link'}));
+  it('does not authorize SOS links from an agent name such as Sofia',()=>expect(validateSalesReply('Acesse https://pay.cakto.com.br/nqoo26i',{...config,approvedLinks:[]})).toEqual({ok:false,reason:'unapproved_link'}));
   it('does not treat an installment count as an approved amount',()=>expect(validateSalesReply('Pague R$ 12', {...config,services:[{name:'Plano',price:'12x R$ 49,90'}]}).ok).toBe(false));
   it('allows common objections only with enabled skills, keeps payment with humans',()=>{
     const decision={intent:'objection' as const,escalate:false,sendBookingFlow:false,reply:'Entendo. Qual recurso você precisa?'};

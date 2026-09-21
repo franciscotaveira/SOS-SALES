@@ -31,7 +31,6 @@ import {
 } from '../../../application/agents/receptionist-agent.js';
 import { NVIDIA_MODEL_TIERS, NvidiaNimEngine } from '../../../infrastructure/ai/nvidia-nim-engine.js';
 import { OpenRouterEngine } from '../../../infrastructure/ai/openrouter-engine.js';
-import { HumanizerKernel } from '../../../infrastructure/ai/humanizer-kernel.js';
 import { analyzeConversationDossier, MessageLike } from '../../../application/services/cognitive-analyzer.js';
 import { buildSystemPrompt } from '../../../infrastructure/ai/receptionist-system-prompt.js';
 
@@ -1366,20 +1365,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRoutesOptions> = async (app: F
           if (parsedDecision) {
             decision = parsedDecision;
           } else {
-            const cleanContent = rawOutput
-              .replace(/<think>[\s\S]*?<\/think>/gi, '')
-              .replace(/^(?:Here's a thinking process:[\s\S]*?\n\n|Thinking Process:[\s\S]*?\n\n)/i, '')
-              .trim();
-            if (cleanContent.length > 0) {
-              decision = {
-                intent: 'inquiry' as const,
-                reply: HumanizerKernel.humanizeReply(cleanContent),
-                escalate: false,
-                sendBookingFlow: false,
-              };
-            } else {
-              return reply.status(502).send({ error: 'O modelo retornou uma resposta inválida.', code: 'RECEPTIONIST_INVALID_MODEL_OUTPUT' });
-            }
+            return reply.status(502).send({ error: 'O modelo retornou uma resposta inválida.', code: 'RECEPTIONIST_INVALID_MODEL_OUTPUT' });
           }
           generatedReply = decision.reply;
           modelUsed = result?.model || selectedTier;
