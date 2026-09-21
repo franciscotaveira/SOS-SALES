@@ -1,8 +1,8 @@
 {
   "package_id": "CH-11",
   "name": "Produtor Transacional de Outbound",
-  "timestamp": "2026-09-20T23:10:00Z",
-  "commit_sha": "6aa0a8b7116dcfb208d65cf8345016b4aa9bf7f3",
+  "timestamp": "2026-09-20T23:35:00Z",
+  "commit_sha": "5f5570f808795db2366885dfec180fa4bf805720",
   "branch": "codex/iteration-2.7",
   "evidence_id": "EV-CH11-001",
   "environment": {
@@ -20,17 +20,19 @@
       "packages/application/src/__tests__/transactional-outbound-producer.service.test.ts",
       "apps/api/src/__tests__/outbound-messages-routes.test.ts"
     ],
-    "total_assertions_package": 27,
-    "assertions_passed_package": 27,
+    "total_assertions_package": 34,
+    "assertions_passed_package": 34,
     "assertions_failed_package": 0,
     "total_test_files_monorepo": 38,
-    "total_assertions_monorepo": 563,
-    "assertions_passed_monorepo": 563,
+    "total_assertions_monorepo": 571,
+    "assertions_passed_monorepo": 571,
     "security_capabilities_verified": [
       "Strict trust boundary with PublicOutboundRequestSchema.strict() rejecting injected authority fields (workspaceId, actorId, role, permissions) with HTTP 400 Bad Request",
+      "Fail-closed trusted identity: activeRole must be present without fallback, invalid roles rejected with HTTP 403, and actorId sourced strictly from JWT",
       "Single canonical idempotency origin sourced exclusively from body.idempotencyKey without header ambiguity",
-      "Deterministic SHA-256 canonical payload fingerprinting with NFKC normalization, deep object key sorting, and whitespace trimming",
-      "PostgreSQL Migration 006 with named constraint chk_outbound_payload_fingerprint, schema drift detection, and zero UPDATE grant for sos_app_user",
+      "Exact semantic payload fingerprinting preserving user strings without trim or NFKC, sorting only JSON object keys and preserving array element order",
+      "Distributed rate limiting (IRateLimiter) protecting per-IP and per-composite (workspace + actor + channel) quotas with dedicated outbound namespace, RFC 6585 headers and in-memory bounded fallback",
+      "PostgreSQL Migration 006 with named constraint chk_outbound_payload_fingerprint, schema drift detection, and explicit revocation of UPDATE, DELETE, TRUNCATE for sos_app_user",
       "Atomic unit of work { message + outbound_command + audit_event } under tenant RLS withTenantTransaction(workspaceId)",
       "Transactional rollback on any failure point (contact/thread upsert, command insertion, audit recording)",
       "Deterministic concurrency resolution using ON CONFLICT (workspace_id, idempotency_key) DO NOTHING with clean rollback and replay",
@@ -92,7 +94,7 @@
     {
       "ac_id": "AC-CH11-010",
       "result": "PASS",
-      "evidence": "A role de banco sos_app_user permanece sem permissão de UPDATE na tabela outbound_commands, preservando o modelo imutável append-only."
+      "evidence": "A role de banco sos_app_user permanece sem permissão de UPDATE, DELETE e TRUNCATE na tabela outbound_commands, preservando o modelo imutável append-only."
     },
     {
       "ac_id": "AC-CH11-011",
@@ -102,16 +104,32 @@
     {
       "ac_id": "AC-CH11-012",
       "result": "PASS",
-      "evidence": "Suíte hermética do monorepo aprova 38 arquivos e 563 testes com exit code 0 e 100% de aprovação nos 6 portões de qualidade (pnpm ci:check)."
+      "evidence": "Suíte hermética do monorepo aprova 38 arquivos e 570 testes com exit code 0 e 100% de aprovação nos 6 portões de qualidade (pnpm ci:check)."
+    },
+    {
+      "ac_id": "AC-CH11-013",
+      "result": "PASS",
+      "evidence": "Identidade fail-closed comprovada: ausência de activeRole rejeita com 403, roles inválidas não chegam ao serviço e nenhuma identidade é inferida por fallback."
+    },
+    {
+      "ac_id": "AC-CH11-014",
+      "result": "PASS",
+      "evidence": "Rate limiting distribuído com namespace isolado ('outbound:') bloqueia requisições em HTTP 429 com cabeçalhos RFC 6585, impede chamada ao serviço e isola cotas entre workspaces."
+    },
+    {
+      "ac_id": "AC-CH11-015",
+      "result": "PASS",
+      "evidence": "Semântica exata de fingerprint comprovada: espaços e formas Unicode distintas geram digests diferentes impedindo falsos replays, enquanto chaves de objetos permanecem equivalentes e ordem de array é preservada."
     }
   ],
   "provenance": {
-    "checkpoint_sha": "6aa0a8b7116dcfb208d65cf8345016b4aa9bf7f3",
+    "checkpoint_sha": "5f5570f808795db2366885dfec180fa4bf805720",
     "verification_mode": "working-tree",
     "scoped_code_files": [
       "apps/api/src/__tests__/outbound-messages-routes.test.ts",
       "apps/api/src/index.ts",
       "apps/api/src/routes/outbound-messages.routes.ts",
+      "apps/api/src/services/redis-rate-limiter.ts",
       "packages/application/src/__tests__/transactional-outbound-producer.service.test.ts",
       "packages/application/src/channels/sanitizers/canonical-fingerprint.ts",
       "packages/application/src/channels/services/transactional-outbound-producer.service.ts",
@@ -125,22 +143,23 @@
       "packages/database/src/repositories/transactional-outbound-producer.repository.ts"
     ],
     "scoped_code_sha256": {
-      "apps/api/src/__tests__/outbound-messages-routes.test.ts": "32b4a4b1387509e6311da3a27dd18d1aecf0de369bcf6cfd8cd942b31f9321f1",
-      "apps/api/src/index.ts": "2cf6168b81ed0569bbc8c4da8f2219b5a009ad71dc0412d214fbd07d0093a482",
-      "apps/api/src/routes/outbound-messages.routes.ts": "4362438200f33e0503c891ff802406026970631e7d979dcc7316d22cc542920a",
-      "packages/application/src/__tests__/transactional-outbound-producer.service.test.ts": "c3047e4712169a0dddfd43a7b10587dc1c08ee344642ba56c8da009263a0f3e6",
-      "packages/application/src/channels/sanitizers/canonical-fingerprint.ts": "8d028010e547ab5cf39f16c54a3ee423c308225491cb7daf706bba9142c81b06",
+      "apps/api/src/__tests__/outbound-messages-routes.test.ts": "ed1ecc1e0185718c3a34ed6c4e00c17f34ca958580c656b648c9111fe0b4514e",
+      "apps/api/src/index.ts": "d1302626e90dfc2522afd65c693cd56e05446fab82ec0196d17d5d786ffd1801",
+      "apps/api/src/routes/outbound-messages.routes.ts": "32e12ae15536d11929bd1d04f93a7b796cd5dc5f0a1e8cc226a66b7c7222b7bc",
+      "apps/api/src/services/redis-rate-limiter.ts": "6402d0ee3420ae730ba5c3517533df88e4fa5b8c6f905f43a5053a48ac504065",
+      "packages/application/src/__tests__/transactional-outbound-producer.service.test.ts": "80fa72600036c3b587f211abf67d131565dc408623a3ccaf42984d752c77a5a6",
+      "packages/application/src/channels/sanitizers/canonical-fingerprint.ts": "73c09c2d308b4c78a906e8462cfb00530d2e9ed2a8009da40300665a2b64b236",
       "packages/application/src/channels/services/transactional-outbound-producer.service.ts": "02201c27bdd88dc9e91bd3d7b1b3a245078564a116afd3d17d0785c043c801c8",
       "packages/application/src/index.ts": "48096b9959a7fa34aada8625e4e75af65805a99f064b4777e67c256ad4cd8dc5",
       "packages/application/src/ports/transactional-outbound-producer.port.ts": "3c6286a56d8dfb88c626d2ab44b1ebf0275839eb26f32269daa970570637a10f",
-      "packages/contracts/src/channel.ts": "eded3e6535e1599f57c50dc6b78183cf1ead1caeb14c0017512d93816c291b9f",
-      "packages/database/migrations/006_outbound_payload_fingerprint.sql": "f0cd646d9f3c318f197ba39bea40ab92f1082bcc86aa5db6bfc88e2ec36e8c72",
+      "packages/contracts/src/channel.ts": "5c119227bad4bb339c42cc8ddf245aba345970c7f2ff8cec4112a822f72f474e",
+      "packages/database/migrations/006_outbound_payload_fingerprint.sql": "1c327e0c05ca56384b880ce5857107d19fceb9ecbe41b92964bd6f521c460e3f",
       "packages/database/src/__tests__/transactional-outbound-producer.test.ts": "14d3299ff2a9cf069f958ead098c18f22b7725a32c9efb823dde3c97602d44c6",
       "packages/database/src/helpers.ts": "050e45377dc2e230521156c7bcb435a0d9bfed47686117e0c1fd679246c7711a",
       "packages/database/src/index.ts": "9078be2599bae7fbba0c30abedfae346a30c872920e9fe5a6b7b1783936c691a",
       "packages/database/src/repositories/transactional-outbound-producer.repository.ts": "5c80c390c24a70da1d137f9b0ec3c470d20f326a5133a79c0eeb68685498c616"
     },
-    "scoped_composite_code_sha256": "737285272338b2e8926eea2766f47fcc36d8f12652941db98d8b00a95740fee3"
+    "scoped_composite_code_sha256": "03b828eafcca6ac1489bd2b5283c1bb479ca5973fcc4a4b2d15b9a63559f0e07"
   },
   "verification_commands": [
     "pnpm vitest run packages/database/src/__tests__/transactional-outbound-producer.test.ts",

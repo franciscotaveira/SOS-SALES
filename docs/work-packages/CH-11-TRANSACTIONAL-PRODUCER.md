@@ -160,7 +160,7 @@ export type PublicOutboundRequest = z.infer<typeof PublicOutboundRequestSchema>;
 
 ### 2. Contexto Confiável do Servidor (`TrustedOutboundContext`)
 
-Montado exclusivamente pelo servidor Fastify:
+Montado exclusivamente pelo servidor Fastify com identidade fail-closed (sem role padrão, sem fallback, rejeitando activeRole ausente com HTTP 403, e actorId exclusivamente do JWT):
 
 ```typescript
 // packages/contracts/src/channel.ts
@@ -169,7 +169,7 @@ export const TrustedOutboundContextSchema = z.object({
   channelInstanceId: z.string().uuid(),
   actorId: z.string().uuid(),
   role: z.enum(["owner", "admin", "manager", "operator"]),
-  permissions: z.array(z.string()),
+  permissions: z.array(z.string()).optional(),
   ipAddress: z.string().optional(),
   userAgent: z.string().optional(),
 });
@@ -196,9 +196,9 @@ export type ProduceOutboundOutput = z.infer<typeof ProduceOutboundOutputSchema>;
 
 ---
 
-## Cálculo Canônico de Fingerprint
+## Cálculo Canônico de Fingerprint com Semântica Exata
 
-O fingerprint SHA-256 é calculado **antes** de abrir a transação de banco de dados, utilizando ordenação determinística de propriedades (`canonicalJsonStringify` com ordenação lexicográfica recursiva) e normalização de strings:
+O fingerprint SHA-256 é calculado **antes** de abrir a transação de banco de dados, preservando exatamente os valores originais do usuário (sem `trim()` e sem normalização `NFKC` em strings de body, mediaUrl, template name/language) para garantir que a representação sob hash corresponda rigorosamente ao payload persistido e enviado. As chaves de objetos JSON de template components são ordenadas lexicograficamente de forma determinística (`sortKeysDeep`), enquanto a ordem de elementos de arrays é estritamente preservada:
 
 ```typescript
 // packages/application/src/channels/sanitizers/canonical-fingerprint.ts
@@ -209,16 +209,16 @@ export function computeOutboundPayloadFingerprint(
   context: TrustedOutboundContext
 ): string {
   const canonicalObject = {
-    workspaceId: context.workspaceId.toLowerCase(),
-    channelInstanceId: context.channelInstanceId.toLowerCase(),
-    recipientPhoneE164: request.recipientPhoneE164.trim(),
-    contentType: request.contentType.toLowerCase().trim(),
-    body: request.body.normalize("NFKC").trim(),
-    mediaUrl: request.mediaUrl ? request.mediaUrl.trim() : null,
+    workspaceId: context.workspaceId,
+    channelInstanceId: context.channelInstanceId,
+    recipientPhoneE164: request.recipientPhoneE164,
+    contentType: request.contentType,
+    body: request.body,
+    mediaUrl: request.mediaUrl ?? null,
     template: request.template
       ? {
-          name: request.template.name.trim(),
-          language: request.template.language.trim(),
+          name: request.template.name,
+          language: request.template.language,
           components: request.template.components
             ? sortKeysDeep(request.template.components)
             : null,
@@ -362,18 +362,21 @@ sequenceDiagram
 
 ## Critérios de Aceitação Canônicos (AC-CH11)
 
-- [ ] **AC-CH11-001 (Migration 006 Aplicada):** Coluna `payload_fingerprint text` criada em `outbound_commands` com CHECK de 64 hex, sem conceder UPDATE para `sos_app_user`.
-- [ ] **AC-CH11-002 (Schema Público Estrito):** `PublicOutboundRequestSchema.strict()` rejeita com HTTP 400 qualquer requisição que contenha campos de autoridade (`workspaceId`, `channelInstanceId`, `actorId`, `actor`, `role`, `permissions`).
-- [ ] **AC-CH11-003 (Origem Única de Idempotência):** A chave de idempotência é lida exclusivamente de `request.body.idempotencyKey`. Headers HTTP adicionais são ignorados.
-- [ ] **AC-CH11-004 (Persistência do Fingerprint Canônico):** Todo comando gerado grava `payload_fingerprint` com digest SHA-256 exato de 64 hexadecimais minúsculos.
-- [ ] **AC-CH11-005 (Projeção de Replay com JOIN Real):** Consulta de replay realiza INNER JOIN entre `outbound_commands`, `messages` e `commercial_threads`, retornando `commandId`, `messageId`, `threadId`, `contactId`, `payloadFingerprint` e `deliveryStatus`.
-- [ ] **AC-CH11-006 (Replay Idêntico com Fingerprint):** Repetição com mesma chave e payload com fingerprint idêntico retorna HTTP 200 e `isIdempotentReplay = true`.
-- [ ] **AC-CH11-007 (Permutação de Chaves de JSON):** Payloads com ordem de propriedades alteradas em componentes de template produzem o mesmo fingerprint e retornam HTTP 200 replay.
-- [ ] **AC-CH11-008 (Conflito por Content Type Divergente):** Alterar `contentType` reutilizando a mesma `idempotencyKey` resulta em HTTP 409 `IdempotencyConflictError`.
-- [ ] **AC-CH11-009 (Fail-Closed para Registro Legado):** Replay contra comando com `payload_fingerprint IS NULL` é rejeitado com `LegacyIdempotencyRecordError` (HTTP 409).
-- [ ] **AC-CH11-010 (Resolução de Race Condition sem Mensagem Órfã):** Duas requisições paralelas simultâneas resultam em exatamente 1 mensagem e 1 comando persistidos; a perdedora sofre rollback automático via `IdempotencyRaceLostError` e ambas retornam os mesmos IDs com status 200/201.
-- [ ] **AC-CH11-011 (Proteção Perimetral contra SSRF):** URLs apontando para IP privado, loopback ou cloud metadata falham com HTTP 400 antes de abrir transação no banco.
-- [ ] **AC-CH11-012 (Isolamento RLS e Autorização RBAC):** Ator sem permissão `cockpit:send_message` recebe HTTP 403. Consultas sem `app.current_workspace_id` retornam zero linhas.
+- [x] **AC-CH11-001 (Migration 006 Aplicada):** Coluna `payload_fingerprint text` criada em `outbound_commands` com CHECK de 64 hex, sem conceder UPDATE, DELETE ou TRUNCATE para `sos_app_user`.
+- [x] **AC-CH11-002 (Schema Público Estrito):** `PublicOutboundRequestSchema.strict()` rejeita com HTTP 400 qualquer requisição que contenha campos de autoridade (`workspaceId`, `channelInstanceId`, `actorId`, `actor`, `role`, `permissions`).
+- [x] **AC-CH11-003 (Origem Única de Idempotência):** A chave de idempotência é lida exclusivamente de `request.body.idempotencyKey`. Headers HTTP adicionais são ignorados.
+- [x] **AC-CH11-004 (Persistência do Fingerprint Canônico):** Todo comando gerado grava `payload_fingerprint` com digest SHA-256 exato de 64 hexadecimais minúsculos.
+- [x] **AC-CH11-005 (Projeção de Replay com JOIN Real):** Consulta de replay realiza INNER JOIN entre `outbound_commands`, `messages` e `commercial_threads`, retornando `commandId`, `messageId`, `threadId`, `contactId`, `payloadFingerprint` e `deliveryStatus`.
+- [x] **AC-CH11-006 (Replay Idêntico com Fingerprint):** Repetição com mesma chave e payload com fingerprint idêntico retorna HTTP 200 e `isIdempotentReplay = true`.
+- [x] **AC-CH11-007 (Permutação de Chaves de JSON):** Payloads com ordem de propriedades alteradas em componentes de template produzem o mesmo fingerprint e retornam HTTP 200 replay.
+- [x] **AC-CH11-008 (Conflito por Content Type Divergente):** Alterar `contentType` reutilizando a mesma `idempotencyKey` resulta em HTTP 409 `IdempotencyConflictError`.
+- [x] **AC-CH11-009 (Fail-Closed para Registro Legado):** Replay contra comando com `payload_fingerprint IS NULL` é rejeitado com `LegacyIdempotencyRecordError` (HTTP 409).
+- [x] **AC-CH11-010 (Resolução de Race Condition sem Mensagem Órfã):** Duas requisições paralelas simultâneas resultam em exatamente 1 mensagem e 1 comando persistidos; a perdedora sofre rollback automático via `IdempotencyRaceLostError` e ambas retornam os mesmos IDs com status 200/201.
+- [x] **AC-CH11-011 (Proteção Perimetral contra SSRF):** URLs apontando para IP privado, loopback ou cloud metadata falham com HTTP 400 antes de abrir transação no banco.
+- [x] **AC-CH11-012 (Isolamento RLS e Autorização RBAC):** Ator sem permissão `cockpit:send_message` recebe HTTP 403. Consultas sem `app.current_workspace_id` retornam zero linhas.
+- [x] **AC-CH11-013 (Identidade Fail-Closed):** Ausência de `activeRole` rejeita imediatamente com HTTP 403, sem fallback ou role padrão (`role: (request.activeRole || "operator") as any` removido); roles inválidas não chegam ao serviço; `actorId` provém exclusivamente do JWT.
+- [x] **AC-CH11-014 (Rate Limit Distribuído de Outbound):** Rate limiting em dois níveis (Redis + in-memory bounded fallback) com namespace isolado `outbound:` aplicado antes do produtor; limite per-IP e per-composite (`workspace + actor + channel`); HTTP 429 com cabeçalhos RFC 6585 (`Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`); isolamento de cotas entre workspaces.
+- [x] **AC-CH11-015 (Semântica Exata de Fingerprint):** Fingerprint calcula digest SHA-256 exatamente sobre a representação persistida (sem `trim()` nem `normalize("NFKC")` em body, mediaUrl, template name/language); strings com espaços ou Unicode distintos produzem digests diferentes impedindo falso replay; equivalência determinística restrita a ordenação recursiva de chaves em objetos JSON; ordem de arrays preservada.
 
 ---
 

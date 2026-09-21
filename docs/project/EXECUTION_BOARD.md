@@ -34,7 +34,7 @@
 | CH-08 | ACCEPTED | WABA operacional | EV-CH08-001 validado; janela 24h, templates multilíngues com SSRF guard, documentos com filename, getMediaUrl seguro contra CDN Meta, classificação determinística de erros e mensagens interativas (70 asserções) |
 | CH-09 | ACCEPTED | WAHA operacional | EV-CH09-001 validado; contido no Integration Checkpoint IC-01 (`9577e17`), com digest de escopo próprio e 110 asserções aprovadas |
 | CH-10 | ACCEPTED | Docker dual-engine | EV-CH10-001 validado; dual-engine operacional, ChannelDispatchService fail-closed, concorrência atômica FOR UPDATE com proteção contra regressão terminal, fencing estrito de expiração de lease com clock_timestamp(), contrato Truth in Data de IDs persistidos e 536 testes passando (35 suítes) |
-| CH-11 | ACCEPTED | Produtor transacional de outbound | EV-CH11-001 validado; persistência atômica { message + command + audit }, idempotência com payload_fingerprint imutável, trust boundary .strict(), replay com INNER JOIN e 563 testes passando (38 suítes) |
+| CH-11 | ACCEPTED | Produtor transacional de outbound | EV-CH11-001 validado; persistência atômica { message + command + audit }, idempotência com payload_fingerprint exato (zero trim/NFKC em strings), identidade fail-closed sem fallback role, limitador distribuído dois níveis (IP e tenant-actor), trust boundary .strict(), replay com INNER JOIN e 571 testes passando (38 suítes) |
 
 ## Estado por macrofase
 
