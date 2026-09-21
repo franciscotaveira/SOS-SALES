@@ -18,7 +18,7 @@
 ## 2. ESTADO ATUAL (20 Set 2026)
 
 ### ✅ FUNCIONANDO EM PRODUÇÃO
-- Release ativa: `21be96322e61cfe7188d925576b34a709476f245` com **EKO v2.0 (Protocolo de Blindagem Comercial de IA para WhatsApp)**, refinamentos de UX do Cockpit (contagem dinâmica `20+`, paginação no servidor via cursor e trava no Enter), além da IA Sofia em NVIDIA NIM (`nemotron-3-super-120b-a12b`).
+- Release ativa: `204f47934ead66b2b09a4b246e03138c618d9427` com **EKO v2.0 (Protocolo de Blindagem Comercial de IA para WhatsApp)**, correção P1 de fail-closed para saídas não confiáveis da IA, restrição estrita de links canônicos por ID de workspace e blindagem contra autorização implícita via documentos. Refinamentos de UX do Cockpit (contagem dinâmica `20+`, paginação no servidor via cursor e trava no Enter), além da IA Sofia em NVIDIA NIM (`nemotron-3-super-120b-a12b`).
 - Governança de Dados & Isolamento de Execução: Contratos de isolamento em 3 níveis (Storage Encryption, Tenant Isolation e Confidential Execution) e portas para `DataGovernancePolicy` e `CapabilityRevocationGateway` promovidos para produção.
 - Layout 100% responsivo e padrão de app nativo (Apple HIG + WhatsApp Native):
   - Fim das molduras cinzas e bordas flutuantes no celular: contêineres preenchem 100% da tela (`p-0 md:p-3`).
@@ -208,7 +208,7 @@ _Atualizado automaticamente pela AGY (Antigravity) em 18 Ago 2026_
 <claude-mem-context>
 # Memory Context
 
-# [SOS-SALES] recent context, 2026-09-20 8:20pm GMT-3
+# [SOS-SALES] recent context, 2026-09-21 3:13pm GMT-3
 
 No previous sessions found.
 </claude-mem-context>
