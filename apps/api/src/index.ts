@@ -11,6 +11,8 @@ import { meRoutes } from "./routes/me.routes";
 import { workspaceRoutes } from "./routes/workspace.routes";
 import { webhookRoutes } from "./routes/webhook.routes";
 import { outboundMessagesRoutes } from "./routes/outbound-messages.routes";
+import { threadsRoutes } from "./routes/threads.routes";
+import { channelsRoutes } from "./routes/channels.routes";
 import type { ISigningSecretResolver, ITransactionalOutboundProducerService } from "@sos-sales/application";
 
 
@@ -180,6 +182,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   // Register Domain Routes
   await app.register(meRoutes);
   await app.register(workspaceRoutes);
+  await app.register(channelsRoutes);
+  await app.register(threadsRoutes);
   await app.register(outboundMessagesRoutes, {
     producerService: options.outboundProducerService,
     rateLimiter: effectiveRateLimiter,

@@ -235,3 +235,90 @@ export async function listThreadMessages(
 
   return res.rows;
 }
+
+export interface CommercialThreadWithContactRecord extends CommercialThreadRecord {
+  contact_phone: string;
+  contact_name: string | null;
+  channel_provider: ChannelProvider;
+  channel_name: string;
+  last_message_body: string | null;
+  last_message_direction: MessageDirection | null;
+  last_message_created_at: Date | null;
+  last_message_delivery_status: MessageDeliveryStatus | null;
+}
+
+export interface ListCommercialThreadsParams {
+  workspaceId: string;
+  status?: CommercialThreadStatus;
+  limit?: number;
+}
+
+/**
+ * Lists commercial threads with contact details and last message projection
+ * strictly scoped to the workspace under RLS.
+ */
+export async function listCommercialThreads(
+  client: Pool | PoolClient,
+  params: ListCommercialThreadsParams
+): Promise<CommercialThreadWithContactRecord[]> {
+  const limit = params.limit ?? 50;
+  const res = await client.query<CommercialThreadWithContactRecord>(
+    `SELECT 
+       t.id,
+       t.workspace_id,
+       t.channel_instance_id,
+       t.contact_id,
+       t.status,
+       t.last_message_at,
+       t.created_at,
+       t.updated_at,
+       c.phone_e164 AS contact_phone,
+       c.name AS contact_name,
+       ci.provider AS channel_provider,
+       ci.display_name AS channel_name,
+       lm.body AS last_message_body,
+       lm.direction AS last_message_direction,
+       lm.created_at AS last_message_created_at,
+       lm.delivery_status AS last_message_delivery_status
+     FROM public.commercial_threads t
+     INNER JOIN public.contacts c 
+       ON c.workspace_id = t.workspace_id AND c.id = t.contact_id
+     INNER JOIN public.channel_instances ci
+       ON ci.workspace_id = t.workspace_id AND ci.id = t.channel_instance_id
+     LEFT JOIN LATERAL (
+       SELECT m.body, m.direction, m.created_at, m.delivery_status
+       FROM public.messages m
+       WHERE m.workspace_id = t.workspace_id AND m.thread_id = t.id
+       ORDER BY m.created_at DESC
+       LIMIT 1
+     ) lm ON true
+     WHERE t.workspace_id = $1
+       AND ($2::text IS NULL OR t.status = $2)
+     ORDER BY t.last_message_at DESC
+     LIMIT $3;`,
+    [params.workspaceId, params.status ?? null, limit]
+  );
+  return res.rows;
+}
+
+/**
+ * Updates a commercial thread status (e.g. active, waiting_client, waiting_human, closed)
+ * within the workspace boundary under RLS.
+ */
+export async function updateCommercialThreadStatus(
+  client: Pool | PoolClient,
+  params: {
+    workspaceId: string;
+    threadId: string;
+    status: CommercialThreadStatus;
+  }
+): Promise<CommercialThreadRecord | null> {
+  const res = await client.query<CommercialThreadRecord>(
+    `UPDATE public.commercial_threads
+     SET status = $3, updated_at = now()
+     WHERE workspace_id = $1 AND id = $2
+     RETURNING *;`,
+    [params.workspaceId, params.threadId, params.status]
+  );
+  return res.rows[0] ?? null;
+}

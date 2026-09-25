@@ -1,0 +1,109 @@
+{
+  "package_id": "CH-12",
+  "name": "E2E Técnico de Mensageria e Ciclo de Vida Omnichannel",
+  "timestamp": "2026-09-25T21:40:00Z",
+  "commit_sha": "172aa078d039f712504f73623c2258bab6b93a0f",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CH12-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container",
+    "local_redis": "localhost:6389"
+  },
+  "metrics": {
+    "test_files": [
+      "apps/api/src/__tests__/messaging-e2e-lifecycle.test.ts",
+      "apps/api/src/__tests__/threads-and-channels.test.ts"
+    ],
+    "total_assertions_package": 13,
+    "assertions_passed_package": 13,
+    "assertions_failed_package": 0,
+    "total_test_files_monorepo": 40,
+    "total_assertions_monorepo": 584,
+    "assertions_passed_monorepo": 584,
+    "security_capabilities_verified": [
+      "Perimetric WABA webhook HMAC-SHA256 signature validation with timing-safe comparison",
+      "Perimetric AES-256-GCM envelope encryption with AAD prior to channel_webhook_inbox insertion",
+      "Lease fencing and heartbeat renewal during InboxProcessor execution preventing concurrent processing",
+      "Atomic relational genesis of contacts, commercial_threads, and messages under tenant-scoped RLS",
+      "Outbound transactional persistence { messages + outbound_commands + audit_events } with payload_fingerprint",
+      "Support for official WABA template metadata (name, language, components) end-to-end",
+      "Worker SKIP LOCKED claim and lease fencing dispatch via ChannelDispatchService to upstream adapters",
+      "Monotonic delivery status progression (sent -> delivered [rank 20] -> read [rank 30])",
+      "Cross-tenant isolation returning 404/403 fail-closed with zero database writes",
+      "Pre-transaction SSRF guard rejecting private and loopback URLs before opening database transactions"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CH12-001",
+      "result": "PASS",
+      "evidence": "Ingress de webhook WABA com assinatura HMAC validada gravado de forma encriptada AES-256-GCM em channel_webhook_inbox sob status pending."
+    },
+    {
+      "ac_id": "AC-CH12-002",
+      "result": "PASS",
+      "evidence": "InboxProcessor resgata e decodifica mensagem inbound, criando atomicamente contact, commercial_thread e message ('delivered', rank 20), transicionando inbox para processed."
+    },
+    {
+      "ac_id": "AC-CH12-003",
+      "result": "PASS",
+      "evidence": "Produção de mensagem de texto outbound via API Fastify persistida com RLS em messages, outbound_commands e audit_events com fingerprint SHA-256 de 64 caracteres."
+    },
+    {
+      "ac_id": "AC-CH12-004",
+      "result": "PASS",
+      "evidence": "Produção de template oficial WABA via API Fastify com preservação de template_name, template_language e template_components em outbound_commands."
+    },
+    {
+      "ac_id": "AC-CH12-005",
+      "result": "PASS",
+      "evidence": "Despacho pelo OutboxDispatcher via ChannelDispatchService para upstream com transição de status para sent e gravação de provider_delivery_events."
+    },
+    {
+      "ac_id": "AC-CH12-006",
+      "result": "PASS",
+      "evidence": "Loop tardio de status (delivered -> read) processado pelo InboxProcessor atualizando monotonicamente status_rank de 20 para 30."
+    },
+    {
+      "ac_id": "AC-CH12-007",
+      "result": "PASS",
+      "evidence": "Rejeição cross-tenant bidirecional com HTTP 404 fail-closed e zero gravações de comandos outbox."
+    },
+    {
+      "ac_id": "AC-CH12-008",
+      "result": "PASS",
+      "evidence": "Barreira anti-SSRF perimétrica rejeita URLs proibidas com HTTP 400 antes de abrir qualquer conexão ou transação com o PostgreSQL."
+    }
+  ],
+  "provenance": {
+    "checkpoint_sha": "172aa078d039f712504f73623c2258bab6b93a0f",
+    "verification_mode": "working-tree",
+    "scoped_code_files": [
+      "apps/api/src/__tests__/messaging-e2e-lifecycle.test.ts",
+      "apps/api/src/__tests__/threads-and-channels.test.ts",
+      "apps/api/src/routes/channels.routes.ts",
+      "apps/api/src/routes/threads.routes.ts",
+      "packages/database/src/messaging.ts"
+    ],
+    "scoped_code_sha256": {
+      "apps/api/src/__tests__/messaging-e2e-lifecycle.test.ts": "0a5a1544332ecf06cf7123b0a6d574e92d5b05a78a26aa98deb2d6ae1456c8c4",
+      "apps/api/src/__tests__/threads-and-channels.test.ts": "8dca8a1afb231764ee504e5e44ff28f4ae9cc5eab22e058e9bc9afcb466b083a",
+      "apps/api/src/routes/channels.routes.ts": "bf5c4289568ffd7701211cd51946c5e6f69909c4702f00d5b16de01d46701854",
+      "apps/api/src/routes/threads.routes.ts": "eb84bb1528bdc14223db313fbfe42e527dabd4655bc8aec0dc013fd5abef5c82",
+      "packages/database/src/messaging.ts": "a272259206d2a7208abc783eac76eaea16e8226aea323abb32c1b10bb9720e83"
+    },
+    "scoped_composite_code_sha256": "77cc4e47c651c34cf7b13187f01eeee24b436282799831f4d6bf1829b26795cf"
+  },
+  "verification_commands": [
+    "pnpm vitest run apps/api/src/__tests__/messaging-e2e-lifecycle.test.ts",
+    "pnpm vitest run apps/api/src/__tests__/threads-and-channels.test.ts",
+    "pnpm test:db:run",
+    "pnpm turbo build typecheck lint",
+    "pnpm ci:gate"
+  ]
+}

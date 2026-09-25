@@ -89,10 +89,70 @@ export class NetworkError extends Error {
 }
 
 export interface RequestOptions {
+  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+  body?: unknown;
   signal?: AbortSignal;
   token?: string | null;
   workspaceId?: string | null;
   correlationId?: string;
+}
+
+export interface ChannelSummary {
+  id: string;
+  workspaceId: string;
+  provider: "meta_waba" | "waha" | "evolution" | "meta_messenger" | "meta_instagram";
+  displayName: string;
+  phoneNumberE164: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommercialThreadSummary {
+  id: string;
+  workspaceId: string;
+  channelInstanceId: string;
+  channelProvider: string;
+  channelName: string;
+  contactId: string;
+  contactPhone: string;
+  contactName: string | null;
+  status: "active" | "waiting_client" | "waiting_human" | "closed";
+  lastMessageAt: string;
+  lastMessage: {
+    body: string;
+    direction: "inbound" | "outbound";
+    createdAt: string;
+    deliveryStatus: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ThreadMessageSummary {
+  id: string;
+  workspaceId: string;
+  channelInstanceId: string;
+  threadId: string;
+  provider: string;
+  direction: "inbound" | "outbound";
+  senderE164: string;
+  recipientE164: string;
+  contentType: string;
+  body: string | null;
+  mediaUrl: string | null;
+  providerMessageId: string | null;
+  deliveryStatus: "queued" | "sent" | "delivered" | "read" | "failed";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SendOutboundMessagePayload {
+  recipientPhoneE164: string;
+  contentType: "text" | "image" | "audio" | "video" | "document" | "template";
+  body: string;
+  mediaUrl?: string;
+  idempotencyKey?: string;
 }
 
 export class ApiClient {
@@ -131,8 +191,9 @@ export class ApiClient {
     let response: Response;
     try {
       response = await fetch(url, {
-        method: "GET",
+        method: options.method || "GET",
         headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
         signal: options.signal,
       });
     } catch (err: unknown) {
@@ -192,6 +253,85 @@ export class ApiClient {
     return this.request<WorkspaceDetailsResponse>(`/v1/workspaces/${workspaceId}`, {
       ...options,
       workspaceId,
+    });
+  }
+
+  async getChannels(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ channels: ChannelSummary[]; total: number }> {
+    return this.request<{ channels: ChannelSummary[]; total: number }>(
+      `/v1/workspaces/${workspaceId}/channels`,
+      { ...options, workspaceId }
+    );
+  }
+
+  async getThreads(
+    workspaceId: string,
+    query?: { status?: string },
+    options?: RequestOptions
+  ): Promise<{ threads: CommercialThreadSummary[]; total: number }> {
+    const qs = query?.status ? `?status=${encodeURIComponent(query.status)}` : "";
+    return this.request<{ threads: CommercialThreadSummary[]; total: number }>(
+      `/v1/workspaces/${workspaceId}/threads${qs}`,
+      { ...options, workspaceId }
+    );
+  }
+
+  async getThreadMessages(
+    workspaceId: string,
+    threadId: string,
+    options?: RequestOptions
+  ): Promise<{ messages: ThreadMessageSummary[]; total: number }> {
+    return this.request<{ messages: ThreadMessageSummary[]; total: number }>(
+      `/v1/workspaces/${workspaceId}/threads/${threadId}/messages`,
+      { ...options, workspaceId }
+    );
+  }
+
+  async sendOutboundMessage(
+    workspaceId: string,
+    channelInstanceId: string,
+    payload: SendOutboundMessagePayload,
+    options?: RequestOptions
+  ): Promise<{
+    messageId: string;
+    outboundCommandId: string;
+    deliveryStatus: string;
+    idempotentReplay: boolean;
+  }> {
+    const idempotencyKey =
+      payload.idempotencyKey ||
+      `web-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+
+    return this.request(
+      `/v1/workspaces/${workspaceId}/channels/${channelInstanceId}/messages`,
+      {
+        ...options,
+        workspaceId,
+        method: "POST",
+        body: {
+          recipientPhoneE164: payload.recipientPhoneE164,
+          contentType: payload.contentType,
+          body: payload.body,
+          mediaUrl: payload.mediaUrl,
+          idempotencyKey,
+        },
+      }
+    );
+  }
+
+  async updateThreadStatus(
+    workspaceId: string,
+    threadId: string,
+    status: "active" | "waiting_client" | "waiting_human" | "closed",
+    options?: RequestOptions
+  ): Promise<{ thread: CommercialThreadSummary }> {
+    return this.request(`/v1/workspaces/${workspaceId}/threads/${threadId}`, {
+      ...options,
+      workspaceId,
+      method: "PATCH",
+      body: { status },
     });
   }
 }

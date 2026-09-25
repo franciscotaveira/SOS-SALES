@@ -14,6 +14,7 @@
     "test:db:bootstrap": "ALLOW_TEST_DB_ADMIN_OPERATIONS=true tsx scripts/test-db-runner.ts bootstrap",
     "test:db:dispose": "ALLOW_TEST_DB_ADMIN_OPERATIONS=true tsx scripts/test-db-runner.ts dispose",
     "test:db:run": "ALLOW_TEST_DB_ADMIN_OPERATIONS=true tsx scripts/test-db-runner.ts run",
+    "seed:local": "tsx scripts/seed-local-demo.ts",
     "test:docker:http": "node --env-file=.env scripts/verify-docker-http.mjs",
     "test:browser": "node scripts/verify-browser-qa.mjs",
     "typecheck": "turbo typecheck",

@@ -35,6 +35,7 @@
 | CH-09 | ACCEPTED | WAHA operacional | EV-CH09-001 validado; contido no Integration Checkpoint IC-01 (`9577e17`), com digest de escopo próprio e 110 asserções aprovadas |
 | CH-10 | ACCEPTED | Docker dual-engine | EV-CH10-001 validado; dual-engine operacional, ChannelDispatchService fail-closed, concorrência atômica FOR UPDATE com proteção contra regressão terminal, fencing estrito de expiração de lease com clock_timestamp(), contrato Truth in Data de IDs persistidos e 536 testes passando (35 suítes) |
 | CH-11 | ACCEPTED | Produtor transacional de outbound | EV-CH11-001 validado; persistência atômica { message + command + audit }, idempotência com payload_fingerprint exato (zero trim/NFKC em strings), identidade fail-closed sem fallback role, limitador distribuído dois níveis (IP e tenant-actor), trust boundary .strict(), replay com INNER JOIN e 571 testes passando (38 suítes) |
+| CH-12 | ACCEPTED | E2E técnico de mensageria e ciclo de vida omnichannel | EV-CH12-001 validado; ciclo fechado webhook -> inbox -> worker -> thread -> API outbound -> outbox -> worker dispatch -> delivery events -> status ACK (delivered -> read), cross-tenant rejection e SSRF guard aprovados; 584 testes passando (40 suítes) |
 
 ## Estado por macrofase
 
@@ -47,8 +48,8 @@
 | Iteração 2.6 — Hardening | ACCEPTED | EV-IT26-001; commit `a4d9cf1` auditado com biblioteca jose e trigger imutável |
 | Iteração 2.7 — Runner | ACCEPTED | EV-IT27-001; commit `a41e1ab` revalidado com 90 testes em DB hermético |
 | Iteração 3 — Design/AppShell | ACCEPTED | EV-IT03-001; commit `0605dff` revalidado com @sos-sales/ui e web app |
-| Iteração 4 — Canais | IN_PROGRESS | commit `d4de6ca` isolado; saneamento ativo na esteira CH-00..CH-12 (CH-00..CH-11 ACCEPTED) |
-| CRM Core | PLANNED | não iniciar antes de CH-12 |
+| Iteração 4 — Canais | ACCEPTED | Saneamento e implementação da esteira CH-00..CH-12 100% concluídos e auditados sob EV-CH12-001 (584 testes) |
+| CRM Core | READY | Desbloqueado com a conclusão de CH-12 |
 | Cockpit real | PLANNED | UI atual é fundação, não operação real |
 | Meta/CAPI | PLANNED | sem loop fechado comprovado |
 | IA supervisionada | PLANNED | sem ativação V3 |

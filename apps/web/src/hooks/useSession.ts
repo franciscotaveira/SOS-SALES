@@ -25,6 +25,7 @@ export interface SessionError {
 }
 
 export interface UseSessionReturn {
+  token: string | null;
   user: MeUser | null;
   workspaces: WorkspaceSummary[];
   activeWorkspaceId: string | null;
@@ -349,6 +350,7 @@ export function useSession(token: string | null): UseSessionReturn {
     workspaces.find((w) => w.id === activeWorkspaceId) || null;
 
   return {
+    token,
     user,
     workspaces,
     activeWorkspaceId,
