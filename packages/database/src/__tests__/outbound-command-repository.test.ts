@@ -3,8 +3,7 @@ import crypto from "node:crypto";
 import {
   createTestDatabasePools,
   withWorkerTransaction,
-  acquireOutboxTestLock,
-  type OutboxTestLock,
+  resetTestQueueState,
 } from "../index";
 import {
   OutboundCommandRepository,
@@ -17,7 +16,6 @@ describe("OutboundCommandRepository (CH-10)", () => {
   const { ownerPool, workerPool } = createTestDatabasePools();
   const repo = new OutboundCommandRepository(workerPool);
 
-  let outboxLock: OutboxTestLock;
   let orgId: string;
   let workspaceId: string;
   let channelInstanceId: string;
@@ -26,8 +24,8 @@ describe("OutboundCommandRepository (CH-10)", () => {
   let messageId: string;
 
   beforeAll(async () => {
-    // 0. Acquire exclusive global queue test lock and clean queue
-    outboxLock = await acquireOutboxTestLock(ownerPool);
+    // 0. Reset operational queues
+    await resetTestQueueState(ownerPool);
 
     // 1. Provision Workspace
     const orgRes = await ownerPool.query(`
@@ -92,7 +90,7 @@ describe("OutboundCommandRepository (CH-10)", () => {
   afterAll(async () => {
     await ownerPool.query("DELETE FROM workspaces WHERE id = $1;", [workspaceId]);
     await ownerPool.query("DELETE FROM organizations WHERE id = $1;", [orgId]);
-    await outboxLock.release();
+    await resetTestQueueState(ownerPool);
     await ownerPool.end();
     await workerPool.end();
   });

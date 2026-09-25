@@ -4,6 +4,7 @@ import {
   createTestDatabasePools,
   encryptPayload,
   DatabaseSigningSecretResolver,
+  resetTestQueueState,
 } from "@sos-sales/database";
 import {
   ChannelAdapterRegistry,
@@ -26,19 +27,22 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
   let baseThreadId: string;
 
   beforeAll(async () => {
+    // 0. Reset operational queues
+    await resetTestQueueState(ownerPool);
+
     // 1. Provision Organization and Workspace using ownerPool
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
       VALUES ('Worker Test Org', $1)
       RETURNING id;
-    `, [`org-worker-${Date.now()}`]);
+    `, [`org-worker-${crypto.randomUUID()}`]);
     const orgId = orgRes.rows[0].id;
 
     const wsRes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
       VALUES ($1, 'Worker Workspace', $2)
       RETURNING id;
-    `, [orgId, `ws-worker-${Date.now()}`]);
+    `, [orgId, `ws-worker-${crypto.randomUUID()}`]);
     workspaceId = wsRes.rows[0].id;
 
     // 2. Provision Encrypted Credential for Meta WABA
@@ -66,7 +70,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
         $1, 'meta_waba', 'Worker Test Line', '+5511999991111',
         $2, $3, true
       ) RETURNING id;
-    `, [workspaceId, crypto.createHash("sha256").update(`token-${Date.now()}`).digest("hex"), credentialId]);
+    `, [workspaceId, crypto.createHash("sha256").update(`token-${crypto.randomUUID()}`).digest("hex"), credentialId]);
     channelInstanceId = chanRes.rows[0].id;
 
     // 4. Provision Base Contact and Commercial Thread
@@ -88,6 +92,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
   });
 
   afterAll(async () => {
+    await resetTestQueueState(ownerPool);
     await workerPool.end();
     await ownerPool.end();
   });
@@ -120,7 +125,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
                   messages: [
                     {
                       from: "5511988887777",
-                      id: `wamid.TEST_INBOUND_${Date.now()}`,
+                      id: `wamid.TEST_INBOUND_${crypto.randomUUID()}`,
                       timestamp: "1711234567",
                       type: "text",
                       text: { body: "Olá, tenho interesse no produto!" },
@@ -148,7 +153,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
       `, [
         channelInstanceId,
         workspaceId,
-        `event-key-${Date.now()}`,
+        `event-key-${crypto.randomUUID()}`,
         rawHash,
         encrypted.encryptedBase64,
         encrypted.ivBase64,
@@ -215,7 +220,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
       `, [
         channelInstanceId,
         workspaceId,
-        `expired-lease-${Date.now()}`,
+        `expired-lease-${crypto.randomUUID()}`,
         rawHash,
         encrypted.encryptedBase64,
         encrypted.ivBase64,
@@ -261,7 +266,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
       `, [
         channelInstanceId,
         workspaceId,
-        `fencing-test-${Date.now()}`,
+        `fencing-test-${crypto.randomUUID()}`,
         rawHash,
         encrypted.encryptedBase64,
         encrypted.ivBase64,
@@ -307,7 +312,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
 
     it("should reconcile delivery status arriving before the message itself", async () => {
       const processor = new InboxProcessor({ masterKeyHex: testMasterKey });
-      const externalMessageId = `wamid.PRE_DELIVERY_${Date.now()}`;
+      const externalMessageId = `wamid.PRE_DELIVERY_${crypto.randomUUID()}`;
 
       // 1. Delivery webhook arrives first
       const deliveredWebhook = {
@@ -352,7 +357,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
       `, [
         channelInstanceId,
         workspaceId,
-        `pre-delivery-${Date.now()}`,
+        `pre-delivery-${crypto.randomUUID()}`,
         delHash,
         delEncrypted.encryptedBase64,
         delEncrypted.ivBase64,
@@ -378,6 +383,10 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
   });
 
   describe("OutboxDispatcher under real sos_worker_user role", () => {
+    beforeAll(async () => {
+      await resetTestQueueState(ownerPool);
+    });
+
     it("should strictly update ONLY the exact message_id referenced by the command, leaving other queued thread messages untouched", async () => {
       const dispatcher = new OutboxDispatcher();
       const registry = new ChannelAdapterRegistry();
@@ -446,7 +455,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
           $1, $2, $3, $4,
           '+5511999998888', 'Message 1 to be sent', $5, 'pending'
         ) RETURNING id;
-      `, [workspaceId, channelInstanceId, threadId, message1Id, `idemp-${Date.now()}`]);
+      `, [workspaceId, channelInstanceId, threadId, message1Id, `idemp-${crypto.randomUUID()}`]);
       const commandId = outboxRes.rows[0].id;
 
       // 4. Claim and dispatch with workerPool
@@ -505,7 +514,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
           workspace_id, channel_instance_id, message_id, recipient_e164, body, idempotency_key, status
         ) VALUES ($1, $2, $3, '+5511999995555', 'Ambiguous test', $4, 'pending')
         RETURNING id;
-      `, [workspaceId, channelInstanceId, messageId, `timeout-${Date.now()}`]);
+      `, [workspaceId, channelInstanceId, messageId, `timeout-${crypto.randomUUID()}`]);
       const commandId = outboxRes.rows[0].id;
 
       const claimed = await dispatcher.claimBatch(workerPool, "worker-outbox-1", 10);
@@ -564,6 +573,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
       const messageId = msgRes.rows[0].id;
 
       const oldLeaseToken = crypto.randomUUID();
+      const fencingKey = `fencing-outbox-${crypto.randomUUID()}`;
       const outboxRes = await ownerPool.query(`
         INSERT INTO outbound_commands (
           workspace_id, channel_instance_id, message_id, recipient_e164, body, idempotency_key,
@@ -572,7 +582,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
           $1, $2, $3, '+5511999996666', 'Fencing outbox test', $4,
           'processing', 'worker-old', $5, clock_timestamp() + INTERVAL '30 seconds'
         ) RETURNING id;
-      `, [workspaceId, channelInstanceId, messageId, `fencing-outbox-${Date.now()}`, oldLeaseToken]);
+      `, [workspaceId, channelInstanceId, messageId, fencingKey, oldLeaseToken]);
       const commandId = outboxRes.rows[0].id;
 
       // Simulate fencing update (e.g. lease recovered by worker-new)
@@ -591,7 +601,7 @@ describe("Transactional Inbox Processor & Outbox Dispatcher Integration Tests", 
         recipient_e164: "+5511999996666",
         body: "Fencing outbox test",
         media_url: null,
-        idempotency_key: `fencing-outbox-${Date.now()}`,
+        idempotency_key: fencingKey,
         retry_count: 1,
         max_retries: 5,
         lease_token: oldLeaseToken,

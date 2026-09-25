@@ -4,6 +4,7 @@ import {
   createTestDatabasePools,
   encryptPayload,
   decryptPayload,
+  resetTestQueueState,
   type Keyring,
 } from "@sos-sales/database";
 import { InboxProcessor } from "../processors/inbox-processor";
@@ -13,27 +14,33 @@ describe("CH-06: Keyring E2E & Zero-Downtime Key Rotation", () => {
 
   const keyV1 = "1111111111111111111111111111111111111111111111111111111111111111";
   const keyV2 = "2222222222222222222222222222222222222222222222222222222222222222";
-  const endpointToken = "endpoint_token_keyring_rotation_test";
+  const endpointToken = `endpoint_token_keyring_rotation_${crypto.randomUUID()}`;
+  const msgIdV1 = `wamid.keyring.v1.test.${crypto.randomUUID()}`;
+  const msgIdV2 = `wamid.keyring.v2.test.${crypto.randomUUID()}`;
 
   const endpointTokenHash = crypto
     .createHash("sha256")
     .update(endpointToken)
     .digest("hex");
 
+  let orgId: string;
   let workspaceId: string;
   let channelInstanceId: string;
 
   beforeAll(async () => {
+    // 0. Reset operational queues
+    await resetTestQueueState(ownerPool);
+
     // 1. Provision Workspace
     const orgRes = await ownerPool.query(
       `INSERT INTO organizations (name, slug) VALUES ('Keyring Org', $1) RETURNING id;`,
-      [`org-keyring-${Date.now()}`]
+      [`org-keyring-${crypto.randomUUID()}`]
     );
-    const orgId = orgRes.rows[0].id;
+    orgId = orgRes.rows[0].id;
 
     const wsRes = await ownerPool.query(
       `INSERT INTO workspaces (organization_id, name, slug) VALUES ($1, 'Keyring Workspace', $2) RETURNING id;`,
-      [orgId, `ws-keyring-${Date.now()}`]
+      [orgId, `ws-keyring-${crypto.randomUUID()}`]
     );
     workspaceId = wsRes.rows[0].id;
 
@@ -68,6 +75,12 @@ describe("CH-06: Keyring E2E & Zero-Downtime Key Rotation", () => {
   });
 
   afterAll(async () => {
+    await resetTestQueueState(ownerPool);
+    try {
+      if (orgId) {
+        await ownerPool.query("DELETE FROM organizations WHERE id = $1;", [orgId]);
+      }
+    } catch {}
     await ownerPool.end();
     await workerPool.end();
   });
@@ -86,7 +99,7 @@ describe("CH-06: Keyring E2E & Zero-Downtime Key Rotation", () => {
                 messages: [
                   {
                     from: "5511988880001",
-                    id: "wamid.keyring.v1.test.001",
+                    id: msgIdV1,
                     timestamp: "1726700000",
                     type: "text",
                     text: { body: "Hello under Key Version 1" },
@@ -114,7 +127,7 @@ describe("CH-06: Keyring E2E & Zero-Downtime Key Rotation", () => {
       [
         channelInstanceId,
         workspaceId,
-        `event-v1-${Date.now()}`,
+        `event-v1-${crypto.randomUUID()}`,
         rawPayloadHash,
         encV1.encryptedBase64,
         encV1.ivBase64,
@@ -152,7 +165,7 @@ describe("CH-06: Keyring E2E & Zero-Downtime Key Rotation", () => {
                 messages: [
                   {
                     from: "5511988880002",
-                    id: "wamid.keyring.v2.test.002",
+                    id: msgIdV2,
                     timestamp: "1726700010",
                     type: "text",
                     text: { body: "Hello under Key Version 2 after rotation" },
@@ -180,7 +193,7 @@ describe("CH-06: Keyring E2E & Zero-Downtime Key Rotation", () => {
       [
         channelInstanceId,
         workspaceId,
-        `event-v2-${Date.now()}`,
+        `event-v2-${crypto.randomUUID()}`,
         rawPayloadHashV2,
         encV2.encryptedBase64,
         encV2.ivBase64,
@@ -243,7 +256,8 @@ describe("CH-06: Keyring E2E & Zero-Downtime Key Rotation", () => {
     // Verify messages created in messages table for both v1 and v2
     const msgRes = await ownerPool.query(
       `SELECT provider_message_id, body FROM public.messages
-       WHERE provider_message_id IN ('wamid.keyring.v1.test.001', 'wamid.keyring.v2.test.002');`
+       WHERE workspace_id = $1 AND provider_message_id IN ($2, $3);`,
+      [workspaceId, msgIdV1, msgIdV2]
     );
     expect(msgRes.rows.length).toBe(2);
     const bodies = msgRes.rows.map((r) => r.body);
@@ -267,7 +281,7 @@ describe("CH-06: Keyring E2E & Zero-Downtime Key Rotation", () => {
       [
         channelInstanceId,
         workspaceId,
-        `sha256:fake_${Date.now()}`,
+        `sha256:fake_${crypto.randomUUID()}`,
         fakeHash,
         encFake.encryptedBase64,
         encFake.ivBase64,

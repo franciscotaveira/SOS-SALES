@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import {
   createTestDatabasePools,
   encryptPayload,
+  resetTestQueueState,
 } from "@sos-sales/database";
 import { InboxProcessor } from "../processors/inbox-processor";
 import { OutboxDispatcher } from "../processors/outbox-dispatcher";
@@ -17,19 +18,22 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
   let credentialId: string;
 
   beforeAll(async () => {
+    // 0. Reset operational queues
+    await resetTestQueueState(ownerPool);
+
     // 1. Provision Organization and Workspace
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
       VALUES ('Reconciliation Test Org', $1)
       RETURNING id;
-    `, [`org-recon-${Date.now()}`]);
+    `, [`org-recon-${crypto.randomUUID()}`]);
     const orgId = orgRes.rows[0].id;
 
     const wsRes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
       VALUES ($1, 'Reconciliation Workspace', $2)
       RETURNING id;
-    `, [orgId, `ws-recon-${Date.now()}`]);
+    `, [orgId, `ws-recon-${crypto.randomUUID()}`]);
     workspaceId = wsRes.rows[0].id;
 
     // 2. Encrypted Credential
@@ -57,20 +61,18 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
         $1, 'meta_waba', 'Recon Test Line', '+5511999990000',
         $2, $3, true
       ) RETURNING id;
-    `, [workspaceId, crypto.createHash("sha256").update(`token-recon-${Date.now()}`).digest("hex"), credentialId]);
+    `, [workspaceId, crypto.createHash("sha256").update(`token-recon-${crypto.randomUUID()}`).digest("hex"), credentialId]);
     channelInstanceId = chanRes.rows[0].id;
   });
 
   afterAll(async () => {
+    await resetTestQueueState(ownerPool);
     await workerPool.end();
     await ownerPool.end();
   });
 
   beforeEach(async () => {
-    // Clean queue tables strictly for this workspace to avoid interfering with concurrent test suites
-    await ownerPool.query("DELETE FROM outbound_commands WHERE workspace_id = $1;", [workspaceId]);
-    await ownerPool.query("DELETE FROM channel_webhook_inbox WHERE workspace_id = $1;", [workspaceId]);
-    await ownerPool.query("DELETE FROM provider_delivery_events WHERE workspace_id = $1;", [workspaceId]);
+    await resetTestQueueState(ownerPool);
     await ownerPool.query("DELETE FROM messages WHERE workspace_id = $1;", [workspaceId]);
   });
 
@@ -123,7 +125,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       const processor = new InboxProcessor({ masterKeyHex: testMasterKey });
       const phone = "+5511999991001";
       const threadId = await createThreadForPhone(phone);
-      const externalId = `wamid.RECON_KNOWN_${Date.now()}`;
+      const externalId = `wamid.RECON_KNOWN_${crypto.randomUUID()}`;
 
       // 1. Create message with known provider_message_id and queued status
       const msgRes = await ownerPool.query(`
@@ -146,7 +148,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
           $1, $2, $3, $4, $5,
           'Known ID Recon', $6, 'reconciliation_required', $7, 1, 3
         ) RETURNING id;
-      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-idemp-${Date.now()}`, externalId]);
+      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-idemp-${crypto.randomUUID()}`, externalId]);
       const cmdId = cmdRes.rows[0].id;
 
       // 3. Inbound delivery webhook arrives reporting "delivered"
@@ -173,7 +175,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
         }],
       };
 
-      const inboxId = await enqueueDeliveryWebhook(webhookPayload, `late-delivered-${Date.now()}`);
+      const inboxId = await enqueueDeliveryWebhook(webhookPayload, `late-delivered-${crypto.randomUUID()}`);
 
       // 4. Worker claims and processes the webhook item
       const claimed = await processor.claimBatch(workerPool, "worker-recon-1", 10);
@@ -212,7 +214,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       const processor = new InboxProcessor({ masterKeyHex: testMasterKey });
       const phone = "+5511999991002";
       const threadId = await createThreadForPhone(phone);
-      const lateExternalId = `wamid.RECON_CORRELATED_${Date.now()}`;
+      const lateExternalId = `wamid.RECON_CORRELATED_${crypto.randomUUID()}`;
 
       // 1. Message with NULL provider_message_id
       const msgRes = await ownerPool.query(`
@@ -235,7 +237,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
           $1, $2, $3, $4, $5,
           'Correlated Recon', $6, 'reconciliation_required', NULL, 1, 3, clock_timestamp()
         ) RETURNING id;
-      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-corr-${Date.now()}`]);
+      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-corr-${crypto.randomUUID()}`]);
       const cmdId = cmdRes.rows[0].id;
 
       // 3. Inbound webhook arrives with provider ID and recipient phone
@@ -262,7 +264,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
         }],
       };
 
-      const inboxId = await enqueueDeliveryWebhook(webhookPayload, `corr-sent-${Date.now()}`);
+      const inboxId = await enqueueDeliveryWebhook(webhookPayload, `corr-sent-${crypto.randomUUID()}`);
 
       // 4. Process webhook
       const claimed = await processor.claimBatch(workerPool, "worker-recon-2", 10);
@@ -294,7 +296,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       const processor = new InboxProcessor({ masterKeyHex: testMasterKey });
       const phone = "+5511999991003";
       const threadId = await createThreadForPhone(phone);
-      const failExternalId = `wamid.RECON_FAIL_${Date.now()}`;
+      const failExternalId = `wamid.RECON_FAIL_${crypto.randomUUID()}`;
 
       // 1. Message and command in reconciliation_required
       const msgRes = await ownerPool.query(`
@@ -316,7 +318,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
           $1, $2, $3, $4, $5,
           'Failing Recon', $6, 'reconciliation_required', $7, 1, 3
         ) RETURNING id;
-      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-fail-${Date.now()}`, failExternalId]);
+      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-fail-${crypto.randomUUID()}`, failExternalId]);
       const cmdId = cmdRes.rows[0].id;
 
       // 2. Inbound webhook reports failure
@@ -344,7 +346,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
         }],
       };
 
-      const inboxId = await enqueueDeliveryWebhook(webhookPayload, `late-failed-${Date.now()}`);
+      const inboxId = await enqueueDeliveryWebhook(webhookPayload, `late-failed-${crypto.randomUUID()}`);
 
       // 3. Process webhook
       const claimed = await processor.claimBatch(workerPool, "worker-recon-3", 10);
@@ -376,7 +378,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       const dispatcher = new OutboxDispatcher();
       const phone = "+5511999991004";
       const threadId = await createThreadForPhone(phone);
-      const eventExternalId = `wamid.RECON_EVENT_${Date.now()}`;
+      const eventExternalId = `wamid.RECON_EVENT_${crypto.randomUUID()}`;
 
       // 1. Message and command
       const msgRes = await ownerPool.query(`
@@ -398,7 +400,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
           $1, $2, $3, $4, $5,
           'Event Recovery', $6, 'reconciliation_required', $7, 1, 3, NULL
         ) RETURNING id;
-      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-event-${Date.now()}`, eventExternalId]);
+      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-event-${crypto.randomUUID()}`, eventExternalId]);
       const cmdId = cmdRes.rows[0].id;
 
       // 2. Pre-existing delivery event
@@ -421,7 +423,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
         channelInstanceId,
         msgId,
         eventExternalId,
-        `evt-${Date.now()}`,
+        `evt-${crypto.randomUUID()}`,
         phone,
         eventHash,
         eventEnc.encryptedBase64,
@@ -469,7 +471,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
           'Grace Period', $6, 'reconciliation_required',
           0, 3, NULL, clock_timestamp() - INTERVAL '5 seconds'
         ) RETURNING id;
-      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-grace-${Date.now()}`]);
+      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-grace-${crypto.randomUUID()}`]);
       const cmdId = cmdRes.rows[0].id;
 
       // 2. Reconcile with 60s TTL
@@ -510,7 +512,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
           'Retry Reschedule', $6, 'reconciliation_required',
           0, 3, NULL, clock_timestamp() - INTERVAL '70 seconds'
         ) RETURNING id;
-      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-resched-${Date.now()}`]);
+      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-resched-${crypto.randomUUID()}`]);
       const cmdId = cmdRes.rows[0].id;
 
       // 2. Reconcile with 60s TTL: without evidence, MUST NOT auto-retry!
@@ -543,7 +545,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       `, [workspaceId, channelInstanceId, threadId, phone]);
       const msgId = msgRes.rows[0].id;
 
-      const extMsgId = `ext-${Date.now()}`;
+      const extMsgId = `ext-${crypto.randomUUID()}`;
       const cmdRes = await ownerPool.query(`
         INSERT INTO outbound_commands (
           workspace_id, channel_instance_id, thread_id, message_id, recipient_e164,
@@ -553,7 +555,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
           'Max Retries Dead Letter', $6, 'reconciliation_required',
           3, 3, NULL, $7, clock_timestamp() - INTERVAL '70 seconds'
         ) RETURNING id;
-      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-exhaust-${Date.now()}`, extMsgId]);
+      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-exhaust-${crypto.randomUUID()}`, extMsgId]);
       const cmdId = cmdRes.rows[0].id;
 
       // Insert definitive negative delivery confirmation in provider_delivery_events
@@ -607,7 +609,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
       `, [workspaceId, channelInstanceId, threadId, phone]);
       const msgId = msgRes.rows[0].id;
 
-      const runtimeExtId = `wamid.runtime-${Date.now()}`;
+      const runtimeExtId = `wamid.runtime-${crypto.randomUUID()}`;
       await ownerPool.query(`
         INSERT INTO outbound_commands (
           workspace_id, channel_instance_id, thread_id, message_id, recipient_e164,
@@ -617,7 +619,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
           'Runtime Recon', $6, 'reconciliation_required',
           3, 3, NULL, $7, clock_timestamp() - INTERVAL '100 seconds'
         );
-      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-runtime-${Date.now()}`, runtimeExtId]);
+      `, [workspaceId, channelInstanceId, threadId, msgId, phone, `cmd-runtime-${crypto.randomUUID()}`, runtimeExtId]);
 
       // Insert positive delivery event confirming external delivery
       await ownerPool.query(`
@@ -630,7 +632,7 @@ describe("Worker Reconciliation & Provider Resilience (CH-03)", () => {
           $5, $6, 'meta_waba', 'delivered',
           '${"a".repeat(64)}', 'dummy-enc', 'dummy-iv', 'dummy-tag', clock_timestamp()
         );
-      `, [workspaceId, channelInstanceId, msgId, runtimeExtId, `evt-runtime-${Date.now()}`, phone]);
+      `, [workspaceId, channelInstanceId, msgId, runtimeExtId, `evt-runtime-${crypto.randomUUID()}`, phone]);
 
       const runtime = new WorkerRuntime({
         workerId: "test-reconciliation-runtime",

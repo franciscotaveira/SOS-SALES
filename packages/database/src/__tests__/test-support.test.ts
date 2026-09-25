@@ -15,7 +15,7 @@ import {
   generateTestRunDatabaseName,
   TEST_DB_DEFAULT,
   TEST_PORT_DEFAULT,
-  acquireOutboxTestLock,
+  resetTestQueueState,
 } from "../test-support";
 import { Pool } from "pg";
 
@@ -278,7 +278,7 @@ describe("TAREFA A: Isolamento Estrito do Banco de Testes e Runner Seguro (R01 â
 
       const ownerRunId = "run_owner_alpha";
       const foreignRunId = "run_foreign_beta";
-      const dbName = "sos_sales_v3_test_run_recreate_check";
+      const dbName = generateTestRunDatabaseName("sos_sales_v3_test").dbName;
 
       try {
         // 1. Initial bootstrap with owner runId
@@ -545,20 +545,25 @@ describe("TAREFA A: Isolamento Estrito do Banco de Testes e Runner Seguro (R01 â
     });
   });
 
-  describe("Outbox Test Lock Isolation (acquireOutboxTestLock)", () => {
-    it("should acquire exclusive advisory lock and release cleanly", async () => {
+  describe("Queue State Reset (resetTestQueueState)", () => {
+    it("should deterministically reset all shared operational queues and release client immediately", async () => {
       const { ownerPool } = createTestDatabasePools();
       try {
-        const lock1 = await acquireOutboxTestLock(ownerPool);
-        expect(lock1).toBeDefined();
+        // 1. Reset initial state
+        await resetTestQueueState(ownerPool);
 
-        // Release lock
-        await lock1.release();
+        // 2. Verify all queue tables are empty
+        const inboxCount = await ownerPool.query("SELECT count(*)::int as c FROM public.channel_webhook_inbox;");
+        const outboxCount = await ownerPool.query("SELECT count(*)::int as c FROM public.outbound_commands;");
+        const eventsCount = await ownerPool.query("SELECT count(*)::int as c FROM public.provider_delivery_events;");
 
-        // Should be able to acquire again immediately
-        const lock2 = await acquireOutboxTestLock(ownerPool);
-        expect(lock2).toBeDefined();
-        await lock2.release();
+        expect(inboxCount.rows[0].c).toBe(0);
+        expect(outboxCount.rows[0].c).toBe(0);
+        expect(eventsCount.rows[0].c).toBe(0);
+
+        // 3. Verify multiple consecutive resets execute cleanly without holding locks or connections
+        await resetTestQueueState(ownerPool);
+        await resetTestQueueState(ownerPool);
       } finally {
         await ownerPool.end();
       }

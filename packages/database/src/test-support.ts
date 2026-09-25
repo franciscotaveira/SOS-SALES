@@ -876,38 +876,35 @@ export async function executeTestRunnerSession(
   };
 }
 
-export const GLOBAL_OUTBOX_TEST_LOCK_ID = 88888801;
-
-export interface OutboxTestLock {
-  client: PoolClient;
-  release: () => Promise<void>;
-}
-
 /**
- * Provides deterministic queue isolation for integration test suites
- * that exercise the global public.outbound_commands queue.
+ * Safely and deterministically resets all shared operational queues and delivery events:
+ * 1. public.provider_delivery_events
+ * 2. public.outbound_commands
+ * 3. public.channel_webhook_inbox
  *
- * Uses a PostgreSQL session-level advisory lock to serialize consumers
- * of the global queue across test suites, cleans stale/leftover records
- * on acquisition, and cleans records on release.
+ * Runs inside a single transaction using the provided ownerPool (sos_migration_owner).
+ * Releases the client connection immediately upon completion.
+ * Fails closed if the operation cannot be completed.
  */
-export async function acquireOutboxTestLock(ownerPool: Pool): Promise<OutboxTestLock> {
+export async function resetTestQueueState(ownerPool: Pool): Promise<void> {
   const client = await ownerPool.connect();
-  await client.query("SELECT pg_advisory_lock($1);", [GLOBAL_OUTBOX_TEST_LOCK_ID]);
-  await client.query("DELETE FROM public.outbound_commands;");
-
-  let released = false;
-  return {
-    client,
-    release: async () => {
-      if (released) return;
-      released = true;
-      try {
-        await client.query("DELETE FROM public.outbound_commands;");
-        await client.query("SELECT pg_advisory_unlock($1);", [GLOBAL_OUTBOX_TEST_LOCK_ID]);
-      } finally {
-        client.release();
-      }
-    },
-  };
+  try {
+    await client.query("BEGIN;");
+    await client.query("DELETE FROM public.provider_delivery_events;");
+    await client.query("DELETE FROM public.outbound_commands;");
+    await client.query("DELETE FROM public.channel_webhook_inbox;");
+    await client.query("COMMIT;");
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK;");
+    } catch {
+      // rollback error suppressed to rethrow original error
+    }
+    throw new Error(
+      `FATAL_QUEUE_RESET_FAILED: Failed to reset test queue state: ${err instanceof Error ? err.message : String(err)}`
+    );
+  } finally {
+    client.release();
+  }
 }
+

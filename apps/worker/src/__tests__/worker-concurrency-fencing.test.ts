@@ -4,8 +4,7 @@ import {
   createTestDatabasePools,
   encryptPayload,
   DatabaseSigningSecretResolver,
-  acquireOutboxTestLock,
-  type OutboxTestLock,
+  resetTestQueueState,
 } from "@sos-sales/database";
 import {
   ChannelAdapterRegistry,
@@ -20,7 +19,6 @@ describe("CH-02 — Multi-Worker Concurrency, Distributed Lease, Heartbeat & Fen
   const { ownerPool, workerPool } = createTestDatabasePools();
   const testMasterKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-  let outboxLock: OutboxTestLock;
   let orgId: string;
   let workspaceId: string;
   let channelInstanceId: string;
@@ -29,22 +27,22 @@ describe("CH-02 — Multi-Worker Concurrency, Distributed Lease, Heartbeat & Fen
   let threadId: string;
 
   beforeAll(async () => {
-    // 0. Acquire exclusive global queue test lock
-    outboxLock = await acquireOutboxTestLock(ownerPool);
+    // 0. Reset operational queues
+    await resetTestQueueState(ownerPool);
 
     // 1. Provision Organization and Workspace
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
       VALUES ('Concurrency Test Org', $1)
       RETURNING id;
-    `, [`org-conc-${Date.now()}`]);
+    `, [`org-conc-${crypto.randomUUID()}`]);
     orgId = orgRes.rows[0].id;
 
     const wsRes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
       VALUES ($1, 'Concurrency Workspace', $2)
       RETURNING id;
-    `, [orgId, `ws-conc-${Date.now()}`]);
+    `, [orgId, `ws-conc-${crypto.randomUUID()}`]);
     workspaceId = wsRes.rows[0].id;
 
     // 2. Provision Encrypted Credential
@@ -72,7 +70,7 @@ describe("CH-02 — Multi-Worker Concurrency, Distributed Lease, Heartbeat & Fen
         $1, 'meta_waba', 'Concurrency Test Line', '+5511999993333',
         $2, $3, true
       ) RETURNING id;
-    `, [workspaceId, crypto.createHash("sha256").update(`token-conc-${Date.now()}`).digest("hex"), credentialId]);
+    `, [workspaceId, crypto.createHash("sha256").update(`token-conc-${crypto.randomUUID()}`).digest("hex"), credentialId]);
     channelInstanceId = chanRes.rows[0].id;
 
     // 4. Provision Contact & Thread
@@ -94,7 +92,7 @@ describe("CH-02 — Multi-Worker Concurrency, Distributed Lease, Heartbeat & Fen
   });
 
   afterAll(async () => {
-    await outboxLock.release();
+    await resetTestQueueState(ownerPool);
     await workerPool.end();
     await ownerPool.end();
   });

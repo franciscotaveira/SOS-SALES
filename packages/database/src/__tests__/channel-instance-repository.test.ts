@@ -34,21 +34,21 @@ describe("ChannelInstanceRepository: Fail-Closed Ingress & Anti-Enumeration (CH-
       INSERT INTO organizations (name, slug)
       VALUES ('Channel Repo Org', $1)
       RETURNING id;
-    `, [`org-channel-repo-${Date.now()}`]);
+    `, [`org-channel-repo-${crypto.randomUUID()}`]);
     orgId = orgRes.rows[0].id;
 
     const wsAlphaRes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
       VALUES ($1, 'Workspace Alpha', $2)
       RETURNING id;
-    `, [orgId, `ws-alpha-${Date.now()}`]);
+    `, [orgId, `ws-alpha-${crypto.randomUUID()}`]);
     workspaceAlphaId = wsAlphaRes.rows[0].id;
 
     const wsBetaRes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
       VALUES ($1, 'Workspace Beta', $2)
       RETURNING id;
-    `, [orgId, `ws-beta-${Date.now()}`]);
+    `, [orgId, `ws-beta-${crypto.randomUUID()}`]);
     workspaceBetaId = wsBetaRes.rows[0].id;
 
     // 2. Provision credentials
@@ -70,6 +70,11 @@ describe("ChannelInstanceRepository: Fail-Closed Ingress & Anti-Enumeration (CH-
   });
 
   afterAll(async () => {
+    try {
+      if (orgId) {
+        await ownerPool.query("DELETE FROM organizations WHERE id = $1;", [orgId]);
+      }
+    } catch {}
     await ownerPool.end();
     await appPool.end();
     await ingressPool.end();
@@ -161,7 +166,7 @@ describe("ChannelInstanceRepository: Fail-Closed Ingress & Anti-Enumeration (CH-
     });
 
     it("should accept valid endpointToken and automatically compute 64-char lowercase SHA-256 hash", async () => {
-      const raw = "test_raw_token_" + Date.now();
+      const raw = "test_raw_token_" + crypto.randomUUID();
       const expectedHash = crypto.createHash("sha256").update(raw).digest("hex");
 
       const created = await repository.create({
@@ -176,7 +181,7 @@ describe("ChannelInstanceRepository: Fail-Closed Ingress & Anti-Enumeration (CH-
     });
 
     it("should accept valid pre-hashed 64-char lowercase endpointTokenHash directly", async () => {
-      const raw = "pre_hashed_input_" + Date.now();
+      const raw = "pre_hashed_input_" + crypto.randomUUID();
       const directHash = crypto.createHash("sha256").update(raw).digest("hex");
 
       const created = await repository.create({
@@ -194,8 +199,8 @@ describe("ChannelInstanceRepository: Fail-Closed Ingress & Anti-Enumeration (CH-
   describe("3. Multi-Line Support: Multiple Active Instances of Same Provider in Single Workspace", () => {
     let wahaLine1Id: string;
     let wahaLine2Id: string;
-    const token1 = "raw_token_line_1_" + Date.now();
-    const token2 = "raw_token_line_2_" + Date.now();
+    const token1 = "raw_token_line_1_" + crypto.randomUUID();
+    const token2 = "raw_token_line_2_" + crypto.randomUUID();
 
     it("should allow creating two distinct active WAHA lines in Workspace Alpha without constraint violation", async () => {
       const line1 = await repository.create({
@@ -255,7 +260,7 @@ describe("ChannelInstanceRepository: Fail-Closed Ingress & Anti-Enumeration (CH-
 
   describe("4. Cross-Tenant Isolation & Anti-Enumeration Guarantees", () => {
     let betaLineId: string;
-    const betaToken = "beta_token_secret_" + Date.now();
+    const betaToken = "beta_token_secret_" + crypto.randomUUID();
 
     beforeAll(async () => {
       const betaLine = await repository.create({
@@ -325,8 +330,8 @@ describe("ChannelInstanceRepository: Fail-Closed Ingress & Anti-Enumeration (CH-
 
   describe("5. Fail-Closed Ingress Resolution by Endpoint Token", () => {
     let instanceId: string;
-    const rawToken = "my_super_secret_webhook_token_123_" + Date.now();
-    const previousRawToken = "old_grace_period_token_456_" + Date.now();
+    const rawToken = "my_super_secret_webhook_token_123_" + crypto.randomUUID();
+    const previousRawToken = "old_grace_period_token_456_" + crypto.randomUUID();
 
     beforeAll(async () => {
       const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
@@ -416,7 +421,7 @@ describe("ChannelInstanceRepository: Fail-Closed Ingress & Anti-Enumeration (CH-
         provider: "waha",
         displayName: "Togglable Line",
         phoneNumberE164: "+5511966660000",
-        endpointToken: "togglable_line_token_" + Date.now(),
+        endpointToken: "togglable_line_token_" + crypto.randomUUID(),
         credentialId: credAlphaId,
         isActive: true,
       });

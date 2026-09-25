@@ -8,8 +8,7 @@ import {
   encryptPayload,
   DatabaseSigningSecretResolver,
   FencingViolationError,
-  acquireOutboxTestLock,
-  type OutboxTestLock,
+  resetTestQueueState,
 } from "@sos-sales/database";
 import {
   ChannelAdapterRegistry,
@@ -25,32 +24,31 @@ import {
 function runEvidenceVerifier(manifestRelativePath?: string): { success: boolean; stdout: string; stderr: string } {
   const repoRoot = path.resolve(__dirname, "../../../..");
   const scriptPath = path.resolve(repoRoot, "scripts/verify-evidence-digests.ts");
-  const tsxBin = path.resolve(repoRoot, "node_modules/.bin/tsx");
   const args = [scriptPath];
   if (manifestRelativePath) {
     args.push(manifestRelativePath);
   }
   try {
-    const stdout = execFileSync(tsxBin, args, {
+    const stdout = execFileSync("pnpm", ["tsx", ...args], {
       cwd: repoRoot,
       encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env },
     });
     return { success: true, stdout, stderr: "" };
   } catch (err: any) {
     return {
       success: false,
-      stdout: err.stdout ? err.stdout.toString() : "",
-      stderr: err.stderr ? err.stderr.toString() : err.message,
+      stdout: err.stdout ? String(err.stdout) : "",
+      stderr: err.stderr ? String(err.stderr) : String(err),
     };
   }
 }
 
-describe("Zero Blind Resend & Post-Send Reconciliation Invariants (EV-CRIT-002)", () => {
+describe("P0: Outbox Zero Blind Resend, Cryptographic Rigor & Fail-Closed Guardrails", () => {
   const { ownerPool, workerPool } = createTestDatabasePools();
   const testMasterKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-  let outboxLock: OutboxTestLock;
   let orgId: string;
   let workspaceId: string;
   let channelInstanceId: string;
@@ -59,22 +57,22 @@ describe("Zero Blind Resend & Post-Send Reconciliation Invariants (EV-CRIT-002)"
   let baseThreadId: string;
 
   beforeAll(async () => {
-    // 0. Acquire exclusive global queue test lock
-    outboxLock = await acquireOutboxTestLock(ownerPool);
+    // 0. Reset operational queues
+    await resetTestQueueState(ownerPool);
 
     // 1. Provision Organization and Workspace using ownerPool
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
       VALUES ('Zero Blind Resend Org', $1)
       RETURNING id;
-    `, [`org-zbr-${Date.now()}`]);
+    `, [`org-zbr-${crypto.randomUUID()}`]);
     orgId = orgRes.rows[0].id;
 
     const wsRes = await ownerPool.query(`
       INSERT INTO workspaces (organization_id, name, slug)
       VALUES ($1, 'Zero Blind Resend Workspace', $2)
       RETURNING id;
-    `, [orgId, `ws-zbr-${Date.now()}`]);
+    `, [orgId, `ws-zbr-${crypto.randomUUID()}`]);
     workspaceId = wsRes.rows[0].id;
 
     // 2. Provision Encrypted Credential
@@ -102,7 +100,7 @@ describe("Zero Blind Resend & Post-Send Reconciliation Invariants (EV-CRIT-002)"
         $1, 'meta_waba', 'ZBR Test Line', '+5511999993333',
         $2, $3, true
       ) RETURNING id;
-    `, [workspaceId, crypto.createHash("sha256").update(`token-zbr-${Date.now()}`).digest("hex"), credentialId]);
+    `, [workspaceId, crypto.createHash("sha256").update(`token-zbr-${crypto.randomUUID()}`).digest("hex"), credentialId]);
     channelInstanceId = chanRes.rows[0].id;
 
     // 4. Provision Base Contact and Commercial Thread
@@ -124,7 +122,7 @@ describe("Zero Blind Resend & Post-Send Reconciliation Invariants (EV-CRIT-002)"
   });
 
   afterAll(async () => {
-    await outboxLock.release();
+    await resetTestQueueState(ownerPool);
     await workerPool.end();
     await ownerPool.end();
   });
