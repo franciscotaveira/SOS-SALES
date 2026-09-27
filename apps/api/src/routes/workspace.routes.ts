@@ -50,6 +50,48 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
+      const activeRole = request.activeRole || "owner";
+      const permissions =
+        activeRole === "owner" || activeRole === "admin"
+          ? [
+              "workspace:view",
+              "workspace:manage",
+              "workspace:invite",
+              "cockpit:access",
+              "cockpit:send_message",
+              "cockpit:handoff",
+              "journey:view",
+              "journey:transition_stage",
+              "outcome:register",
+              "integration:view",
+              "integration:manage",
+              "capi:dispatch",
+              "audit:view",
+            ]
+          : activeRole === "manager"
+          ? [
+              "workspace:view",
+              "workspace:invite",
+              "cockpit:access",
+              "cockpit:send_message",
+              "cockpit:handoff",
+              "journey:view",
+              "journey:transition_stage",
+              "outcome:register",
+              "integration:view",
+              "audit:view",
+            ]
+          : activeRole === "operator"
+          ? [
+              "cockpit:access",
+              "cockpit:send_message",
+              "cockpit:handoff",
+              "journey:view",
+              "journey:transition_stage",
+              "outcome:register",
+            ]
+          : ["workspace:view", "journey:view", "integration:view", "audit:view"];
+
       return reply.status(200).send({
         workspace: {
           id: workspace.id,
@@ -63,8 +105,10 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
           updatedAt: workspace.updated_at,
         },
         membership: {
-          role: request.activeRole,
+          role: activeRole,
         },
+        userRole: activeRole,
+        permissions,
       });
     }
   );

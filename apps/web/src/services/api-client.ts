@@ -36,6 +36,9 @@ export interface WorkspaceDetailsResponse {
   workspace: WorkspaceRecord;
   userRole: string;
   permissions: string[];
+  membership?: {
+    role: string;
+  };
 }
 
 export interface HealthResponse {
@@ -259,10 +262,74 @@ export class ApiClient {
     workspaceId: string,
     options?: RequestOptions
   ): Promise<WorkspaceDetailsResponse> {
-    return this.request<WorkspaceDetailsResponse>(`/v1/workspaces/${workspaceId}`, {
+    const raw = await this.request<{
+      workspace: WorkspaceRecord;
+      userRole?: string;
+      permissions?: string[];
+      membership?: { role?: string };
+    }>(`/v1/workspaces/${workspaceId}`, {
       ...options,
       workspaceId,
     });
+
+    const userRole = raw.userRole || raw.membership?.role || "owner";
+    const defaultPermissionsForRole = (role: string): string[] => {
+      switch (role) {
+        case "owner":
+        case "admin":
+          return [
+            "workspace:view",
+            "workspace:manage",
+            "workspace:invite",
+            "cockpit:access",
+            "cockpit:send_message",
+            "cockpit:handoff",
+            "journey:view",
+            "journey:transition_stage",
+            "outcome:register",
+            "integration:view",
+            "integration:manage",
+            "capi:dispatch",
+            "audit:view",
+          ];
+        case "manager":
+          return [
+            "workspace:view",
+            "workspace:invite",
+            "cockpit:access",
+            "cockpit:send_message",
+            "cockpit:handoff",
+            "journey:view",
+            "journey:transition_stage",
+            "outcome:register",
+            "integration:view",
+            "audit:view",
+          ];
+        case "operator":
+          return [
+            "cockpit:access",
+            "cockpit:send_message",
+            "cockpit:handoff",
+            "journey:view",
+            "journey:transition_stage",
+            "outcome:register",
+          ];
+        case "analyst":
+          return ["workspace:view", "journey:view", "integration:view", "audit:view"];
+        default:
+          return ["workspace:view", "cockpit:access"];
+      }
+    };
+
+    return {
+      workspace: raw.workspace,
+      userRole,
+      permissions:
+        Array.isArray(raw.permissions) && raw.permissions.length > 0
+          ? raw.permissions
+          : defaultPermissionsForRole(userRole),
+      membership: { role: raw.membership?.role || userRole },
+    };
   }
 
   async getChannels(

@@ -16,6 +16,7 @@ import { ContactsPage } from "./pages/ContactsPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { CatalogPage } from "./pages/CatalogPage";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import {
   MessageSquare,
   Users,
@@ -157,67 +158,71 @@ export const App: FC = () => {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      {/* Dev Lab Toolbar — Quarantined strictly to import.meta.env.DEV */}
-      <DevLabToolbar
-        token={token}
-        onTokenChange={handleTokenChange}
-        onSimulateOffline={handleSimulateOffline}
-        onResetOffline={handleResetOffline}
-        isOfflineSimulated={isOfflineSimulated}
-        activeView={activeView}
-        onToggleView={setActiveView}
-        onRefresh={() => {
-          session.refreshSession();
-          connectivity.checkNow();
-        }}
-      />
+    <ErrorBoundary>
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+        {/* Dev Lab Toolbar — Quarantined strictly to import.meta.env.DEV */}
+        <DevLabToolbar
+          token={token}
+          onTokenChange={handleTokenChange}
+          onSimulateOffline={handleSimulateOffline}
+          onResetOffline={handleResetOffline}
+          isOfflineSimulated={isOfflineSimulated}
+          activeView={activeView}
+          onToggleView={setActiveView}
+          onRefresh={() => {
+            session.refreshSession();
+            connectivity.checkNow();
+          }}
+        />
 
-      {/* Main Responsive Sovereign Shell */}
-      <AppShell
-        navItems={navItems}
-        activeNavId={activeNavId}
-        onNavSelect={(id) => {
-          setActiveNavId(id);
-          setActiveView("cockpit");
-          if (window.location.hash === "#catalog") {
-            window.location.hash = "";
+        {/* Main Responsive Sovereign Shell */}
+        <AppShell
+          navItems={navItems}
+          activeNavId={activeNavId}
+          onNavSelect={(id) => {
+            setActiveNavId(id);
+            setActiveView("cockpit");
+            if (window.location.hash === "#catalog") {
+              window.location.hash = "";
+            }
+          }}
+          workspaces={session.workspaces}
+          activeWorkspace={session.activeWorkspace}
+          onWorkspaceSelect={(ws) => session.selectWorkspace(ws.id)}
+          isLoadingWorkspaces={session.isLoadingMe}
+          userEmail={session.user?.email || undefined}
+          userRole={session.user?.activeRole || undefined}
+          systemStatus={systemStatus}
+          headerActions={
+            session.user ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  session.logout();
+                  handleTokenChange(null);
+                }}
+              >
+                Sair
+              </Button>
+            ) : undefined
           }
-        }}
-        workspaces={session.workspaces}
-        activeWorkspace={session.activeWorkspace}
-        onWorkspaceSelect={(ws) => session.selectWorkspace(ws.id)}
-        isLoadingWorkspaces={session.isLoadingMe}
-        userEmail={session.user?.email || undefined}
-        userRole={session.user?.activeRole || undefined}
-        systemStatus={systemStatus}
-        headerActions={
-          session.user ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                session.logout();
-                handleTokenChange(null);
-              }}
-            >
-              Sair
-            </Button>
-          ) : undefined
-        }
-      >
-        {isLab && activeView === "catalog" ? (
-          <CatalogPage onClose={() => setActiveView("cockpit")} />
-        ) : activeNavId === "contacts" ? (
-          <ContactsPage session={session} />
-        ) : activeNavId === "campaigns" ? (
-          <CampaignsPage session={session} />
-        ) : activeNavId === "settings" ? (
-          <SettingsPage session={session} />
-        ) : (
-          <CockpitPage session={session} />
-        )}
-      </AppShell>
-    </div>
+        >
+          <ErrorBoundary fallbackTitle="Falha no Módulo Ativo">
+            {isLab && activeView === "catalog" ? (
+              <CatalogPage onClose={() => setActiveView("cockpit")} />
+            ) : activeNavId === "contacts" ? (
+              <ContactsPage session={session} />
+            ) : activeNavId === "campaigns" ? (
+              <CampaignsPage session={session} />
+            ) : activeNavId === "settings" ? (
+              <SettingsPage session={session} />
+            ) : (
+              <CockpitPage session={session} />
+            )}
+          </ErrorBoundary>
+        </AppShell>
+      </div>
+    </ErrorBoundary>
   );
 };

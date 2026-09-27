@@ -1264,15 +1264,17 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
                 >
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span style={{ color: "var(--text-muted, #94A3B8)" }}>Nome:</span>
-                    <strong>{activeWorkspaceDetails.workspace.name}</strong>
+                    <strong>{activeWorkspaceDetails.workspace?.name || "Workspace Ativo"}</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span style={{ color: "var(--text-muted, #94A3B8)" }}>Papel:</span>
-                    <Badge variant="operational">{activeWorkspaceDetails.userRole}</Badge>
+                    <Badge variant="operational">
+                      {activeWorkspaceDetails.userRole || (activeWorkspaceDetails as any).membership?.role || "Membro"}
+                    </Badge>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span style={{ color: "var(--text-muted, #94A3B8)" }}>Fuso:</span>
-                    <span>{activeWorkspaceDetails.workspace.timezone}</span>
+                    <span>{activeWorkspaceDetails.workspace?.timezone || "UTC"}</span>
                   </div>
                 </div>
               )}
@@ -1298,18 +1300,25 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
             <div>
               <strong>Tenant ID:</strong>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", marginTop: "4px" }}>
-                {activeWorkspaceDetails.workspace.id}
+                {activeWorkspaceDetails.workspace?.id || "N/A"}
               </div>
             </div>
             <div>
-              <strong>Papel:</strong> {activeWorkspaceDetails.userRole}
+              <strong>Papel:</strong>{" "}
+              {activeWorkspaceDetails.userRole || (activeWorkspaceDetails as any).membership?.role || "Membro"}
             </div>
             <div>
               <strong>Permissões:</strong>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
-                {activeWorkspaceDetails.permissions.map((p) => (
-                  <Badge key={p} variant="operational">{p}</Badge>
-                ))}
+                {(activeWorkspaceDetails.permissions || []).length > 0 ? (
+                  activeWorkspaceDetails.permissions.map((p) => (
+                    <Badge key={p} variant="operational">{p}</Badge>
+                  ))
+                ) : (
+                  <span style={{ color: "var(--text-muted, #94A3B8)", fontSize: "0.75rem" }}>
+                    Nenhuma permissão específica listada
+                  </span>
+                )}
               </div>
             </div>
           </div>
