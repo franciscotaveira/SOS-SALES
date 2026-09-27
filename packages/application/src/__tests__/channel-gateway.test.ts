@@ -810,6 +810,7 @@ describe("Channel Gateway & Normalizers Unit Tests", () => {
   describe("SignatureVerificationService", () => {
     const mockAppSecret = "waba_super_secret_key_1234567890abcdef";
     const mockWahaToken = "waha_webhook_secret_token_xyz9876";
+    const mockEvolutionKey = "evolution_apikey_mothership_2026";
 
     const mockResolver: ISigningSecretResolver = {
       async useSigningSecret<T>(
@@ -822,6 +823,9 @@ describe("Channel Gateway & Normalizers Unit Tests", () => {
         }
         if (channelInstanceId === "waha-instance") {
           return await fn(mockWahaToken);
+        }
+        if (channelInstanceId === "evolution-instance") {
+          return await fn(mockEvolutionKey);
         }
         return null;
       },
@@ -924,6 +928,35 @@ describe("Channel Gateway & Normalizers Unit Tests", () => {
         rawBody: Buffer.from("{}"),
         headers: {
           "x-api-key": "wrong_token_attempt",
+        },
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.reason).toBe("token_mismatch");
+    });
+
+    it("should validate authentic Evolution API apikey header in constant time", async () => {
+      const result = await verifier.verify({
+        channelInstanceId: "evolution-instance",
+        workspaceId: context.workspaceId,
+        provider: "evolution",
+        rawBody: Buffer.from("{}"),
+        headers: {
+          apikey: mockEvolutionKey,
+        },
+      });
+
+      expect(result.valid).toBe(true);
+    });
+
+    it("should reject incorrect Evolution API apikey", async () => {
+      const result = await verifier.verify({
+        channelInstanceId: "evolution-instance",
+        workspaceId: context.workspaceId,
+        provider: "evolution",
+        rawBody: Buffer.from("{}"),
+        headers: {
+          apikey: "wrong_evo_key",
         },
       });
 

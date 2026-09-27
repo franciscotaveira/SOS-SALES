@@ -9,8 +9,8 @@ async function runSeed() {
     process.env.DATABASE_URL ||
     "postgresql://sos_migration_owner:sos_migration_secret_2026@localhost:55440/sos_sales_v3?sslmode=disable";
 
-  console.log("\n🌱 SOS Sales V3 — Conectando ao PostgreSQL para seed de homologação...");
-  const pool = new Pool({ connectionString });
+    console.log("\n🌱 SOS Sales V3 — Conectando ao PostgreSQL para seed de homologação...");
+    const pool = new Pool({ connectionString });
 
   try {
     // 1. Organização
@@ -115,6 +115,27 @@ async function runSeed() {
       await pool.query(
         `UPDATE commercial_threads SET last_message_at = now() WHERE id = $1;`,
         [threadId]
+      );
+
+      // Oportunidade Comercial Vinculada (CRM Journey)
+      await pool.query(
+        `INSERT INTO commercial_journeys (
+           workspace_id, contact_id, thread_id, assigned_user_id,
+           title, stage, status, attribution_source,
+           campaign_id, ad_id, ctwa_clid, estimated_value_cents
+         ) VALUES ($1, $2, $3, $4, $5, 'proposal', 'open', 'ctwa_meta', $6, $7, $8, $9)
+         ON CONFLICT DO NOTHING;`,
+        [
+          workspace.id,
+          contactId,
+          threadId,
+          user.id,
+          `Implantação Comercial — ${c.name}`,
+          "cmp_meta_growth_2026",
+          "ad_meta_lead_gen_01",
+          `ctwa_clid_demo_${c.phone.slice(-4)}`,
+          150000,
+        ]
       );
     }
 

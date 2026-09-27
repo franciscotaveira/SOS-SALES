@@ -8,6 +8,7 @@ import {
   ChannelDispatchService,
   MetaWabaAdapter,
   WahaAdapter,
+  EvolutionAdapter,
 } from "@sos-sales/application";
 import {
   ChannelInstanceRepository,
@@ -193,6 +194,19 @@ export class WorkerRuntime {
         }
         this.registry.register(new WahaAdapter({ baseUrl: wahaUrl }));
       }
+
+      // Native Evolution API v2 Adapter registration (MCT OS Sovereignty standard)
+      const evolutionBaseUrl =
+        process.env.EVOLUTION_BASE_URL ||
+        (process.env.NODE_ENV === "test" || process.env.ALLOW_LOCAL_TEST_SERVICES === "true"
+          ? "http://evolution:8080"
+          : undefined);
+      this.registry.register(
+        new EvolutionAdapter({
+          baseUrl: evolutionBaseUrl,
+          defaultApiKey: process.env.EVOLUTION_API_KEY,
+        })
+      );
     }
 
     this.secretResolver = new DatabaseSigningSecretResolver({

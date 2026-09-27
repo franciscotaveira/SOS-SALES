@@ -136,6 +136,9 @@ export class SignatureVerificationService {
         } else {
           result = await this.secretResolver.useSigningSecret(channelInstanceId, workspaceId, verifyFn);
         }
+      } else if (provider === "evolution") {
+        const verifyFn = (secret: string) => this.verifyEvolution(headers, secret);
+        result = await this.secretResolver.useSigningSecret(channelInstanceId, workspaceId, verifyFn);
       } else {
         return { valid: false, reason: `unsupported_provider_${provider}` };
       }
@@ -219,6 +222,45 @@ export class SignatureVerificationService {
       : tokenHeader.trim();
 
     // Constant-time comparison using SHA-256 digests to protect against length leaking
+    const expectedDigest = crypto
+      .createHash("sha256")
+      .update(expectedSecret, "utf-8")
+      .digest();
+    const receivedDigest = crypto
+      .createHash("sha256")
+      .update(token, "utf-8")
+      .digest();
+
+    const isValid = crypto.timingSafeEqual(expectedDigest, receivedDigest);
+    return { valid: isValid, reason: isValid ? undefined : "token_mismatch" };
+  }
+
+  /**
+   * Evolution API Token Verification
+   * Headers: apikey, x-api-key, or authorization (Bearer)
+   */
+  private verifyEvolution(
+    headers: Record<string, string | string[] | undefined>,
+    expectedSecret: string
+  ): SignatureVerificationResult {
+    const rawHeader =
+      headers["apikey"] ||
+      headers["ApiKey"] ||
+      headers["x-api-key"] ||
+      headers["X-Api-Key"] ||
+      headers["authorization"] ||
+      headers["Authorization"];
+
+    const tokenHeader = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+
+    if (!tokenHeader || typeof tokenHeader !== "string") {
+      return { valid: false, reason: "missing_evolution_auth_header" };
+    }
+
+    const token = tokenHeader.startsWith("Bearer ")
+      ? tokenHeader.slice("Bearer ".length).trim()
+      : tokenHeader.trim();
+
     const expectedDigest = crypto
       .createHash("sha256")
       .update(expectedSecret, "utf-8")

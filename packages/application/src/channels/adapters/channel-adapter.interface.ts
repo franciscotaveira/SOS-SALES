@@ -44,7 +44,7 @@ export type ChannelSendResult =
     };
 
 export interface IChannelAdapter {
-  readonly provider: "meta_waba" | "waha";
+  readonly provider: "meta_waba" | "waha" | "evolution";
   sendMessage(
     params: OutboundSendParams,
     secretResolver: ISigningSecretResolver

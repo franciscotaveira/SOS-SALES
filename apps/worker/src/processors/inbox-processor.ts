@@ -13,6 +13,7 @@ import {
 import {
   WabaWebhookNormalizer,
   WahaWebhookNormalizer,
+  EvolutionWebhookNormalizer,
   QueueRetryPolicy,
 } from "@sos-sales/application";
 import { logger } from "@sos-sales/observability";
@@ -220,6 +221,8 @@ export class InboxProcessor {
             events = WabaWebhookNormalizer.normalize(rawPayload, context);
           } else if (provider === "waha") {
             events = WahaWebhookNormalizer.normalize(rawPayload, context);
+          } else if (provider === "evolution") {
+            events = EvolutionWebhookNormalizer.normalize(rawPayload, context);
           } else {
             throw new Error(
               `FAIL_CLOSED: Unsupported or unknown channel provider '${provider}' for inbox item ${item.id}`
