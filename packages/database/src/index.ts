@@ -1,5 +1,6 @@
 export * from "./client";
 export * from "./helpers";
+export * from "./commercial";
 export * from "./messaging";
 export * from "./test-support";
 export * from "./infrastructure/crypto-payload";

@@ -73,6 +73,10 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
   // Commercial outcome state (MVP sales recording)
   const [dealValue, setDealValue] = useState<string>("1500,00");
   const [outcomeStatus, setOutcomeStatus] = useState<"in_progress" | "won" | "lost">("in_progress");
+  const [isRecordingOutcome, setIsRecordingOutcome] = useState<boolean>(false);
+  const [outcomeSuccessMessage, setOutcomeSuccessMessage] = useState<string | null>(null);
+  const [outcomeError, setOutcomeError] = useState<string | null>(null);
+  const [lossReason, setLossReason] = useState<string>("");
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -262,6 +266,86 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
   };
 
   const selectedThread = threads.find((t) => t.id === selectedThreadId) || null;
+
+  // Reset outcome feedback and fetch journey when selected thread changes
+  useEffect(() => {
+    setOutcomeSuccessMessage(null);
+    setOutcomeError(null);
+    setOutcomeStatus("in_progress");
+    setLossReason("");
+
+    if (selectedThreadId && activeWorkspace && token) {
+      apiClient
+        .getThreadJourney(activeWorkspace.id, selectedThreadId, { token })
+        .then((res) => {
+          if (res.latestOutcome) {
+            setOutcomeStatus(res.latestOutcome.status);
+            if (res.latestOutcome.status === "won") {
+              const formatted = (res.latestOutcome.valueCents / 100).toFixed(2).replace(".", ",");
+              setDealValue(formatted);
+              setOutcomeSuccessMessage(
+                `✓ Venda Concluída: R$ ${formatted} (Meta CAPI PurchaseCompleted)`
+              );
+            } else if (res.latestOutcome.status === "lost") {
+              setOutcomeSuccessMessage(
+                `Negócio Marcado como Perdido (${res.latestOutcome.reason || "Sem motivo informado"})`
+              );
+            }
+          }
+        })
+        .catch(() => {
+          // ignore if no journey yet
+        });
+    }
+  }, [selectedThreadId, activeWorkspace?.id, token]);
+
+  // Handle commercial outcome recording (Won / Lost + Meta CAPI trigger)
+  const handleRecordOutcome = async (status: "won" | "lost") => {
+    if (!selectedThread || !activeWorkspace || !token || isRecordingOutcome) return;
+
+    setIsRecordingOutcome(true);
+    setOutcomeError(null);
+    setOutcomeSuccessMessage(null);
+
+    try {
+      let cents = 0;
+      if (status === "won") {
+        const cleaned = dealValue.replace(/\./g, "").replace(",", ".");
+        const parsed = parseFloat(cleaned);
+        cents = isNaN(parsed) || parsed < 0 ? 0 : Math.round(parsed * 100);
+      }
+
+      const res = await apiClient.recordOutcome(
+        activeWorkspace.id,
+        selectedThread.id,
+        {
+          status,
+          valueCents: cents,
+          currency: "BRL",
+          reason: status === "lost" ? lossReason.trim() || "Desistência / Sem perfil" : undefined,
+        },
+        { token }
+      );
+
+      setOutcomeStatus(status);
+      if (res.conversionEvent) {
+        setOutcomeSuccessMessage(
+          `✓ Venda [R$ ${(res.outcome.valueCents / 100).toFixed(2)}] gravada com sucesso! Evento Meta CAPI [${res.conversionEvent.eventName}] enfileirado.`
+        );
+      } else {
+        setOutcomeSuccessMessage(
+          `✓ Desfecho [${status === "won" ? "Venda Ganha" : "Perdido"}] registrado com sucesso!`
+        );
+      }
+      loadThreads();
+    } catch (err: unknown) {
+      setOutcomeError(
+        err instanceof Error ? err.message : "Falha ao registrar desfecho comercial."
+      );
+    } finally {
+      setIsRecordingOutcome(false);
+    }
+  };
 
   // Filtered threads by search query
   const filteredThreads = threads.filter((t) => {
@@ -1043,22 +1127,24 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
                       size="sm"
                       variant={outcomeStatus === "won" ? "primary" : "outline"}
                       style={{ flex: 1 }}
-                      onClick={() => setOutcomeStatus("won")}
+                      disabled={isRecordingOutcome}
+                      onClick={() => handleRecordOutcome("won")}
                     >
                       <DollarSign size={14} />
-                      Venda Ganha
+                      {isRecordingOutcome && outcomeStatus === "won" ? "Gravando..." : "Venda Ganha"}
                     </Button>
                     <Button
                       size="sm"
                       variant={outcomeStatus === "lost" ? "danger" : "outline"}
                       style={{ flex: 1 }}
-                      onClick={() => setOutcomeStatus("lost")}
+                      disabled={isRecordingOutcome}
+                      onClick={() => handleRecordOutcome("lost")}
                     >
-                      Perdido
+                      {isRecordingOutcome && outcomeStatus === "lost" ? "Gravando..." : "Perdido"}
                     </Button>
                   </div>
 
-                  {outcomeStatus === "won" && (
+                  {outcomeSuccessMessage && (
                     <div
                       style={{
                         padding: "10px",
@@ -1068,9 +1154,26 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
                         fontSize: "0.78rem",
                         color: "var(--color-action, #00A884)",
                         fontWeight: 600,
+                        lineHeight: 1.4,
                       }}
                     >
-                      ✓ Outcome registrado: R$ {dealValue} pronto para despacho CAPI Meta.
+                      {outcomeSuccessMessage}
+                    </div>
+                  )}
+
+                  {outcomeError && (
+                    <div
+                      style={{
+                        padding: "10px",
+                        borderRadius: "6px",
+                        backgroundColor: "var(--color-danger-subtle, #FEE2E2)",
+                        border: "1px solid var(--color-danger-border, #FCA5A5)",
+                        fontSize: "0.78rem",
+                        color: "var(--color-danger, #EF4444)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {outcomeError}
                     </div>
                   )}
                 </div>

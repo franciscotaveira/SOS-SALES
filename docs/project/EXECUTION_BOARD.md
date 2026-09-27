@@ -36,6 +36,7 @@
 | CH-10 | ACCEPTED | Docker dual-engine | EV-CH10-001 validado; dual-engine operacional, ChannelDispatchService fail-closed, concorrência atômica FOR UPDATE com proteção contra regressão terminal, fencing estrito de expiração de lease com clock_timestamp(), contrato Truth in Data de IDs persistidos e 536 testes passando (35 suítes) |
 | CH-11 | ACCEPTED | Produtor transacional de outbound | EV-CH11-001 validado; persistência atômica { message + command + audit }, idempotência com payload_fingerprint exato (zero trim/NFKC em strings), identidade fail-closed sem fallback role, limitador distribuído dois níveis (IP e tenant-actor), trust boundary .strict(), replay com INNER JOIN e 571 testes passando (38 suítes) |
 | CH-12 | ACCEPTED | E2E técnico de mensageria e ciclo de vida omnichannel | EV-CH12-001 validado; ciclo fechado webhook -> inbox -> worker -> thread -> API outbound -> outbox -> worker dispatch -> delivery events -> status ACK (delivered -> read), cross-tenant rejection e SSRF guard aprovados; 584 testes passando (40 suítes) |
+| CRM-01 | ACCEPTED | CRM Core, Cockpit e Meta CAPI Return Loop | EV-CRM01-001 validado; ciclo completo E2E (Ad attribution -> WhatsApp thread -> Cockpit real -> Outcome Won/Lost -> Meta CAPI PurchaseCompleted); 599 testes passando (43 suítes) |
 
 ## Estado por macrofase
 
@@ -49,9 +50,9 @@
 | Iteração 2.7 — Runner | ACCEPTED | EV-IT27-001; commit `a41e1ab` revalidado com 90 testes em DB hermético |
 | Iteração 3 — Design/AppShell | ACCEPTED | EV-IT03-001; commit `0605dff` revalidado com @sos-sales/ui e web app |
 | Iteração 4 — Canais | ACCEPTED | Saneamento e implementação da esteira CH-00..CH-12 100% concluídos e auditados sob EV-CH12-001 (584 testes) |
-| CRM Core | READY | Desbloqueado com a conclusão de CH-12 |
-| Cockpit real | PLANNED | UI atual é fundação, não operação real |
-| Meta/CAPI | PLANNED | sem loop fechado comprovado |
+| CRM Core | ACCEPTED | EV-CRM01-001; persistência transacional (journeys, outcomes, conversions), RLS fail-closed e rotas Fastify |
+| Cockpit real | ACCEPTED | EV-CRM01-001; painel operacional com fechamento comercial, desfecho e badge visual de despacho CAPI |
+| Meta/CAPI | ACCEPTED | EV-CRM01-001; fila assíncrona conversion_events, CapiDispatcher e Graph API v21.0 com hash SHA-256 e ctwa_clid |
 | IA supervisionada | PLANNED | sem ativação V3 |
 | Onboarding | PLANNED | EXT-01/02/03 continuam dependências externas |
 | Haven piloto | PLANNED | não autorizado |

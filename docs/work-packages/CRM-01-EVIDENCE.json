@@ -1,0 +1,90 @@
+{
+  "package_id": "CRM-01",
+  "name": "CRM Core, Fechamento de Venda no Cockpit e Meta CAPI Return Loop",
+  "timestamp": "2026-09-27T19:15:00Z",
+  "commit_sha": "c7e1aafa3a84a65b40fb6f846ecaa084fb4d4cd2",
+  "branch": "codex/iteration-2.7",
+  "evidence_id": "EV-CRM01-001",
+  "environment": {
+    "node_version": "v24.11.0",
+    "pnpm_version": "11.7.0",
+    "turbo_version": "2.10.13",
+    "tsx_version": "4.23.13",
+    "os": "darwin-arm64",
+    "local_postgres": "isolated-hermetic-container",
+    "local_redis": "localhost:6389"
+  },
+  "metrics": {
+    "test_files": [
+      "apps/api/src/__tests__/commercial-and-conversions.test.ts",
+      "apps/api/src/__tests__/threads-and-channels.test.ts",
+      "apps/api/src/__tests__/contacts.test.ts",
+      "apps/worker/src/__tests__/capi-dispatcher.test.ts"
+    ],
+    "total_assertions_package": 20,
+    "assertions_passed_package": 20,
+    "assertions_failed_package": 0,
+    "total_test_files_monorepo": 43,
+    "total_assertions_monorepo": 599,
+    "assertions_passed_monorepo": 599,
+    "security_capabilities_verified": [
+      "Migration 007 with FORCE ROW LEVEL SECURITY on commercial_journeys, commercial_outcomes, and conversion_events",
+      "Strict least-privilege role policies for sos_migration_owner, sos_app_user, and sos_worker_user",
+      "Atomic transactional deal closing persisting commercial_outcomes and queueing conversion_events",
+      "Canonical conversion event mapping (PurchaseCompleted -> Meta Purchase, LeadCaptured -> Meta Lead)",
+      "Cryptographic SHA-256 hashing of customer normalized phone numbers for Meta CAPI matching",
+      "Preservation of CTWA attribution (ctwa_clid, campaign_id, ad_id) end-to-end",
+      "Worker SKIP LOCKED batch claiming and tenant-scoped update under withWorkerTransaction",
+      "Support for official Meta Graph API v21.0 payload format and hermetic local sandbox fallback",
+      "Cockpit UI sidebar integration for deal value input and one-click Won/Lost status registration with CAPI badge feedback",
+      "Zero n8n and zero fake/mock data in production pipelines (Truth in Data principle)"
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-CRM01-001",
+      "result": "PASS",
+      "evidence": "Criação de commercial_journeys com preservação de attribution_source, campaign_id, ad_id e ctwa_clid sob FORCE RLS."
+    },
+    {
+      "ac_id": "AC-CRM01-002",
+      "result": "PASS",
+      "evidence": "Isolamento multi-tenant fail-closed rejeitando criação ou consulta cross-tenant com HTTP 403 Forbidden."
+    },
+    {
+      "ac_id": "AC-CRM01-003",
+      "result": "PASS",
+      "evidence": "Registro de outcome 'won' com valor real em centavos (R$ 497,00 = 49700) enfileirando atomicamente evento PurchaseCompleted."
+    },
+    {
+      "ac_id": "AC-CRM01-004",
+      "result": "PASS",
+      "evidence": "Registro de outcome 'lost' atualizando status do negócio sem enfileirar eventos na Meta CAPI."
+    },
+    {
+      "ac_id": "AC-CRM01-005",
+      "result": "PASS",
+      "evidence": "Claim transacional e despacho de conversões CAPI pelo Worker com hash SHA-256 do telefone, ctwa_clid e gravação de recibo com fbtrace_id."
+    },
+    {
+      "ac_id": "AC-CRM01-006",
+      "result": "PASS",
+      "evidence": "Execução automática de despacho CAPI no loop governado do WorkerRuntime transicionando eventos QUEUED para ACCEPTED."
+    },
+    {
+      "ac_id": "AC-CRM01-007",
+      "result": "PASS",
+      "evidence": "Interface do Cockpit permitindo fechamento comercial da conversa com input em Reais e badge visual de despacho CAPI."
+    },
+    {
+      "ac_id": "AC-CRM01-008",
+      "result": "PASS",
+      "evidence": "Verificação integral dos 6 Gates do CI local (pnpm ci:gate) com 43 arquivos e 599 asserções 100% aprovados."
+    }
+  ],
+  "limitations": [
+    "Disparo real para os servidores de produção da Meta Graph API v21.0 requer credenciais de Pixel/Dataset e Access Token ativas no ambiente de produção; ambiente hermético de teste utiliza sandbox e mock server."
+  ],
+  "executor": "Orchestrator Agent / Antigravity",
+  "reviewer": "Francisco Rios / MCT LTDA"
+}

@@ -128,6 +128,48 @@ export async function createOrGetContact(
   return res.rows[0]!;
 }
 
+export interface ListContactsParams {
+  workspaceId: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Lists contacts for a workspace with optional search query (name or phone), under RLS.
+ */
+export async function listContacts(
+  client: Pool | PoolClient,
+  params: ListContactsParams
+): Promise<ContactRecord[]> {
+  const limit = Math.min(params.limit ?? 50, 100);
+  const offset = params.offset ?? 0;
+
+  if (params.search && params.search.trim().length > 0) {
+    const pattern = `%${params.search.trim().toLowerCase()}%`;
+    const res = await client.query<ContactRecord>(
+      `SELECT id, workspace_id, phone_e164, name, created_at, updated_at
+       FROM public.contacts
+       WHERE workspace_id = $1 
+         AND (LOWER(COALESCE(name, '')) LIKE $2 OR phone_e164 LIKE $2)
+       ORDER BY updated_at DESC
+       LIMIT $3 OFFSET $4;`,
+      [params.workspaceId, pattern, limit, offset]
+    );
+    return res.rows;
+  }
+
+  const res = await client.query<ContactRecord>(
+    `SELECT id, workspace_id, phone_e164, name, created_at, updated_at
+     FROM public.contacts
+     WHERE workspace_id = $1
+     ORDER BY updated_at DESC
+     LIMIT $2 OFFSET $3;`,
+    [params.workspaceId, limit, offset]
+  );
+  return res.rows;
+}
+
 /**
  * Creates or retrieves a commercial thread between a channel instance and a contact.
  * Enforces composite FKs linking workspace_id with channel_instance_id and contact_id.

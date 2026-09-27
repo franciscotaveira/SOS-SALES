@@ -155,6 +155,15 @@ export interface SendOutboundMessagePayload {
   idempotencyKey?: string;
 }
 
+export interface ContactSummary {
+  id: string;
+  workspaceId: string;
+  phoneE164: string;
+  name: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export class ApiClient {
   private baseUrl: string;
 
@@ -334,6 +343,162 @@ export class ApiClient {
       body: { status },
     });
   }
+
+  async recordOutcome(
+    workspaceId: string,
+    threadId: string,
+    payload: {
+      status: "won" | "lost";
+      valueCents: number;
+      currency?: string;
+      reason?: string;
+    },
+    options?: RequestOptions
+  ): Promise<{
+    outcome: {
+      id: string;
+      workspaceId: string;
+      journeyId: string;
+      status: "won" | "lost";
+      valueCents: number;
+      currency: string;
+      reason: string | null;
+      createdAt: string;
+    };
+    conversionEvent: {
+      id: string;
+      eventName: string;
+      valueCents: number | null;
+      status: string;
+      createdAt: string;
+    } | null;
+  }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/threads/${threadId}/outcomes`,
+      {
+        ...options,
+        workspaceId,
+        method: "POST",
+        body: payload,
+      }
+    );
+  }
+
+  async getThreadJourney(
+    workspaceId: string,
+    threadId: string,
+    options?: RequestOptions
+  ): Promise<{
+    journey: {
+      id: string;
+      workspaceId: string;
+      contactId: string;
+      threadId: string | null;
+      stage: string;
+      status: string;
+      estimatedValueCents: number;
+      createdAt: string;
+    } | null;
+    latestOutcome: {
+      id: string;
+      status: "won" | "lost";
+      valueCents: number;
+      currency: string;
+      reason: string | null;
+      createdAt: string;
+    } | null;
+  }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/threads/${threadId}/journey`,
+      {
+        ...options,
+        workspaceId,
+        method: "GET",
+      }
+    );
+  }
+
+  async getConversions(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{
+    items: Array<{
+      id: string;
+      journeyId: string;
+      outcomeId: string | null;
+      eventName: string;
+      valueCents: number | null;
+      currency: string;
+      status: string;
+      providerReceipt: Record<string, unknown> | null;
+      errorMessage: string | null;
+      createdAt: string;
+    }>;
+    total: number;
+  }> {
+    return this.request(`/v1/workspaces/${workspaceId}/conversions`, {
+      ...options,
+      workspaceId,
+      method: "GET",
+    });
+  }
+
+  async createChannel(
+    workspaceId: string,
+    payload: {
+      provider: "meta_waba" | "waha" | "evolution" | "meta_messenger" | "meta_instagram";
+      displayName: string;
+      phoneNumberE164?: string;
+      endpointToken?: string;
+    },
+    options?: RequestOptions
+  ): Promise<{
+    channel: ChannelSummary;
+    endpointToken: string;
+    webhookUrl: string;
+  }> {
+    return this.request(`/v1/workspaces/${workspaceId}/channels`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  async getContacts(
+    workspaceId: string,
+    query?: { search?: string; limit?: number; offset?: number },
+    options?: RequestOptions
+  ): Promise<{
+    contacts: ContactSummary[];
+    total: number;
+  }> {
+    const params = new URLSearchParams();
+    if (query?.search) params.set("search", query.search);
+    if (query?.limit) params.set("limit", String(query.limit));
+    if (query?.offset) params.set("offset", String(query.offset));
+    const qs = params.toString() ? `?${params.toString()}` : "";
+
+    return this.request(`/v1/workspaces/${workspaceId}/contacts${qs}`, {
+      ...options,
+      workspaceId,
+      method: "GET",
+    });
+  }
+
+  async createContact(
+    workspaceId: string,
+    payload: { phoneE164: string; name?: string },
+    options?: RequestOptions
+  ): Promise<{ contact: ContactSummary }> {
+    return this.request(`/v1/workspaces/${workspaceId}/contacts`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
+

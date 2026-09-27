@@ -217,4 +217,63 @@ describe("Threads and Channels Routes Integration (Fastify + RLS)", () => {
 
     expect(res.statusCode).toBe(403);
   });
+
+  it("records a commercial outcome (won) for a thread and enqueues Meta CAPI conversion", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceAId}/threads/${threadAId}/outcomes`,
+      headers: {
+        authorization: `Bearer ${operatorToken}`,
+      },
+      payload: {
+        status: "won",
+        valueCents: 150000,
+        currency: "BRL",
+        reason: "Fechamento acelerado via Cockpit",
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.outcome).toBeDefined();
+    expect(body.outcome.status).toBe("won");
+    expect(body.outcome.valueCents).toBe(150000);
+    expect(body.outcome.currency).toBe("BRL");
+
+    expect(body.conversionEvent).toBeDefined();
+    expect(body.conversionEvent.eventName).toBe("PurchaseCompleted");
+    expect(body.conversionEvent.status).toBe("QUEUED");
+
+    // Verify journey query for this thread
+    const journeyRes = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceAId}/threads/${threadAId}/journey`,
+      headers: {
+        authorization: `Bearer ${operatorToken}`,
+      },
+    });
+
+    expect(journeyRes.statusCode).toBe(200);
+    const journeyBody = journeyRes.json();
+    expect(journeyBody.journey).toBeDefined();
+    expect(journeyBody.journey.stage).toBe("won");
+    expect(journeyBody.latestOutcome).toBeDefined();
+    expect(journeyBody.latestOutcome.status).toBe("won");
+    expect(journeyBody.latestOutcome.valueCents).toBe(150000);
+
+    // Verify conversions listing
+    const convRes = await app.inject({
+      method: "GET",
+      url: `/v1/workspaces/${workspaceAId}/conversions`,
+      headers: {
+        authorization: `Bearer ${operatorToken}`,
+      },
+    });
+
+    expect(convRes.statusCode).toBe(200);
+    const convBody = convRes.json();
+    expect(convBody.items.length).toBeGreaterThanOrEqual(1);
+    expect(convBody.items[0].eventName).toBe("PurchaseCompleted");
+  });
 });
+

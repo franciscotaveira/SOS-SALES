@@ -19,9 +19,11 @@ import {
 } from "@sos-sales/database";
 import { InboxProcessor } from "./processors/inbox-processor";
 import { OutboxDispatcher } from "./processors/outbox-dispatcher";
+import { CapiDispatcher } from "./processors/capi-dispatcher";
 
 export * from "./processors/inbox-processor";
 export * from "./processors/outbox-dispatcher";
+export * from "./processors/capi-dispatcher";
 
 export interface WorkerRuntimeOptions {
   workerId?: string;
@@ -80,6 +82,7 @@ export class WorkerRuntime {
 
   private inboxProcessor: InboxProcessor | null = null;
   private outboxDispatcher: OutboxDispatcher | null = null;
+  private capiDispatcher: CapiDispatcher | null = null;
   private registry: ChannelAdapterRegistry | null = null;
   private secretResolver: DatabaseSigningSecretResolver | null = null;
   private channelInstanceRepo: ChannelInstanceRepository | null = null;
@@ -171,6 +174,7 @@ export class WorkerRuntime {
     this.outboxDispatcher = new OutboxDispatcher({
       masterKeyHex: this.masterKeyHex,
     });
+    this.capiDispatcher = new CapiDispatcher();
 
     if (!this.registry) {
       this.registry = new ChannelAdapterRegistry();
@@ -278,7 +282,12 @@ export class WorkerRuntime {
     }
   }
 
-  async runSingleTick(signal?: AbortSignal): Promise<{ inboxProcessed: number; outboxDispatched: number; outboxReconciled: number }> {
+  async runSingleTick(signal?: AbortSignal): Promise<{
+    inboxProcessed: number;
+    outboxDispatched: number;
+    outboxReconciled: number;
+    capiDispatched?: number;
+  }> {
     if (!this.pool || !this.inboxProcessor || !this.outboxDispatcher || !this.registry || !this.secretResolver) {
       throw new Error("WorkerRuntime is not initialized");
     }
@@ -391,7 +400,25 @@ export class WorkerRuntime {
       );
     }
 
-    return { inboxProcessed, outboxDispatched, outboxReconciled };
+    // 4. Meta CAPI Conversion Dispatching
+    let capiDispatched = 0;
+    if (this.capiDispatcher && this.pool) {
+      try {
+        const capiBatch = await this.capiDispatcher.claimBatch(this.pool, this.batchSize);
+        for (const item of capiBatch) {
+          if (signal?.aborted) break;
+          await this.capiDispatcher.dispatchItem(this.pool, item, signal);
+          capiDispatched++;
+        }
+      } catch (err) {
+        logger.error(
+          { err, workerId: this.workerId },
+          "Error claiming/dispatching Meta CAPI conversion batch"
+        );
+      }
+    }
+
+    return { inboxProcessed, outboxDispatched, outboxReconciled, capiDispatched };
   }
 
   getHealth(): WorkerHealthStatus {
