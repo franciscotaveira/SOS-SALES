@@ -822,4 +822,236 @@ describe("Integration Suggestions Repository (F1.1-C Radar Hardening & Final Gov
       expect(listB.items.some((s) => s.idempotency_key === keyA)).toBe(false);
     });
   });
+
+  describe("7. Terminal State Immutability & Replay Resilience (F1.1-C.1 Hardening)", () => {
+    it("returns ALREADY_DECIDED when repeating decide on an accepted suggestion after radar is disabled", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
+      const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
+        return createIntegrationSuggestion(client, workspaceA, {
+          idempotencyKey: `term-accept-disable-${crypto.randomUUID()}`,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão para aceite e disable",
+          body: "Corpo",
+        });
+      }, appPool);
+
+      // 1. Accept suggestion
+      const acceptRes = await withTenantTransaction(workspaceA, async (client) => {
+        return decideSuggestion(client, workspaceA, suggestion.id, {
+          status: "accepted",
+          decidedByUserId: operatorA,
+          expectedStateVersion: 1,
+        });
+      }, appPool);
+      expect(acceptRes.ok).toBe(true);
+      if (acceptRes.ok) {
+        expect(acceptRes.suggestion.status).toBe("accepted");
+        expect(acceptRes.suggestion.state_version).toBe(2);
+      }
+
+      // 2. Disable radar in workspace
+      await ownerPool.query(`UPDATE workspaces SET radar_enabled = false WHERE id = $1;`, [workspaceA]);
+
+      try {
+        // 3. Repeat PATCH / decide
+        const repeatRes = await withTenantTransaction(workspaceA, async (client) => {
+          return decideSuggestion(client, workspaceA, suggestion.id, {
+            status: "accepted",
+            decidedByUserId: operatorA,
+            expectedStateVersion: 2,
+          });
+        }, appPool);
+
+        expect(repeatRes.ok).toBe(false);
+        if (!repeatRes.ok) {
+          expect(repeatRes.code).toBe("ALREADY_DECIDED");
+          expect(repeatRes.suggestion?.status).toBe("accepted");
+          expect(repeatRes.suggestion?.state_version).toBe(2);
+        }
+      } finally {
+        // Restore radar
+        await ownerPool.query(`UPDATE workspaces SET radar_enabled = true WHERE id = $1;`, [workspaceA]);
+      }
+    });
+
+    it("returns ALREADY_DECIDED when repeating decide on a dismissed suggestion after rule version bump", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
+      const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
+        return createIntegrationSuggestion(client, workspaceA, {
+          idempotencyKey: `term-dismiss-bump-${crypto.randomUUID()}`,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão para dismiss e bump",
+          body: "Corpo",
+        });
+      }, appPool);
+
+      // 1. Dismiss suggestion
+      const dismissRes = await withTenantTransaction(workspaceA, async (client) => {
+        return decideSuggestion(client, workspaceA, suggestion.id, {
+          status: "dismissed",
+          decidedByUserId: operatorA,
+          expectedStateVersion: 1,
+        });
+      }, appPool);
+      expect(dismissRes.ok).toBe(true);
+
+      // 2. Bump rule version in workspace
+      await ownerPool.query(`UPDATE workspaces SET radar_rule_version = '2.0.0' WHERE id = $1;`, [workspaceA]);
+
+      try {
+        // 3. Repeat PATCH / decide
+        const repeatRes = await withTenantTransaction(workspaceA, async (client) => {
+          return decideSuggestion(client, workspaceA, suggestion.id, {
+            status: "dismissed",
+            decidedByUserId: operatorA,
+            expectedStateVersion: 2,
+          });
+        }, appPool);
+
+        expect(repeatRes.ok).toBe(false);
+        if (!repeatRes.ok) {
+          expect(repeatRes.code).toBe("ALREADY_DECIDED");
+          expect(repeatRes.suggestion?.status).toBe("dismissed");
+          expect(repeatRes.suggestion?.state_version).toBe(2);
+        }
+      } finally {
+        // Restore rule version
+        await ownerPool.query(`UPDATE workspaces SET radar_rule_version = '1.0.0' WHERE id = $1;`, [workspaceA]);
+      }
+    });
+
+    it("returns VERSION_MISMATCH without mutating row when expectedStateVersion is incorrect", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
+      const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
+        return createIntegrationSuggestion(client, workspaceA, {
+          idempotencyKey: `ver-mismatch-${crypto.randomUUID()}`,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão version mismatch",
+          body: "Corpo",
+        });
+      }, appPool);
+
+      const mismatchRes = await withTenantTransaction(workspaceA, async (client) => {
+        return decideSuggestion(client, workspaceA, suggestion.id, {
+          status: "accepted",
+          decidedByUserId: operatorA,
+          expectedStateVersion: 999, // Wrong version
+        });
+      }, appPool);
+
+      expect(mismatchRes.ok).toBe(false);
+      if (!mismatchRes.ok) {
+        expect(mismatchRes.code).toBe("VERSION_MISMATCH");
+        expect(mismatchRes.suggestion?.status).toBe("pending");
+        expect(mismatchRes.suggestion?.state_version).toBe(1);
+      }
+
+      // Verify row in DB is still pending and version 1
+      const dbRow = await ownerPool.query(`SELECT status, state_version FROM integration_suggestions WHERE id = $1;`, [suggestion.id]);
+      expect(dbRow.rows[0].status).toBe("pending");
+      expect(dbRow.rows[0].state_version).toBe(1);
+    });
+
+    it("replays idempotently when subsequent inbound message arrived after creation", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+      const idempotencyKey = `replay-intervening-${crypto.randomUUID()}`;
+
+      // 1. Initial creation
+      const res1 = await withTenantTransaction(workspaceA, async (client) => {
+        return createIntegrationSuggestion(client, workspaceA, {
+          idempotencyKey,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Intervening Msg",
+          body: "Corpo original",
+          priority: "high",
+        });
+      }, appPool);
+      expect(res1.created).toBe(true);
+
+      // 2. Intervening message arrives in thread
+      await ownerPool.query(`
+        INSERT INTO messages (
+          workspace_id, channel_instance_id, thread_id, provider, direction,
+          sender_e164, recipient_e164, content_type, body, created_at
+        ) VALUES (
+          $1, $2, $3, 'meta_waba', 'inbound',
+          '+5549999992001', '+5549999990000', 'text',
+          'Nova mensagem do cliente após sugestão', now()
+        );
+      `, [workspaceA, channelInstanceId, threadId]);
+
+      // 3. Repeat exact same request with same idempotency key
+      const res2 = await withTenantTransaction(workspaceA, async (client) => {
+        return createIntegrationSuggestion(client, workspaceA, {
+          idempotencyKey,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Intervening Msg",
+          body: "Corpo original",
+          priority: "high",
+        });
+      }, appPool);
+
+      expect(res2.created).toBe(false);
+      expect(res2.suggestion.id).toBe(res1.suggestion.id);
+    });
+
+    it("replays idempotently even if radar is disabled or rule version changed after creation", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+      const idempotencyKey = `replay-disabled-radar-${crypto.randomUUID()}`;
+
+      // 1. Initial creation
+      const res1 = await withTenantTransaction(workspaceA, async (client) => {
+        return createIntegrationSuggestion(client, workspaceA, {
+          idempotencyKey,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Replay Radar Disabled",
+          body: "Corpo",
+        });
+      }, appPool);
+      expect(res1.created).toBe(true);
+
+      // 2. Disable radar and change rule version
+      await ownerPool.query(`UPDATE workspaces SET radar_enabled = false, radar_rule_version = '3.0.0' WHERE id = $1;`, [workspaceA]);
+
+      try {
+        // 3. Repeat exact same request with same idempotency key
+        const res2 = await withTenantTransaction(workspaceA, async (client) => {
+          return createIntegrationSuggestion(client, workspaceA, {
+            idempotencyKey,
+            threadId,
+            contactId,
+            candidateRevision: currentRev,
+            title: "Sugestão Replay Radar Disabled",
+            body: "Corpo",
+          });
+        }, appPool);
+
+        expect(res2.created).toBe(false);
+        expect(res2.suggestion.id).toBe(res1.suggestion.id);
+      } finally {
+        await ownerPool.query(`UPDATE workspaces SET radar_enabled = true, radar_rule_version = '1.0.0' WHERE id = $1;`, [workspaceA]);
+      }
+    });
+  });
 });
+

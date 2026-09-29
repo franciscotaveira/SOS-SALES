@@ -726,4 +726,140 @@ describe("Integration Routes (F1.1-C Radar Hardening & Final Governance)", () =>
       expect(res.statusCode).toBe(403);
     });
   });
+
+  describe("6. Terminal Immutability & Replay Resilience (F1.1-C.1 Hardening)", () => {
+    it("returns 409 ALREADY_DECIDED when repeating PATCH on an accepted suggestion after radar is disabled", async () => {
+      const { contactId, threadId } = await createTestThread(workspaceAId, 2);
+      const currentRev = await fetchCandidateRevision(workspaceAId, threadId);
+
+      const createRes = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+        payload: {
+          idempotencyKey: `api-term-accept-${crypto.randomUUID()}`,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Terminal Accept",
+          body: "Corpo",
+        },
+      });
+      const suggestionId = createRes.json().id;
+
+      // 1. Operator accepts suggestion
+      const acceptRes = await app.inject({
+        method: "PATCH",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions/${suggestionId}`,
+        headers: { authorization: `Bearer ${tokenOperatorA}` },
+        payload: { status: "accepted", stateVersion: 1 },
+      });
+      expect(acceptRes.statusCode).toBe(200);
+
+      // 2. Disable radar on workspace
+      await ownerPool.query(`UPDATE workspaces SET radar_enabled = false WHERE id = $1;`, [workspaceAId]);
+
+      try {
+        // 3. Repeat PATCH
+        const repeatRes = await app.inject({
+          method: "PATCH",
+          url: `/v1/workspaces/${workspaceAId}/integrations/suggestions/${suggestionId}`,
+          headers: { authorization: `Bearer ${tokenOperatorA}` },
+          payload: { status: "accepted", stateVersion: 2 },
+        });
+
+        expect(repeatRes.statusCode).toBe(409);
+        expect(repeatRes.json().code).toBe("ALREADY_DECIDED");
+
+        // Verify status remains accepted and was NOT overwritten by MODULE_DISABLED
+        const row = await ownerPool.query(`SELECT status, state_version FROM integration_suggestions WHERE id = $1;`, [suggestionId]);
+        expect(row.rows[0].status).toBe("accepted");
+        expect(row.rows[0].state_version).toBe(2);
+      } finally {
+        await ownerPool.query(`UPDATE workspaces SET radar_enabled = true WHERE id = $1;`, [workspaceAId]);
+      }
+    });
+
+    it("replays suggestion POST idempotently when an intervening message arrives", async () => {
+      const { contactId, threadId } = await createTestThread(workspaceAId, 2);
+      const currentRev = await fetchCandidateRevision(workspaceAId, threadId);
+      const idempotencyKey = `api-replay-msg-${crypto.randomUUID()}`;
+
+      // 1. Initial POST
+      const res1 = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+        payload: {
+          idempotencyKey,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Intervening API",
+          body: "Corpo",
+        },
+      });
+      expect(res1.statusCode).toBe(201);
+      const suggestionId = res1.json().id;
+
+      // 2. Customer sends message
+      await ownerPool.query(`
+        INSERT INTO messages (workspace_id, channel_instance_id, thread_id, provider, direction, sender_e164, recipient_e164, content_type, body, created_at)
+        VALUES ($1, $2, $3, 'meta_waba', 'inbound', '+5549988880099', '+5549988880001', 'text', 'Mensagem interveniente', now());
+      `, [workspaceAId, channelAId, threadId]);
+
+      // 3. Repeat POST with same idempotency key
+      const res2 = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+        payload: {
+          idempotencyKey,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Intervening API",
+          body: "Corpo",
+        },
+      });
+      expect(res2.statusCode).toBe(200);
+      expect(res2.json().id).toBe(suggestionId);
+      expect(res2.json().created).toBe(false);
+    });
+
+    it("returns 409 VERSION_MISMATCH when stateVersion does not match", async () => {
+      const { contactId, threadId } = await createTestThread(workspaceAId, 2);
+      const currentRev = await fetchCandidateRevision(workspaceAId, threadId);
+
+      const createRes = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+        payload: {
+          idempotencyKey: `api-ver-mismatch-${crypto.randomUUID()}`,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Concurrency API",
+          body: "Corpo",
+        },
+      });
+      const suggestionId = createRes.json().id;
+
+      const patchRes = await app.inject({
+        method: "PATCH",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions/${suggestionId}`,
+        headers: { authorization: `Bearer ${tokenOperatorA}` },
+        payload: { status: "accepted", stateVersion: 999 },
+      });
+
+      expect(patchRes.statusCode).toBe(409);
+      expect(patchRes.json().code).toBe("VERSION_MISMATCH");
+
+      const row = await ownerPool.query(`SELECT status, state_version FROM integration_suggestions WHERE id = $1;`, [suggestionId]);
+      expect(row.rows[0].status).toBe("pending");
+      expect(row.rows[0].state_version).toBe(1);
+    });
+  });
 });
+

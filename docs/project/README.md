@@ -9,13 +9,14 @@
 1. `PRODUCT_CHARTER.md` define por que o produto existe e a fronteira do MVP.
 2. `MASTER_ROADMAP.md` define a ordem, dependências e gates do projeto.
 3. `PROJECT_EXECUTION_PLAN.md` traduz o roadmap em programa de equipe do início ao fim.
-4. `EXECUTION_BOARD.md` registra o estado factual de cada pacote.
-5. `QUALITY_GATES.md` e `DEFINITION_OF_DONE.md` definem como um pacote avança.
-6. `ACCEPTANCE_MATRIX.md` liga requisito, teste, evidência e revisão.
-7. `RISK_REGISTER.md` registra riscos, responsáveis e contingências.
-8. `RELEASE_STRATEGY.md` governa laboratório, piloto, produção e rollback.
-9. ADRs registram decisões arquiteturais duráveis.
-10. `docs/work-packages/<ID>-*.md` contém a execução delimitada de cada pacote.
+4. `APP_FLOW.md` consolida o fluxo do app, jornadas de usuário e máquinas de estado.
+5. `EXECUTION_BOARD.md` registra o estado factual de cada pacote.
+6. `QUALITY_GATES.md` e `DEFINITION_OF_DONE.md` definem como um pacote avança.
+7. `ACCEPTANCE_MATRIX.md` liga requisito, teste, evidência e revisão.
+8. `RISK_REGISTER.md` registra riscos, responsáveis e contingências.
+9. `RELEASE_STRATEGY.md` governa laboratório, piloto, produção e rollback.
+10. ADRs registram decisões arquiteturais duráveis.
+11. `docs/work-packages/<ID>-*.md` contém a execução delimitada de cada pacote.
 
 Planos temporários, walkthroughs e relatórios de executor não substituem estes documentos.
 

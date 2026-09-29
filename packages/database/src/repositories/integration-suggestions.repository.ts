@@ -221,12 +221,9 @@ export function computeSuggestionFingerprint(input: {
   draftMessage?: string | null;
   priority?: SuggestionPriority;
   expiresAt?: string | null;
-  moduleKey?: string;
-  ruleVersion?: string;
   reasonCode?: string | null;
-  evidence?: Record<string, unknown> | null;
+  evidence?: Record<string, unknown> | CandidateEvidence | null;
   candidateRevision?: string | null;
-  snapshotRevision?: string | null;
 }): string {
   const normalized = {
     body: (input.body || "").trim(),
@@ -235,11 +232,8 @@ export function computeSuggestionFingerprint(input: {
     draftMessage: input.draftMessage ? input.draftMessage.trim() : null,
     evidence: input.evidence || null,
     expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null,
-    moduleKey: input.moduleKey || "radar_m01",
     priority: input.priority || "normal",
     reasonCode: input.reasonCode || null,
-    ruleVersion: input.ruleVersion || "1.0.0",
-    snapshotRevision: input.snapshotRevision || null,
     source: input.source || "n8n",
     suggestionType: input.suggestionType || "follow_up",
     threadId: input.threadId || null,
@@ -281,6 +275,8 @@ export function decodeCursor(cursor: string): { lastMessageAt: string; id: strin
 /**
  * Centralized rejection updater: persists status, structured rejection code, human reason,
  * timestamp, and increments state_version under the caller's transaction.
+ * Strictly checks status = 'pending' AND state_version = $expectedStateVersion to prevent
+ * overwriting already decided records or concurrent race conditions.
  */
 export async function persistSuggestionRejection(
   client: Pool | PoolClient,
@@ -289,8 +285,9 @@ export async function persistSuggestionRejection(
   status: "invalidated" | "expired",
   code: SuggestionRejectionCode,
   reason: string,
+  expectedStateVersion: number,
   decidedByUserId?: string | null
-): Promise<IntegrationSuggestionRecord> {
+): Promise<IntegrationSuggestionRecord | null> {
   const updateRes = await client.query<IntegrationSuggestionRecord>(
     `UPDATE public.integration_suggestions
      SET status = $1,
@@ -304,14 +301,14 @@ export async function persistSuggestionRejection(
          ),
          state_version = state_version + 1,
          updated_at = clock_timestamp()
-     WHERE workspace_id = $5 AND id = $6
+     WHERE workspace_id = $5
+       AND id = $6
+       AND status = 'pending'
+       AND state_version = $7
      RETURNING *;`,
-    [status, decidedByUserId || null, code, reason, workspaceId, suggestionId]
+    [status, decidedByUserId || null, code, reason, workspaceId, suggestionId, expectedStateVersion]
   );
-  if (!updateRes.rows[0]) {
-    throw new Error(`Failed to persist suggestion rejection: suggestion ${suggestionId} not found in workspace ${workspaceId}`);
-  }
-  return updateRes.rows[0];
+  return updateRes.rows[0] || null;
 }
 
 // ---------------------------------------------------------------------------
@@ -327,7 +324,38 @@ export async function createIntegrationSuggestion(
   workspaceId: string,
   input: CreateSuggestionInput
 ): Promise<{ suggestion: IntegrationSuggestionRecord; created: boolean }> {
-  // 1. Validate workspace and module enablement
+  // 1. Idempotency replay check: if key already exists, verify request fingerprint and return existing row
+  // without re-evaluating changing facts (e.g. intervening messages, disabled radar, or bumped rule version).
+  const existingRes = await client.query<IntegrationSuggestionRecord>(
+    `SELECT * FROM public.integration_suggestions
+     WHERE workspace_id = $1 AND idempotency_key = $2;`,
+    [workspaceId, input.idempotencyKey]
+  );
+
+  const incomingFingerprint = computeSuggestionFingerprint({
+    source: input.source || "n8n",
+    threadId: input.threadId || null,
+    contactId: input.contactId || null,
+    suggestionType: input.suggestionType || "follow_up",
+    title: input.title,
+    body: input.body,
+    draftMessage: input.draftMessage || null,
+    priority: input.priority || "normal",
+    expiresAt: input.expiresAt || null,
+    reasonCode: input.reasonCode || null,
+    evidence: input.evidence || null,
+    candidateRevision: input.candidateRevision || null,
+  });
+
+  if (existingRes.rows[0]) {
+    const existing = existingRes.rows[0];
+    if (!existing.payload_fingerprint || existing.payload_fingerprint !== incomingFingerprint) {
+      throw new SuggestionIdempotencyConflictError(input.idempotencyKey);
+    }
+    return { suggestion: existing, created: false };
+  }
+
+  // 2. Validate workspace and module enablement for NEW suggestions
   const wsRes = await client.query<{
     is_active: boolean;
     radar_enabled: boolean;
@@ -362,7 +390,7 @@ export async function createIntegrationSuggestion(
   const ruleVersion = ws.radar_rule_version || "1.0.0";
   const cooldownSeconds = ws.radar_cooldown_seconds ?? 86400;
 
-  // 2. Validate origin thread and candidate revision
+  // 3. Validate origin thread and candidate revision
   if (!input.threadId) {
     throw new SuggestionDecisionRejectionError(
       workspaceId,
@@ -473,7 +501,7 @@ export async function createIntegrationSuggestion(
     );
   }
 
-  // 3. Verify Candidate Revision Link
+  // 4. Verify Candidate Revision Link
   const lastMsgAtStr = row.last_msg_created_at_raw || row.last_message_at_raw;
   const currentCandidateRevision = computeCandidateRevision({
     threadId: row.thread_id,
@@ -508,25 +536,6 @@ export async function createIntegrationSuggestion(
     snapshotRevision: currentCandidateRevision,
   };
 
-  // 4. Compute canonical logical fingerprint
-  const fingerprint = computeSuggestionFingerprint({
-    source: input.source || "n8n",
-    threadId: input.threadId,
-    contactId: verifiedContactId,
-    suggestionType: input.suggestionType || "follow_up",
-    title: input.title,
-    body: input.body,
-    draftMessage: input.draftMessage || null,
-    priority: input.priority || "normal",
-    expiresAt: input.expiresAt || null,
-    moduleKey,
-    ruleVersion,
-    reasonCode: input.reasonCode || null,
-    evidence: input.evidence || null,
-    candidateRevision: currentCandidateRevision,
-    snapshotRevision: currentCandidateRevision,
-  });
-
   // Construct typed server metadata
   const metadata: Record<string, unknown> = {
     moduleKey,
@@ -555,7 +564,7 @@ export async function createIntegrationSuggestion(
     [
       workspaceId,
       input.idempotencyKey,
-      fingerprint,
+      incomingFingerprint,
       input.source || "n8n",
       moduleKey,
       ruleVersion,
@@ -576,24 +585,24 @@ export async function createIntegrationSuggestion(
     return { suggestion: insertRes.rows[0], created: true };
   }
 
-  // 6. Conflict: fetch existing record
-  const existingRes = await client.query<IntegrationSuggestionRecord>(
+  // 6. Conflict under concurrent race: fetch existing record
+  const conflictRes = await client.query<IntegrationSuggestionRecord>(
     `SELECT * FROM public.integration_suggestions
      WHERE workspace_id = $1 AND idempotency_key = $2;`,
     [workspaceId, input.idempotencyKey]
   );
 
-  const existing = existingRes.rows[0];
-  if (!existing) {
+  const conflict = conflictRes.rows[0];
+  if (!conflict) {
     throw new Error("Idempotency conflict but existing row not found — race condition or RLS violation");
   }
 
   // Verify semantic fingerprint (fail-closed: empty fingerprint rejects replay)
-  if (!existing.payload_fingerprint || existing.payload_fingerprint !== fingerprint) {
+  if (!conflict.payload_fingerprint || conflict.payload_fingerprint !== incomingFingerprint) {
     throw new SuggestionIdempotencyConflictError(input.idempotencyKey);
   }
 
-  return { suggestion: existing, created: false };
+  return { suggestion: conflict, created: false };
 }
 
 /**
@@ -717,65 +726,10 @@ export async function decideSuggestion(
     };
   }
 
-  // 1.1 Check workspace active
-  if (!suggestion.ws_is_active) {
-    const inv = await persistSuggestionRejection(
-      client, workspaceId, suggestionId, "invalidated",
-      "WORKSPACE_INACTIVE", "Workspace inativo", decision.decidedByUserId
-    );
-    return {
-      ok: false,
-      code: "WORKSPACE_INACTIVE",
-      reason: "Workspace inativo",
-      suggestion: inv,
-    };
-  }
-
-  // 1.2 Check radar enabled
-  if (!suggestion.radar_enabled) {
-    const inv = await persistSuggestionRejection(
-      client, workspaceId, suggestionId, "invalidated",
-      "MODULE_DISABLED", "Módulo Radar desabilitado para este workspace", decision.decidedByUserId
-    );
-    return {
-      ok: false,
-      code: "MODULE_DISABLED",
-      reason: "Módulo Radar desabilitado para este workspace",
-      suggestion: inv,
-    };
-  }
-
-  // 1.3 Check module key
-  if (suggestion.module_key !== "radar_m01") {
-    const inv = await persistSuggestionRejection(
-      client, workspaceId, suggestionId, "invalidated",
-      "MODULE_DISABLED", `Módulo '${suggestion.module_key}' não é suportado`, decision.decidedByUserId
-    );
-    return {
-      ok: false,
-      code: "MODULE_DISABLED",
-      reason: `Módulo '${suggestion.module_key}' não é suportado`,
-      suggestion: inv,
-    };
-  }
-
-  // 1.4 Check rule version stale
-  if (suggestion.rule_version !== suggestion.ws_rule_version) {
-    const inv = await persistSuggestionRejection(
-      client, workspaceId, suggestionId, "invalidated",
-      "RULE_VERSION_STALE",
-      `Versão da regra '${suggestion.rule_version}' desatualizada em relação à versão ativa '${suggestion.ws_rule_version}'`,
-      decision.decidedByUserId
-    );
-    return {
-      ok: false,
-      code: "RULE_VERSION_STALE",
-      reason: `Versão da regra '${suggestion.rule_version}' desatualizada em relação à versão ativa '${suggestion.ws_rule_version}'`,
-      suggestion: inv,
-    };
-  }
-
-  // 2. Check if already decided
+  // 2. CHECK TERMINAL STATUS FIRST!
+  // An already decided suggestion (accepted, dismissed, invalidated, expired) is immutable.
+  // Re-evaluation under changed workspace governance (e.g. disabled radar or bumped rule version)
+  // MUST NOT overwrite an already decided suggestion.
   if (suggestion.status !== "pending") {
     return {
       ok: false,
@@ -785,7 +739,8 @@ export async function decideSuggestion(
     };
   }
 
-  // 3. Optimistic concurrency check
+  // 3. OPTIMISTIC CONCURRENCY CHECK SECOND!
+  // If the client's expected state version does not match, return VERSION_MISMATCH without mutating the row.
   if (suggestion.state_version !== decision.expectedStateVersion) {
     return {
       ok: false,
@@ -795,7 +750,52 @@ export async function decideSuggestion(
     };
   }
 
-  // 4. Expiration check using database clock
+  // Helper for safe rejections that increments state_version and persists structured metadata
+  const safeReject = async (
+    status: "invalidated" | "expired",
+    code: SuggestionRejectionCode,
+    reason: string
+  ): Promise<SuggestionDecisionResult> => {
+    const inv = await persistSuggestionRejection(
+      client,
+      workspaceId,
+      suggestionId,
+      status,
+      code,
+      reason,
+      decision.expectedStateVersion,
+      decision.decidedByUserId
+    );
+    return {
+      ok: false,
+      code,
+      reason,
+      suggestion: inv || suggestion,
+    };
+  };
+
+  // 4. Workspace & Governance revalidation
+  if (!suggestion.ws_is_active) {
+    return safeReject("invalidated", "WORKSPACE_INACTIVE", "Workspace inativo");
+  }
+
+  if (!suggestion.radar_enabled) {
+    return safeReject("invalidated", "MODULE_DISABLED", "Módulo Radar desabilitado para este workspace");
+  }
+
+  if (suggestion.module_key !== "radar_m01") {
+    return safeReject("invalidated", "MODULE_DISABLED", `Módulo '${suggestion.module_key}' não é suportado`);
+  }
+
+  if (suggestion.rule_version !== suggestion.ws_rule_version) {
+    return safeReject(
+      "invalidated",
+      "RULE_VERSION_STALE",
+      `Versão da regra '${suggestion.rule_version}' desatualizada em relação à versão ativa '${suggestion.ws_rule_version}'`
+    );
+  }
+
+  // 5. Expiration check using database clock
   const expiryCheck = await client.query<{ is_expired: boolean }>(
     `SELECT (expires_at IS NOT NULL AND expires_at <= clock_timestamp()) as is_expired
      FROM public.integration_suggestions
@@ -804,32 +804,22 @@ export async function decideSuggestion(
   );
 
   if (expiryCheck.rows[0]?.is_expired) {
-    const expiredRes = await persistSuggestionRejection(
-      client, workspaceId, suggestionId, "expired",
-      "SUGGESTION_EXPIRED", "Sugestão expirada pelo tempo limite e não pode mais ser aceita", decision.decidedByUserId
+    return safeReject(
+      "expired",
+      "SUGGESTION_EXPIRED",
+      "Sugestão expirada pelo tempo limite e não pode mais ser aceita"
     );
-    return {
-      ok: false,
-      code: "SUGGESTION_EXPIRED",
-      reason: "Sugestão expirada pelo tempo limite e não pode mais ser aceita",
-      suggestion: expiredRes || null,
-    };
   }
 
-  // 5. Origin revalidation if accepting and thread is present
+  // 6. Origin revalidation if accepting and thread is present
   if (decision.status === "accepted" && suggestion.thread_id) {
     const originSnap = suggestion.origin_snapshot;
     if (!originSnap || !originSnap.lastMessageAt || !originSnap.threadId) {
-      const inv = await persistSuggestionRejection(
-        client, workspaceId, suggestionId, "invalidated",
-        "INVALID_SNAPSHOT", "Snapshot de origem ausente ou incompleto. Sugestão invalidada.", decision.decidedByUserId
+      return safeReject(
+        "invalidated",
+        "INVALID_SNAPSHOT",
+        "Snapshot de origem ausente ou incompleto. Sugestão invalidada."
       );
-      return {
-        ok: false,
-        code: "INVALID_SNAPSHOT",
-        reason: "Snapshot de origem ausente ou incompleto. Sugestão invalidada.",
-        suggestion: inv || null,
-      };
     }
 
     const threadRes = await client.query<{
@@ -859,61 +849,38 @@ export async function decideSuggestion(
 
     const threadRow = threadRes.rows[0];
     if (!threadRow) {
-      const inv = await persistSuggestionRejection(
-        client, workspaceId, suggestionId, "invalidated",
-        "ORIGIN_THREAD_CLOSED", "A conversa de origem não foi encontrada", decision.decidedByUserId
+      return safeReject(
+        "invalidated",
+        "ORIGIN_THREAD_CLOSED",
+        "A conversa de origem não foi encontrada"
       );
-      return {
-        ok: false,
-        code: "ORIGIN_THREAD_CLOSED",
-        reason: "A conversa de origem não foi encontrada",
-        suggestion: inv || null,
-      };
     }
 
-    // 5.1 Closed thread check
     if (threadRow.status === "closed") {
-      const inv = await persistSuggestionRejection(
-        client, workspaceId, suggestionId, "invalidated",
-        "ORIGIN_THREAD_CLOSED", "A conversa de origem foi encerrada. Sugestão invalidada.", decision.decidedByUserId
+      return safeReject(
+        "invalidated",
+        "ORIGIN_THREAD_CLOSED",
+        "A conversa de origem foi encerrada. Sugestão invalidada."
       );
-      return {
-        ok: false,
-        code: "ORIGIN_THREAD_CLOSED",
-        reason: "A conversa de origem foi encerrada. Sugestão invalidada.",
-        suggestion: inv || null,
-      };
     }
 
-    // 5.2 Handoff / Human control check
     if (threadRow.status === "waiting_human") {
-      const inv = await persistSuggestionRejection(
-        client, workspaceId, suggestionId, "invalidated",
-        "ORIGIN_THREAD_HANDOFF", "A conversa está sob controle humano / handoff ativo. Sugestão não aplicável.", decision.decidedByUserId
+      return safeReject(
+        "invalidated",
+        "ORIGIN_THREAD_HANDOFF",
+        "A conversa está sob controle humano / handoff ativo. Sugestão não aplicável."
       );
-      return {
-        ok: false,
-        code: "ORIGIN_THREAD_HANDOFF",
-        reason: "A conversa está sob controle humano / handoff ativo. Sugestão não aplicável.",
-        suggestion: inv || null,
-      };
     }
 
-    // 5.3 Contact opt-out check
     if (threadRow.opt_out) {
-      const inv = await persistSuggestionRejection(
-        client, workspaceId, suggestionId, "invalidated",
-        "ORIGIN_CONTACT_OPT_OUT", "O contato realizou opt-out de mensagens. Sugestão invalidada.", decision.decidedByUserId
+      return safeReject(
+        "invalidated",
+        "ORIGIN_CONTACT_OPT_OUT",
+        "O contato realizou opt-out de mensagens. Sugestão invalidada."
       );
-      return {
-        ok: false,
-        code: "ORIGIN_CONTACT_OPT_OUT",
-        reason: "O contato realizou opt-out de mensagens. Sugestão invalidada.",
-        suggestion: inv || null,
-      };
     }
 
-    // 5.4 Stale check: New message arrived after snapshot
+    // Stale check: New message arrived after snapshot
     const snapTime = new Date(originSnap.lastMessageAt).getTime();
     const currTime = threadRow.current_last_message_at ? new Date(threadRow.current_last_message_at).getTime() : 0;
 
@@ -921,22 +888,15 @@ export async function decideSuggestion(
     const hasDifferentId = Boolean(originSnap.lastMessageId && threadRow.current_last_message_id && threadRow.current_last_message_id !== originSnap.lastMessageId);
 
     if (hasNewerTime || hasDifferentId) {
-      const inv = await persistSuggestionRejection(
-        client, workspaceId, suggestionId, "invalidated",
+      return safeReject(
+        "invalidated",
         "ORIGIN_STALE_NEW_MESSAGE",
-        "Uma nova mensagem foi recebida na conversa após a geração da sugestão. O operador deve avaliar o contexto recente.",
-        decision.decidedByUserId
+        "Uma nova mensagem foi recebida na conversa após a geração da sugestão. O operador deve avaliar o contexto recente."
       );
-      return {
-        ok: false,
-        code: "ORIGIN_STALE_NEW_MESSAGE",
-        reason: "Uma nova mensagem foi recebida na conversa após a geração da sugestão. O operador deve avaliar o contexto recente.",
-        suggestion: inv || null,
-      };
     }
   }
 
-  // 6. Apply successful decision
+  // 7. Apply successful decision (status = accepted or dismissed)
   const updateRes = await client.query<IntegrationSuggestionRecord>(
     `UPDATE public.integration_suggestions
      SET status = $1,
@@ -960,11 +920,24 @@ export async function decideSuggestion(
 
   const updated = updateRes.rows[0];
   if (!updated) {
+    const latestRes = await client.query<IntegrationSuggestionRecord>(
+      `SELECT * FROM public.integration_suggestions WHERE workspace_id = $1 AND id = $2;`,
+      [workspaceId, suggestionId]
+    );
+    const latest = latestRes.rows[0];
+    if (latest && latest.status !== "pending") {
+      return {
+        ok: false,
+        code: "ALREADY_DECIDED",
+        reason: `Sugestão já foi decidida anteriormente (status: ${latest.status})`,
+        suggestion: latest,
+      };
+    }
     return {
       ok: false,
       code: "VERSION_MISMATCH",
       reason: "Falha concorrente ao atualizar sugestão",
-      suggestion: null,
+      suggestion: latest || null,
     };
   }
 
