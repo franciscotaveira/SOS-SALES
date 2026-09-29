@@ -1,11 +1,22 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import crypto from "node:crypto";
-import { withTenantTransaction, encryptPayload, parseKeyringFromEnv } from "@sos-sales/database";
+import {
+  withTenantTransaction,
+  encryptPayload,
+  decryptPayload,
+  parseKeyringFromEnv,
+  recordSecurityAuditEvent,
+} from "@sos-sales/database";
 import { validateWahaBaseUrl, validateEvolutionBaseUrl } from "@sos-sales/application";
 
 const workspaceParamsSchema = z.object({
   workspaceId: z.string().uuid(),
+});
+
+const channelParamsSchema = z.object({
+  workspaceId: z.string().uuid(),
+  channelId: z.string().uuid(),
 });
 
 const channelCredentialsSchema = z.object({
@@ -87,6 +98,8 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           displayName: c.display_name,
           phoneNumberE164: c.phone_number_e164,
           isActive: c.is_active,
+          status: c.is_active ? "connected" : "revoked",
+          environment: c.provider === "meta_waba" ? "production_certified" : "lab_local",
           createdAt: c.created_at,
           updatedAt: c.updated_at,
         })),
@@ -447,6 +460,356 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         webhookToken: rawToken,
         webhookUrl: `/v1/webhooks/whatsapp/${rawToken}`,
       });
+    }
+  );
+
+  // 4. Revoke / Disconnect Channel Instance
+  app.post(
+    "/v1/workspaces/:workspaceId/channels/:channelId/revoke",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("workspace:manage"),
+      ],
+    },
+    async (request, reply) => {
+      const parsedParams = channelParamsSchema.safeParse(request.params);
+      if (!parsedParams.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Invalid workspaceId or channelId parameter",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { workspaceId, channelId } = parsedParams.data;
+
+      const revoked = await withTenantTransaction(workspaceId, async (client) => {
+        const chanRes = await client.query<{
+          id: string;
+          provider: string;
+          display_name: string;
+          credential_id: string | null;
+          is_active: boolean;
+        }>(
+          `UPDATE public.channel_instances
+           SET is_active = false, updated_at = NOW()
+           WHERE id = $1 AND workspace_id = $2
+           RETURNING id, provider, display_name, credential_id, is_active;`,
+          [channelId, workspaceId]
+        );
+
+        const channel = chanRes.rows[0];
+        if (!channel) {
+          return null;
+        }
+
+        if (channel.credential_id) {
+          await client.query(
+            `UPDATE public.provider_credentials
+             SET status = 'REVOKED', updated_at = NOW()
+             WHERE id = $1 AND workspace_id = $2;`,
+            [channel.credential_id, workspaceId]
+          );
+        }
+
+        try {
+          await recordSecurityAuditEvent(
+            {
+              workspaceId,
+              actorId: request.user.id,
+              actorType: "user",
+              action: "channel.revoked",
+              resourceType: "channel",
+              resourceId: channelId,
+              metadata: {
+                channelId,
+                provider: channel.provider,
+                displayName: channel.display_name,
+                correlationId: request.id,
+                revokedAt: new Date().toISOString(),
+              },
+              ipAddress: request.ip,
+            },
+            client
+          );
+        } catch {
+          // Non-blocking audit catch
+        }
+
+        return channel;
+      });
+
+      if (!revoked) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: `Channel ${channelId} not found in workspace`,
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      return reply.status(200).send({
+        success: true,
+        channelId: revoked.id,
+        status: "revoked",
+        isActive: false,
+        message: `Canal '${revoked.display_name}' revogado com sucesso.`,
+      });
+    }
+  );
+
+  // 5. Get WAHA Safe QR Code (Strictly local flow, zero token exposure in browser)
+  app.get(
+    "/v1/workspaces/:workspaceId/channels/:channelId/qr-code",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("workspace:manage"),
+      ],
+    },
+    async (request, reply) => {
+      const parsedParams = channelParamsSchema.safeParse(request.params);
+      if (!parsedParams.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Invalid workspaceId or channelId parameter",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { workspaceId, channelId } = parsedParams.data;
+
+      const channel = await withTenantTransaction(workspaceId, async (client) => {
+        const res = await client.query<{
+          id: string;
+          provider: string;
+          display_name: string;
+          is_active: boolean;
+          credential_id: string | null;
+        }>(
+          `SELECT id, provider, display_name, is_active, credential_id
+           FROM public.channel_instances
+           WHERE id = $1 AND workspace_id = $2;`,
+          [channelId, workspaceId]
+        );
+        return res.rows[0] || null;
+      });
+
+      if (!channel) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: `Channel ${channelId} not found in workspace`,
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      if (channel.provider !== "waha") {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: `QR Code generation is only supported for WAHA channels (current provider: ${channel.provider})`,
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      if (!channel.is_active) {
+        return reply.status(409).send({
+          type: "https://sos-sales.mct.br/errors/conflict",
+          title: "Conflict",
+          status: 409,
+          detail: "Channel is inactive or revoked",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      // Simulated or test lab mode
+      if (process.env.MCT_SIMULATE_WAHA_QR === "true" || process.env.NODE_ENV === "test") {
+        return reply.status(200).send({
+          success: true,
+          status: "SCAN_QR_CODE",
+          qrDataUri:
+            "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='%23fff'/><text x='100' y='105' text-anchor='middle' font-size='12' fill='%23000'>QR Code WAHA Seguro (Lab)</text></svg>",
+          isSimulated: true,
+          message:
+            "QR Code gerado localmente pelo fluxo seguro do WAHA sem exposição de tokens.",
+        });
+      }
+
+      if (!channel.credential_id) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "WAHA channel does not have associated credentials",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const credRow = await withTenantTransaction(workspaceId, async (client) => {
+        const res = await client.query<{
+          encrypted_payload: string;
+          iv: string;
+          auth_tag: string;
+          key_version: string;
+        }>(
+          `SELECT encrypted_payload, iv, auth_tag, key_version
+           FROM public.provider_credentials
+           WHERE id = $1 AND workspace_id = $2;`,
+          [channel.credential_id, workspaceId]
+        );
+        return res.rows[0] || null;
+      });
+
+      if (!credRow) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: "Channel credentials not found",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const envKeyring = parseKeyringFromEnv();
+      let keyringOrKey: string | Record<string, string> | undefined = envKeyring?.keyring;
+      if (!keyringOrKey) {
+        const rawKey =
+          process.env.MCT_CREDENTIALS_MASTER_KEY ||
+          process.env.APP_MASTER_KEY ||
+          process.env.MASTER_ENCRYPTION_KEY;
+        if (rawKey && /^[0-9a-fA-F]{64}$/.test(rawKey)) {
+          keyringOrKey = rawKey;
+        } else if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+          keyringOrKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        }
+      }
+
+      if (!keyringOrKey) {
+        return reply.status(500).send({
+          type: "https://sos-sales.mct.br/errors/internal",
+          title: "Internal Error",
+          status: 500,
+          detail: "Master encryption key unavailable",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      let creds: { api_key?: string; base_url?: string; session?: string };
+      try {
+        const decryptedJson = decryptPayload(
+          credRow.encrypted_payload,
+          credRow.iv,
+          credRow.auth_tag,
+          keyringOrKey,
+          { keyVersion: credRow.key_version }
+        );
+        creds = JSON.parse(decryptedJson);
+      } catch {
+        return reply.status(500).send({
+          type: "https://sos-sales.mct.br/errors/internal",
+          title: "Decryption Failed",
+          status: 500,
+          detail: "Failed to decrypt channel credentials safely",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      if (!creds.base_url) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "WAHA credentials missing base_url",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      let validatedBaseUrl: string;
+      try {
+        validatedBaseUrl = validateWahaBaseUrl(
+          creds.base_url,
+          process.env.NODE_ENV !== "production"
+        );
+      } catch (err) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "SSRF Violation",
+          status: 400,
+          detail: err instanceof Error ? err.message : "SSRF validation failed",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const sessionName = creds.session || "default";
+      try {
+        const resp = await fetch(
+          `${validatedBaseUrl}/api/sessions/${sessionName}/auth/qr`,
+          {
+            headers: creds.api_key ? { "X-Api-Key": creds.api_key } : {},
+            signal: AbortSignal.timeout(8000),
+          }
+        );
+
+        if (!resp.ok) {
+          return reply.status(200).send({
+            success: false,
+            status: "UNAVAILABLE",
+            error: `WAHA retornou HTTP ${resp.status}. O canal pode já estar conectado ou aguardando inicialização da sessão.`,
+            isSimulated: false,
+          });
+        }
+
+        const contentType = resp.headers.get("content-type") || "";
+        if (contentType.includes("image/")) {
+          const arrayBuffer = await resp.arrayBuffer();
+          const base64 = Buffer.from(arrayBuffer).toString("base64");
+          return reply.status(200).send({
+            success: true,
+            status: "SCAN_QR_CODE",
+            qrDataUri: `data:${contentType};base64,${base64}`,
+            isSimulated: false,
+          });
+        }
+
+        const data = (await resp.json()) as { qr?: string; message?: string };
+        return reply.status(200).send({
+          success: true,
+          status: "SCAN_QR_CODE",
+          qr: data.qr,
+          isSimulated: false,
+        });
+      } catch (err: unknown) {
+        return reply.status(200).send({
+          success: false,
+          status: "UNREACHABLE",
+          error:
+            err instanceof Error ? err.message : "WAHA host unreachable",
+          isSimulated: false,
+        });
+      }
     }
   );
 };

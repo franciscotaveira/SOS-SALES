@@ -111,6 +111,8 @@ export interface ChannelSummary {
   displayName: string;
   phoneNumberE164: string | null;
   isActive: boolean;
+  status?: "connected" | "revoked" | "configuring" | "unconfigured" | "error";
+  environment?: "production_certified" | "lab_local";
   createdAt: string;
   updatedAt: string;
 }
@@ -976,6 +978,44 @@ export class ApiClient {
         workspaceId,
         method: "POST",
         body: payload,
+      }
+    );
+  }
+
+  async revokeChannel(
+    workspaceId: string,
+    channelId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; channelId: string; status: string; message: string }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/channels/${channelId}/revoke`,
+      {
+        ...options,
+        workspaceId,
+        method: "POST",
+      }
+    );
+  }
+
+  async getChannelQrCode(
+    workspaceId: string,
+    channelId: string,
+    options?: RequestOptions
+  ): Promise<{
+    success: boolean;
+    status: string;
+    qr?: string;
+    qrDataUri?: string;
+    isSimulated?: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/channels/${channelId}/qr-code`,
+      {
+        ...options,
+        workspaceId,
+        method: "GET",
       }
     );
   }

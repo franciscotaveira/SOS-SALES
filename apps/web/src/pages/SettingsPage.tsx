@@ -24,6 +24,9 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowLeft,
+  Lock,
+  X,
+  RefreshCw,
 } from "lucide-react";
 
 export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => {
@@ -32,6 +35,21 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // M7 — Estados de Gestão de Canal (Revogação, Auditoria e QR Code WAHA)
+  const [revokingChannelId, setRevokingChannelId] = useState<string | null>(null);
+  const [channelActionFeedback, setChannelActionFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [activeQrModal, setActiveQrModal] = useState<{
+    channelId: string;
+    channelName: string;
+    qrDataUri?: string;
+    qrText?: string;
+    isLoading: boolean;
+    error?: string;
+  } | null>(null);
 
   // --- Estado do Bloco Pix Institucional ---
   const [pixKey, setPixKey] = useState("");
@@ -251,6 +269,65 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
     setTestResult(null);
     setCreatedChannelData(null);
     setCreateChannelError(null);
+  };
+
+  // M7: Revogação com auditoria e invalidação de credenciais
+  const handleRevokeChannel = async (channelId: string, channelName: string) => {
+    if (!activeWorkspace || !token) return;
+    const confirmed = window.confirm(
+      `Tem certeza que deseja revogar a linha "${channelName}"? As credenciais serão invalidadas e o canal será desativado com registro de auditoria.`
+    );
+    if (!confirmed) return;
+
+    setRevokingChannelId(channelId);
+    setChannelActionFeedback(null);
+    try {
+      const res = await apiClient.revokeChannel(activeWorkspace.id, channelId, { token });
+      setChannelActionFeedback({
+        type: "success",
+        message: res.message || `Linha "${channelName}" revogada com sucesso.`,
+      });
+      await loadChannels();
+    } catch (err: unknown) {
+      setChannelActionFeedback({
+        type: "error",
+        message: err instanceof Error ? err.message : "Falha ao revogar linha.",
+      });
+    } finally {
+      setRevokingChannelId(null);
+    }
+  };
+
+  // M7: Visualização de QR Code WAHA Seguro (sem imprimir tokens)
+  const handleOpenQrCodeModal = async (channelId: string, channelName: string) => {
+    if (!activeWorkspace || !token) return;
+    setActiveQrModal({ channelId, channelName, isLoading: true });
+    try {
+      const res = await apiClient.getChannelQrCode(activeWorkspace.id, channelId, { token });
+      if (res.success) {
+        setActiveQrModal({
+          channelId,
+          channelName,
+          qrDataUri: res.qrDataUri,
+          qrText: res.qr,
+          isLoading: false,
+        });
+      } else {
+        setActiveQrModal({
+          channelId,
+          channelName,
+          isLoading: false,
+          error: res.error || "QR Code indisponível ou sessão já conectada.",
+        });
+      }
+    } catch (err: unknown) {
+      setActiveQrModal({
+        channelId,
+        channelName,
+        isLoading: false,
+        error: err instanceof Error ? err.message : "Falha ao carregar QR Code do WAHA.",
+      });
+    }
   };
 
   return (
@@ -1041,6 +1118,15 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
             </div>
           )}
 
+          {channelActionFeedback && (
+            <Alert
+              variant={channelActionFeedback.type === "success" ? "info" : "danger"}
+              title={channelActionFeedback.type === "success" ? "Ação Realizada" : "Aviso de Canal"}
+            >
+              {channelActionFeedback.message}
+            </Alert>
+          )}
+
           {/* LISTA DE CANAIS CONECTADOS */}
           {isLoadingChannels ? (
             <LoadingState variant="skeleton" lines={3} text="Carregando canais..." />
@@ -1073,7 +1159,8 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    backgroundColor: "var(--bg-canvas, #F8FAFC)",
+                    backgroundColor: c.isActive ? "var(--bg-canvas, #F8FAFC)" : "#F1F5F9",
+                    opacity: c.isActive ? 1 : 0.75,
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
@@ -1093,12 +1180,15 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
                     </div>
 
                     <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                         <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>{c.displayName}</span>
                         <Badge variant={c.isActive ? "action" : "danger"}>
-                          {c.isActive ? "Pronto para Atendimento" : "Inativo"}
+                          {c.isActive ? "Conectado" : "Revogado / Inativo"}
                         </Badge>
                         <Badge variant="neutral">{c.provider.toUpperCase()}</Badge>
+                        <Badge variant={c.provider === "meta_waba" ? "operational" : "neutral"}>
+                          {c.provider === "meta_waba" ? "Homologado Oficial" : "Laboratório Local"}
+                        </Badge>
                       </div>
                       <div
                         style={{
@@ -1112,15 +1202,36 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    {c.provider === "waha" && c.isActive && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenQrCodeModal(c.id, c.displayName)}
+                      >
+                        <QrCode size={14} /> QR Code
+                      </Button>
+                    )}
+
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleCopy(c.id, c.id)}
                     >
                       {copiedId === c.id ? <Check size={14} color="#00A884" /> : <Copy size={14} />}
-                      {copiedId === c.id ? "ID Copiado!" : "Copiar ID"}
+                      {copiedId === c.id ? "Copiado!" : "Copiar ID"}
                     </Button>
+
+                    {c.isActive && (
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={revokingChannelId === c.id}
+                        onClick={() => handleRevokeChannel(c.id, c.displayName)}
+                      >
+                        <Lock size={14} /> {revokingChannelId === c.id ? "Revogando..." : "Revogar"}
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1273,6 +1384,129 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
           </Alert>
         )}
       </div>
+
+      {/* M7 Modal: QR Code WAHA Seguro */}
+      {activeQrModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+          onClick={() => setActiveQrModal(null)}
+        >
+          <div
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "460px",
+              width: "100%",
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <QrCode size={20} color="var(--color-operational, #2563EB)" />
+                <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0 }}>
+                  Pareamento Seguro WAHA
+                </h3>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setActiveQrModal(null)}>
+                <X size={16} />
+              </Button>
+            </div>
+
+            <p style={{ fontSize: "0.85rem", color: "var(--text-secondary, #64748B)", margin: 0 }}>
+              Linha: <strong>{activeQrModal.channelName}</strong>. Aponte a câmera do WhatsApp para autenticar a sessão local.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "20px",
+                backgroundColor: "#F8FAFC",
+                borderRadius: "8px",
+                border: "1px solid #E2E8F0",
+                minHeight: "220px",
+              }}
+            >
+              {activeQrModal.isLoading ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                  <RefreshCw size={24} color="#2563EB" />
+                  <span style={{ fontSize: "0.85rem", color: "#64748B" }}>Buscando QR Code da sessão local...</span>
+                </div>
+              ) : activeQrModal.error ? (
+                <div style={{ textAlign: "center", color: "#DC2626", fontSize: "0.85rem" }}>
+                  <AlertTriangle size={24} color="#DC2626" style={{ margin: "0 auto 8px" }} />
+                  <p style={{ margin: 0 }}>{activeQrModal.error}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    style={{ marginTop: "12px" }}
+                    onClick={() => handleOpenQrCodeModal(activeQrModal.channelId, activeQrModal.channelName)}
+                  >
+                    Tentar Novamente
+                  </Button>
+                </div>
+              ) : activeQrModal.qrDataUri ? (
+                <img
+                  src={activeQrModal.qrDataUri}
+                  alt="QR Code WAHA"
+                  style={{ width: "200px", height: "200px", borderRadius: "4px" }}
+                />
+              ) : activeQrModal.qrText ? (
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "0.75rem",
+                    wordBreak: "break-all",
+                    padding: "10px",
+                    backgroundColor: "#FFFFFF",
+                    border: "1px solid #CBD5E1",
+                    borderRadius: "4px",
+                  }}
+                >
+                  {activeQrModal.qrText}
+                </div>
+              ) : (
+                <span style={{ fontSize: "0.85rem", color: "#64748B" }}>Nenhum QR code disponível no momento.</span>
+              )}
+            </div>
+
+            <div
+              style={{
+                fontSize: "0.78rem",
+                color: "#059669",
+                backgroundColor: "#ECFDF5",
+                padding: "8px 12px",
+                borderRadius: "6px",
+                border: "1px solid #A7F3D0",
+              }}
+            >
+              🔒 <strong>Segurança Soberana:</strong> As credenciais do servidor WAHA são mantidas no cofre do servidor e nunca transitam ou são impressas no navegador.
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button size="sm" variant="outline" onClick={() => setActiveQrModal(null)}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -199,5 +199,43 @@
   - `pnpm --filter @sos-sales/web build`:
     - **Resultado:** Build concluído com sucesso em 1.63s (Exit Code: 0).
 
+---
+
+## 9. Milestone M7 — Onboarding Assistido de Canal por Workspace (WABA/WAHA com Credenciais Protegidas)
+
+- **Data:** 2026-09-29T04:32:00-03:00
+- **Mudanças Implementadas:**
+  - `apps/api/src/routes/channels.routes.ts`:
+    - Endpoint de revogação segura `POST /v1/workspaces/:workspaceId/channels/:channelId/revoke`:
+      - Atualiza `channel_instances.is_active = false`.
+      - Atualiza `provider_credentials.status = 'REVOKED'`.
+      - Registra auditoria imutável via `recordSecurityAuditEvent` em `audit_events` com ação `channel.revoked`.
+      - Protegido por autenticação, isolamento de tenant e permissão RBAC `workspace:manage`.
+    - Endpoint de pareamento WAHA seguro `GET /v1/workspaces/:workspaceId/channels/:channelId/qr-code`:
+      - Decriptação de credenciais estritamente no cofre da aplicação em memória via AES-256-GCM.
+      - Validação SSRF obrigatória (`validateWahaBaseUrl`).
+      - Retorno de SVG/Data URI sem imprimir ou expor API keys, tokens ou sessões ao navegador.
+      - Rejeição com HTTP 400 para provedores não-WAHA (`meta_waba`) e HTTP 409 para canais revogados/inativos.
+    - Projeção de listagem enriquecida `GET /v1/workspaces/:workspaceId/channels`:
+      - Adicionados campos `status` (`connected` | `revoked`) e `environment` (`production_certified` para WABA e `lab_local` para WAHA).
+  - `apps/web/src/pages/SettingsPage.tsx`:
+    - Badges distintos para canais ("Homologado Oficial" em esmeralda vs "Laboratório Local" em violeta).
+    - Botão "Revogar" com diálogo nativo de confirmação que chama `api.revokeChannel`.
+    - Botão "QR Code" para linhas WAHA com modal seguro dedicado exibindo o QR sem vazamento de tokens.
+  - `apps/web/src/services/api-client.ts`:
+    - Atualizada interface `ChannelSummary` e adicionados métodos `revokeChannel` e `getChannelQrCode`.
+  - `apps/api/src/__tests__/channel-onboarding-m7.test.ts`:
+    - Suíte de integração com 6/6 testes aprovados cobrindo provisionamento com encriptação, listagem com status/ambiente honestos, segurança de QR code, RBAC (403 para operadores), isolamento cross-tenant (404/403) e revogação com auditoria.
+- **Resultados de Testes Executados:**
+  - `apps/api/src/__tests__/channel-onboarding-m7.test.ts`:
+    - **Resultado:** 6/6 testes aprovados (Exit Code: 0, Duração: 452ms).
+  - Execução Integral Monorepo (`pnpm test:db:run`):
+    - **Resultado:** 53/53 arquivos de teste aprovados, 725/725 testes verdes com teardown limpo (Exit Code: 0, Duração: 28.03s).
+  - `pnpm typecheck`:
+    - **Resultado:** 18/18 tarefas concluídas com sucesso no Turbo (Exit Code: 0, Duração: 1.95s).
+  - `pnpm --filter @sos-sales/web build`:
+    - **Resultado:** Build concluído com sucesso em 1.70s (Exit Code: 0).
+
+
 
 
