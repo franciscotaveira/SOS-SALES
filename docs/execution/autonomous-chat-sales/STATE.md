@@ -8,21 +8,22 @@
 
 ## 1. Fotografia do Estado Atual
 
-- **Data / Hora:** 2026-09-29T04:00:00-03:00
-- **SHA Base de Entrada:** `4f4b698`
-- **Milestone Atual:** `M5 — Próxima Ação Comercial E2 (Schema commercial_actions, atomicidade Radar, Cockpit Lite)` -> `COMPLETED`
-- **Próximo Milestone:** `M6 — Fluxo Comercial, Catálogo, Proposta Imutável, Pix EMV e Outcome WON/LOST`
+- **Data / Hora:** 2026-09-29T04:20:00-03:00
+- **SHA Base de Entrada:** `5072e39`
+- **Milestone Atual:** `M6 — Fluxo Comercial, Catálogo, Proposta Imutável, Pix EMV e Outcome WON/LOST` -> `COMPLETED`
+- **Próximo Milestone:** `M7 — Onboarding Assistido de Canal por Workspace (WABA/WAHA com Credenciais Protegidas)`
 - **Último Gate Verde:**
-  - Database Test Suite (`pnpm test:db:run`): 50/50 arquivos de teste aprovados, 706/706 testes verdes com teardown limpo.
-  - Typecheck Repo (`pnpm typecheck`): 18/18 tarefas bem-sucedidas no Turbo sem erros em nenhum pacote ou app.
-  - Web Build (`pnpm --filter @sos-sales/web build`): Construção com sucesso em 1.85s (`dist/index.html`, `dist/assets/index-Cf_QKymb.js`).
-  - Migration `020_commercial_actions.sql`: Criadas tabelas `commercial_actions` e `commercial_action_history`, partial unique index para ação aberta única por conversa, FORCE RLS, privilégio mínimo e idempotência.
-  - Repositório `commercial-actions.repository.ts`: Métodos completos com auditoria imutável de adiamento e reatribuição, conclusão e cancelamento idempotentes.
-  - Atomicidade com Radar: `decideSuggestion` aceita cria ou reutiliza ação aberta de forma atômica e idempotente.
-  - Visual Cockpit: Card "Próxima Ação Comercial (E2)" na Coluna 3, pill de próxima ação com status de atraso na fila de atendimento, e filtro de fila `needs_attention`.
+  - Database Test Suite (`pnpm test:db:run`): 52/52 arquivos de teste aprovados, 719/719 testes verdes com teardown limpo.
+  - Typecheck Repo (`pnpm typecheck`): 18/18 tarefas bem-sucedidas no Turbo sem erros.
+  - Web Build (`pnpm --filter @sos-sales/web build`): Construção com sucesso em 1.63s (`dist/index.html`, `dist/assets/index-DDGbEmeF.css`, `dist/assets/index-B9c6hpGt.js`).
+  - Migration `021_commercial_proposals.sql`: Criada tabela `commercial_proposals` com snapshot imutável em JSONB (`items`), `total_cents` consolidado, composite foreign keys com `workspace_id`, FORCE RLS e REVOKE DELETE para `sos_app_user`; adicionada coluna `proposal_id` em `pix_charges`.
+  - Repositório `commercial-proposals.repository.ts`: Métodos completos (`createCommercialProposal`, `getCommercialProposalById`, `listCommercialProposalsForThread`, `updateCommercialProposalStatus`) com snapshotting automático de catálogo e avanço para `proposal` no lifecycle da jornada.
+  - Salvaguardas em Commercial Outcomes: `recordCommercialOutcome` endurecido com validações `ACTOR_REQUIRED`, `REASON_REQUIRED` para desfechos `lost`, e deduplicação idempotente impedindo re-enfileiramento de CAPI em desfechos idênticos repetidos.
+  - Separação Caixa Pix: `confirmPixChargeManual` estritamente desacoplado com método `MANUAL_CASHIER`, sem emissão indevida de conversão CAPI ou avanço cego de jornada.
+  - API Routes & Web Client: `commercial-proposals.routes.ts` com RBAC e tenant context em `/v1/workspaces/:workspaceId/threads/:threadId/proposals`, e tipos adicionados a `api-client.ts`.
 - **Erro / Bloqueador Ativo no Momento:** Nenhum bloqueador interno em aberto.
 - **Próxima Ação Imediata:**
-  - Iniciar M6: Auditar e fortalecer fluxo comercial (propostas comerciais com snapshot imutável de itens, QR code Pix EMV com chave BACEN real, separação estrita da confirmação manual de caixa, e transição auditada de WON/LOST com despacho CAPI).
+  - Iniciar M7: Auditar assistente de canais em `SettingsPage.tsx` e endpoints de canais para WABA e WAHA, garantindo credenciais protegidas, estados honestos de conexão e ausência de vazamento de segredos para a UI.
 
 ---
 
@@ -35,8 +36,8 @@
 | **M2** | Fundação, auth JWT, RBAC com efeitos, `withTenantTransaction` e RLS | `COMPLETED` | `32d0bf4` |
 | **M3** | Mensageria e canais no núcleo (inbox, outbox transacional, reconciliação, SSRF guard) | `COMPLETED` | `aea5f27` |
 | **M4** | Cockpit íntegro (timeline, isolamento de rascunhos, troca rápida sem corrida) | `COMPLETED` | `4f4b698` |
-| **M5** | Próxima Ação Comercial E2 (Schema `commercial_actions`, atomicidade Radar, Cockpit Lite) | `COMPLETED` | pendente commit M5 |
-| **M6** | Fluxo comercial, catálogo, proposta imutável, Pix EMV e outcome WON/LOST | `TODO` | — |
+| **M5** | Próxima Ação Comercial E2 (Schema `commercial_actions`, atomicidade Radar, Cockpit Lite) | `COMPLETED` | `5072e39` |
+| **M6** | Fluxo comercial, catálogo, proposta imutável, Pix EMV e outcome WON/LOST | `COMPLETED` | pendente commit M6 |
 | **M7** | Onboarding assistido de canal por workspace (WABA/WAHA com credenciais protegidas) | `TODO` | — |
 | **M8** | Resiliência, restarts, lease recovery e preparação para migração | `TODO` | — |
 | **M9** | E2E integrado P1–P8 + Ensaio sintético Haven de ponta a ponta | `TODO` | — |

@@ -183,6 +183,14 @@ export async function recordCommercialOutcome(
   workspaceId: string,
   input: RecordOutcomeInput
 ): Promise<{ outcome: CommercialOutcomeRecord; conversionEvent: ConversionEventRecord | null }> {
+  if (!input.registeredByUserId || !input.registeredByUserId.trim()) {
+    throw new Error("ACTOR_REQUIRED: Responsável pelo registro do desfecho comercial é obrigatório");
+  }
+
+  if (input.status === "lost" && (!input.reason || !input.reason.trim())) {
+    throw new Error("REASON_REQUIRED: Motivo do desfecho de perda é obrigatório");
+  }
+
   // 1. Fetch journey under tenant RLS
   const journeyRes = await client.query<CommercialJourneyRecord>(
     `SELECT * FROM public.commercial_journeys WHERE workspace_id = $1 AND id = $2;`,
@@ -191,6 +199,25 @@ export async function recordCommercialOutcome(
   const journey = journeyRes.rows[0];
   if (!journey) {
     throw new Error(`Commercial journey ${input.journeyId} not found in workspace ${workspaceId}`);
+  }
+
+  // Idempotency: if journey already has identical outcome status and value, return existing without re-firing CAPI
+  const existingOutcomeRes = await client.query<CommercialOutcomeRecord>(
+    `SELECT * FROM public.commercial_outcomes 
+     WHERE workspace_id = $1 AND journey_id = $2 
+     ORDER BY created_at DESC LIMIT 1;`,
+    [workspaceId, input.journeyId]
+  );
+  if (
+    existingOutcomeRes.rows[0] &&
+    existingOutcomeRes.rows[0].status === input.status &&
+    Number(existingOutcomeRes.rows[0].value_cents) === input.valueCents
+  ) {
+    const convRes = await client.query<ConversionEventRecord>(
+      `SELECT * FROM public.conversion_events WHERE workspace_id = $1 AND outcome_id = $2;`,
+      [workspaceId, existingOutcomeRes.rows[0].id]
+    );
+    return { outcome: existingOutcomeRes.rows[0], conversionEvent: convRes.rows[0] ?? null };
   }
 
   // 2. Insert outcome
@@ -205,8 +232,8 @@ export async function recordCommercialOutcome(
       input.status,
       input.valueCents,
       input.currency || "BRL",
-      input.reason || null,
-      input.registeredByUserId,
+      input.reason ? input.reason.trim() : null,
+      input.registeredByUserId.trim(),
     ]
   );
   const outcome = outcomeRes.rows[0];

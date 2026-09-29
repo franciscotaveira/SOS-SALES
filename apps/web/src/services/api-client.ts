@@ -177,6 +177,36 @@ export interface CommercialActionHistorySummary {
   createdAt: string;
 }
 
+export interface CommercialProposalItem {
+  productId: string | null;
+  title: string;
+  unitPriceCents: number;
+  quantity: number;
+  subtotalCents: number;
+}
+
+export interface CommercialProposalSummary {
+  id: string;
+  workspaceId: string;
+  threadId: string;
+  contactId: string;
+  journeyId: string | null;
+  title: string;
+  status: "draft" | "sent" | "accepted" | "rejected" | "expired" | "cancelled";
+  items: CommercialProposalItem[];
+  totalCents: number;
+  currency: string;
+  conditions: string | null;
+  validUntil: string | null;
+  sentAt: string | null;
+  acceptedAt: string | null;
+  rejectedAt: string | null;
+  cancelledAt: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ThreadMessageSummary {
   id: string;
   workspaceId: string;
@@ -651,6 +681,80 @@ export class ApiClient {
     return this.request(
       `/v1/workspaces/${workspaceId}/actions/${actionId}/history`,
       { ...options, workspaceId }
+    );
+  }
+
+  // ─── Commercial Proposals (M6) ──────────────────────────────────────────
+
+  async getThreadProposals(
+    workspaceId: string,
+    threadId: string,
+    options?: RequestOptions
+  ): Promise<{ items: CommercialProposalSummary[] }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/threads/${threadId}/proposals`,
+      { ...options, workspaceId }
+    );
+  }
+
+  async createThreadProposal(
+    workspaceId: string,
+    threadId: string,
+    payload: {
+      contactId: string;
+      journeyId?: string | null;
+      title: string;
+      items: Array<{
+        productId?: string | null;
+        title?: string;
+        unitPriceCents?: number;
+        quantity: number;
+      }>;
+      currency?: string;
+      conditions?: string | null;
+      validUntil?: string | null;
+    },
+    options?: RequestOptions
+  ): Promise<CommercialProposalSummary> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/threads/${threadId}/proposals`,
+      {
+        ...options,
+        method: "POST",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
+
+  async getProposal(
+    workspaceId: string,
+    proposalId: string,
+    options?: RequestOptions
+  ): Promise<CommercialProposalSummary> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/proposals/${proposalId}`,
+      { ...options, workspaceId }
+    );
+  }
+
+  async patchProposalStatus(
+    workspaceId: string,
+    proposalId: string,
+    payload: {
+      status: "draft" | "sent" | "accepted" | "rejected" | "expired" | "cancelled";
+      reason?: string | null;
+    },
+    options?: RequestOptions
+  ): Promise<CommercialProposalSummary> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/proposals/${proposalId}/status`,
+      {
+        ...options,
+        method: "PATCH",
+        body: payload,
+        workspaceId,
+      }
     );
   }
 

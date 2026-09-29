@@ -164,5 +164,40 @@
   - `pnpm --filter @sos-sales/web build`:
     - **Resultado:** Build concluído com sucesso em 1.85s (Exit Code: 0).
 
+---
+
+## 8. Milestone M6 — Fluxo Comercial, Catálogo, Proposta Imutável, Pix EMV e Outcome WON/LOST
+
+- **Data:** 2026-09-29T04:20:00-03:00
+- **Mudanças Implementadas:**
+  - `packages/database/migrations/021_commercial_proposals.sql`:
+    - Criação da tabela `commercial_proposals` com snapshot imutável em JSONB (`items`), `total_cents` consolidado, composite foreign keys com `workspace_id` para integridade referencial com `contacts`, `commercial_threads` e `commercial_journeys`.
+    - `FORCE ROW LEVEL SECURITY` com políticas tenant-isoladas (`app.current_workspace_id`).
+    - Privilégio mínimo concedido a `sos_app_user`: estritamente `SELECT`, `INSERT`, `UPDATE` (DELETE expressamente revogado).
+    - Adicionada coluna `proposal_id` em `pix_charges` com composite foreign key `(workspace_id, proposal_id)` permitindo vinculação estrita entre proposta e cobrança Pix.
+  - `packages/database/src/repositories/commercial-proposals.repository.ts`:
+    - `createCommercialProposal`: snapshotting automático de catálogo (congelando título e preço unitário vigentes ou aceitando itens customizados com precificação explícita), cálculo de subtotal por item e total consolidado. Avança automaticamente jornada comercial ativa vinculada para `proposal` se o estágio atual for `lead` ou `qualified`.
+    - `getCommercialProposalById` e `listCommercialProposalsForThread`: consultas tenant-seguras com ordenação cronológica.
+    - `updateCommercialProposalStatus`: máquina de estados (`draft`, `sent`, `accepted`, `rejected`, `expired`, `cancelled`) com transição para `won` na jornada ao aceitar (`accepted`), registro de timestamps específicos (`accepted_at`, `rejected_at`, `cancelled_at`), e bloqueio estrito de transições regressivas a partir de propostas aceitas.
+  - `packages/database/src/commercial.ts`:
+    - `recordCommercialOutcome`: validação estrita de ator responsável (`ACTOR_REQUIRED`), motivo obrigatório para desfecho de perda (`REASON_REQUIRED` quando `status === 'lost'`), e deduplicação idempotente retornando o desfecho existente sem re-enfileirar evento CAPI em chamadas repetidas idênticas.
+  - `packages/database/src/pix.ts`:
+    - Confirmação manual de caixa (`confirmPixChargeManual`): marca explicitamente `status = 'PAID'`, método `MANUAL_CASHIER`, grava notas de conferência bancária e mantém desacoplado de despacho de conversão CAPI ou avanço cego de jornada comercial.
+  - `apps/api/src/routes/commercial-proposals.routes.ts`:
+    - Endpoints REST tenant-isolados com RBAC (`journey:view`, `journey:transition_stage`): `GET/POST /v1/workspaces/:workspaceId/threads/:threadId/proposals`, `GET /v1/workspaces/:workspaceId/proposals/:proposalId` e `PATCH /v1/workspaces/:workspaceId/proposals/:proposalId/status`.
+  - `apps/web/src/services/api-client.ts`:
+    - Tipos TypeScript e métodos de cliente (`CommercialProposalSummary`, `CommercialProposalItem`, `getThreadProposals`, `createThreadProposal`, `getProposal`, `patchProposalStatus`).
+- **Resultados de Testes Executados:**
+  - `packages/database/src/__tests__/commercial-proposals.test.ts`:
+    - **Resultado:** 9/9 testes aprovados (Exit Code: 0, Duração: 285ms).
+  - `apps/api/src/__tests__/commercial-proposals.routes.test.ts`:
+    - **Resultado:** 4/4 testes de rotas aprovados (Exit Code: 0, Duração: 264ms).
+  - Execução Integral Monorepo (`pnpm test:db:run`):
+    - **Resultado:** 52/52 arquivos de teste aprovados, 719/719 testes verdes (Exit Code: 0, Duração: 26.71s).
+  - `pnpm typecheck`:
+    - **Resultado:** 18/18 tarefas concluídas com sucesso no Turbo (Exit Code: 0).
+  - `pnpm --filter @sos-sales/web build`:
+    - **Resultado:** Build concluído com sucesso em 1.63s (Exit Code: 0).
+
 
 

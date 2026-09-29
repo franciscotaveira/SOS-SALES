@@ -10,6 +10,7 @@ export * from "./repositories/outbound-command.repository";
 export * from "./repositories/transactional-outbound-producer.repository";
 export * from "./repositories/integration-suggestions.repository";
 export * from "./repositories/commercial-actions.repository";
+export * from "./repositories/commercial-proposals.repository";
 export * from "./templates";
 export * from "./flows";
 export * from "./products";
