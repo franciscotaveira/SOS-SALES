@@ -1,5 +1,9 @@
 import { Pool } from "pg";
 import { getDatabasePool } from "../packages/database/src";
+import {
+  runSyntheticV2Migration,
+  type MigrationExecutionResult,
+} from "./migration-v2-to-v3-engine";
 
 export interface MigrationDryRunResult {
   readonly timestamp: string;
@@ -35,6 +39,7 @@ export interface MigrationDryRunResult {
     readonly pixCharges: number;
     readonly auditEvents: number;
   };
+  readonly syntheticMigration?: MigrationExecutionResult;
   readonly warnings: string[];
   readonly errors: string[];
 }
@@ -77,10 +82,14 @@ export const TENANT_TABLES_REQUIRING_FORCE_RLS = [
   "conversion_events",
 ];
 
-export async function runMigrationDryRun(pool?: Pool): Promise<MigrationDryRunResult> {
+export async function runMigrationDryRun(
+  pool?: Pool,
+  options: { runSynthetic?: boolean; fixturePath?: string } = {}
+): Promise<MigrationDryRunResult> {
   const runner = pool || getDatabasePool();
   const errors: string[] = [];
   const warnings: string[] = [];
+  const shouldRunSynthetic = options.runSynthetic ?? true;
 
   // 1. Get current database name
   const dbNameRes = await runner.query<{ current_database: string }>("SELECT current_database();");
@@ -211,6 +220,26 @@ export async function runMigrationDryRun(pool?: Pool): Promise<MigrationDryRunRe
     auditEvents: await getCount("audit_events"),
   };
 
+  // 7. Synthetic V2 Migration Dry-Run (if enabled)
+  let syntheticMigration: MigrationExecutionResult | undefined;
+  if (shouldRunSynthetic) {
+    try {
+      syntheticMigration = await runSyntheticV2Migration(runner, {
+        dryRun: true,
+        fixturePath: options.fixturePath,
+      });
+
+      if (!syntheticMigration.checksumsMatch) {
+        errors.push(
+          `Synthetic V2 migration reconciliation failed: ${syntheticMigration.errors.join("; ")}`
+        );
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`Synthetic V2 migration error: ${msg}`);
+    }
+  }
+
   const isReady = errors.length === 0;
 
   return {
@@ -236,6 +265,7 @@ export async function runMigrationDryRun(pool?: Pool): Promise<MigrationDryRunRe
       orphanedPixCharges,
     },
     entityCounts,
+    syntheticMigration,
     warnings,
     errors,
   };
@@ -249,7 +279,7 @@ if (require.main === module || process.argv[1]?.endsWith("migration-v2-to-v3-dry
         console.log(JSON.stringify(result, null, 2));
       } else {
         console.log("\n=======================================================");
-        console.log("   MIGRATION V2 -> V3 DRY-RUN REPORT");
+        console.log("   MIGRATION V2 -> V3 DRY-RUN REPORT (R4)");
         console.log("=======================================================");
         console.log(`Database:     ${result.databaseName}`);
         console.log(`Timestamp:    ${result.timestamp}`);
@@ -259,9 +289,24 @@ if (require.main === module || process.argv[1]?.endsWith("migration-v2-to-v3-dry
         console.log(`FORCE RLS:    ${result.schemaChecks.forceRlsEnforced ? "PASSED" : "FAILED"}`);
         console.log(`Permissions:  ${result.permissionChecks.deleteRevokedOnAppUser ? "PASSED (Least Privilege)" : "FAILED"}`);
         console.log("-------------------------------------------------------");
-        console.log("Entity Counts:");
+        console.log("Entity Counts (Target DB):");
         for (const [entity, count] of Object.entries(result.entityCounts)) {
           console.log(`  - ${entity.padEnd(22)}: ${count}`);
+        }
+        if (result.syntheticMigration) {
+          console.log("-------------------------------------------------------");
+          console.log("Synthetic V2 Fixture Ingestion (Dry-Run):");
+          console.log(`  - Status:               ${result.syntheticMigration.checksumsMatch ? "PASSED (100% Match)" : "FAILED"}`);
+          console.log(`  - Workspaces:           ${result.syntheticMigration.v3IngestedCounts.workspaces}`);
+          console.log(`  - Contacts:             ${result.syntheticMigration.v3IngestedCounts.contacts}`);
+          console.log(`  - Products:             ${result.syntheticMigration.v3IngestedCounts.products}`);
+          console.log(`  - Threads:              ${result.syntheticMigration.v3IngestedCounts.threads}`);
+          console.log(`  - Messages:             ${result.syntheticMigration.v3IngestedCounts.messages}`);
+          console.log(`  - Proposals:            ${result.syntheticMigration.v3IngestedCounts.proposals}`);
+          console.log(`  - Pix Charges:          ${result.syntheticMigration.v3IngestedCounts.pixCharges}`);
+          console.log(`  - Won Outcomes:         ${result.syntheticMigration.v3IngestedCounts.outcomes}`);
+          console.log(`  - Total Order Cents:    ${result.syntheticMigration.v3IngestedCounts.totalOrderCents}`);
+          console.log(`  - Paid Cents:           ${result.syntheticMigration.v3IngestedCounts.totalPaidCents}`);
         }
         console.log("-------------------------------------------------------");
         if (result.errors.length > 0) {

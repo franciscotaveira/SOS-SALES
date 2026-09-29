@@ -68,7 +68,41 @@ CREATE TRIGGER trg_commercial_proposals_transition
     FOR EACH ROW
     EXECUTE FUNCTION public.check_commercial_proposal_transition();
 
--- 3. Outcomes Idempotency: Unique won outcome per journey
+-- 3. Outcomes Idempotency: Deduplicate any pre-existing won outcomes before creating unique index
+DO $$
+DECLARE
+    r RECORD;
+    canonical_id uuid;
+BEGIN
+    FOR r IN (
+        SELECT workspace_id, journey_id
+        FROM public.commercial_outcomes
+        WHERE status = 'won'
+        GROUP BY workspace_id, journey_id
+        HAVING count(*) > 1
+    ) LOOP
+        SELECT id INTO canonical_id
+        FROM public.commercial_outcomes
+        WHERE workspace_id = r.workspace_id AND journey_id = r.journey_id AND status = 'won'
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1;
+
+        UPDATE public.conversion_events
+        SET outcome_id = canonical_id
+        WHERE workspace_id = r.workspace_id
+          AND outcome_id IN (
+              SELECT id FROM public.commercial_outcomes
+              WHERE workspace_id = r.workspace_id AND journey_id = r.journey_id AND status = 'won' AND id <> canonical_id
+          );
+
+        DELETE FROM public.commercial_outcomes
+        WHERE workspace_id = r.workspace_id
+          AND journey_id = r.journey_id
+          AND status = 'won'
+          AND id <> canonical_id;
+    END LOOP;
+END $$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_commercial_outcomes_journey_won
     ON public.commercial_outcomes(workspace_id, journey_id)
     WHERE status = 'won';

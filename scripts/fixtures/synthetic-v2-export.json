@@ -1,0 +1,301 @@
+{
+  "version": "2.0.0-synthetic-gold",
+  "exported_at": "2026-09-29T08:00:00.000Z",
+  "source_system": "SOS-SALES-V2-PRODUCTION-EXPORT",
+  "metadata": {
+    "total_workspaces": 2,
+    "total_contacts": 6,
+    "total_products": 5,
+    "total_threads": 4,
+    "total_messages": 12,
+    "total_orders": 4,
+    "total_order_cents": 42300,
+    "paid_order_cents": 23400,
+    "checksum_sha256": "4b92df8ae029f60cb005eefd56d11a63c78d06ee29f345a5fbc40d463e26bbbb"
+  },
+  "workspaces": [
+    {
+      "id": "v2-ws-haven",
+      "name": "Haven Escovaria Chapecó",
+      "slug": "haven-escovaria-v2",
+      "owner_email": "patricia.haven@mct.br",
+      "owner_name": "Patrícia Haven",
+      "default_pix_key": "haven@sicredi.com.br",
+      "default_pix_merchant_name": "Haven Escovaria",
+      "default_pix_merchant_city": "Chapeco",
+      "channel": {
+        "id": "v2-chan-haven",
+        "provider": "meta_waba",
+        "display_name": "Haven WABA Oficial"
+      },
+      "contacts": [
+        {
+          "id": "v2-cnt-haven-01",
+          "name": "Juliana Althaus",
+          "raw_phone": "(49) 99123-4567",
+          "created_at": "2026-08-01T10:00:00.000Z"
+        },
+        {
+          "id": "v2-cnt-haven-02",
+          "name": "Mariana Silveira",
+          "raw_phone": "49999887766",
+          "created_at": "2026-08-05T14:30:00.000Z"
+        },
+        {
+          "id": "v2-cnt-haven-03",
+          "name": "Camila Trentin",
+          "raw_phone": "+55 49 98401-2233",
+          "created_at": "2026-08-10T16:15:00.000Z"
+        },
+        {
+          "id": "v2-cnt-haven-04",
+          "name": "Fernanda Souza",
+          "raw_phone": "5549988112233",
+          "created_at": "2026-08-15T09:00:00.000Z"
+        }
+      ],
+      "products": [
+        {
+          "id": "v2-prd-haven-01",
+          "sku": "SRV-ESCOVA-01",
+          "title": "Escova Modelada",
+          "description": "Lavagem com massagem capilar e escovação modelada",
+          "price_cents": 6900,
+          "category": "Serviços"
+        },
+        {
+          "id": "v2-prd-haven-02",
+          "sku": "SRV-HIDRA-01",
+          "title": "Hidratação Profunda",
+          "description": "Tratamento reconstrutor intensivo com produtos premium",
+          "price_cents": 12000,
+          "category": "Tratamentos"
+        },
+        {
+          "id": "v2-prd-haven-03",
+          "sku": "PROD-SHAMPOO-01",
+          "title": "Shampoo Home Care Haven",
+          "description": "Linha manutenção home care Haven 250ml",
+          "price_cents": 8500,
+          "category": "Produtos"
+        }
+      ],
+      "threads": [
+        {
+          "id": "v2-th-haven-01",
+          "contact_id": "v2-cnt-haven-01",
+          "status": "active",
+          "last_interaction_at": "2026-08-20T11:45:00.000Z",
+          "messages": [
+            {
+              "id": "v2-msg-h01-1",
+              "sender_type": "contact",
+              "content": "Olá, gostaria de agendar uma escova e comprar o shampoo",
+              "created_at": "2026-08-20T11:30:00.000Z"
+            },
+            {
+              "id": "v2-msg-h01-2",
+              "sender_type": "operator",
+              "content": "Olá Juliana! Perfeito, montei a proposta com a escova e o shampoo para você.",
+              "created_at": "2026-08-20T11:35:00.000Z"
+            },
+            {
+              "id": "v2-msg-h01-3",
+              "sender_type": "contact",
+              "content": "Excelente, acabei de pagar via Pix!",
+              "created_at": "2026-08-20T11:45:00.000Z"
+            }
+          ]
+        },
+        {
+          "id": "v2-th-haven-02",
+          "contact_id": "v2-cnt-haven-02",
+          "status": "active",
+          "last_interaction_at": "2026-08-21T15:00:00.000Z",
+          "messages": [
+            {
+              "id": "v2-msg-h02-1",
+              "sender_type": "contact",
+              "content": "Oi, qual o valor da hidratação profunda?",
+              "created_at": "2026-08-21T14:45:00.000Z"
+            },
+            {
+              "id": "v2-msg-h02-2",
+              "sender_type": "operator",
+              "content": "Oi Mariana! A hidratação profunda fica R$ 120,00. Segue a proposta.",
+              "created_at": "2026-08-21T15:00:00.000Z"
+            }
+          ]
+        },
+        {
+          "id": "v2-th-haven-03",
+          "contact_id": "v2-cnt-haven-03",
+          "status": "closed",
+          "last_interaction_at": "2026-08-22T09:30:00.000Z",
+          "messages": [
+            {
+              "id": "v2-msg-h03-1",
+              "sender_type": "contact",
+              "content": "Bom dia, vou precisar desmarcar por hoje.",
+              "created_at": "2026-08-22T09:20:00.000Z"
+            },
+            {
+              "id": "v2-msg-h03-2",
+              "sender_type": "operator",
+              "content": "Sem problemas Camila, cancelamos a proposta por enquanto.",
+              "created_at": "2026-08-22T09:30:00.000Z"
+            }
+          ]
+        }
+      ],
+      "orders": [
+        {
+          "id": "v2-ord-haven-01",
+          "contact_id": "v2-cnt-haven-01",
+          "thread_id": "v2-th-haven-01",
+          "title": "Escova Modelada + Shampoo Home Care",
+          "items": [
+            { "product_id": "v2-prd-haven-01", "quantity": 1, "unit_price_cents": 6900 },
+            { "product_id": "v2-prd-haven-03", "quantity": 1, "unit_price_cents": 8500 }
+          ],
+          "amount_cents": 15400,
+          "status": "paid",
+          "pix_code": "00020126580014br.gov.bcb.pix0136haven@sicredi.com.br5204000053039865406154.005802BR5915Haven Escovaria6007Chapeco62070503***6304ABCD",
+          "created_at": "2026-08-20T11:35:00.000Z",
+          "paid_at": "2026-08-20T11:45:00.000Z"
+        },
+        {
+          "id": "v2-ord-haven-02",
+          "contact_id": "v2-cnt-haven-02",
+          "thread_id": "v2-th-haven-02",
+          "title": "Hidratação Profunda",
+          "items": [
+            { "product_id": "v2-prd-haven-02", "quantity": 1, "unit_price_cents": 12000 }
+          ],
+          "amount_cents": 12000,
+          "status": "pending",
+          "pix_code": "00020126580014br.gov.bcb.pix0136haven@sicredi.com.br5204000053039865406120.005802BR5915Haven Escovaria6007Chapeco62070503***6304EF01",
+          "created_at": "2026-08-21T15:00:00.000Z",
+          "paid_at": null
+        },
+        {
+          "id": "v2-ord-haven-03",
+          "contact_id": "v2-cnt-haven-03",
+          "thread_id": "v2-th-haven-03",
+          "title": "Escova Modelada",
+          "items": [
+            { "product_id": "v2-prd-haven-01", "quantity": 1, "unit_price_cents": 6900 }
+          ],
+          "amount_cents": 6900,
+          "status": "cancelled",
+          "pix_code": null,
+          "created_at": "2026-08-22T09:25:00.000Z",
+          "paid_at": null
+        }
+      ]
+    },
+    {
+      "id": "v2-ws-domrios",
+      "name": "Barbearia Dom Rios",
+      "slug": "barbearia-dom-rios-v2",
+      "owner_email": "dom.rios@mct.br",
+      "owner_name": "Dom Rios",
+      "default_pix_key": "domrios@itau.com.br",
+      "default_pix_merchant_name": "Barbearia Dom Rios",
+      "default_pix_merchant_city": "Chapeco",
+      "channel": {
+        "id": "v2-chan-domrios",
+        "provider": "waha",
+        "display_name": "Dom Rios WAHA"
+      },
+      "contacts": [
+        {
+          "id": "v2-cnt-dom-01",
+          "name": "Lucas Andrade",
+          "raw_phone": "49988001122",
+          "created_at": "2026-08-12T11:00:00.000Z"
+        },
+        {
+          "id": "v2-cnt-dom-02",
+          "name": "Rodrigo Costa",
+          "raw_phone": "(49) 99199-8877",
+          "created_at": "2026-08-14T17:00:00.000Z"
+        }
+      ],
+      "products": [
+        {
+          "id": "v2-prd-dom-01",
+          "sku": "SRV-BARBA-01",
+          "title": "Corte & Barba Terapia",
+          "description": "Corte clássico e toalha quente com óleos essenciais",
+          "price_cents": 8000,
+          "category": "Serviços"
+        },
+        {
+          "id": "v2-prd-dom-02",
+          "sku": "PROD-POMADA-01",
+          "title": "Pomada Matte Premium",
+          "description": "Fixação forte acabamento fosco natural",
+          "price_cents": 4500,
+          "category": "Produtos"
+        }
+      ],
+      "threads": [
+        {
+          "id": "v2-th-dom-01",
+          "contact_id": "v2-cnt-dom-01",
+          "status": "active",
+          "last_interaction_at": "2026-08-25T18:00:00.000Z",
+          "messages": [
+            {
+              "id": "v2-msg-d01-1",
+              "sender_type": "contact",
+              "content": "Fala Dom, consegue um horário hoje para corte e barba?",
+              "created_at": "2026-08-25T17:30:00.000Z"
+            },
+            {
+              "id": "v2-msg-d01-2",
+              "sender_type": "operator",
+              "content": "Fala Lucas! Tenho às 18:30. Já gerei a proposta com Pix para confirmar.",
+              "created_at": "2026-08-25T17:35:00.000Z"
+            },
+            {
+              "id": "v2-msg-d01-3",
+              "sender_type": "contact",
+              "content": "Pago irmão! Nos vemos às 18:30.",
+              "created_at": "2026-08-25T17:40:00.000Z"
+            },
+            {
+              "id": "v2-msg-d01-4",
+              "sender_type": "operator",
+              "content": "Confirmado! Te espero aqui.",
+              "created_at": "2026-08-25T17:42:00.000Z"
+            },
+            {
+              "id": "v2-msg-d01-5",
+              "sender_type": "operator",
+              "content": "Atendimento finalizado com sucesso.",
+              "created_at": "2026-08-25T19:15:00.000Z"
+            }
+          ]
+        }
+      ],
+      "orders": [
+        {
+          "id": "v2-ord-dom-01",
+          "contact_id": "v2-cnt-dom-01",
+          "thread_id": "v2-th-dom-01",
+          "title": "Corte & Barba Terapia",
+          "items": [
+            { "product_id": "v2-prd-dom-01", "quantity": 1, "unit_price_cents": 8000 }
+          ],
+          "amount_cents": 8000,
+          "status": "paid",
+          "pix_code": "00020126580014br.gov.bcb.pix0136domrios@itau.com.br520400005303986540680.005802BR5918Barbearia Dom Rios6007Chapeco62070503***63042345",
+          "created_at": "2026-08-25T17:35:00.000Z",
+          "paid_at": "2026-08-25T17:40:00.000Z"
+        }
+      ]
+    }
+  ]
+}

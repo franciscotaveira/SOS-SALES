@@ -9,11 +9,11 @@
 
 | ID | Descrição | Gravidade | Fase | Estado | Ação Resolutiva |
 | :--- | :--- | :---: | :---: | :---: | :--- |
-| **B-01** | Material de credencial em arquivo local `scripts/seed-haven-waba.ts` e `.env.example` determinístico | `P0` | `Fase 4` | `SANITIZED_LOCAL` | **Sanitizado localmente:** Chaves literais substituídas por variáveis de ambiente obrigatórias e modo Lab sintético; `.env.example` limpo. Rotação externa pendente pelo proprietário. |
-| **B-02** | A própria matriz rejeita o aceite (P1, P2, P3, P5 como `TODO`) | `P0` | `Fase R0` | `IN_PROGRESS` | Retratar certificação prematura e atualizar matriz com status real e honesto. |
-| **B-03** | M9 não é E2E de sistema (usa Fastify in-memory e SQL direto; falta percurso Docker real) | `P0` | `Fase R5` | `TODO` | Construir stack de teste isolada com Web real, API container, Worker real e Provedor Sintético HTTP fiel ao contrato. |
-| **B-04** | Prova visual não reproduzível (scripts fora do Git e não fail-closed) | `P1` | `Fase R1` | `TODO` | Versionar scripts de QA, tornar todos fail-closed com exit code != 0 em caso de falha. |
-| **B-05** | Gate de lint falso (Turbo executa 0 tarefas e CI dá PASS) | `P1` | `Fase R1` | `TODO` | Configurar linter real nos pacotes aplicáveis e fazer o runner falhar se executar 0 tarefas. |
+| **B-01** | Material de credencial em arquivo local `scripts/seed-haven-waba.ts` e `.env.example` determinístico | `P0` | `Fase 4` | `RESOLVED_LOCAL` | **Sanitizado localmente:** Chaves literais substituídas por variáveis de ambiente obrigatórias e modo Lab sintético; `.env.example` limpo. Rotação externa pendente pelo proprietário. |
+| **B-02** | A própria matriz rejeita o aceite (P1, P2, P3, P5 como `TODO`) | `P0` | `Fase R0` | `RESOLVED` | Retratada certificação prematura e matriz atualizada com status real e honesto. |
+| **B-03** | M9 não é E2E de sistema (usa Fastify in-memory e SQL direto; falta percurso Docker real) | `P0` | `Fase R5` | `IN_PROGRESS` | Construir stack de teste isolada com Web real, API container, Worker real e Provedor Sintético HTTP fiel ao contrato. |
+| **B-04** | Prova visual não reproduzível (scripts fora do Git e não fail-closed) | `P1` | `Fase R1` | `RESOLVED` | Scripts de QA versionados no Git, tornando todos fail-closed com exit code != 0 em caso de falha. |
+| **B-05** | Gate de lint falso (Turbo executa 0 tarefas e CI dá PASS) | `P1` | `Fase R1` | `RESOLVED` | Configuração ESLint 10 flat config em todos os 10 pacotes, executando 10/10 tarefas reais. |
 
 ---
 
@@ -21,13 +21,13 @@
 
 | ID | Descrição | Gravidade | Fase | Estado | Ação Resolutiva |
 | :--- | :--- | :---: | :---: | :---: | :--- |
-| **S-01** | SSRF em rotas de onboarding e teste de conexão | `P0` | `Fase R2` | `TODO` | Substituir `fetch` comum por `safeFetchWithSsrfGuard` com DNS restrito, bloqueio de IP privado e verificação de redirects. |
-| **S-02** | Estado de canal fabrica prontidão (`is_active` vira `connected` sem validação) | `P1` | `Fase R2` | `TODO` | Implementar máquina explícita: `unconfigured -> validating -> pairing -> connected \| error -> revoked`. |
-| **S-03** | Rotação e revogação de credenciais (key_version estática, revogação afeta canais compartilhados) | `P1` | `Fase R2` | `TODO` | Gravar key_version real, suportar keyring v1/v2 e isolar revogação por canal/credencial com auditoria transacional. |
-| **S-04** | RLS e privilégios excessivos do Worker (falta escopo de workspace; DELETE em tabelas financeiras) | `P0` | `Fase R2` | `TODO` | Restringir worker a contexto de tenant/claim específico; revogar DELETE operacional em `pix_charges` e tabelas de outcome. |
-| **S-05** | CAPI usa configuração global antes do tenant (risco de vazamento de dados de conversão) | `P0` | `Fase R2` | `TODO` | Precedência estrita para credencial e dataset do workspace; fail-closed se ausente; lease fencing em I/O. |
-| **S-06** | Concorrência de proposta e outcome (ausência de locks e risco de outcomes duplicados) | `P0` | `Fase R3` | `TODO` | Lock com versão esperada em propostas; serialização idempotente por jornada em outcomes com derive de telefone persistido. |
-| **S-07** | Referências tenant-safe incompletas (assignee sem prova de membership; vínculo Pix↔proposta por SQL) | `P1` | `Fase R3` | `TODO` | Validação de membership de assignee; rota transacional oficial para vínculo Pix↔proposta. |
+| **S-01** | SSRF em rotas de onboarding e teste de conexão | `P0` | `Fase R2` | `RESOLVED` | Substituído `fetch` comum por `safeFetchWithSsrfGuard` com DNS restrito, bloqueio de IP privado e verificação de redirects. |
+| **S-02** | Estado de canal fabrica prontidão (`is_active` vira `connected` sem validação) | `P1` | `Fase R2` | `RESOLVED` | Máquina explícita de lifecycle implementada via Migration 022 e trigger `sync_channel_instance_status`. |
+| **S-03** | Rotação e revogação de credenciais (key_version estática, revogação afeta canais compartilhados) | `P1` | `Fase R2` | `RESOLVED` | Keyring v1/v2 com `key_version` persistida e isolamento de revogação por canal/credencial com auditoria. |
+| **S-04** | RLS e privilégios excessivos do Worker (falta escopo de workspace; DELETE em tabelas financeiras) | `P0` | `Fase R2` | `RESOLVED` | Worker restrito a contexto tenant-safe; DELETE revogado em `pix_charges`, `commercial_proposals` e `commercial_outcomes`. |
+| **S-05** | CAPI usa configuração global antes do tenant (risco de vazamento de dados de conversão) | `P0` | `Fase R2` | `RESOLVED` | Precedência estrita para credencial e dataset do workspace; fail-closed se ausente; lease fencing em I/O. |
+| **S-06** | Concorrência de proposta e outcome (ausência de locks e risco de outcomes duplicados) | `P0` | `Fase R3` | `RESOLVED` | Máquina de estados de propostas e índice único `uq_commercial_outcomes_journey_won` com deduplicação e lock em jornadas. |
+| **S-07** | Referências tenant-safe incompletas (assignee sem prova de membership; vínculo Pix↔proposta por SQL) | `P1` | `Fase R3` | `RESOLVED` | Validação de membership de assignee (`ASSIGNEE_NOT_MEMBER`) e rotas oficiais atômicas para vínculo Pix↔proposta. |
 
 ---
 

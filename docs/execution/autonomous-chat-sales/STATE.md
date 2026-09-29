@@ -14,7 +14,7 @@
 - **Status Canônico da Declaração M10:** `REJECTED_BY_INDEPENDENT_REVIEW`
 - **Estado Honesto Atual:**  
   `BUILD_AND_SYNTHETIC_INTEGRATION_TESTS_GREEN / SECURITY_AND_DOCKER_E2E_NOT_ACCEPTED`
-- **Fase Ativa do Ciclo de Remediação:** `Fase R0 — Corrigir Estado e Preservar Evidência`
+- **Fase Ativa do Ciclo de Remediação:** `Fase R5 — E2E Docker P1–P8 Verdadeiro`
 
 ---
 
@@ -34,12 +34,12 @@
 | Fase | Escopo | Estado |
 | :--- | :--- | :---: |
 | **Fase 4** | Incidente de credencial: Sanitização fail-closed de `seed-haven-waba.ts` e `.env.example` | `COMPLETED` |
-| **Fase R0** | Retratação documental M10, atualização de matrizes, blockers e novo diretório de evidência | `IN_PROGRESS` |
-| **Fase R1** | Tornar gates verdadeiros e fail-closed: Lint real (ESLint), Gate 6 multi-manifest e scripts de QA | `TODO` |
-| **Fase R2** | Segurança e isolamento: SSRF guard, estado honesto de canal, keyring v1/v2, RLS restrito e CAPI tenant-safe | `TODO` |
-| **Fase R3** | Integridade comercial e concorrência: Proposta, outcome, próxima ação e Radar sem race conditions | `TODO` |
-| **Fase R4** | Migração e recuperação: Motor sintético V2→V3 com fixture versionada e restore hermético | `TODO` |
-| **Fase R5** | E2E Docker P1–P8 verdadeiro: Web + API + Worker + DB + Redis + Provedor Sintético HTTP | `TODO` |
+| **Fase R0** | Retratação documental M10, atualização de matrizes, blockers e novo diretório de evidência | `COMPLETED` |
+| **Fase R1** | Tornar gates verdadeiros e fail-closed: Lint real (ESLint), Gate 6 multi-manifest e scripts de QA | `COMPLETED` |
+| **Fase R2** | Segurança e isolamento: SSRF guard, estado honesto de canal, keyring v1/v2, RLS restrito e CAPI tenant-safe | `COMPLETED` |
+| **Fase R3** | Integridade comercial e concorrência: Proposta, outcome, próxima ação e Radar sem race conditions | `COMPLETED` |
+| **Fase R4** | Migração e recuperação: Motor sintético V2→V3 com fixture versionada e restore hermético | `COMPLETED` |
+| **Fase R5** | E2E Docker P1–P8 verdadeiro: Web + API + Worker + DB + Redis + Provedor Sintético HTTP | `IN_PROGRESS` |
 | **Fase R6** | Reconciliação documental, gates finais seriais e auditoria independente | `TODO` |
 
 ---
