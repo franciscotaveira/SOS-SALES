@@ -27,6 +27,7 @@ import {
   type ProductRecord,
   type PixChargeSummary,
   type IntegrationSuggestionSummary,
+  type CommercialActionSummary,
 } from "../services/api-client";
 import {
   Search,
@@ -53,12 +54,24 @@ import {
   Tag,
   QrCode,
   Copy,
+  Calendar,
+  Plus,
 } from "lucide-react";
 
 interface CockpitPageProps {
   session: UseSessionReturn;
   onOpenCatalog?: () => void;
 }
+
+const safeFormatDateTime = (dateStr?: string | null): string => {
+  if (!dateStr) return "";
+  try {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return "";
+  }
+};
 
 const safeFormatTime = (dateStr?: string | null): string => {
   if (!dateStr) return "";
@@ -81,9 +94,22 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
     refreshSession,
   } = session;
 
-  const [queueFilter, setQueueFilter] = useState<"all" | "open" | "closed">("open");
+  const [queueFilter, setQueueFilter] = useState<"all" | "open" | "needs_attention" | "closed">("open");
   const [searchQuery, setSearchQuery] = useState("");
   const [isDossierDrawerOpen, setIsDossierDrawerOpen] = useState(false);
+
+  // Commercial Actions (E2) state
+  const [openAction, setOpenAction] = useState<CommercialActionSummary | null>(null);
+  const [threadActions, setThreadActions] = useState<CommercialActionSummary[]>([]);
+  const [isLoadingActions, setIsLoadingActions] = useState(false);
+  const [isActionFormOpen, setIsActionFormOpen] = useState(false);
+  const [actionFormMode, setActionFormMode] = useState<"create" | "reschedule">("create");
+  const [actionFormTitle, setActionFormTitle] = useState("");
+  const [actionFormDescription, setActionFormDescription] = useState("");
+  const [actionFormDueAt, setActionFormDueAt] = useState("");
+  const [actionFormReason, setActionFormReason] = useState("");
+  const [actionActionError, setActionActionError] = useState<string | null>(null);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
   // Live state
   const [threads, setThreads] = useState<CommercialThreadSummary[]>([]);
@@ -251,9 +277,11 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
           ? "closed"
           : undefined;
 
+      const needsAttentionParam = queueFilter === "needs_attention" ? true : undefined;
+
       const res = await apiClient.getThreads(
         activeWorkspace.id,
-        { status: statusParam },
+        { status: statusParam, needsAttention: needsAttentionParam },
         { token }
       );
       setThreads(res.threads);
@@ -300,31 +328,39 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
       if (!activeWorkspace?.id || !token) return;
       setIsDecidingSuggestion(true);
       try {
-        await apiClient.decideIntegrationSuggestion(
+        const res = await apiClient.decideIntegrationSuggestion(
           activeWorkspace.id,
           suggestion.id,
           { status, stateVersion: suggestion.stateVersion },
           { token }
         );
-        if (status === "accepted" && suggestion.draftMessage) {
-          const targetId = suggestion.threadId || selectedThreadId;
-          if (targetId) {
-            draftsByThreadRef.current[targetId] = suggestion.draftMessage;
-            if (activeWorkspace?.id) {
-              try {
-                sessionStorage.setItem(getDraftKey(activeWorkspace.id, targetId), suggestion.draftMessage);
-              } catch {
-                // ignore
+        if (status === "accepted") {
+          if (res.action) {
+            setOpenAction(res.action);
+          }
+          if (suggestion.draftMessage) {
+            const targetId = suggestion.threadId || selectedThreadId;
+            if (targetId) {
+              draftsByThreadRef.current[targetId] = suggestion.draftMessage;
+              if (activeWorkspace?.id) {
+                try {
+                  sessionStorage.setItem(getDraftKey(activeWorkspace.id, targetId), suggestion.draftMessage);
+                } catch {
+                  // ignore
+                }
               }
             }
-          }
-          if (suggestion.threadId && suggestion.threadId !== selectedThreadId) {
-            setSelectedThreadId(suggestion.threadId);
-          } else {
-            setMessageInput(suggestion.draftMessage);
+            if (suggestion.threadId && suggestion.threadId !== selectedThreadId) {
+              setSelectedThreadId(suggestion.threadId);
+            } else {
+              setMessageInput(suggestion.draftMessage);
+            }
           }
         }
         await loadSuggestions();
+        if (selectedThreadId) {
+          loadThreadActions(selectedThreadId);
+        }
       } catch (err) {
         console.error("Erro ao processar sugestão Radar:", err);
       } finally {
@@ -333,6 +369,132 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
     },
     [activeWorkspace?.id, token, selectedThreadId, loadSuggestions, getDraftKey]
   );
+
+  // Commercial Actions (E2) loading and mutations
+  const loadThreadActions = useCallback(
+    async (threadId: string) => {
+      if (!activeWorkspace?.id || !token) return;
+      setIsLoadingActions(true);
+      try {
+        const res = await apiClient.getThreadActions(activeWorkspace.id, threadId, { token });
+        setThreadActions(res.actions);
+        setOpenAction(res.openAction);
+      } catch {
+        // non-fatal
+      } finally {
+        setIsLoadingActions(false);
+      }
+    },
+    [activeWorkspace?.id, token]
+  );
+
+  useEffect(() => {
+    if (selectedThreadId) {
+      loadThreadActions(selectedThreadId);
+    } else {
+      setOpenAction(null);
+      setThreadActions([]);
+    }
+    setIsActionFormOpen(false);
+    setActionActionError(null);
+  }, [selectedThreadId, loadThreadActions]);
+
+  const handleCompleteCommercialAction = async (actionId: string) => {
+    if (!activeWorkspace?.id || !token || isSubmittingAction) return;
+    setIsSubmittingAction(true);
+    setActionActionError(null);
+    try {
+      await apiClient.patchCommercialAction(
+        activeWorkspace.id,
+        actionId,
+        { action: "complete" },
+        { token }
+      );
+      if (selectedThreadId) {
+        await loadThreadActions(selectedThreadId);
+      }
+      loadThreads();
+    } catch (err: unknown) {
+      setActionActionError((err as Error).message);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const handleCancelCommercialAction = async (actionId: string) => {
+    if (!activeWorkspace?.id || !token || isSubmittingAction) return;
+    setIsSubmittingAction(true);
+    setActionActionError(null);
+    try {
+      await apiClient.patchCommercialAction(
+        activeWorkspace.id,
+        actionId,
+        { action: "cancel", reason: "Cancelado pelo operador" },
+        { token }
+      );
+      if (selectedThreadId) {
+        await loadThreadActions(selectedThreadId);
+      }
+      loadThreads();
+    } catch (err: unknown) {
+      setActionActionError((err as Error).message);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const handleSaveActionForm = async () => {
+    if (!activeWorkspace?.id || !selectedThreadId || !token || isSubmittingAction) return;
+    setIsSubmittingAction(true);
+    setActionActionError(null);
+    try {
+      if (actionFormMode === "create") {
+        if (!actionFormTitle.trim() || !actionFormDueAt) {
+          setActionActionError("Título e prazo são obrigatórios");
+          setIsSubmittingAction(false);
+          return;
+        }
+        await apiClient.createThreadAction(
+          activeWorkspace.id,
+          selectedThreadId,
+          {
+            title: actionFormTitle.trim(),
+            description: actionFormDescription.trim() || null,
+            dueAt: new Date(actionFormDueAt).toISOString(),
+            origin: "manual",
+          },
+          { token }
+        );
+      } else if (actionFormMode === "reschedule" && openAction) {
+        if (!actionFormDueAt || !actionFormReason.trim()) {
+          setActionActionError("Novo prazo e motivo do adiamento são obrigatórios");
+          setIsSubmittingAction(false);
+          return;
+        }
+        await apiClient.patchCommercialAction(
+          activeWorkspace.id,
+          openAction.id,
+          {
+            action: "reschedule",
+            newDueAt: new Date(actionFormDueAt).toISOString(),
+            reason: actionFormReason.trim(),
+          },
+          { token }
+        );
+      }
+      setIsActionFormOpen(false);
+      setActionFormTitle("");
+      setActionFormDescription("");
+      setActionFormDueAt("");
+      setActionFormReason("");
+      await loadThreadActions(selectedThreadId);
+      loadThreads();
+    } catch (err: unknown) {
+      setActionActionError((err as Error).message);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
 
   // 3. Fetch and poll messages for selected thread
   const loadMessages = useCallback(
@@ -1516,29 +1678,37 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
             />
 
             {/* Filtros da Fila */}
-            <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
-              {(["open", "all", "closed"] as const).map((f) => (
+            <div style={{ display: "flex", gap: "4px", marginTop: "10px" }}>
+              {(
+                [
+                  { id: "open", label: "Abertas" },
+                  { id: "needs_attention", label: "Atenção" },
+                  { id: "all", label: "Todas" },
+                  { id: "closed", label: "Pausadas" },
+                ] as const
+              ).map((f) => (
                 <button
-                  key={f}
+                  key={f.id}
                   type="button"
-                  onClick={() => setQueueFilter(f)}
+                  data-testid={`filter-${f.id}`}
+                  onClick={() => setQueueFilter(f.id)}
                   style={{
                     flex: 1,
-                    padding: "4px 8px",
-                    fontSize: "0.75rem",
+                    padding: "4px 6px",
+                    fontSize: "0.72rem",
                     fontWeight: 600,
                     borderRadius: "var(--radius-sm, 6px)",
                     border: "none",
                     backgroundColor:
-                      queueFilter === f ? "var(--color-operational-subtle, #EFF6FF)" : "transparent",
+                      queueFilter === f.id ? "var(--color-operational-subtle, #EFF6FF)" : "transparent",
                     color:
-                      queueFilter === f
+                      queueFilter === f.id
                         ? "var(--color-operational, #2563EB)"
                         : "var(--text-secondary, #475569)",
                     cursor: "pointer",
                   }}
                 >
-                  {f === "open" ? "Abertas" : f === "all" ? "Todas" : "Pausadas"}
+                  {f.label}
                 </button>
               ))}
             </div>
@@ -1666,6 +1836,45 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
                         )}
                         {thread.lastMessage?.body || "Sem mensagens"}
                       </div>
+
+                      {thread.nextAction && (() => {
+                        const isOverdue = Boolean(
+                          thread.nextAction?.dueAt && new Date(thread.nextAction.dueAt).getTime() < Date.now()
+                        );
+                        const formattedDue = thread.nextAction?.dueAt
+                          ? new Date(thread.nextAction.dueAt).toLocaleString("pt-BR")
+                          : "sem prazo";
+                        return (
+                          <div
+                            style={{
+                              marginTop: "4px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              fontSize: "0.68rem",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              backgroundColor: isOverdue
+                                ? "rgba(239, 68, 68, 0.1)"
+                                : "rgba(37, 99, 235, 0.08)",
+                              color: isOverdue
+                                ? "#DC2626"
+                                : "var(--color-operational, #2563EB)",
+                              fontWeight: 600,
+                              maxWidth: "100%",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={`Próxima ação: ${thread.nextAction.title} (vence ${formattedDue})`}
+                          >
+                            <Clock size={10} />
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {thread.nextAction.title}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
@@ -2499,6 +2708,429 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
         >
           {selectedThread ? (
             <>
+              {/* Card de Próxima Ação Comercial (E2) */}
+              <div data-testid="card-commercial-action">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <h3
+                    style={{
+                      fontSize: "0.9rem",
+                      fontWeight: 700,
+                      color: "var(--text-primary, #0F172A)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      margin: 0,
+                    }}
+                  >
+                    <Calendar size={16} color="var(--color-operational, #2563EB)" />
+                    Próxima Ação Comercial
+                    {threadActions.length > 0 && (
+                      <span style={{ fontSize: "0.72rem", color: "var(--text-muted, #94A3B8)", fontWeight: 400 }}>
+                        ({threadActions.length})
+                      </span>
+                    )}
+                  </h3>
+
+                  {isLoadingActions ? (
+                    <Badge variant="neutral">Carregando...</Badge>
+                  ) : openAction ? (
+                    <div style={{ display: "flex", gap: "4px" }}>
+                      {new Date(openAction.dueAt).getTime() < Date.now() ? (
+                        <Badge variant="danger">Vencida</Badge>
+                      ) : (
+                        <Badge variant="action">Aberta</Badge>
+                      )}
+                      {openAction.postponedCount > 0 && (
+                        <Badge variant="warning">{openAction.postponedCount}x Adiada</Badge>
+                      )}
+                    </div>
+                  ) : (
+                    <Badge variant="neutral">Sem Ação</Badge>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    backgroundColor: "var(--bg-canvas, #F8FAFC)",
+                    padding: "16px",
+                    borderRadius: "var(--radius-md, 8px)",
+                    border: "1px solid var(--border-default, #E2E8F0)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  {isActionFormOpen ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      <strong style={{ fontSize: "0.85rem", color: "var(--text-primary, #0F172A)" }}>
+                        {actionFormMode === "create" ? "Nova Próxima Ação" : "Adiar Próxima Ação"}
+                      </strong>
+
+                      {actionFormMode === "create" ? (
+                        <>
+                          <div>
+                            <label
+                              style={{
+                                display: "block",
+                                fontSize: "0.75rem",
+                                fontWeight: 600,
+                                color: "var(--text-secondary, #475569)",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Título da Ação *
+                            </label>
+                            <input
+                              type="text"
+                              value={actionFormTitle}
+                              onChange={(e) => setActionFormTitle(e.target.value)}
+                              placeholder="Ex: Enviar proposta atualizada com desconto"
+                              style={{
+                                width: "100%",
+                                height: "34px",
+                                padding: "0 10px",
+                                borderRadius: "var(--radius-sm, 6px)",
+                                border: "1px solid var(--border-default, #E2E8F0)",
+                                fontSize: "0.82rem",
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label
+                              style={{
+                                display: "block",
+                                fontSize: "0.75rem",
+                                fontWeight: 600,
+                                color: "var(--text-secondary, #475569)",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Prazo de Execução *
+                            </label>
+                            <input
+                              type="datetime-local"
+                              value={actionFormDueAt}
+                              onChange={(e) => setActionFormDueAt(e.target.value)}
+                              style={{
+                                width: "100%",
+                                height: "34px",
+                                padding: "0 10px",
+                                borderRadius: "var(--radius-sm, 6px)",
+                                border: "1px solid var(--border-default, #E2E8F0)",
+                                fontSize: "0.82rem",
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label
+                              style={{
+                                display: "block",
+                                fontSize: "0.75rem",
+                                fontWeight: 600,
+                                color: "var(--text-secondary, #475569)",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Detalhes / Observações
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={actionFormDescription}
+                              onChange={(e) => setActionFormDescription(e.target.value)}
+                              placeholder="Contexto adicional da ação..."
+                              style={{
+                                width: "100%",
+                                padding: "6px 10px",
+                                borderRadius: "var(--radius-sm, 6px)",
+                                border: "1px solid var(--border-default, #E2E8F0)",
+                                fontSize: "0.82rem",
+                                resize: "vertical",
+                              }}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: "4px",
+                              backgroundColor: "#FFFFFF",
+                              border: "1px solid var(--border-subtle, #F1F5F9)",
+                              fontSize: "0.8rem",
+                            }}
+                          >
+                            <span style={{ color: "var(--text-muted, #94A3B8)" }}>Ação atual: </span>
+                            <strong>{openAction?.title}</strong>
+                          </div>
+                          <div>
+                            <label
+                              style={{
+                                display: "block",
+                                fontSize: "0.75rem",
+                                fontWeight: 600,
+                                color: "var(--text-secondary, #475569)",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Novo Prazo *
+                            </label>
+                            <input
+                              type="datetime-local"
+                              value={actionFormDueAt}
+                              onChange={(e) => setActionFormDueAt(e.target.value)}
+                              style={{
+                                width: "100%",
+                                height: "34px",
+                                padding: "0 10px",
+                                borderRadius: "var(--radius-sm, 6px)",
+                                border: "1px solid var(--border-default, #E2E8F0)",
+                                fontSize: "0.82rem",
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label
+                              style={{
+                                display: "block",
+                                fontSize: "0.75rem",
+                                fontWeight: 600,
+                                color: "var(--text-secondary, #475569)",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Motivo do Adiamento *
+                            </label>
+                            <input
+                              type="text"
+                              value={actionFormReason}
+                              onChange={(e) => setActionFormReason(e.target.value)}
+                              placeholder="Ex: Cliente pediu retorno após a reunião de diretoria"
+                              style={{
+                                width: "100%",
+                                height: "34px",
+                                padding: "0 10px",
+                                borderRadius: "var(--radius-sm, 6px)",
+                                border: "1px solid var(--border-default, #E2E8F0)",
+                                fontSize: "0.82rem",
+                              }}
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {actionActionError && (
+                        <div
+                          style={{
+                            padding: "8px",
+                            borderRadius: "6px",
+                            backgroundColor: "var(--color-danger-subtle, #FEE2E2)",
+                            color: "var(--color-danger, #EF4444)",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {actionActionError}
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          style={{ flex: 1 }}
+                          disabled={isSubmittingAction}
+                          onClick={handleSaveActionForm}
+                        >
+                          {isSubmittingAction
+                            ? "Salvando..."
+                            : actionFormMode === "create"
+                            ? "Criar Ação"
+                            : "Confirmar Adiamento"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isSubmittingAction}
+                          onClick={() => {
+                            setIsActionFormOpen(false);
+                            setActionActionError(null);
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : openAction ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      <div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: "0.7rem",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.05em",
+                              color:
+                                openAction.origin === "radar_suggestion"
+                                  ? "#4F46E5"
+                                  : "var(--text-muted, #94A3B8)",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {openAction.origin === "radar_suggestion" ? "Radar IA" : "Manual"}
+                          </span>
+                        </div>
+                        <strong
+                          style={{
+                            fontSize: "0.88rem",
+                            color: "var(--text-primary, #0F172A)",
+                            lineHeight: 1.3,
+                            display: "block",
+                          }}
+                        >
+                          {openAction.title}
+                        </strong>
+                        {openAction.description && (
+                          <p
+                            style={{
+                              fontSize: "0.78rem",
+                              color: "var(--text-secondary, #475569)",
+                              margin: "4px 0 0 0",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {openAction.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          fontSize: "0.76rem",
+                          color:
+                            new Date(openAction.dueAt).getTime() < Date.now()
+                              ? "#DC2626"
+                              : "var(--text-secondary, #475569)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <Clock size={13} />
+                        <span>Prazo: {safeFormatDateTime(openAction.dueAt)}</span>
+                      </div>
+
+                      {openAction.assigneeUserId && (
+                        <div
+                          style={{
+                            fontSize: "0.72rem",
+                            color: "var(--text-muted, #94A3B8)",
+                          }}
+                        >
+                          Responsável ID: <strong>{openAction.assigneeUserId}</strong>
+                        </div>
+                      )}
+
+                      {actionActionError && (
+                        <div
+                          style={{
+                            padding: "8px",
+                            borderRadius: "6px",
+                            backgroundColor: "var(--color-danger-subtle, #FEE2E2)",
+                            color: "var(--color-danger, #EF4444)",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {actionActionError}
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          style={{ flex: 1 }}
+                          disabled={isSubmittingAction}
+                          onClick={() => handleCompleteCommercialAction(openAction.id)}
+                        >
+                          <Check size={13} />
+                          Concluir
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          style={{ flex: 1 }}
+                          disabled={isSubmittingAction}
+                          onClick={() => {
+                            setActionFormMode("reschedule");
+                            setActionFormDueAt("");
+                            setActionFormReason("");
+                            setActionActionError(null);
+                            setIsActionFormOpen(true);
+                          }}
+                        >
+                          <Clock size={13} />
+                          Adiar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isSubmittingAction}
+                          onClick={() => handleCancelCommercialAction(openAction.id)}
+                          title="Cancelar ação"
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: "center", padding: "10px 4px" }}>
+                      <p
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "var(--text-muted, #94A3B8)",
+                          margin: "0 0 10px 0",
+                        }}
+                      >
+                        Nenhuma ação comercial pendente para este contato.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        style={{ width: "100%" }}
+                        onClick={() => {
+                          setActionFormMode("create");
+                          setActionFormTitle("");
+                          setActionFormDescription("");
+                          setActionFormDueAt("");
+                          setActionActionError(null);
+                          setIsActionFormOpen(true);
+                        }}
+                      >
+                        <Plus size={13} />
+                        Definir Próxima Ação
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Card de Desfecho Comercial (Outcome & Venda) */}
               <div>
                 <h3

@@ -290,12 +290,18 @@ export interface CommercialThreadWithContactRecord extends CommercialThreadRecor
   last_message_direction: MessageDirection | null;
   last_message_created_at: Date | null;
   last_message_delivery_status: MessageDeliveryStatus | null;
+  next_action_id?: string | null;
+  next_action_title?: string | null;
+  next_action_due_at?: Date | null;
+  next_action_status?: string | null;
+  next_action_assignee_id?: string | null;
 }
 
 export interface ListCommercialThreadsParams {
   workspaceId: string;
   status?: CommercialThreadStatus;
   limit?: number;
+  needsAttention?: boolean;
 }
 
 /**
@@ -324,7 +330,12 @@ export async function listCommercialThreads(
        lm.body AS last_message_body,
        lm.direction AS last_message_direction,
        lm.created_at AS last_message_created_at,
-       lm.delivery_status AS last_message_delivery_status
+       lm.delivery_status AS last_message_delivery_status,
+       nact.id AS next_action_id,
+       nact.title AS next_action_title,
+       nact.due_at AS next_action_due_at,
+       nact.status AS next_action_status,
+       nact.assignee_user_id AS next_action_assignee_id
      FROM public.commercial_threads t
      INNER JOIN public.contacts c 
        ON c.workspace_id = t.workspace_id AND c.id = t.contact_id
@@ -337,11 +348,24 @@ export async function listCommercialThreads(
        ORDER BY m.created_at DESC
        LIMIT 1
      ) lm ON true
+     LEFT JOIN LATERAL (
+       SELECT ca.id, ca.title, ca.due_at, ca.status, ca.assignee_user_id
+       FROM public.commercial_actions ca
+       WHERE ca.workspace_id = t.workspace_id AND ca.thread_id = t.id AND ca.status = 'open'
+       LIMIT 1
+     ) nact ON true
      WHERE t.workspace_id = $1
        AND ($2::text IS NULL OR t.status = $2)
+       AND (
+         $4::boolean IS NOT TRUE 
+         OR (
+           (nact.id IS NOT NULL AND nact.due_at <= now() + interval '24 hours')
+           OR t.status = 'waiting_human'
+         )
+       )
      ORDER BY t.last_message_at DESC
      LIMIT $3;`,
-    [params.workspaceId, params.status ?? null, limit]
+    [params.workspaceId, params.status ?? null, limit, params.needsAttention ?? false]
   );
   return res.rows;
 }

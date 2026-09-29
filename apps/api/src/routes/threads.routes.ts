@@ -22,6 +22,7 @@ const listThreadsQuerySchema = z.object({
     .enum(["active", "waiting_client", "waiting_human", "closed"])
     .optional(),
   limit: z.coerce.number().min(1).max(100).default(50),
+  needsAttention: z.coerce.boolean().optional(),
 });
 
 const listMessagesQuerySchema = z.object({
@@ -70,13 +71,14 @@ export const threadsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const { workspaceId } = parsedParams.data;
-      const { status, limit } = parsedQuery.data;
+      const { status, limit, needsAttention } = parsedQuery.data;
 
       const threads = await withTenantTransaction(workspaceId, async (client) => {
         return listCommercialThreads(client, {
           workspaceId,
           status: status as CommercialThreadStatus | undefined,
           limit,
+          needsAttention,
         });
       });
 
@@ -98,6 +100,15 @@ export const threadsRoutes: FastifyPluginAsync = async (app) => {
                 direction: t.last_message_direction,
                 createdAt: t.last_message_created_at,
                 deliveryStatus: t.last_message_delivery_status,
+              }
+            : null,
+          nextAction: t.next_action_id
+            ? {
+                id: t.next_action_id,
+                title: t.next_action_title,
+                dueAt: t.next_action_due_at ? t.next_action_due_at.toISOString() : null,
+                status: t.next_action_status,
+                assigneeUserId: t.next_action_assignee_id,
               }
             : null,
           createdAt: t.created_at,

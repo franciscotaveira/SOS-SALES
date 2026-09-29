@@ -11,6 +11,11 @@
  */
 import type { Pool, PoolClient } from "pg";
 import crypto from "node:crypto";
+import {
+  createCommercialAction,
+  getOpenCommercialAction,
+  type CommercialActionRecord,
+} from "./commercial-actions.repository";
 
 // ---------------------------------------------------------------------------
 // Types & Interfaces
@@ -159,8 +164,8 @@ export class SuggestionDecisionRejectionError extends Error {
 }
 
 export type SuggestionDecisionResult =
-  | { ok: true; suggestion: IntegrationSuggestionRecord }
-  | { ok: false; code: SuggestionRejectionCode; reason: string; suggestion: IntegrationSuggestionRecord | null };
+  | { ok: true; suggestion: IntegrationSuggestionRecord; action?: CommercialActionRecord }
+  | { ok: false; code: SuggestionRejectionCode; reason: string; suggestion: IntegrationSuggestionRecord | null; action?: CommercialActionRecord };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -731,11 +736,16 @@ export async function decideSuggestion(
   // Re-evaluation under changed workspace governance (e.g. disabled radar or bumped rule version)
   // MUST NOT overwrite an already decided suggestion.
   if (suggestion.status !== "pending") {
+    let existingAction: CommercialActionRecord | null = null;
+    if (suggestion.thread_id) {
+      existingAction = await getOpenCommercialAction(client, workspaceId, suggestion.thread_id);
+    }
     return {
       ok: false,
       code: "ALREADY_DECIDED",
       reason: `Sugestão já foi decidida anteriormente (status: ${suggestion.status})`,
       suggestion,
+      action: existingAction ?? undefined,
     };
   }
 
@@ -926,11 +936,16 @@ export async function decideSuggestion(
     );
     const latest = latestRes.rows[0];
     if (latest && latest.status !== "pending") {
+      let existingAction: CommercialActionRecord | null = null;
+      if (latest.thread_id) {
+        existingAction = await getOpenCommercialAction(client, workspaceId, latest.thread_id);
+      }
       return {
         ok: false,
         code: "ALREADY_DECIDED",
         reason: `Sugestão já foi decidida anteriormente (status: ${latest.status})`,
         suggestion: latest,
+        action: existingAction ?? undefined,
       };
     }
     return {
@@ -941,9 +956,26 @@ export async function decideSuggestion(
     };
   }
 
+  // Atomically create or link open commercial action for the thread upon acceptance
+  let linkedAction: CommercialActionRecord | undefined;
+  if (decision.status === "accepted" && updated.thread_id) {
+    const actionResult = await createCommercialAction(client, {
+      workspaceId,
+      threadId: updated.thread_id,
+      suggestionId: updated.id,
+      title: updated.title,
+      description: updated.draft_message || updated.body,
+      dueAt: updated.expires_at ? new Date(updated.expires_at) : new Date(Date.now() + 24 * 60 * 60 * 1000),
+      origin: "radar_suggestion",
+      createdByUserId: decision.decidedByUserId,
+    });
+    linkedAction = actionResult.action;
+  }
+
   return {
     ok: true,
     suggestion: updated,
+    action: linkedAction,
   };
 }
 

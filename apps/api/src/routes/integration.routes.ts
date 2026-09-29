@@ -460,6 +460,17 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
           status: statusCode,
           code: decisionResult.code,
           detail: decisionResult.reason,
+          action: decisionResult.action
+            ? {
+                id: decisionResult.action.id,
+                threadId: decisionResult.action.thread_id,
+                title: decisionResult.action.title,
+                description: decisionResult.action.description,
+                dueAt: decisionResult.action.due_at.toISOString(),
+                status: decisionResult.action.status,
+                origin: decisionResult.action.origin,
+              }
+            : null,
           instance: request.url,
           correlationId: request.id,
         });
@@ -475,6 +486,17 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
         draftMessage: updated.draft_message,
         threadId: updated.thread_id,
         originSnapshot: updated.origin_snapshot,
+        action: decisionResult.action
+          ? {
+              id: decisionResult.action.id,
+              threadId: decisionResult.action.thread_id,
+              title: decisionResult.action.title,
+              description: decisionResult.action.description,
+              dueAt: decisionResult.action.due_at.toISOString(),
+              status: decisionResult.action.status,
+              origin: decisionResult.action.origin,
+            }
+          : null,
       });
     }
   );

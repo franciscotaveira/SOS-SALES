@@ -132,8 +132,49 @@ export interface CommercialThreadSummary {
     createdAt: string;
     deliveryStatus: string;
   } | null;
+  nextAction?: {
+    id: string;
+    title: string;
+    dueAt: string | null;
+    status: string;
+    assigneeUserId: string | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CommercialActionSummary {
+  id: string;
+  workspaceId: string;
+  threadId: string;
+  journeyId: string | null;
+  suggestionId: string | null;
+  title: string;
+  description: string | null;
+  assigneeUserId: string | null;
+  dueAt: string;
+  status: "open" | "completed" | "cancelled";
+  origin: "manual" | "radar_suggestion" | "system";
+  postponedCount: number;
+  postponedReason: string | null;
+  postponedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommercialActionHistorySummary {
+  id: string;
+  actionId: string;
+  actionType: "created" | "assigned" | "rescheduled" | "completed" | "cancelled";
+  previousDueAt: string | null;
+  newDueAt: string | null;
+  previousAssigneeId: string | null;
+  newAssigneeId: string | null;
+  reason: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
 }
 
 export interface ThreadMessageSummary {
@@ -309,6 +350,7 @@ export interface IntegrationSuggestionDecisionResult {
   decidedAt: string | null;
   draftMessage: string | null;
   threadId: string | null;
+  action?: CommercialActionSummary | null;
 }
 
 export interface WabaInteractiveMessage {
@@ -533,12 +575,81 @@ export class ApiClient {
 
   async getThreads(
     workspaceId: string,
-    query?: { status?: string },
+    query?: { status?: string; needsAttention?: boolean },
     options?: RequestOptions
   ): Promise<{ threads: CommercialThreadSummary[]; total: number }> {
-    const qs = query?.status ? `?status=${encodeURIComponent(query.status)}` : "";
+    const params = new URLSearchParams();
+    if (query?.status) params.set("status", query.status);
+    if (query?.needsAttention) params.set("needsAttention", "true");
+    const qs = params.toString() ? `?${params.toString()}` : "";
     return this.request<{ threads: CommercialThreadSummary[]; total: number }>(
       `/v1/workspaces/${workspaceId}/threads${qs}`,
+      { ...options, workspaceId }
+    );
+  }
+
+  async getThreadActions(
+    workspaceId: string,
+    threadId: string,
+    options?: RequestOptions
+  ): Promise<{ actions: CommercialActionSummary[]; openAction: CommercialActionSummary | null }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/threads/${threadId}/actions`,
+      { ...options, workspaceId }
+    );
+  }
+
+  async createThreadAction(
+    workspaceId: string,
+    threadId: string,
+    payload: {
+      title: string;
+      description?: string | null;
+      dueAt: string;
+      assigneeUserId?: string | null;
+      origin?: "manual" | "radar_suggestion" | "system";
+    },
+    options?: RequestOptions
+  ): Promise<{ created: boolean; action: CommercialActionSummary }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/threads/${threadId}/actions`,
+      {
+        ...options,
+        method: "POST",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
+
+  async patchCommercialAction(
+    workspaceId: string,
+    actionId: string,
+    payload:
+      | { action: "complete" }
+      | { action: "cancel"; reason?: string | null }
+      | { action: "reschedule"; newDueAt: string; reason: string }
+      | { action: "assign"; assigneeUserId: string | null },
+    options?: RequestOptions
+  ): Promise<{ action: CommercialActionSummary }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/actions/${actionId}`,
+      {
+        ...options,
+        method: "PATCH",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
+
+  async getActionHistory(
+    workspaceId: string,
+    actionId: string,
+    options?: RequestOptions
+  ): Promise<{ history: CommercialActionHistorySummary[] }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/actions/${actionId}/history`,
       { ...options, workspaceId }
     );
   }

@@ -123,5 +123,46 @@
     - **Resultado:** 20/20 testes de componentes e acessibilidade aprovados.
     - **Exit Code:** `0` (Duração: 300ms)
 
+---
+
+## 7. Milestone M5 — Próxima Ação Comercial E2 (Schema, Repositório, Atomicidade Radar e UI Cockpit)
+
+- **Data:** 2026-09-29T04:00:00-03:00
+- **Mudanças Implementadas:**
+  - `packages/database/migrations/020_commercial_actions.sql`:
+    - Criação das tabelas `commercial_actions` e `commercial_action_history` com chave estrangeira estrita para `workspaces`, `commercial_threads`, `commercial_journeys`, `integration_suggestions` e `users`.
+    - Índice único parcial: `uq_commercial_actions_open_thread ON commercial_actions(workspace_id, thread_id) WHERE status = 'open'`, garantindo invariante de no máximo uma ação aberta por conversa simultaneamente.
+    - `FORCE ROW LEVEL SECURITY` em ambas as tabelas com políticas tenant-isoladas (`app.current_workspace_id`).
+    - Privilégio mínimo concedido a `sos_app_user`: estritamente `SELECT`, `INSERT`, `UPDATE` (DELETE expressamente revogado).
+  - `packages/database/src/repositories/commercial-actions.repository.ts`:
+    - `createCommercialAction`: reuso idempotente de ação aberta existente (`created: false`), impedindo duplicidade ou erro de concorrência.
+    - `rescheduleCommercialAction`: adiamento auditado com incremento de `postponed_count`, timestamp `postponed_at`, motivo obrigatório e registro imutável em `commercial_action_history`.
+    - `assignCommercialAction`: reatribuição de responsável com histórico auditado.
+    - `completeCommercialAction` e `cancelCommercialAction`: transições de estado terminais idempotentes.
+  - `packages/database/src/repositories/integration-suggestions.repository.ts`:
+    - Vinculação atômica em `decideSuggestion`: ao aceitar sugestão do Radar (`status = 'accepted'`), cria ou reutiliza a ação comercial aberta na mesma transação tenant, garantindo que retries concorrentes retornem o mesmo registro de ação.
+  - `packages/database/src/messaging.ts` & `apps/api/src/routes/threads.routes.ts`:
+    - Projeção de `next_action` via lateral join na listagem de threads.
+    - Suporte a filtro booleano `needsAttention`: threads ativas sem próxima ação aberta OU com próxima ação vencida (`due_at < now()`).
+  - `apps/api/src/routes/commercial-actions.routes.ts`:
+    - Endpoints REST tenant-isolados: `GET/POST /v1/workspaces/:workspaceId/threads/:threadId/actions`, `PATCH /v1/workspaces/:workspaceId/actions/:actionId` e `GET /v1/workspaces/:workspaceId/actions/:actionId/history`.
+  - `apps/web/src/pages/CockpitPage.tsx`:
+    - Card "Próxima Ação Comercial (E2)" na Coluna 3 com exibição de prazo, badges de status (`ABERTA`, `VENCIDA`, `X ADIADA`), ações diretas de conclusão, adiamento com formulário modal e cancelamento.
+    - Pill de prazo na listagem de conversas com destaque em vermelho para ações vencidas.
+    - Botão de filtro de fila `Atenção` (`needs_attention`).
+- **Resultados de Testes Executados:**
+  - `packages/database/src/__tests__/commercial-actions.test.ts`:
+    - **Resultado:** 9/9 testes aprovados (Exit Code: 0, Duração: 195ms).
+  - `apps/api/src/__tests__/commercial-actions.routes.test.ts`:
+    - **Resultado:** 11/11 testes de rotas aprovados (Exit Code: 0, Duração: 220ms).
+  - `apps/api/src/__tests__/integration.routes.test.ts`:
+    - **Resultado:** 27/27 testes aprovados com decisão atômica de Radar (Exit Code: 0, Duração: 599ms).
+  - Execução Integral Monorepo (`pnpm test:db:run`):
+    - **Resultado:** 50/50 arquivos de teste aprovados, 706/706 testes verdes (Exit Code: 0, Duração: 31.17s).
+  - `pnpm typecheck`:
+    - **Resultado:** 18/18 tarefas concluídas com sucesso no Turbo (Exit Code: 0).
+  - `pnpm --filter @sos-sales/web build`:
+    - **Resultado:** Build concluído com sucesso em 1.85s (Exit Code: 0).
+
 
 
