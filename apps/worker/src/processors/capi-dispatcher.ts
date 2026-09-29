@@ -15,6 +15,7 @@ export interface CapiDispatcherOptions {
   endpointUrl?: string;
   testEventCode?: string;
   masterKeyHex?: string;
+  strictTenantIsolation?: boolean;
 }
 
 export interface CapiDispatchResult {
@@ -30,6 +31,7 @@ export class CapiDispatcher {
   private readonly endpointUrl?: string;
   private readonly testEventCode?: string;
   private readonly masterKeyHex?: string;
+  private readonly strictTenantIsolation: boolean;
 
   constructor(options: CapiDispatcherOptions = {}) {
     this.datasetId = options.datasetId || process.env.META_DATASET_ID || process.env.META_PIXEL_ID;
@@ -41,6 +43,10 @@ export class CapiDispatcher {
       process.env.MCT_CREDENTIALS_MASTER_KEY ||
       process.env.APP_MASTER_KEY ||
       process.env.MASTER_ENCRYPTION_KEY;
+    this.strictTenantIsolation =
+      options.strictTenantIsolation ??
+      (process.env.STRICT_TENANT_ISOLATION === "true" ||
+        process.env.NODE_ENV === "production");
   }
 
   async claimBatch(pool: Pool, batchSize = 10): Promise<ConversionEventRecord[]> {
@@ -127,62 +133,75 @@ export class CapiDispatcher {
         };
       }
 
-      // Check if workspace has dedicated Meta credentials in provider_credentials
-      let effectiveDatasetId = this.datasetId;
-      let effectiveAccessToken = this.accessToken;
+      // Tenant Isolation (S-05): Check workspace credentials first!
+      let effectiveDatasetId: string | undefined;
+      let effectiveAccessToken: string | undefined;
 
-      if (!effectiveDatasetId || !effectiveAccessToken) {
-        try {
-          const credRows = await withWorkerTransaction(
-            item.workspace_id,
-            async (client) => {
-              const res = await client.query<{
-                encrypted_payload: string;
-                iv: string;
-                auth_tag: string;
-                account_id: string;
-              }>(
-                `SELECT encrypted_payload, iv, auth_tag, account_id
-                 FROM public.provider_credentials
-                 WHERE workspace_id = $1 AND provider IN ('meta_waba', 'meta_capi') AND status = 'ACTIVE'
-                 ORDER BY (CASE WHEN provider = 'meta_capi' THEN 0 ELSE 1 END) ASC
-                 LIMIT 1;`,
-                [item.workspace_id]
+      try {
+        const credRows = await withWorkerTransaction(
+          item.workspace_id,
+          async (client) => {
+            const res = await client.query<{
+              encrypted_payload: string;
+              iv: string;
+              auth_tag: string;
+              key_version?: string;
+              account_id: string;
+            }>(
+              `SELECT encrypted_payload, iv, auth_tag, key_version, account_id
+               FROM public.provider_credentials
+               WHERE workspace_id = $1 AND provider IN ('meta_waba', 'meta_capi') AND status = 'ACTIVE'
+               ORDER BY (CASE WHEN provider = 'meta_capi' THEN 0 ELSE 1 END) ASC
+               LIMIT 1;`,
+              [item.workspace_id]
+            );
+            return res.rows;
+          },
+          pool
+        );
+
+        const row = credRows?.[0];
+        if (row) {
+          const masterKey =
+            this.masterKeyHex ||
+            process.env.MCT_CREDENTIALS_MASTER_KEY ||
+            process.env.APP_MASTER_KEY ||
+            process.env.MASTER_ENCRYPTION_KEY;
+
+          if (masterKey) {
+            try {
+              const decrypted = decryptPayload(
+                row.encrypted_payload,
+                row.iv,
+                row.auth_tag,
+                masterKey,
+                row.key_version ? { keyVersion: row.key_version } : undefined
               );
-              return res.rows;
-            },
-            pool
-          );
-
-          const row = credRows?.[0];
-          if (row) {
-            const masterKey =
-              this.masterKeyHex ||
-              process.env.MCT_CREDENTIALS_MASTER_KEY ||
-              process.env.APP_MASTER_KEY ||
-              process.env.MASTER_ENCRYPTION_KEY;
-
-            if (masterKey) {
-              try {
-                const decrypted = decryptPayload(row.encrypted_payload, row.iv, row.auth_tag, masterKey);
-                const parsed = JSON.parse(decrypted) as Record<string, unknown>;
-                if (parsed.access_token) {
-                  effectiveAccessToken = String(parsed.access_token);
-                }
-                if (parsed.pixel_id || parsed.dataset_id) {
-                  effectiveDatasetId = String(parsed.pixel_id || parsed.dataset_id);
-                } else if (parsed.waba_account_id) {
-                  effectiveDatasetId = String(parsed.waba_account_id);
-                } else if (row.account_id) {
-                  effectiveDatasetId = row.account_id;
-                }
-              } catch {
-                // Ignore decryption failure, fall back to unconfigured
+              const parsed = JSON.parse(decrypted) as Record<string, unknown>;
+              if (parsed.access_token) {
+                effectiveAccessToken = String(parsed.access_token);
               }
+              if (parsed.pixel_id || parsed.dataset_id) {
+                effectiveDatasetId = String(parsed.pixel_id || parsed.dataset_id);
+              } else if (parsed.waba_account_id) {
+                effectiveDatasetId = String(parsed.waba_account_id);
+              } else if (row.account_id) {
+                effectiveDatasetId = row.account_id;
+              }
+            } catch {
+              // Ignore decryption failure, fall through
             }
           }
-        } catch {
-          // Ignore query failure, fall back to unconfigured
+        }
+      } catch {
+        // Ignore query failure, fall through
+      }
+
+      // If workspace credentials were not found, check strictTenantIsolation
+      if (!effectiveDatasetId || !effectiveAccessToken) {
+        if (!this.strictTenantIsolation) {
+          effectiveDatasetId = effectiveDatasetId || this.datasetId;
+          effectiveAccessToken = effectiveAccessToken || this.accessToken;
         }
       }
 

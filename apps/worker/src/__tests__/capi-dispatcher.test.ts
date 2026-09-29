@@ -23,6 +23,7 @@ describe("Meta CAPI Conversion Dispatcher Integration Tests", () => {
 
   beforeAll(async () => {
     await resetTestQueueState(ownerPool);
+    await ownerPool.query("DELETE FROM public.conversion_events;");
 
     // 1. Provision Org & Workspace
     const orgRes = await ownerPool.query(`
@@ -551,6 +552,148 @@ describe("Meta CAPI Conversion Dispatcher Integration Tests", () => {
       expect(result.fbtraceId).toBe("tenant_fbtrace_999");
       expect(capturedUrl).toContain("tenant_pixel_123456");
       expect(capturedUrl).toContain("TENANT_SPECIFIC_ACCESS_TOKEN_XYZ");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("CAPI-10: tenant credentials strictly override global constructor credentials (S-05)", async () => {
+    const testMasterKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const tenantPayload = {
+      access_token: "TENANT_OVERRIDE_TOKEN_111",
+      pixel_id: "tenant_pixel_override_222",
+    };
+
+    const enc = encryptPayload(JSON.stringify(tenantPayload), testMasterKey);
+
+    await ownerPool.query(`
+      INSERT INTO provider_credentials (
+        workspace_id, provider, account_id, encrypted_payload, iv, auth_tag, key_version, status
+      ) VALUES ($1, 'meta_capi', 'tenant_pixel_override_222', $2, $3, $4, 'v1', 'ACTIVE')
+      ON CONFLICT (workspace_id, provider, account_id)
+      DO UPDATE SET encrypted_payload = EXCLUDED.encrypted_payload, iv = EXCLUDED.iv, auth_tag = EXCLUDED.auth_tag;
+    `, [workspaceId, enc.encryptedBase64, enc.ivBase64, enc.authTagBase64]);
+
+    const insertRes = await ownerPool.query(`
+      INSERT INTO conversion_events (
+        workspace_id, journey_id, event_name, event_time, value_cents, currency,
+        user_data, status
+      ) VALUES (
+        $1, $2, 'PurchaseCompleted', now(), 15000, 'BRL',
+        '{}'::jsonb, 'QUEUED'
+      )
+      RETURNING *;
+    `, [workspaceId, testJourneyId]);
+
+    const targetItem = insertRes.rows[0];
+
+    let capturedUrl: string | null = null;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const urlStr = String(input);
+      if (urlStr.includes("graph.facebook.com")) {
+        capturedUrl = urlStr;
+        return new Response(JSON.stringify({ fbtrace_id: "tenant_override_fbtrace", events_received: 1 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    };
+
+    try {
+      // Dispatcher initialized with GLOBAL credentials that should be overridden by workspace credentials
+      const dispatcher = new CapiDispatcher({
+        datasetId: "global_pixel_999999",
+        accessToken: "GLOBAL_ACCESS_TOKEN_999999",
+        masterKeyHex: testMasterKey,
+      });
+
+      const result = await dispatcher.dispatchItem(workerPool, targetItem);
+
+      expect(result.status).toBe("accepted");
+      expect(result.fbtraceId).toBe("tenant_override_fbtrace");
+      expect(capturedUrl).toContain("tenant_pixel_override_222");
+      expect(capturedUrl).toContain("TENANT_OVERRIDE_TOKEN_111");
+      expect(capturedUrl).not.toContain("global_pixel_999999");
+      expect(capturedUrl).not.toContain("GLOBAL_ACCESS_TOKEN_999999");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("CAPI-11: strict tenant isolation blocks fallback to global credentials for unconfigured workspace (S-05)", async () => {
+    // Create separate workspace without any credentials
+    const otherWsRes = await ownerPool.query(`
+      INSERT INTO workspaces (organization_id, name, slug)
+      SELECT organization_id, 'Other Workspace Without CAPI', $1
+      FROM workspaces WHERE id = $2
+      RETURNING id;
+    `, [`ws-isolated-${crypto.randomUUID()}`, workspaceId]);
+    const otherWorkspaceId = otherWsRes.rows[0].id;
+
+    const otherContactRes = await ownerPool.query(`
+      INSERT INTO contacts (workspace_id, phone_e164, name)
+      VALUES ($1, '+5511977776666', 'Isolated Lead')
+      RETURNING id;
+    `, [otherWorkspaceId]);
+    const otherContactId = otherContactRes.rows[0].id;
+
+    const otherJourneyRes = await ownerPool.query(`
+      INSERT INTO commercial_journeys (workspace_id, contact_id, title)
+      VALUES ($1, $2, 'Isolated Journey')
+      RETURNING id;
+    `, [otherWorkspaceId, otherContactId]);
+    const otherJourneyId = otherJourneyRes.rows[0].id;
+
+    const insertRes = await ownerPool.query(`
+      INSERT INTO conversion_events (
+        workspace_id, journey_id, event_name, event_time, value_cents, currency,
+        user_data, status
+      ) VALUES (
+        $1, $2, 'LeadCaptured', now(), 0, 'BRL',
+        '{}'::jsonb, 'QUEUED'
+      )
+      RETURNING *;
+    `, [otherWorkspaceId, otherJourneyId]);
+
+    const targetItem = insertRes.rows[0];
+
+    let graphApiCalled = false;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const urlStr = String(input);
+      if (urlStr.includes("graph.facebook.com")) {
+        graphApiCalled = true;
+        return new Response(JSON.stringify({ fbtrace_id: "leak_trace", events_received: 1 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    };
+
+    try {
+      const dispatcher = new CapiDispatcher({
+        datasetId: "global_pixel_leak_target",
+        accessToken: "GLOBAL_ACCESS_TOKEN_LEAK_TARGET",
+        strictTenantIsolation: true,
+      });
+
+      const result = await dispatcher.dispatchItem(workerPool, targetItem);
+
+      // Must fail closed to simulated/unconfigured rather than leaking to global dataset
+      expect(result.status).toBe("simulated");
+      expect(graphApiCalled).toBe(false);
+
+      const checkRes = await ownerPool.query(`
+        SELECT status, provider_receipt
+        FROM conversion_events
+        WHERE id = $1;
+      `, [targetItem.id]);
+
+      expect(checkRes.rows[0].status).toBe("SIMULATED");
+      expect(checkRes.rows[0].provider_receipt.mode).toBe("simulated_local");
     } finally {
       globalThis.fetch = originalFetch;
     }

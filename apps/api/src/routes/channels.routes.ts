@@ -8,7 +8,11 @@ import {
   parseKeyringFromEnv,
   recordSecurityAuditEvent,
 } from "@sos-sales/database";
-import { validateWahaBaseUrl, validateEvolutionBaseUrl } from "@sos-sales/application";
+import {
+  validateWahaBaseUrl,
+  validateEvolutionBaseUrl,
+  safeFetchWithSsrfGuard,
+} from "@sos-sales/application";
 
 const workspaceParamsSchema = z.object({
   workspaceId: z.string().uuid(),
@@ -18,6 +22,15 @@ const channelParamsSchema = z.object({
   workspaceId: z.string().uuid(),
   channelId: z.string().uuid(),
 });
+
+const channelStatusSchema = z.enum([
+  "unconfigured",
+  "validating",
+  "pairing",
+  "connected",
+  "error",
+  "revoked",
+]);
 
 const channelCredentialsSchema = z.object({
   accessToken: z.string().optional(),
@@ -37,6 +50,11 @@ const createChannelBodySchema = z.object({
     .optional(),
   endpointToken: z.string().min(16).optional(),
   credentials: channelCredentialsSchema.optional(),
+  status: channelStatusSchema.optional(),
+});
+
+const updateChannelStatusBodySchema = z.object({
+  status: channelStatusSchema,
 });
 
 const testConnectionBodySchema = z.object({
@@ -77,11 +95,12 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           provider: string;
           display_name: string;
           phone_number_e164: string | null;
+          status: string;
           is_active: boolean;
           created_at: string;
           updated_at: string;
         }>(
-          `SELECT id, workspace_id, provider, display_name, phone_number_e164, is_active, created_at, updated_at
+          `SELECT id, workspace_id, provider, display_name, phone_number_e164, status, is_active, created_at, updated_at
            FROM public.channel_instances
            WHERE workspace_id = $1
            ORDER BY created_at ASC;`,
@@ -98,7 +117,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           displayName: c.display_name,
           phoneNumberE164: c.phone_number_e164,
           isActive: c.is_active,
-          status: c.is_active ? "connected" : "revoked",
+          status: c.status,
           environment: c.provider === "meta_waba" ? "production_certified" : "lab_local",
           createdAt: c.created_at,
           updatedAt: c.updated_at,
@@ -157,12 +176,18 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(
             credentials.phoneNumberId
           )}?fields=verified_name,code_verification_status,display_phone_number,quality_rating`;
-          const resp = await fetch(url, {
-            headers: {
-              Authorization: `Bearer ${credentials.accessToken}`,
+          const resp = await safeFetchWithSsrfGuard(
+            url,
+            {
+              headers: {
+                Authorization: `Bearer ${credentials.accessToken}`,
+              },
             },
-            signal: AbortSignal.timeout(8000),
-          });
+            {
+              timeoutMs: 8000,
+              allowedProtocols: ["https:"],
+            }
+          );
 
           const data = (await resp.json()) as {
             verified_name?: string;
@@ -187,6 +212,13 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
             codeVerificationStatus: data.code_verification_status,
           });
         } catch (err: unknown) {
+          const isSsrf = err instanceof Error && (err.message.includes("SSRF") || err.message.includes("BLOCKED"));
+          if (isSsrf) {
+            return reply.status(400).send({
+              success: false,
+              error: `SSRF_VIOLATION: ${(err as Error).message}`,
+            });
+          }
           return reply.status(200).send({
             success: false,
             error:
@@ -221,11 +253,23 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           });
         }
 
+        const allowLocal =
+          process.env.NODE_ENV !== "production" ||
+          process.env.ENABLE_LAB_SYNTHETIC === "true" ||
+          process.env.ALLOW_LOCAL_NETWORK_CHANNELS === "true";
+
         try {
-          const resp = await fetch(`${targetBaseUrl}/api/server/version`, {
-            headers: credentials.apiKey ? { "X-Api-Key": credentials.apiKey } : {},
-            signal: AbortSignal.timeout(8000),
-          });
+          const resp = await safeFetchWithSsrfGuard(
+            `${targetBaseUrl}/api/server/version`,
+            {
+              headers: credentials.apiKey ? { "X-Api-Key": credentials.apiKey } : {},
+            },
+            {
+              timeoutMs: 8000,
+              allowLocalTest: allowLocal,
+              allowedProtocols: ["http:", "https:"],
+            }
+          );
 
           if (!resp.ok) {
             return reply.status(200).send({
@@ -240,6 +284,13 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
             qualityRating: "GREEN",
           });
         } catch (err: unknown) {
+          const isSsrf = err instanceof Error && (err.message.includes("SSRF") || err.message.includes("BLOCKED"));
+          if (isSsrf) {
+            return reply.status(400).send({
+              success: false,
+              error: `SSRF_VIOLATION: ${(err as Error).message}`,
+            });
+          }
           return reply.status(200).send({
             success: false,
             error:
@@ -274,11 +325,23 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           });
         }
 
+        const allowLocal =
+          process.env.NODE_ENV !== "production" ||
+          process.env.ENABLE_LAB_SYNTHETIC === "true" ||
+          process.env.ALLOW_LOCAL_NETWORK_CHANNELS === "true";
+
         try {
-          const resp = await fetch(`${targetBaseUrl}/instance/fetchInstances`, {
-            headers: credentials.apiKey ? { apikey: credentials.apiKey } : {},
-            signal: AbortSignal.timeout(8000),
-          });
+          const resp = await safeFetchWithSsrfGuard(
+            `${targetBaseUrl}/instance/fetchInstances`,
+            {
+              headers: credentials.apiKey ? { apikey: credentials.apiKey } : {},
+            },
+            {
+              timeoutMs: 8000,
+              allowLocalTest: allowLocal,
+              allowedProtocols: ["http:", "https:"],
+            }
+          );
 
           if (!resp.ok) {
             return reply.status(200).send({
@@ -293,6 +356,13 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
             qualityRating: "GREEN",
           });
         } catch (err: unknown) {
+          const isSsrf = err instanceof Error && (err.message.includes("SSRF") || err.message.includes("BLOCKED"));
+          if (isSsrf) {
+            return reply.status(400).send({
+              success: false,
+              error: `SSRF_VIOLATION: ${(err as Error).message}`,
+            });
+          }
           return reply.status(200).send({
             success: false,
             error:
@@ -402,18 +472,22 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           const credRes = await client.query<{ id: string }>(
             `INSERT INTO public.provider_credentials (
                workspace_id, provider, account_id, encrypted_payload, iv, auth_tag, key_version, status
-             ) VALUES ($1, $2, $3, $4, $5, $6, 'v1', 'ACTIVE')
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE')
              ON CONFLICT (workspace_id, provider, account_id)
              DO UPDATE SET
                encrypted_payload = EXCLUDED.encrypted_payload,
                iv = EXCLUDED.iv,
                auth_tag = EXCLUDED.auth_tag,
+               key_version = EXCLUDED.key_version,
+               status = 'ACTIVE',
                updated_at = NOW()
              RETURNING id;`,
-            [workspaceId, provider, accountId, enc.encryptedBase64, enc.ivBase64, enc.authTagBase64]
+            [workspaceId, provider, accountId, enc.encryptedBase64, enc.ivBase64, enc.authTagBase64, enc.keyVersion]
           );
           credentialId = credRes.rows[0]?.id || null;
         }
+
+        const initialStatus = parsedBody.data.status ?? (credentials ? "connected" : "unconfigured");
 
         const res = await client.query<{
           id: string;
@@ -421,14 +495,15 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           provider: string;
           display_name: string;
           phone_number_e164: string | null;
+          status: string;
           is_active: boolean;
           created_at: string;
         }>(
           `INSERT INTO public.channel_instances (
-             workspace_id, provider, display_name, phone_number_e164, endpoint_token_hash, credential_id, is_active
-           ) VALUES ($1, $2, $3, $4, $5, $6, true)
-           RETURNING id, workspace_id, provider, display_name, phone_number_e164, is_active, created_at;`,
-          [workspaceId, provider, displayName, phoneNumberE164 ?? null, tokenHash, credentialId]
+             workspace_id, provider, display_name, phone_number_e164, endpoint_token_hash, credential_id, status, is_active
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING id, workspace_id, provider, display_name, phone_number_e164, status, is_active, created_at;`,
+          [workspaceId, provider, displayName, phoneNumberE164 ?? null, tokenHash, credentialId, initialStatus, initialStatus === "connected"]
         );
         return res.rows[0];
       });
@@ -451,6 +526,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           provider: channel.provider,
           displayName: channel.display_name,
           phoneNumberE164: channel.phone_number_e164,
+          status: channel.status,
           isActive: channel.is_active,
           createdAt: channel.created_at,
           // Return the raw token only once on creation so the webhook URL can be configured
@@ -494,12 +570,13 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           provider: string;
           display_name: string;
           credential_id: string | null;
+          status: string;
           is_active: boolean;
         }>(
           `UPDATE public.channel_instances
-           SET is_active = false, updated_at = NOW()
+           SET status = 'revoked', updated_at = NOW()
            WHERE id = $1 AND workspace_id = $2
-           RETURNING id, provider, display_name, credential_id, is_active;`,
+           RETURNING id, provider, display_name, credential_id, status, is_active;`,
           [channelId, workspaceId]
         );
 
@@ -558,9 +635,84 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(200).send({
         success: true,
         channelId: revoked.id,
-        status: "revoked",
-        isActive: false,
+        status: revoked.status,
+        isActive: revoked.is_active,
         message: `Canal '${revoked.display_name}' revogado com sucesso.`,
+      });
+    }
+  );
+
+  // 4b. Update Channel Lifecycle Status (State Machine)
+  app.patch(
+    "/v1/workspaces/:workspaceId/channels/:channelId/status",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("workspace:manage"),
+      ],
+    },
+    async (request, reply) => {
+      const parsedParams = channelParamsSchema.safeParse(request.params);
+      if (!parsedParams.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Invalid workspaceId or channelId parameter",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const parsedBody = updateChannelStatusBodySchema.safeParse(request.body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: parsedBody.error.issues.map((i) => i.message).join(", "),
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { workspaceId, channelId } = parsedParams.data;
+      const { status } = parsedBody.data;
+
+      const updated = await withTenantTransaction(workspaceId, async (client) => {
+        const chanRes = await client.query<{
+          id: string;
+          provider: string;
+          display_name: string;
+          status: string;
+          is_active: boolean;
+        }>(
+          `UPDATE public.channel_instances
+           SET status = $1, updated_at = NOW()
+           WHERE id = $2 AND workspace_id = $3
+           RETURNING id, provider, display_name, status, is_active;`,
+          [status, channelId, workspaceId]
+        );
+        return chanRes.rows[0] || null;
+      });
+
+      if (!updated) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: `Channel ${channelId} not found in workspace`,
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      return reply.status(200).send({
+        success: true,
+        channelId: updated.id,
+        status: updated.status,
+        isActive: updated.is_active,
       });
     }
   );
@@ -764,12 +916,21 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const sessionName = creds.session || "default";
+      const allowLocal =
+        process.env.NODE_ENV !== "production" ||
+        process.env.ENABLE_LAB_SYNTHETIC === "true" ||
+        process.env.ALLOW_LOCAL_NETWORK_CHANNELS === "true";
+
       try {
-        const resp = await fetch(
+        const resp = await safeFetchWithSsrfGuard(
           `${validatedBaseUrl}/api/sessions/${sessionName}/auth/qr`,
           {
             headers: creds.api_key ? { "X-Api-Key": creds.api_key } : {},
-            signal: AbortSignal.timeout(8000),
+          },
+          {
+            timeoutMs: 8000,
+            allowLocalTest: allowLocal,
+            allowedProtocols: ["http:", "https:"],
           }
         );
 
@@ -802,6 +963,17 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           isSimulated: false,
         });
       } catch (err: unknown) {
+        const isSsrf = err instanceof Error && (err.message.includes("SSRF") || err.message.includes("BLOCKED"));
+        if (isSsrf) {
+          return reply.status(400).send({
+            type: "https://sos-sales.mct.br/errors/bad-request",
+            title: "SSRF Violation",
+            status: 400,
+            detail: (err as Error).message,
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
         return reply.status(200).send({
           success: false,
           status: "UNREACHABLE",
