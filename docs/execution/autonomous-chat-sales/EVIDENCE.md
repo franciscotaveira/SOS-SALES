@@ -52,3 +52,24 @@
     - **Resultado:** 10/10 pacotes construídos com sucesso.
     - **Exit Code:** `0`
 
+---
+
+## 4. Milestone M2 — Fundação, Auth JWT, RBAC com Efeitos, withTenantTransaction e RLS
+
+- **Data:** 2026-09-29T03:10:00-03:00
+- **Verificações e Testes Realizados:**
+  - `packages/database/src/__tests__/tenant-isolation.test.ts`:
+    - Adicionada suíte completa de isolamento negativo cross-tenant cobrindo: contatos, threads comerciais, mensagens, produtos de catálogo, cobranças Pix, jornadas comerciais, outcomes e sugestões de integração.
+    - Comprovado fail-closed quando `app.current_workspace_id` está ausente (0 rows retornadas).
+    - Comprovada estrita revogação de DELETE para `sos_app_user` em contatos, canais, threads e mensagens (princípio do privilégio mínimo).
+    - Comprovado bloqueio de INSERT cross-tenant por RLS `WITH CHECK`.
+    - **Resultado:** 16/16 testes aprovados (Exit Code: 0, Duração: 213ms).
+  - `apps/api/src/__tests__/auth-vertical-slice.test.ts`:
+    - Validação de JWT, rejeição de assinaturas adulteradas, emissor e audiência inválidos, alg: none, privilégios RBAC nas rotas com efeito, e auditoria imutável de eventos de segurança.
+    - **Resultado:** 19/19 testes aprovados (Exit Code: 0).
+  - Execução Integral Monorepo (`pnpm test:db:run`):
+    - **Resultado:** 48/48 arquivos de teste aprovados, 681/681 testes aprovados (Exit Code: 0, Duração: 21.56s).
+  - `pnpm typecheck`: 18/18 tarefas concluídas com sucesso.
+  - `pnpm build`: 10/10 pacotes construídos com sucesso.
+
+
