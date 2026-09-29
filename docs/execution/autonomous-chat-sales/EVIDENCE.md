@@ -103,4 +103,25 @@
   - `pnpm typecheck`: 18/18 tarefas concluídas com sucesso.
   - `pnpm build`: 10/10 pacotes construídos com sucesso.
 
+---
+
+## 6. Milestone M4 — Cockpit Íntegro (Timeline, Isolamento de Rascunhos, Troca Rápida sem Corrida)
+
+- **Data:** 2026-09-29T03:31:00-03:00
+- **Mudanças Implementadas:**
+  - `apps/web/src/pages/CockpitPage.tsx`:
+    - Adicionado suporte a `sessionStorage` persistente para rascunhos de mensagens, associados de forma estrita à tupla `(workspaceId, threadId)` sob a chave `chat_sales_draft_${workspaceId}_${threadId}`.
+    - Limpeza imediata da lista de mensagens ao selecionar nova conversa (`setMessages([])`), eliminando qualquer visualização residual de contatos prévios durante carregamentos lentos.
+    - Prevenção de condições de corrida em respostas assíncronas de rede (`loadMessages`) e polling periódico via sentinela `activeThreadIdRef`.
+    - Limpeza de estados transitórios de erro e sucesso (`sendError`, `outcomeError`, `pixError`, etc.) na troca de conversa.
+    - Sincronização automática do rascunho aceito a partir de sugestões do Radar com a chave isolada da conversa alvo.
+- **Resultados de Testes Executados:**
+  - `pnpm --filter @sos-sales/web build`:
+    - **Resultado:** Build concluído com sucesso em 1.63s (`dist/index.html`, `dist/assets/index-DDGbEmeF.css`, `dist/assets/index-Cc3NwY6E.js`).
+    - **Exit Code:** `0`
+  - `pnpm --filter @sos-sales/ui test`:
+    - **Resultado:** 20/20 testes de componentes e acessibilidade aprovados.
+    - **Exit Code:** `0` (Duração: 300ms)
+
+
 

@@ -100,23 +100,60 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
   const draftsByThreadRef = useRef<Record<string, string>>({});
   const activeThreadIdRef = useRef<string | null>(null);
 
+  const getDraftKey = useCallback((workspaceId: string, threadId: string) => {
+    return `chat_sales_draft_${workspaceId}_${threadId}`;
+  }, []);
+
   const handleMessageInputChange = useCallback(
     (val: string) => {
       setMessageInput(val);
       if (selectedThreadId) {
         draftsByThreadRef.current[selectedThreadId] = val;
+        if (activeWorkspace?.id) {
+          try {
+            if (val.trim()) {
+              sessionStorage.setItem(getDraftKey(activeWorkspace.id, selectedThreadId), val);
+            } else {
+              sessionStorage.removeItem(getDraftKey(activeWorkspace.id, selectedThreadId));
+            }
+          } catch {
+            // ignore session storage quota errors
+          }
+        }
       }
     },
-    [selectedThreadId]
+    [selectedThreadId, activeWorkspace?.id, getDraftKey]
   );
 
   useEffect(() => {
     activeThreadIdRef.current = selectedThreadId;
     if (selectedThreadId) {
-      setMessageInput(draftsByThreadRef.current[selectedThreadId] || "");
+      let draft = draftsByThreadRef.current[selectedThreadId];
+      if (!draft && activeWorkspace?.id) {
+        try {
+          draft = sessionStorage.getItem(getDraftKey(activeWorkspace.id, selectedThreadId)) || "";
+          if (draft) {
+            draftsByThreadRef.current[selectedThreadId] = draft;
+          }
+        } catch {
+          draft = "";
+        }
+      }
+      setMessageInput(draft || "");
     } else {
       setMessageInput("");
     }
+  }, [selectedThreadId, activeWorkspace?.id, getDraftKey]);
+
+  // Reset transient operation feedback when switching threads
+  useEffect(() => {
+    setSendError(null);
+    setOutcomeError(null);
+    setOutcomeSuccessMessage(null);
+    setProductError(null);
+    setFlowError(null);
+    setTemplateError(null);
+    setPixError(null);
   }, [selectedThreadId]);
 
   // WABA Templates & 24h Window state
@@ -273,6 +310,13 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
           const targetId = suggestion.threadId || selectedThreadId;
           if (targetId) {
             draftsByThreadRef.current[targetId] = suggestion.draftMessage;
+            if (activeWorkspace?.id) {
+              try {
+                sessionStorage.setItem(getDraftKey(activeWorkspace.id, targetId), suggestion.draftMessage);
+              } catch {
+                // ignore
+              }
+            }
           }
           if (suggestion.threadId && suggestion.threadId !== selectedThreadId) {
             setSelectedThreadId(suggestion.threadId);
@@ -287,7 +331,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
         setIsDecidingSuggestion(false);
       }
     },
-    [activeWorkspace?.id, token, selectedThreadId, loadSuggestions]
+    [activeWorkspace?.id, token, selectedThreadId, loadSuggestions, getDraftKey]
   );
 
   // 3. Fetch and poll messages for selected thread
@@ -317,15 +361,23 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
       return;
     }
 
+    // Immediately clear stale messages from prior thread
+    setMessages([]);
     setIsLoadingMessages(true);
-    loadMessages(selectedThreadId).finally(() => {
-      setIsLoadingMessages(false);
-      scrollToBottom();
+    const currentThreadId = selectedThreadId;
+
+    loadMessages(currentThreadId).finally(() => {
+      if (activeThreadIdRef.current === currentThreadId) {
+        setIsLoadingMessages(false);
+        scrollToBottom();
+      }
     });
 
     // Poll messages every 3 seconds while thread is active
     const interval = setInterval(() => {
-      loadMessages(selectedThreadId);
+      if (activeThreadIdRef.current === currentThreadId) {
+        loadMessages(currentThreadId);
+      }
     }, 3000);
 
     return () => clearInterval(interval);
@@ -372,6 +424,13 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
     setMessageInput("");
     if (selectedThread.id) {
       delete draftsByThreadRef.current[selectedThread.id];
+      if (activeWorkspace?.id) {
+        try {
+          sessionStorage.removeItem(getDraftKey(activeWorkspace.id, selectedThread.id));
+        } catch {
+          // ignore
+        }
+      }
     }
 
     try {
@@ -1116,6 +1175,13 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
       // and isolate in thread draft store so switching threads preserves it (CS-01)
       const receiptDraft = `✓ Pagamento Pix de ${res.charge.amountFormatted} conferido pelo caixa.`;
       draftsByThreadRef.current[selectedThread.id] = receiptDraft;
+      if (activeWorkspace?.id) {
+        try {
+          sessionStorage.setItem(getDraftKey(activeWorkspace.id, selectedThread.id), receiptDraft);
+        } catch {
+          // ignore
+        }
+      }
       setMessageInput(receiptDraft);
 
       loadThreads();

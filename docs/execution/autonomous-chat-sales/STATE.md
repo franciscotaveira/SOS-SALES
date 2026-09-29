@@ -8,21 +8,19 @@
 
 ## 1. Fotografia do Estado Atual
 
-- **Data / Hora:** 2026-09-29T03:26:00-03:00
-- **SHA Base de Entrada:** `32d0bf4`
-- **Milestone Atual:** `M3 — Mensageria e Canais no Núcleo (Inbox, Outbox Transacional, Reconciliação, SSRF Guard)` -> `COMPLETED`
-- **Próximo Milestone:** `M4 — Cockpit Íntegro (Timeline, Isolamento de Rascunhos, Troca Rápida sem Corrida)`
+- **Data / Hora:** 2026-09-29T03:31:00-03:00
+- **SHA Base de Entrada:** `aea5f27`
+- **Milestone Atual:** `M4 — Cockpit Íntegro (Timeline, Isolamento de Rascunhos, Troca Rápida sem Corrida)` -> `COMPLETED`
+- **Próximo Milestone:** `M5 — Próxima Ação Comercial E2 (Schema commercial_actions, atomicidade Radar, Cockpit Lite)`
 - **Último Gate Verde:**
-  - Full Test Runner (`pnpm test:db:run`): 48/48 arquivos de teste aprovados, 686/686 testes aprovados.
-  - Alinhamento de Contrato de Canais: `createChannel` retornando `webhookToken` e `webhookUrl` em ambos os níveis.
-  - SSRF Guard & Truth in Data: `test-connection` com I/O real para WAHA/Evolution e bloqueio SSRF testado.
-  - CAPI Tenant-Safe: `provider_credentials` descriptografado sob contexto RLS do workspace.
-  - CAPI Imutabilidade: `markConversionEventResult` protegido contra leases atrasadas.
-  - Workspace Typecheck: 18/18 tarefas bem-sucedidas.
-  - Monorepo Build: 10/10 tarefas bem-sucedidas.
+  - Web Build (`pnpm --filter @sos-sales/web build`): Construção com sucesso em 1.63s, bundles gerados sem erros.
+  - UI Component Suite (`pnpm --filter @sos-sales/ui test`): 20/20 testes aprovados.
+  - Isolamento de Rascunhos: `sessionStorage` persistente com chave `chat_sales_draft_${workspaceId}_${threadId}` e cache local em ref.
+  - Prevenção de Condição de Corrida: `activeThreadIdRef` descartando respostas assíncronas de threads anteriores e limpando `messages` imediatamente ao alternar de conversa.
+  - Limpeza de Erros Transitórios: reset de erros/sucessos ao alternar contato.
 - **Erro / Bloqueador Ativo no Momento:** Nenhum bloqueador interno em aberto.
 - **Próxima Ação Imediata:**
-  - Iniciar M4: Auditar isolamento de rascunhos por workspace/thread, timelines, race condition de seleção rápida de contato e scripts de verificação de navegador.
+  - Iniciar M5: Implementar schema e migration `020_commercial_actions.sql` (RLS, policies, trigger de updated_at), repositório com criação atômica ligada a sugestão aceita do Radar, endpoints de API e integração no Cockpit Lite.
 
 ---
 
@@ -33,8 +31,8 @@
 | **M0** | Baseline reproduzível, verificação de ambiente, saúde e inventário | `COMPLETED` | `c8f5a09a` |
 | **M1** | Fechar F1.1-C.1 (Imutabilidade terminal e replay idempotente estável) | `COMPLETED` | `1e898fa` |
 | **M2** | Fundação, auth JWT, RBAC com efeitos, `withTenantTransaction` e RLS | `COMPLETED` | `32d0bf4` |
-| **M3** | Mensageria e canais no núcleo (inbox, outbox transacional, reconciliação, SSRF guard) | `COMPLETED` | pendente commit M3 |
-| **M4** | Cockpit íntegro (timeline, isolamento de rascunhos, troca rápida sem corrida) | `IN_PROGRESS` | — |
+| **M3** | Mensageria e canais no núcleo (inbox, outbox transacional, reconciliação, SSRF guard) | `COMPLETED` | `aea5f27` |
+| **M4** | Cockpit íntegro (timeline, isolamento de rascunhos, troca rápida sem corrida) | `COMPLETED` | pendente commit M4 |
 | **M5** | Próxima Ação Comercial E2 (Schema `commercial_actions`, atomicidade Radar, Cockpit Lite) | `TODO` | — |
 | **M6** | Fluxo comercial, catálogo, proposta imutável, Pix EMV e outcome WON/LOST | `TODO` | — |
 | **M7** | Onboarding assistido de canal por workspace (WABA/WAHA com credenciais protegidas) | `TODO` | — |
