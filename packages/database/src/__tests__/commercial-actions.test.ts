@@ -77,7 +77,7 @@ describe("SOS Sales V3 — Commercial Actions (E2) Database Suite", () => {
     );
 
     // 3. Seed Channels & Contacts in A
-    const tokenA = crypto.createHash("sha256").update(`token-a-${Date.now()}`).digest("hex");
+    const tokenA = crypto.createHash("sha256").update(`token-a-${crypto.randomUUID()}`).digest("hex");
     const chanARes = await ownerPool.query(
       `INSERT INTO public.channel_instances (workspace_id, provider, display_name, endpoint_token_hash)
        VALUES ($1, 'waha', 'WAHA Channel A', $2) RETURNING id;`,
@@ -100,7 +100,7 @@ describe("SOS Sales V3 — Commercial Actions (E2) Database Suite", () => {
     threadAId = threadARes.rows[0].id;
 
     // 4. Seed Channel, Contact & Thread in B
-    const tokenB = crypto.createHash("sha256").update(`token-b-${Date.now()}`).digest("hex");
+    const tokenB = crypto.createHash("sha256").update(`token-b-${crypto.randomUUID()}`).digest("hex");
     const chanBRes = await ownerPool.query(
       `INSERT INTO public.channel_instances (workspace_id, provider, display_name, endpoint_token_hash)
        VALUES ($1, 'waha', 'WAHA Channel B', $2) RETURNING id;`,

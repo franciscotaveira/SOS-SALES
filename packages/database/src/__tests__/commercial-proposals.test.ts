@@ -334,6 +334,7 @@ describe("Commercial Proposals & Commercial Flow (M6)", () => {
       });
       proposalId = proposal.id;
 
+      await updateCommercialProposalStatus(client, workspaceAId, proposalId, { status: "sent" });
       await updateCommercialProposalStatus(client, workspaceAId, proposalId, { status: "accepted" });
     });
 

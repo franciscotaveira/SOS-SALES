@@ -191,9 +191,9 @@ export async function recordCommercialOutcome(
     throw new Error("REASON_REQUIRED: Motivo do desfecho de perda é obrigatório");
   }
 
-  // 1. Fetch journey under tenant RLS
+  // 1. Fetch journey under tenant RLS with exclusive row lock to prevent race conditions
   const journeyRes = await client.query<CommercialJourneyRecord>(
-    `SELECT * FROM public.commercial_journeys WHERE workspace_id = $1 AND id = $2;`,
+    `SELECT * FROM public.commercial_journeys WHERE workspace_id = $1 AND id = $2 FOR UPDATE;`,
     [workspaceId, input.journeyId]
   );
   const journey = journeyRes.rows[0];
@@ -211,7 +211,7 @@ export async function recordCommercialOutcome(
   if (
     existingOutcomeRes.rows[0] &&
     existingOutcomeRes.rows[0].status === input.status &&
-    Number(existingOutcomeRes.rows[0].value_cents) === input.valueCents
+    (input.status === "won" || Number(existingOutcomeRes.rows[0].value_cents) === input.valueCents)
   ) {
     const convRes = await client.query<ConversionEventRecord>(
       `SELECT * FROM public.conversion_events WHERE workspace_id = $1 AND outcome_id = $2;`,
@@ -256,10 +256,21 @@ export async function recordCommercialOutcome(
       input.valueCents > 0 ? "PurchaseCompleted" : "ProposalAccepted";
 
     const userData: Record<string, unknown> = {};
-    if (input.userPhoneE164) {
+
+    // S-07: Derive customer phone directly from contact entity if caller did not supply it
+    let customerPhone = input.userPhoneE164?.trim();
+    if (!customerPhone && journey.contact_id) {
+      const contactRes = await client.query<{ phone_e164: string }>(
+        `SELECT phone_e164 FROM public.contacts WHERE workspace_id = $1 AND id = $2;`,
+        [workspaceId, journey.contact_id]
+      );
+      customerPhone = contactRes.rows[0]?.phone_e164?.trim();
+    }
+
+    if (customerPhone) {
       userData.hashedPhone = crypto
         .createHash("sha256")
-        .update(input.userPhoneE164.trim().replace(/\D/g, ""))
+        .update(customerPhone.replace(/\D/g, ""))
         .digest("hex");
     }
     if (journey.ctwa_clid) {

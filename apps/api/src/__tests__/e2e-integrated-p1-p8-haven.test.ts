@@ -551,8 +551,12 @@ describe("M9 E2E Integrado P1–P8 & Ensaio Sintético Haven Escovaria", () => {
       });
       expect(confirmedPix.status).toBe("PAID");
 
-      // Transiciona proposta para accepted
+      // Transiciona proposta para sent e em seguida accepted
       await withTenantTransaction(havenWorkspaceId, async (client) => {
+        await updateCommercialProposalStatus(client, havenWorkspaceId, syntheticProposalId, {
+          status: "sent",
+          userId: havenOperatorUserId,
+        });
         return updateCommercialProposalStatus(client, havenWorkspaceId, syntheticProposalId, {
           status: "accepted",
           userId: havenOperatorUserId,

@@ -66,6 +66,17 @@ export async function createCommercialAction(
   const origin = input.origin ?? "manual";
   const description = input.description ? input.description.trim() : null;
 
+  // Validate assignee membership if provided
+  if (input.assigneeUserId) {
+    const memberRes = await client.query<{ user_id: string }>(
+      `SELECT user_id FROM public.workspace_memberships WHERE workspace_id = $1 AND user_id = $2;`,
+      [input.workspaceId, input.assigneeUserId]
+    );
+    if (!memberRes.rows[0]) {
+      throw new Error(`ASSIGNEE_NOT_MEMBER: O usuário ${input.assigneeUserId} não é membro do workspace.`);
+    }
+  }
+
   // Insert with ON CONFLICT DO NOTHING against the partial unique index
   const res = await client.query<CommercialActionRecord>(
     `INSERT INTO public.commercial_actions (
@@ -276,6 +287,17 @@ export async function assignCommercialAction(
 
   if (action.status !== "open") {
     throw new Error(`Não é possível atribuir ação com status '${action.status}'`);
+  }
+
+  // Validate assignee membership if assigning to a user
+  if (params.assigneeUserId) {
+    const memberRes = await client.query<{ user_id: string }>(
+      `SELECT user_id FROM public.workspace_memberships WHERE workspace_id = $1 AND user_id = $2;`,
+      [workspaceId, params.assigneeUserId]
+    );
+    if (!memberRes.rows[0]) {
+      throw new Error(`ASSIGNEE_NOT_MEMBER: O usuário ${params.assigneeUserId} não é membro do workspace.`);
+    }
   }
 
   const prevAssigneeId = action.assignee_user_id;

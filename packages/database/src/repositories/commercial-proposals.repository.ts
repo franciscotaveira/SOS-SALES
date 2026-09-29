@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { createPixCharge, type PixChargeRecord } from "../pix";
 
 export type CommercialProposalStatus =
   | "draft"
@@ -34,6 +35,7 @@ export interface CommercialProposalRecord {
   rejected_at: Date | null;
   cancelled_at: Date | null;
   created_by_user_id: string | null;
+  state_version: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -60,6 +62,7 @@ export interface CreateCommercialProposalInput {
 
 export interface UpdateProposalStatusInput {
   status: CommercialProposalStatus;
+  expectedVersion?: number;
   userId?: string | null;
   reason?: string | null;
 }
@@ -163,6 +166,7 @@ export async function createCommercialProposal(
   return {
     ...row,
     total_cents: Number(row.total_cents),
+    state_version: Number(row.state_version) || 1,
     items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
   };
 }
@@ -186,6 +190,7 @@ export async function getCommercialProposalById(
   return {
     ...row,
     total_cents: Number(row.total_cents),
+    state_version: Number(row.state_version) || 1,
     items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
   };
 }
@@ -208,12 +213,13 @@ export async function listCommercialProposalsForThread(
   return res.rows.map((row) => ({
     ...row,
     total_cents: Number(row.total_cents),
+    state_version: Number(row.state_version) || 1,
     items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
   }));
 }
 
 /**
- * Updates proposal status with strict validation and transition guards.
+ * Updates proposal status with strict validation, state machine transition guards, and optimistic locking.
  */
 export async function updateCommercialProposalStatus(
   client: Pool | PoolClient,
@@ -231,12 +237,31 @@ export async function updateCommercialProposalStatus(
     return current;
   }
 
-  // Transition rules: terminal states cannot be reopened arbitrarily
-  if (current.status === "accepted" && input.status !== "cancelled") {
-    throw new Error("INVALID_TRANSITION: Proposta já aceita não pode ser alterada.");
+  // Governed State Machine Transitions:
+  // draft -> sent | cancelled
+  // sent -> accepted | rejected | expired | cancelled
+  // terminal states (accepted, rejected, expired, cancelled) cannot transition
+  const validTransitions: Record<string, string[]> = {
+    draft: ["sent", "cancelled"],
+    sent: ["accepted", "rejected", "expired", "cancelled"],
+    accepted: [],
+    rejected: [],
+    expired: [],
+    cancelled: [],
+  };
+
+  const allowed = validTransitions[current.status];
+  if (allowed && !allowed.includes(input.status)) {
+    throw new Error(
+      `INVALID_TRANSITION: Transição de '${current.status}' para '${input.status}' não é permitida.`
+    );
   }
-  if (current.status === "cancelled") {
-    throw new Error("INVALID_TRANSITION: Proposta cancelada não pode ser reativada.");
+
+  // Optimistic locking check if expectedVersion is supplied
+  if (input.expectedVersion !== undefined && current.state_version !== input.expectedVersion) {
+    throw new Error(
+      `OPTIMISTIC_LOCK_CONFLICT: Versão concorrente detectada na proposta ${proposalId}. Esperada: ${input.expectedVersion}, Atual: ${current.state_version}.`
+    );
   }
 
   const updates: string[] = ["status = $3", "updated_at = now()"];
@@ -252,16 +277,30 @@ export async function updateCommercialProposalStatus(
     updates.push("cancelled_at = COALESCE(cancelled_at, now())");
   }
 
+  let versionCondition = "";
+  if (input.expectedVersion !== undefined) {
+    params.push(input.expectedVersion);
+    versionCondition = ` AND state_version = $${params.length}`;
+  }
+
   const res = await client.query<CommercialProposalRecord>(
     `UPDATE public.commercial_proposals
      SET ${updates.join(", ")}
-     WHERE workspace_id = $1 AND id = $2
+     WHERE workspace_id = $1 AND id = $2${versionCondition}
      RETURNING *;`,
     params
   );
 
   const row = res.rows[0];
   if (!row) {
+    if (input.expectedVersion !== undefined) {
+      const recheck = await getCommercialProposalById(client, workspaceId, proposalId);
+      if (recheck && recheck.state_version !== input.expectedVersion) {
+        throw new Error(
+          `OPTIMISTIC_LOCK_CONFLICT: Versão concorrente detectada na proposta ${proposalId}. Esperada: ${input.expectedVersion}, Atual: ${recheck.state_version}.`
+        );
+      }
+    }
     throw new Error("UPDATE_FAILED: Falha ao atualizar status da proposta.");
   }
 
@@ -279,6 +318,55 @@ export async function updateCommercialProposalStatus(
   return {
     ...row,
     total_cents: Number(row.total_cents),
+    state_version: Number(row.state_version) || 1,
     items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
   };
+}
+
+/**
+ * Atomically creates a proposal and links a Pix charge in a single database transaction.
+ */
+export async function createProposalWithPixCharge(
+  client: PoolClient,
+  params: {
+    workspaceId: string;
+    threadId: string;
+    contactId: string;
+    journeyId?: string | null;
+    title: string;
+    items: CreateProposalItemInput[];
+    currency?: string;
+    conditions?: string | null;
+    validUntil?: Date | string | null;
+    userId?: string | null;
+    expiresMinutes?: number;
+  }
+): Promise<{ proposal: CommercialProposalRecord; pixCharge: PixChargeRecord }> {
+  // 1. Create the proposal
+  const proposal = await createCommercialProposal(client, {
+    workspaceId: params.workspaceId,
+    threadId: params.threadId,
+    contactId: params.contactId,
+    journeyId: params.journeyId,
+    title: params.title,
+    items: params.items,
+    currency: params.currency,
+    conditions: params.conditions,
+    validUntil: params.validUntil,
+    userId: params.userId,
+  });
+
+  // 2. Create and link the Pix charge
+  const pixCharge = await createPixCharge(client, {
+    workspaceId: params.workspaceId,
+    threadId: params.threadId,
+    contactId: params.contactId,
+    proposalId: proposal.id,
+    title: params.title,
+    amountCents: proposal.total_cents,
+    currency: proposal.currency,
+    expiresMinutes: params.expiresMinutes,
+  });
+
+  return { proposal, pixCharge };
 }

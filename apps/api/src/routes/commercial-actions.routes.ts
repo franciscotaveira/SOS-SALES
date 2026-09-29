@@ -166,42 +166,56 @@ export const commercialActionsRoutes: FastifyPluginAsync = async (app) => {
       const { workspaceId, threadId } = parsedParams.data;
       const body = parseBody.data;
 
-      const result = await withTenantTransaction(workspaceId, async (client) => {
-        return createCommercialAction(client, {
-          workspaceId,
-          threadId,
-          journeyId: body.journeyId,
-          title: body.title,
-          description: body.description,
-          dueAt: new Date(body.dueAt),
-          assigneeUserId: body.assigneeUserId,
-          origin: body.origin,
-          createdByUserId: request.user.id,
+      try {
+        const result = await withTenantTransaction(workspaceId, async (client) => {
+          return createCommercialAction(client, {
+            workspaceId,
+            threadId,
+            journeyId: body.journeyId,
+            title: body.title,
+            description: body.description,
+            dueAt: new Date(body.dueAt),
+            assigneeUserId: body.assigneeUserId,
+            origin: body.origin,
+            createdByUserId: request.user.id,
+          });
         });
-      });
 
-      const action = result.action;
-      const status = result.created ? 201 : 200;
+        const action = result.action;
+        const status = result.created ? 201 : 200;
 
-      return reply.status(status).send({
-        created: result.created,
-        action: {
-          id: action.id,
-          workspaceId: action.workspace_id,
-          threadId: action.thread_id,
-          journeyId: action.journey_id,
-          suggestionId: action.suggestion_id,
-          title: action.title,
-          description: action.description,
-          assigneeUserId: action.assignee_user_id,
-          dueAt: action.due_at.toISOString(),
-          status: action.status,
-          origin: action.origin,
-          postponedCount: action.postponed_count,
-          createdAt: action.created_at.toISOString(),
-          updatedAt: action.updated_at.toISOString(),
-        },
-      });
+        return reply.status(status).send({
+          created: result.created,
+          action: {
+            id: action.id,
+            workspaceId: action.workspace_id,
+            threadId: action.thread_id,
+            journeyId: action.journey_id,
+            suggestionId: action.suggestion_id,
+            title: action.title,
+            description: action.description,
+            assigneeUserId: action.assignee_user_id,
+            dueAt: action.due_at.toISOString(),
+            status: action.status,
+            origin: action.origin,
+            postponedCount: action.postponed_count,
+            createdAt: action.created_at.toISOString(),
+            updatedAt: action.updated_at.toISOString(),
+          },
+        });
+      } catch (err: unknown) {
+        const error = err as Error;
+        const isAssigneeNotMember = error.message.includes("ASSIGNEE_NOT_MEMBER");
+        const status = isAssigneeNotMember ? 400 : 409;
+        return reply.status(status).send({
+          type: "https://chat-sales.mct.br/errors/action-error",
+          title: isAssigneeNotMember ? "Bad Request" : "Erro na Ação Comercial",
+          status,
+          detail: error.message,
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
     }
   );
 
@@ -293,10 +307,11 @@ export const commercialActionsRoutes: FastifyPluginAsync = async (app) => {
       } catch (err: unknown) {
         const error = err as Error;
         const isNotFound = error.message.includes("não encontrada");
-        const status = isNotFound ? 404 : 409;
+        const isAssigneeNotMember = error.message.includes("ASSIGNEE_NOT_MEMBER");
+        const status = isNotFound ? 404 : isAssigneeNotMember ? 400 : 409;
         return reply.status(status).send({
           type: "https://chat-sales.mct.br/errors/action-error",
-          title: "Erro na Ação Comercial",
+          title: isAssigneeNotMember ? "Bad Request" : "Erro na Ação Comercial",
           status,
           detail: error.message,
           instance: request.url,

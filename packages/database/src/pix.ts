@@ -13,6 +13,7 @@ export interface PixChargeRecord {
   title: string;
   amount_cents: number;
   currency: string;
+  proposal_id?: string | null;
   pix_code: string;
   pix_qr_url: string | null;
   status: PixChargeStatus;
@@ -31,6 +32,7 @@ export interface CreatePixChargeParams {
   threadId: string;
   contactId: string;
   productId?: string | null;
+  proposalId?: string | null;
   title: string;
   amountCents: number;
   currency?: string;
@@ -202,6 +204,7 @@ export async function createPixCharge(
       thread_id,
       contact_id,
       product_id,
+      proposal_id,
       title,
       amount_cents,
       currency,
@@ -210,7 +213,7 @@ export async function createPixCharge(
       status,
       verification_method,
       expires_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING', 'UNVERIFIED', $11)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING', 'UNVERIFIED', $12)
     RETURNING *
   `,
     [
@@ -219,6 +222,7 @@ export async function createPixCharge(
       params.threadId,
       params.contactId,
       params.productId ?? null,
+      params.proposalId ?? null,
       params.title,
       params.amountCents,
       currency,
