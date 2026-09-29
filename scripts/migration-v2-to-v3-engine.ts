@@ -1,8 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import type { Pool, PoolClient } from "pg";
+import { execSync } from "node:child_process";
 import { PhoneNumber } from "../packages/domain/src";
+import {
+  Pool,
+  type PoolClient,
+  getTestAdminDatabaseUrl,
+  TEST_DB_COMMENT_MARKER,
+  TEST_DB_DEFAULT,
+} from "../packages/database/src";
 
 export interface V2Contact {
   id: string;
@@ -609,7 +616,7 @@ export async function runSyntheticV2Migration(
   }
 }
 
-export async function verifyDisasterRecovery(
+export async function verifyPostMigrationIntegrity(
   pool: Pool,
   workspaceId: string
 ): Promise<{ isConsistent: boolean; issues: string[] }> {
@@ -653,3 +660,337 @@ export async function verifyDisasterRecovery(
     issues,
   };
 }
+
+/**
+ * Backward compatibility alias for verifyPostMigrationIntegrity
+ */
+export const verifyDisasterRecovery = verifyPostMigrationIntegrity;
+
+export interface DisasterRecoveryExecutionResult {
+  timestamp: string;
+  success: boolean;
+  sourceDatabase: string;
+  restoredDatabase: string;
+  dumpSizeBytes: number;
+  tablesReconciled: Record<
+    string,
+    { sourceCount: number; restoredCount: number; match: boolean }
+  >;
+  sumsReconciled: {
+    proposalsTotalCents: { source: number; restored: number; match: boolean };
+    pixChargesAmountCents: { source: number; restored: number; match: boolean };
+    outcomesValueCents: { source: number; restored: number; match: boolean };
+  };
+  rlsIsolationVerified: boolean;
+  errors: string[];
+}
+
+/**
+ * Executes a hermetic, physical backup and restore verification (Phase R4):
+ * 1. Creates an isolated ephemeral database (sos_sales_v3_test_dr_<id>) tagged with test marker.
+ * 2. Physically runs pg_dump against the source database.
+ * 3. Restores the dump into the ephemeral database via pg_restore.
+ * 4. Reconciles exact row counts across all key tables and exact financial sums to the cent.
+ * 5. Asserts RLS fail-closed tenant isolation on the restored database.
+ * 6. Disposes the ephemeral database and cleans up temporary dump files.
+ */
+export async function executeHermeticBackupAndRestore(
+  options: {
+    sourceDatabase?: string;
+    dockerContainerName?: string;
+    skipDropOnSuccess?: boolean;
+  } = {}
+): Promise<DisasterRecoveryExecutionResult> {
+  const sourceDb = options.sourceDatabase || TEST_DB_DEFAULT;
+  const container =
+    options.dockerContainerName ||
+    process.env.POSTGRES_DOCKER_CONTAINER ||
+    "sos-v3-postgres";
+  const runId = crypto.randomBytes(4).toString("hex");
+  const restoredDb = `sos_sales_v3_test_dr_${runId}`;
+  const timestamp = new Date().toISOString();
+  const errors: string[] = [];
+
+  // Check if target container is available
+  let useDocker = false;
+  try {
+    const res = execSync(
+      `docker ps --filter "name=${container}" --format "{{.Names}}"`,
+      { stdio: "pipe" }
+    )
+      .toString()
+      .trim();
+    if (res.includes(container)) {
+      useDocker = true;
+    }
+  } catch {
+    useDocker = false;
+  }
+
+  // If container is not running, verify local binaries
+  if (!useDocker) {
+    try {
+      execSync("pg_dump --version", { stdio: "pipe" });
+      execSync("pg_restore --version", { stdio: "pipe" });
+    } catch {
+      throw new Error(
+        `DISASTER_RECOVERY_TOOLS_UNAVAILABLE: Neither running postgres container '${container}' nor local PostgreSQL tools (pg_dump/pg_restore) are available.`
+      );
+    }
+  }
+
+  const adminUrl = getTestAdminDatabaseUrl();
+  const maintenancePool = new Pool({ connectionString: adminUrl, max: 2 });
+
+  const tempDumpFileName = `dr_dump_${runId}.pgdump`;
+  const containerDumpPath = `/tmp/${tempDumpFileName}`;
+  const localDumpPath = path.join("/tmp", tempDumpFileName);
+
+  let dumpSizeBytes = 0;
+
+  try {
+    // 1. Create the ephemeral destination database owned by sos_migration_owner
+    await maintenancePool.query(
+      `CREATE DATABASE "${restoredDb}" OWNER sos_migration_owner;`
+    );
+    await maintenancePool.query(
+      `COMMENT ON DATABASE "${restoredDb}" IS '${TEST_DB_COMMENT_MARKER}: run_id=${runId}';`
+    );
+    await maintenancePool.query(
+      `GRANT CONNECT ON DATABASE "${restoredDb}" TO sos_app_user, sos_worker_user, sos_ingress_user;`
+    );
+
+    // 2. Perform physical pg_dump on the source database
+    if (useDocker) {
+      execSync(
+        `docker exec -e PGPASSWORD=sos_secret_lab_2026 ${container} pg_dump -U sos_user -d ${sourceDb} -F c -f ${containerDumpPath}`,
+        { stdio: "pipe" }
+      );
+      const statOut = execSync(
+        `docker exec ${container} sh -c "stat -c %s ${containerDumpPath}"`,
+        { stdio: "pipe" }
+      )
+        .toString()
+        .trim();
+      dumpSizeBytes = parseInt(statOut, 10) || 0;
+    } else {
+      const parsedAdmin = new URL(adminUrl);
+      const host = parsedAdmin.hostname;
+      const port = parsedAdmin.port;
+      execSync(
+        `PGPASSWORD=sos_secret_lab_2026 pg_dump -h ${host} -p ${port} -U sos_user -d ${sourceDb} -F c -f ${localDumpPath}`,
+        { stdio: "pipe" }
+      );
+      dumpSizeBytes = fs.statSync(localDumpPath).size;
+    }
+
+    if (dumpSizeBytes <= 0) {
+      throw new Error(
+        `Physical dump file was created with 0 bytes. Backup aborted.`
+      );
+    }
+
+    // 3. Restore dump into ephemeral destination database
+    if (useDocker) {
+      execSync(
+        `docker exec -e PGPASSWORD=sos_secret_lab_2026 ${container} pg_restore -U sos_user -d ${restoredDb} --no-owner ${containerDumpPath}`,
+        { stdio: "pipe" }
+      );
+    } else {
+      const parsedAdmin = new URL(adminUrl);
+      const host = parsedAdmin.hostname;
+      const port = parsedAdmin.port;
+      execSync(
+        `PGPASSWORD=sos_secret_lab_2026 pg_restore -h ${host} -p ${port} -U sos_user -d ${restoredDb} --no-owner ${localDumpPath}`,
+        { stdio: "pipe" }
+      );
+    }
+
+    // 4. Connect to source & restored databases as migration owner to reconcile data
+    const parsedAdmin = new URL(adminUrl);
+    const host = parsedAdmin.hostname;
+    const port = parsedAdmin.port;
+
+    const sourceOwnerUrl = `postgresql://sos_migration_owner:sos_migration_secret_2026@${host}:${port}/${sourceDb}?sslmode=disable`;
+    const restoredOwnerUrl = `postgresql://sos_migration_owner:sos_migration_secret_2026@${host}:${port}/${restoredDb}?sslmode=disable`;
+    const restoredAppUrl = `postgresql://sos_app_user:sos_app_secret_2026@${host}:${port}/${restoredDb}?sslmode=disable`;
+
+    const sourcePool = new Pool({ connectionString: sourceOwnerUrl, max: 2 });
+    const restoredPool = new Pool({
+      connectionString: restoredOwnerUrl,
+      max: 2,
+    });
+    const restoredAppPool = new Pool({
+      connectionString: restoredAppUrl,
+      max: 2,
+    });
+
+    const tablesToReconcile = [
+      "workspaces",
+      "contacts",
+      "products",
+      "commercial_threads",
+      "messages",
+      "commercial_proposals",
+      "pix_charges",
+      "commercial_outcomes",
+      "conversion_events",
+    ];
+
+    const tablesReconciled: Record<
+      string,
+      { sourceCount: number; restoredCount: number; match: boolean }
+    > = {};
+
+    try {
+      for (const table of tablesToReconcile) {
+        const sRes = await sourcePool.query<{ count: string }>(
+          `SELECT count(*)::int as count FROM public.${table};`
+        );
+        const rRes = await restoredPool.query<{ count: string }>(
+          `SELECT count(*)::int as count FROM public.${table};`
+        );
+        const sCount = parseInt(sRes.rows[0]?.count || "0", 10);
+        const rCount = parseInt(rRes.rows[0]?.count || "0", 10);
+        const match = sCount === rCount;
+        tablesReconciled[table] = {
+          sourceCount: sCount,
+          restoredCount: rCount,
+          match,
+        };
+        if (!match) {
+          errors.push(
+            `Table ${table} count mismatch: source=${sCount}, restored=${rCount}`
+          );
+        }
+      }
+
+      // Financial sums reconciliation
+      const sProp = await sourcePool.query<{ sum: string }>(
+        `SELECT COALESCE(sum(total_cents), 0)::text as sum FROM public.commercial_proposals;`
+      );
+      const rProp = await restoredPool.query<{ sum: string }>(
+        `SELECT COALESCE(sum(total_cents), 0)::text as sum FROM public.commercial_proposals;`
+      );
+      const sPropSum = parseInt(sProp.rows[0]?.sum || "0", 10);
+      const rPropSum = parseInt(rProp.rows[0]?.sum || "0", 10);
+
+      const sPix = await sourcePool.query<{ sum: string }>(
+        `SELECT COALESCE(sum(amount_cents), 0)::text as sum FROM public.pix_charges;`
+      );
+      const rPix = await restoredPool.query<{ sum: string }>(
+        `SELECT COALESCE(sum(amount_cents), 0)::text as sum FROM public.pix_charges;`
+      );
+      const sPixSum = parseInt(sPix.rows[0]?.sum || "0", 10);
+      const rPixSum = parseInt(rPix.rows[0]?.sum || "0", 10);
+
+      const sOut = await sourcePool.query<{ sum: string }>(
+        `SELECT COALESCE(sum(value_cents), 0)::text as sum FROM public.commercial_outcomes WHERE status = 'won';`
+      );
+      const rOut = await restoredPool.query<{ sum: string }>(
+        `SELECT COALESCE(sum(value_cents), 0)::text as sum FROM public.commercial_outcomes WHERE status = 'won';`
+      );
+      const sOutSum = parseInt(sOut.rows[0]?.sum || "0", 10);
+      const rOutSum = parseInt(rOut.rows[0]?.sum || "0", 10);
+
+      const sumsReconciled = {
+        proposalsTotalCents: {
+          source: sPropSum,
+          restored: rPropSum,
+          match: sPropSum === rPropSum,
+        },
+        pixChargesAmountCents: {
+          source: sPixSum,
+          restored: rPixSum,
+          match: sPixSum === rPixSum,
+        },
+        outcomesValueCents: {
+          source: sOutSum,
+          restored: rOutSum,
+          match: sOutSum === rOutSum,
+        },
+      };
+
+      if (!sumsReconciled.proposalsTotalCents.match) {
+        errors.push(
+          `proposalsTotalCents mismatch: source=${sPropSum}, restored=${rPropSum}`
+        );
+      }
+      if (!sumsReconciled.pixChargesAmountCents.match) {
+        errors.push(
+          `pixChargesAmountCents mismatch: source=${sPixSum}, restored=${rPixSum}`
+        );
+      }
+      if (!sumsReconciled.outcomesValueCents.match) {
+        errors.push(
+          `outcomesValueCents mismatch: source=${sOutSum}, restored=${rOutSum}`
+        );
+      }
+
+      // 5. Verify RLS fail-closed on restored database
+      let rlsIsolationVerified = false;
+      const unauthenticatedContacts = await restoredAppPool.query<{
+        count: string;
+      }>(`SELECT count(*)::int as count FROM public.contacts;`);
+      const unauthCount = parseInt(
+        unauthenticatedContacts.rows[0]?.count || "0",
+        10
+      );
+      if (unauthCount !== 0) {
+        errors.push(
+          `RLS Fail-Closed Violation on restored database: query without workspace context returned ${unauthCount} contacts!`
+        );
+      } else {
+        rlsIsolationVerified = true;
+      }
+
+      const success = errors.length === 0;
+
+      return {
+        timestamp,
+        success,
+        sourceDatabase: sourceDb,
+        restoredDatabase: restoredDb,
+        dumpSizeBytes,
+        tablesReconciled,
+        sumsReconciled,
+        rlsIsolationVerified,
+        errors,
+      };
+    } finally {
+      await sourcePool.end();
+      await restoredPool.end();
+      await restoredAppPool.end();
+    }
+  } finally {
+    // Cleanup temporary dump file
+    if (useDocker) {
+      try {
+        execSync(`docker exec ${container} rm -f ${containerDumpPath}`, {
+          stdio: "pipe",
+        });
+      } catch {
+        // ignore
+      }
+    } else {
+      try {
+        if (fs.existsSync(localDumpPath)) fs.unlinkSync(localDumpPath);
+      } catch {
+        // ignore
+      }
+    }
+
+    // Cleanup ephemeral restored database unless skipped
+    if (!options.skipDropOnSuccess) {
+      try {
+        await maintenancePool.query(
+          `DROP DATABASE IF EXISTS "${restoredDb}";`
+        );
+      } catch {
+        // ignore
+      }
+    }
+    await maintenancePool.end();
+  }
+}
+

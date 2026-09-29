@@ -460,7 +460,8 @@ export async function createIntegrationSuggestion(
        ORDER BY created_at DESC, id DESC
        LIMIT 1
      ) m ON true
-     WHERE t.workspace_id = $1 AND t.id = $2;`,
+     WHERE t.workspace_id = $1 AND t.id = $2
+     FOR UPDATE OF t;`,
     [workspaceId, input.threadId]
   );
 
@@ -853,7 +854,8 @@ export async function decideSuggestion(
          ORDER BY created_at DESC, id DESC
          LIMIT 1
        ) m ON true
-       WHERE t.workspace_id = $1 AND t.id = $2;`,
+       WHERE t.workspace_id = $1 AND t.id = $2
+      FOR UPDATE OF t;`,
       [workspaceId, suggestion.thread_id]
     );
 

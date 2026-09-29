@@ -158,19 +158,29 @@ function executeGate2(): GateResult {
   };
 }
 
-function scanForSecrets(): string[] {
-  const errors: string[] = [];
-  const secretPatterns = [
-    { name: "Meta Access Token", regex: /\bEAA[0-9A-Za-z]{20,}\b/ },
-    { name: "Private Key", regex: /-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----/ },
-    { name: "AWS Access Key", regex: /\bAKIA[0-9A-Z]{16}\b/ },
-    { name: "GitHub Personal Access Token", regex: /\bghp_[0-9A-Za-z]{36}\b/ },
-  ];
+export interface SecretScanResult {
+  errors: string[];
+  scannedFilesCount: number;
+}
 
-  const ignoredDirs = new Set(["node_modules", ".git", "dist", ".turbo", ".next", "coverage"]);
-  const ignoredExts = new Set([".png", ".jpg", ".jpeg", ".webp", ".ico", ".pdf", ".zip", ".gz", ".tar", ".map"]);
+export const SECRET_PATTERNS = [
+  { name: "Meta Access Token", regex: /\bEAA[0-9A-Za-z]{20,}\b/ },
+  { name: "Private Key", regex: /-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----/ },
+  { name: "AWS Access Key", regex: /\bAKIA[0-9A-Z]{16}\b/ },
+  { name: "GitHub Token", regex: /\b(?:gh[pousr]_[0-9A-Za-z]{30,45}|github_pat_[0-9A-Za-z_]{50,})\b/ },
+  { name: "Supabase Service Key (JWT)", regex: /\beyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/ },
+];
+
+export function scanForSecrets(customRoot?: string): SecretScanResult {
+  const errors: string[] = [];
+  let scannedFilesCount = 0;
+  const root = customRoot || REPO_ROOT;
+
+  const ignoredDirs = new Set(["node_modules", ".git", "dist", ".turbo", ".next", "coverage", ".gemini", "tmp"]);
+  const ignoredExts = new Set([".png", ".jpg", ".jpeg", ".webp", ".ico", ".pdf", ".zip", ".gz", ".tar", ".map", ".db"]);
 
   function scan(dir: string) {
+    if (!fs.existsSync(dir)) return;
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isDirectory()) {
@@ -182,14 +192,15 @@ function scanForSecrets(): string[] {
         if (ignoredExts.has(ext)) continue;
 
         const fullPath = path.join(dir, entry.name);
-        const relPath = path.relative(REPO_ROOT, fullPath);
+        const relPath = path.relative(root, fullPath);
 
         // Skip the secret scanner definition itself and test runner verification
-        if (relPath === "scripts/ci-gate-runner.ts") continue;
+        if (relPath === "scripts/ci-gate-runner.ts" || relPath.includes("__tests__/ci-gate-runner.test.ts")) continue;
 
+        scannedFilesCount++;
         try {
           const content = fs.readFileSync(fullPath, "utf-8");
-          for (const pat of secretPatterns) {
+          for (const pat of SECRET_PATTERNS) {
             const match = content.match(pat.regex);
             if (match) {
               errors.push(`${relPath}: Leaked ${pat.name} detected ('${match[0].slice(0, 8)}...')`);
@@ -202,14 +213,14 @@ function scanForSecrets(): string[] {
     }
   }
 
-  scan(REPO_ROOT);
-  return errors;
+  scan(root);
+  return { errors, scannedFilesCount };
 }
 
 // -----------------------------------------------------------------------------
 // GATE 3: Linter & Secret Scanner Gate
 // -----------------------------------------------------------------------------
-function executeGate3(): GateResult {
+export function executeGate3(): GateResult {
   const start = Date.now();
   console.log("\n[GATE 3] Running Monorepo Linter (turbo lint) & Repository Secret Scanner...");
 
@@ -231,39 +242,39 @@ function executeGate3(): GateResult {
   // Enforce total tasks executed > 0 (fail-closed check on real linting)
   const taskMatch = res.stdout.match(/([0-9]+)\s+successful/i);
   const taskCount = taskMatch ? parseInt(taskMatch[1], 10) : 0;
-  if (taskCount === 0 && !res.stdout.includes("successful")) {
+  if (taskCount === 0) {
     console.error("- GATE 3 FAIL: Linter executed 0 tasks. Real linting is required.");
     return {
       gateId: "GATE-03",
       name: "Monorepo Linter & Secret Scanner",
       durationMs,
       status: "FAIL",
-      details: "Linter executed 0 tasks across packages",
+      details: "Linter executed 0 tasks across packages (fail-closed check)",
     };
   }
 
   // Scan repository for secrets
   console.log("- Scanning repository for leaked tokens and private keys...");
-  const secretErrors = scanForSecrets();
+  const { errors: secretErrors, scannedFilesCount } = scanForSecrets();
   if (secretErrors.length > 0) {
-    console.error(`- GATE 3 FAIL: ${secretErrors.length} leaked secret(s) detected:`);
+    console.error(`- GATE 3 FAIL: ${secretErrors.length} leaked secret(s) detected across ${scannedFilesCount} files:`);
     secretErrors.forEach((e) => console.error(`  * ${e}`));
     return {
       gateId: "GATE-03",
       name: "Monorepo Linter & Secret Scanner",
       durationMs,
       status: "FAIL",
-      details: `${secretErrors.length} secrets detected in repository`,
+      details: `${secretErrors.length} secrets detected across ${scannedFilesCount} files`,
     };
   }
 
-  console.log(`- GATE 3 PASS: Turbo lint executed successfully (${taskCount || 10} packages) and 0 secrets detected.`);
+  console.log(`- GATE 3 PASS: Turbo lint executed successfully (${taskCount} packages) and 0 secrets detected across ${scannedFilesCount} files.`);
   return {
     gateId: "GATE-03",
     name: "Monorepo Linter & Secret Scanner",
     durationMs,
     status: "PASS",
-    details: `${taskCount || 10} packages linted cleanly; secret scan 100% clean`,
+    details: `${taskCount} packages linted cleanly; 0 secrets found across ${scannedFilesCount} scanned files`,
   };
 }
 
@@ -477,7 +488,15 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error("FATAL UNCAUGHT ERROR IN CI GATE RUNNER:", err);
-  process.exit(1);
-});
+export { main };
+
+if (
+  process.argv[1] &&
+  (path.resolve(process.argv[1]) === __filename ||
+    path.resolve(process.argv[1]).endsWith("ci-gate-runner.ts"))
+) {
+  main().catch((err) => {
+    console.error("FATAL UNCAUGHT ERROR IN CI GATE RUNNER:", err);
+    process.exit(1);
+  });
+}

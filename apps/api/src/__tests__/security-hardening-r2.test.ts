@@ -199,8 +199,8 @@ describe("R2 Security Hardening Integration (SSRF, State Machine, Keyring, Least
       expect(JSON.parse(resVal.body).status).toBe("validating");
       expect(JSON.parse(resVal.body).isActive).toBe(false);
 
-      // Step 2: pairing
-      const resPair = await app.inject({
+      // Step 2: direct client transition to pairing or connected is prohibited (400 Bad Request)
+      const resPairDirect = await app.inject({
         method: "PATCH",
         url: `/v1/workspaces/${workspaceId}/channels/${createdChannelId}/status`,
         headers: {
@@ -209,13 +209,10 @@ describe("R2 Security Hardening Integration (SSRF, State Machine, Keyring, Least
         },
         payload: { status: "pairing" },
       });
-      expect(resPair.statusCode).toBe(200);
-      expect(JSON.parse(resPair.body).status).toBe("pairing");
-      expect(JSON.parse(resPair.body).isActive).toBe(false);
-    });
+      expect(resPairDirect.statusCode).toBe(400);
+      expect(JSON.parse(resPairDirect.body).detail).toMatch(/prohibited/i);
 
-    it("should transition to connected and automatically activate is_active = true", async () => {
-      const resConn = await app.inject({
+      const resConnDirect = await app.inject({
         method: "PATCH",
         url: `/v1/workspaces/${workspaceId}/channels/${createdChannelId}/status`,
         headers: {
@@ -224,14 +221,66 @@ describe("R2 Security Hardening Integration (SSRF, State Machine, Keyring, Least
         },
         payload: { status: "connected" },
       });
-      expect(resConn.statusCode).toBe(200);
-      const body = JSON.parse(resConn.body);
-      expect(body.status).toBe("connected");
-      expect(body.isActive).toBe(true);
+      expect(resConnDirect.statusCode).toBe(400);
+      expect(JSON.parse(resConnDirect.body).detail).toMatch(/prohibited/i);
+
+      // Step 3: transition to pairing via GET /qr-code
+      const resQr = await app.inject({
+        method: "GET",
+        url: `/v1/workspaces/${workspaceId}/channels/${createdChannelId}/qr-code`,
+        headers: {
+          authorization: `Bearer ${adminToken}`,
+        },
+      });
+      expect(resQr.statusCode).toBe(200);
+      const dbCheckPair = await ownerPool.query(
+        `SELECT status, is_active FROM channel_instances WHERE id = $1;`,
+        [createdChannelId]
+      );
+      expect(dbCheckPair.rows[0].status).toBe("pairing");
+      expect(dbCheckPair.rows[0].is_active).toBe(false);
+    });
+
+    it("should transition to connected only via POST /verify-session with active credentials and set is_active = true", async () => {
+      // 1. Create a channel with credentials -> starts in validating, is_active = false
+      const resChan = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceId}/channels`,
+        headers: {
+          authorization: `Bearer ${adminToken}`,
+          "content-type": "application/json",
+        },
+        payload: {
+          provider: "waha",
+          displayName: "Verified WAHA Channel",
+          credentials: {
+            baseUrl: "https://waha.example.com",
+            apiKey: "waha-secret-key-12345",
+          },
+        },
+      });
+      expect(resChan.statusCode).toBe(201);
+      const chan = JSON.parse(resChan.body).channel;
+      expect(chan.status).toBe("validating");
+      expect(chan.isActive).toBe(false);
+
+      // 2. Execute server-side verify-session handshake -> transitions to connected with is_active = true
+      const resVerify = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceId}/channels/${chan.id}/verify-session`,
+        headers: {
+          authorization: `Bearer ${adminToken}`,
+        },
+      });
+      expect(resVerify.statusCode).toBe(200);
+      const verifyBody = JSON.parse(resVerify.body);
+      expect(verifyBody.success).toBe(true);
+      expect(verifyBody.status).toBe("connected");
+      expect(verifyBody.isActive).toBe(true);
 
       const dbCheck = await ownerPool.query(
         `SELECT status, is_active FROM channel_instances WHERE id = $1;`,
-        [createdChannelId]
+        [chan.id]
       );
       expect(dbCheck.rows[0].status).toBe("connected");
       expect(dbCheck.rows[0].is_active).toBe(true);
@@ -307,7 +356,7 @@ describe("R2 Security Hardening Integration (SSRF, State Machine, Keyring, Least
     });
   });
 
-  describe("S-04: Operational Table Immutability (Least Privilege)", () => {
+  describe("S-04: Operational Table Immutability & Worker RLS Fail-Closed", () => {
     it("should forbid DELETE on pix_charges for application/appPool user", async () => {
       await expect(
         appPool.query(`DELETE FROM pix_charges WHERE workspace_id = $1;`, [workspaceId])
@@ -324,6 +373,57 @@ describe("R2 Security Hardening Integration (SSRF, State Machine, Keyring, Least
       await expect(
         appPool.query(`DELETE FROM commercial_outcomes WHERE workspace_id = $1;`, [workspaceId])
       ).rejects.toThrow(/permission denied for table commercial_outcomes/i);
+    });
+
+    it("should enforce fail-closed RLS on workerPool when workspace context is unset", async () => {
+      const contactRes = await ownerPool.query(
+        `INSERT INTO contacts (workspace_id, name, phone_e164) VALUES ($1, 'RLS Contact', '+5511999990001') RETURNING id;`,
+        [workspaceId]
+      );
+      const contactId = contactRes.rows[0].id;
+
+      const tokenHash = crypto.createHash("sha256").update(crypto.randomUUID()).digest("hex");
+      const chanRes = await ownerPool.query(
+        `INSERT INTO channel_instances (workspace_id, provider, display_name, status, is_active, endpoint_token_hash)
+         VALUES ($1, 'waha', 'Worker Test Channel', 'unconfigured', false, $2) RETURNING id;`,
+        [workspaceId, tokenHash]
+      );
+      const chanId = chanRes.rows[0].id;
+
+      const threadRes = await ownerPool.query(
+        `INSERT INTO commercial_threads (workspace_id, channel_instance_id, contact_id, status)
+         VALUES ($1, $2, $3, 'active') RETURNING id;`,
+        [workspaceId, chanId, contactId]
+      );
+      const threadId = threadRes.rows[0].id;
+
+      await ownerPool.query(
+        `INSERT INTO commercial_journeys (workspace_id, thread_id, contact_id, stage, status, title)
+         VALUES ($1, $2, $3, 'lead', 'open', 'Worker RLS Journey') RETURNING id;`,
+        [workspaceId, threadId, contactId]
+      );
+
+      // Querying with workerPool without setting app.current_workspace_id returns 0 rows (fail-closed)
+      const unauthWorker = await workerPool.query(
+        `SELECT count(*)::int as count FROM commercial_journeys WHERE workspace_id = $1;`,
+        [workspaceId]
+      );
+      expect(unauthWorker.rows[0].count).toBe(0);
+
+      // Querying with workerPool after setting app.current_workspace_id returns the journey
+      const client = await workerPool.connect();
+      try {
+        await client.query("BEGIN;");
+        await client.query(`SET LOCAL app.current_workspace_id = '${workspaceId}';`);
+        const authWorker = await client.query(
+          `SELECT count(*)::int as count FROM commercial_journeys WHERE workspace_id = $1;`,
+          [workspaceId]
+        );
+        expect(authWorker.rows[0].count).toBe(1);
+        await client.query("ROLLBACK;");
+      } finally {
+        client.release();
+      }
     });
   });
 });

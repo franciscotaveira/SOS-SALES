@@ -50,11 +50,10 @@ const createChannelBodySchema = z.object({
     .optional(),
   endpointToken: z.string().min(16).optional(),
   credentials: channelCredentialsSchema.optional(),
-  status: channelStatusSchema.optional(),
 });
 
 const updateChannelStatusBodySchema = z.object({
-  status: channelStatusSchema,
+  status: z.enum(["unconfigured", "validating", "pairing", "connected", "error", "revoked"]),
 });
 
 const testConnectionBodySchema = z.object({
@@ -487,7 +486,11 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           credentialId = credRes.rows[0]?.id || null;
         }
 
-        const initialStatus = parsedBody.data.status ?? (credentials ? "connected" : "unconfigured");
+        // S-02: Honest Channel State Machine
+        // Channels with credentials start in 'validating' (awaiting verified handshake)
+        // Channels without credentials start in 'unconfigured'
+        // Neither can start in 'connected' or 'pairing' without server adapter proof.
+        const initialStatus = credentials ? "validating" : "unconfigured";
 
         const res = await client.query<{
           id: string;
@@ -503,7 +506,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
              workspace_id, provider, display_name, phone_number_e164, endpoint_token_hash, credential_id, status, is_active
            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING id, workspace_id, provider, display_name, phone_number_e164, status, is_active, created_at;`,
-          [workspaceId, provider, displayName, phoneNumberE164 ?? null, tokenHash, credentialId, initialStatus, initialStatus === "connected"]
+          [workspaceId, provider, displayName, phoneNumberE164 ?? null, tokenHash, credentialId, initialStatus, false]
         );
         return res.rows[0];
       });
@@ -680,6 +683,18 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
       const { workspaceId, channelId } = parsedParams.data;
       const { status } = parsedBody.data;
 
+      // S-02: Client cannot directly set 'connected' or 'pairing'
+      if (status === "connected" || status === "pairing") {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: `Direct transition to '${status}' by client is prohibited. Server-side adapter verification is required via POST /verify-session or GET /qr-code.`,
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
       const updated = await withTenantTransaction(workspaceId, async (client) => {
         const chanRes = await client.query<{
           id: string;
@@ -717,6 +732,264 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
+  // 4c. Verify Session with Provider Adapter and Transition to Connected/Pairing/Error
+  app.post(
+    "/v1/workspaces/:workspaceId/channels/:channelId/verify-session",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("workspace:manage"),
+      ],
+    },
+    async (request, reply) => {
+      const parsedParams = channelParamsSchema.safeParse(request.params);
+      if (!parsedParams.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Invalid workspaceId or channelId parameter",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { workspaceId, channelId } = parsedParams.data;
+
+      const channel = await withTenantTransaction(workspaceId, async (client) => {
+        const res = await client.query<{
+          id: string;
+          provider: string;
+          display_name: string;
+          credential_id: string | null;
+          status: string;
+          is_active: boolean;
+        }>(
+          `SELECT id, provider, display_name, credential_id, status, is_active
+           FROM public.channel_instances
+           WHERE id = $1 AND workspace_id = $2;`,
+          [channelId, workspaceId]
+        );
+        return res.rows[0] || null;
+      });
+
+      if (!channel) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: `Channel ${channelId} not found in workspace`,
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      if (!channel.credential_id) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Channel does not have credentials configured. Status is unconfigured.",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const credRow = await withTenantTransaction(workspaceId, async (client) => {
+        const res = await client.query<{
+          encrypted_payload: string;
+          iv: string;
+          auth_tag: string;
+          key_version?: string;
+        }>(
+          `SELECT encrypted_payload, iv, auth_tag, key_version
+           FROM public.provider_credentials
+           WHERE id = $1 AND workspace_id = $2 AND status = 'ACTIVE';`,
+          [channel.credential_id, workspaceId]
+        );
+        return res.rows[0] || null;
+      });
+
+      if (!credRow) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Active provider credentials not found for channel.",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      let credentials: Record<string, any>;
+      try {
+        const envKeyring = parseKeyringFromEnv();
+        const masterKey =
+          envKeyring?.keyring ||
+          process.env.MCT_CREDENTIALS_MASTER_KEY ||
+          process.env.APP_MASTER_KEY ||
+          process.env.MASTER_ENCRYPTION_KEY ||
+          (process.env.NODE_ENV === "test" || process.env.VITEST
+            ? "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            : undefined);
+
+        if (!masterKey) {
+          throw new Error("Master encryption key not configured");
+        }
+
+        const decrypted = decryptPayload(
+          credRow.encrypted_payload,
+          credRow.iv,
+          credRow.auth_tag,
+          masterKey,
+          credRow.key_version ? { keyVersion: credRow.key_version } : undefined
+        );
+        credentials = JSON.parse(decrypted);
+      } catch {
+        return reply.status(500).send({
+          type: "https://sos-sales.mct.br/errors/internal",
+          title: "Decryption Failed",
+          status: 500,
+          detail: "Failed to decrypt provider credentials",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      let newStatus: "connected" | "pairing" | "error" = "error";
+      let handshakeDetail = "";
+
+      const allowLocal =
+        process.env.NODE_ENV !== "production" ||
+        process.env.ENABLE_LAB_SYNTHETIC === "true" ||
+        process.env.ALLOW_LOCAL_NETWORK_CHANNELS === "true";
+
+      try {
+        if (channel.provider === "meta_waba") {
+          const phoneNumberId = credentials.phone_number_id;
+          const accessToken = credentials.access_token;
+          if (!phoneNumberId || !accessToken) {
+            newStatus = "error";
+            handshakeDetail = "Missing phone_number_id or access_token in credentials";
+          } else if (process.env.ENABLE_LAB_SYNTHETIC === "true" || process.env.NODE_ENV === "test") {
+            newStatus = "connected";
+            handshakeDetail = "Synthetic Meta WABA verified";
+          } else {
+            const resp = await safeFetchWithSsrfGuard(
+              `https://graph.facebook.com/v21.0/${phoneNumberId}?fields=display_phone_number,name_status,quality_rating&access_token=${encodeURIComponent(accessToken)}`,
+              {},
+              { timeoutMs: 8000, allowLocalTest: false, allowedProtocols: ["https:"] }
+            );
+            if (resp.ok) {
+              newStatus = "connected";
+              handshakeDetail = "Meta WABA phone number confirmed active";
+            } else {
+              newStatus = "error";
+              handshakeDetail = `Meta Graph API returned HTTP ${resp.status}`;
+            }
+          }
+        } else if (channel.provider === "waha") {
+          const baseUrl = credentials.base_url;
+          const apiKey = credentials.api_key;
+          if (!baseUrl) {
+            newStatus = "error";
+            handshakeDetail = "Missing base_url for WAHA";
+          } else if (process.env.ENABLE_LAB_SYNTHETIC === "true" || process.env.NODE_ENV === "test") {
+            newStatus = "connected";
+            handshakeDetail = "Synthetic WAHA session verified";
+          } else {
+            const targetBaseUrl = validateWahaBaseUrl(baseUrl, allowLocal);
+            const resp = await safeFetchWithSsrfGuard(
+              `${targetBaseUrl}/api/sessions/default`,
+              { headers: apiKey ? { "X-Api-Key": apiKey } : {} },
+              { timeoutMs: 8000, allowLocalTest: allowLocal, allowedProtocols: ["http:", "https:"] }
+            );
+            if (resp.ok) {
+              const body = (await resp.json()) as any;
+              const wahaStatus = body.status;
+              if (wahaStatus === "WORKING") {
+                newStatus = "connected";
+                handshakeDetail = "WAHA session working and connected";
+              } else if (wahaStatus === "SCAN_QR_CODE") {
+                newStatus = "pairing";
+                handshakeDetail = "WAHA awaiting QR code scan";
+              } else {
+                newStatus = "error";
+                handshakeDetail = `WAHA session status: ${wahaStatus}`;
+              }
+            } else {
+              newStatus = "error";
+              handshakeDetail = `WAHA returned HTTP ${resp.status}`;
+            }
+          }
+        } else if (channel.provider === "evolution") {
+          const baseUrl = credentials.base_url;
+          const apiKey = credentials.api_key;
+          if (!baseUrl) {
+            newStatus = "error";
+            handshakeDetail = "Missing base_url for Evolution";
+          } else if (process.env.ENABLE_LAB_SYNTHETIC === "true" || process.env.NODE_ENV === "test") {
+            newStatus = "connected";
+            handshakeDetail = "Synthetic Evolution verified";
+          } else {
+            const targetBaseUrl = validateEvolutionBaseUrl(baseUrl, allowLocal);
+            const resp = await safeFetchWithSsrfGuard(
+              `${targetBaseUrl}/instance/connectionState/${credentials.instance_name || "default"}`,
+              { headers: apiKey ? { apikey: apiKey } : {} },
+              { timeoutMs: 8000, allowLocalTest: allowLocal, allowedProtocols: ["http:", "https:"] }
+            );
+            if (resp.ok) {
+              const body = (await resp.json()) as any;
+              const state = body?.instance?.state || body?.state;
+              if (state === "open") {
+                newStatus = "connected";
+                handshakeDetail = "Evolution instance open and connected";
+              } else if (state === "connecting" || state === "qrcode") {
+                newStatus = "pairing";
+                handshakeDetail = "Evolution instance connecting / QR code ready";
+              } else {
+                newStatus = "error";
+                handshakeDetail = `Evolution instance state: ${state}`;
+              }
+            } else {
+              newStatus = "error";
+              handshakeDetail = `Evolution returned HTTP ${resp.status}`;
+            }
+          }
+        }
+      } catch (err) {
+        newStatus = "error";
+        handshakeDetail = err instanceof Error ? err.message : "Network/adapter error during handshake";
+      }
+
+      const updatedChannel = await withTenantTransaction(workspaceId, async (client) => {
+        const res = await client.query<{
+          id: string;
+          provider: string;
+          display_name: string;
+          status: string;
+          is_active: boolean;
+        }>(
+          `UPDATE public.channel_instances
+           SET status = $1, updated_at = NOW()
+           WHERE id = $2 AND workspace_id = $3
+           RETURNING id, provider, display_name, status, is_active;`,
+          [newStatus, channelId, workspaceId]
+        );
+        return res.rows[0];
+      });
+
+      return reply.status(200).send({
+        success: newStatus === "connected",
+        channelId: updatedChannel.id,
+        status: updatedChannel.status,
+        isActive: updatedChannel.is_active,
+        handshakeDetail,
+      });
+    }
+  );
+
   // 5. Get WAHA Safe QR Code (Strictly local flow, zero token exposure in browser)
   app.get(
     "/v1/workspaces/:workspaceId/channels/:channelId/qr-code",
@@ -748,9 +1021,10 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           provider: string;
           display_name: string;
           is_active: boolean;
+          status: string;
           credential_id: string | null;
         }>(
-          `SELECT id, provider, display_name, is_active, credential_id
+          `SELECT id, provider, display_name, is_active, status, credential_id
            FROM public.channel_instances
            WHERE id = $1 AND workspace_id = $2;`,
           [channelId, workspaceId]
@@ -780,12 +1054,12 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      if (!channel.is_active) {
+      if (channel.status === "revoked") {
         return reply.status(409).send({
           type: "https://sos-sales.mct.br/errors/conflict",
           title: "Conflict",
           status: 409,
-          detail: "Channel is inactive or revoked",
+          detail: "Channel is inactive or revoked. Re-validation required.",
           instance: request.url,
           correlationId: request.id,
         });
@@ -793,6 +1067,15 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
 
       // Simulated or test lab mode
       if (process.env.MCT_SIMULATE_WAHA_QR === "true" || process.env.NODE_ENV === "test") {
+        await withTenantTransaction(workspaceId, async (client) => {
+          await client.query(
+            `UPDATE public.channel_instances
+             SET status = 'pairing', updated_at = NOW()
+             WHERE id = $1 AND workspace_id = $2 AND status != 'connected';`,
+            [channelId, workspaceId]
+          );
+        });
+
         return reply.status(200).send({
           success: true,
           status: "SCAN_QR_CODE",

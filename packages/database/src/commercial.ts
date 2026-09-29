@@ -187,10 +187,6 @@ export async function recordCommercialOutcome(
     throw new Error("ACTOR_REQUIRED: Responsável pelo registro do desfecho comercial é obrigatório");
   }
 
-  if (input.status === "lost" && (!input.reason || !input.reason.trim())) {
-    throw new Error("REASON_REQUIRED: Motivo do desfecho de perda é obrigatório");
-  }
-
   // 1. Fetch journey under tenant RLS with exclusive row lock to prevent race conditions
   const journeyRes = await client.query<CommercialJourneyRecord>(
     `SELECT * FROM public.commercial_journeys WHERE workspace_id = $1 AND id = $2 FOR UPDATE;`,
@@ -201,23 +197,52 @@ export async function recordCommercialOutcome(
     throw new Error(`Commercial journey ${input.journeyId} not found in workspace ${workspaceId}`);
   }
 
-  // Idempotency: if journey already has identical outcome status and value, return existing without re-firing CAPI
+  // Idempotency & Terminality: inspect existing outcomes for this journey
   const existingOutcomeRes = await client.query<CommercialOutcomeRecord>(
     `SELECT * FROM public.commercial_outcomes 
      WHERE workspace_id = $1 AND journey_id = $2 
      ORDER BY created_at DESC LIMIT 1;`,
     [workspaceId, input.journeyId]
   );
-  if (
-    existingOutcomeRes.rows[0] &&
-    existingOutcomeRes.rows[0].status === input.status &&
-    (input.status === "won" || Number(existingOutcomeRes.rows[0].value_cents) === input.valueCents)
-  ) {
-    const convRes = await client.query<ConversionEventRecord>(
-      `SELECT * FROM public.conversion_events WHERE workspace_id = $1 AND outcome_id = $2;`,
-      [workspaceId, existingOutcomeRes.rows[0].id]
-    );
-    return { outcome: existingOutcomeRes.rows[0], conversionEvent: convRes.rows[0] ?? null };
+  const existingOutcome = existingOutcomeRes.rows[0];
+
+  if (existingOutcome) {
+    const isTerminal = existingOutcome.status === "won" || existingOutcome.status === "lost";
+    if (isTerminal) {
+      const isStatusIdentical = existingOutcome.status === input.status;
+      const isValueIdentical = Number(existingOutcome.value_cents) === input.valueCents;
+      const isCurrencyIdentical = (existingOutcome.currency || "BRL") === (input.currency || "BRL");
+
+      if (isStatusIdentical && isValueIdentical && isCurrencyIdentical) {
+        // Idempotent replay: return existing outcome and associated conversion event
+        const convRes = await client.query<ConversionEventRecord>(
+          `SELECT * FROM public.conversion_events WHERE workspace_id = $1 AND outcome_id = $2;`,
+          [workspaceId, existingOutcome.id]
+        );
+        return { outcome: existingOutcome, conversionEvent: convRes.rows[0] ?? null };
+      }
+
+      // Terminal conflict: status changed or values diverged
+      const err = new Error(
+        `Commercial journey ${input.journeyId} already reached terminal outcome '${existingOutcome.status}' (${existingOutcome.value_cents} ${existingOutcome.currency}). Divergent outcome registration with status '${input.status}' (${input.valueCents} ${input.currency || "BRL"}) is prohibited.`
+      ) as Error & { code: string; status: number };
+      err.code = "OUTCOME_CONFLICT";
+      err.status = 409;
+      throw err;
+    }
+  }
+
+  if (journey.status === "won" || journey.status === "lost") {
+    const err = new Error(
+      `Commercial journey ${input.journeyId} is already in terminal status '${journey.status}'. Cannot register divergent outcome '${input.status}'.`
+    ) as Error & { code: string; status: number };
+    err.code = "OUTCOME_CONFLICT";
+    err.status = 409;
+    throw err;
+  }
+
+  if (input.status === "lost" && (!input.reason || !input.reason.trim())) {
+    throw new Error("REASON_REQUIRED: Motivo do desfecho de perda é obrigatório");
   }
 
   // 2. Insert outcome
@@ -257,14 +282,25 @@ export async function recordCommercialOutcome(
 
     const userData: Record<string, unknown> = {};
 
-    // S-07: Derive customer phone directly from contact entity if caller did not supply it
-    let customerPhone = input.userPhoneE164?.trim();
-    if (!customerPhone && journey.contact_id) {
+    // S-07: Authoritative customer phone derivation: consult contacts.phone_e164 in the workspace FIRST
+    let customerPhone: string | undefined;
+    if (journey.contact_id) {
       const contactRes = await client.query<{ phone_e164: string }>(
         `SELECT phone_e164 FROM public.contacts WHERE workspace_id = $1 AND id = $2;`,
         [workspaceId, journey.contact_id]
       );
-      customerPhone = contactRes.rows[0]?.phone_e164?.trim();
+      const contactPhone = contactRes.rows[0]?.phone_e164?.trim();
+      if (contactPhone) {
+        customerPhone = contactPhone;
+      }
+    }
+
+    // Fallback to caller-supplied userPhoneE164 ONLY if contact had no phone and caller provided valid E.164
+    if (!customerPhone && input.userPhoneE164) {
+      const trimmed = input.userPhoneE164.trim();
+      if (/^\+[1-9]\d{6,14}$/.test(trimmed)) {
+        customerPhone = trimmed;
+      }
     }
 
     if (customerPhone) {

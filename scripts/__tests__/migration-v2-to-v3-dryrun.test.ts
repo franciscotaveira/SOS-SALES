@@ -3,7 +3,8 @@ import { createTestDatabasePools, withTenantTransaction } from "../../packages/d
 import { runMigrationDryRun, REQUIRED_V3_TABLES } from "../migration-v2-to-v3-dryrun";
 import {
   runSyntheticV2Migration,
-  verifyDisasterRecovery,
+  verifyPostMigrationIntegrity,
+  executeHermeticBackupAndRestore,
   toDeterministicUuid,
 } from "../migration-v2-to-v3-engine";
 
@@ -105,18 +106,42 @@ describe("Phase R4: Migration V2 -> V3 Dry-Run & Disaster Recovery Suite", () =>
   });
 
   describe("3. Hermetic Restore & Disaster Recovery Verification", () => {
-    it("verifies disaster recovery integrity across all migrated tenants", async () => {
+    it("verifies post-migration integrity across all migrated tenants", async () => {
       const havenWsId = toDeterministicUuid("v2-ws-haven");
       const domWsId = toDeterministicUuid("v2-ws-domrios");
 
-      const havenCheck = await verifyDisasterRecovery(ownerPool, havenWsId);
+      const havenCheck = await verifyPostMigrationIntegrity(ownerPool, havenWsId);
       expect(havenCheck.isConsistent).toBe(true);
       expect(havenCheck.issues).toEqual([]);
 
-      const domCheck = await verifyDisasterRecovery(ownerPool, domWsId);
+      const domCheck = await verifyPostMigrationIntegrity(ownerPool, domWsId);
       expect(domCheck.isConsistent).toBe(true);
       expect(domCheck.issues).toEqual([]);
     });
+
+    it("executes hermetic physical pg_dump and restore into isolated ephemeral database with complete reconciliation", async () => {
+      const drResult = await executeHermeticBackupAndRestore({
+        sourceDatabase: "sos_sales_v3_test",
+      });
+
+      expect(drResult.success).toBe(true);
+      expect(drResult.errors).toEqual([]);
+      expect(drResult.dumpSizeBytes).toBeGreaterThan(1000);
+      expect(drResult.restoredDatabase).toMatch(/^sos_sales_v3_test_dr_[a-f0-9]{8}$/);
+
+      // Verify all tables were reconciled without count loss
+      for (const [table, metric] of Object.entries(drResult.tablesReconciled)) {
+        expect(metric.match, `Table ${table} counts must match: source=${metric.sourceCount}, restored=${metric.restoredCount}`).toBe(true);
+      }
+
+      // Verify exact monetary sums match
+      expect(drResult.sumsReconciled.proposalsTotalCents.match).toBe(true);
+      expect(drResult.sumsReconciled.pixChargesAmountCents.match).toBe(true);
+      expect(drResult.sumsReconciled.outcomesValueCents.match).toBe(true);
+
+      // Verify RLS isolation was proven on the restored database
+      expect(drResult.rlsIsolationVerified).toBe(true);
+    }, 60000);
 
     it("verifies RLS fail-closed isolation between migrated workspaces under appPool", async () => {
       const havenWsId = toDeterministicUuid("v2-ws-haven");

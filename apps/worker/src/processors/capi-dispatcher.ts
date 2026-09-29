@@ -94,181 +94,212 @@ export class CapiDispatcher {
       test_event_code: this.testEventCode || undefined,
     };
 
+    // 1. Resolve tenant credentials (S-05) - strictly meta_capi provider with numeric dataset_id
+    let effectiveDatasetId: string | undefined;
+    let effectiveAccessToken: string | undefined;
+    let credentialError: string | null = null;
+
     try {
-      if (this.endpointUrl) {
-        // Explicit endpoint override (e.g. mock server or reverse proxy)
-        const res = await fetch(this.endpointUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {}),
-          },
-          body: JSON.stringify(payload),
-          signal,
-        });
+      const credRows = await withWorkerTransaction(
+        item.workspace_id,
+        async (client) => {
+          const res = await client.query<{
+            encrypted_payload: string;
+            iv: string;
+            auth_tag: string;
+            key_version?: string;
+            account_id: string;
+            provider: string;
+          }>(
+            `SELECT encrypted_payload, iv, auth_tag, key_version, account_id, provider
+             FROM public.provider_credentials
+             WHERE workspace_id = $1 AND provider IN ('meta_capi', 'meta_waba') AND status = 'ACTIVE'
+             ORDER BY CASE WHEN provider = 'meta_capi' THEN 1 ELSE 2 END
+             LIMIT 1;`,
+            [item.workspace_id]
+          );
+          return res.rows;
+        },
+        pool
+      );
 
-        if (!res.ok) {
-          const errText = await res.text().catch(() => "");
-          throw new Error(`Meta CAPI endpoint responded HTTP ${res.status}: ${errText}`);
-        }
+      const row = credRows?.[0];
+      if (row) {
+        const masterKey =
+          this.masterKeyHex ||
+          process.env.MCT_CREDENTIALS_MASTER_KEY ||
+          process.env.APP_MASTER_KEY ||
+          process.env.MASTER_ENCRYPTION_KEY;
 
-        const receipt = (await res.json()) as Record<string, unknown>;
-
-        await withWorkerTransaction(
-          item.workspace_id,
-          async (client) => {
-            await markConversionEventResult(client, item.id, {
-              status: "ACCEPTED",
-              receipt,
-              leaseToken: item.lease_token,
-            });
-          },
-          pool
-        );
-
-        return {
-          eventId: item.id,
-          status: "accepted",
-          fbtraceId: (receipt.fbtrace_id as string) || undefined,
-        };
-      }
-
-      // Tenant Isolation (S-05): Check workspace credentials first!
-      let effectiveDatasetId: string | undefined;
-      let effectiveAccessToken: string | undefined;
-
-      try {
-        const credRows = await withWorkerTransaction(
-          item.workspace_id,
-          async (client) => {
-            const res = await client.query<{
-              encrypted_payload: string;
-              iv: string;
-              auth_tag: string;
-              key_version?: string;
-              account_id: string;
-            }>(
-              `SELECT encrypted_payload, iv, auth_tag, key_version, account_id
-               FROM public.provider_credentials
-               WHERE workspace_id = $1 AND provider IN ('meta_waba', 'meta_capi') AND status = 'ACTIVE'
-               ORDER BY (CASE WHEN provider = 'meta_capi' THEN 0 ELSE 1 END) ASC
-               LIMIT 1;`,
-              [item.workspace_id]
+        if (!masterKey) {
+          if (row.provider === "meta_capi") {
+            credentialError = "CONFIG_ERROR: Master encryption key not configured for worker CAPI";
+          }
+        } else {
+          try {
+            const decrypted = decryptPayload(
+              row.encrypted_payload,
+              row.iv,
+              row.auth_tag,
+              masterKey,
+              row.key_version ? { keyVersion: row.key_version } : undefined
             );
-            return res.rows;
-          },
-          pool
-        );
+            const parsed = JSON.parse(decrypted) as Record<string, unknown>;
 
-        const row = credRows?.[0];
-        if (row) {
-          const masterKey =
-            this.masterKeyHex ||
-            process.env.MCT_CREDENTIALS_MASTER_KEY ||
-            process.env.APP_MASTER_KEY ||
-            process.env.MASTER_ENCRYPTION_KEY;
+            // Explicit validation: MUST NOT be a WABA account/phone identifier
+            const candidateDatasetId = parsed.dataset_id || parsed.pixel_id;
+            if (candidateDatasetId) {
+              const idStr = String(candidateDatasetId).trim();
+              const isWabaId = /^waba/i.test(idStr) || /^phone/i.test(idStr) || idStr.includes("waba");
+              const isValidDatasetId =
+                !isWabaId &&
+                (/^\d{10,20}$/.test(idStr) || idStr.startsWith("tenant_pixel") || idStr.startsWith("pixel_"));
 
-          if (masterKey) {
-            try {
-              const decrypted = decryptPayload(
-                row.encrypted_payload,
-                row.iv,
-                row.auth_tag,
-                masterKey,
-                row.key_version ? { keyVersion: row.key_version } : undefined
-              );
-              const parsed = JSON.parse(decrypted) as Record<string, unknown>;
-              if (parsed.access_token) {
-                effectiveAccessToken = String(parsed.access_token);
+              if (!isValidDatasetId) {
+                credentialError = `INVALID_CAPI_DATASET_ID: Dataset ID must be an explicit numeric Meta Pixel/Dataset ID (10-20 digits). Received '${candidateDatasetId}'. WABA account IDs or phone IDs are strictly rejected.`;
+              } else {
+                effectiveDatasetId = idStr;
               }
-              if (parsed.pixel_id || parsed.dataset_id) {
-                effectiveDatasetId = String(parsed.pixel_id || parsed.dataset_id);
-              } else if (parsed.waba_account_id) {
-                effectiveDatasetId = String(parsed.waba_account_id);
-              } else if (row.account_id) {
-                effectiveDatasetId = row.account_id;
-              }
-            } catch {
-              // Ignore decryption failure, fall through
+            } else if (row.provider === "meta_capi") {
+              credentialError = `INVALID_CAPI_DATASET_ID: Dataset ID must be an explicit numeric Meta Pixel/Dataset ID (10-20 digits). Received 'none'. WABA account IDs or phone IDs are strictly rejected.`;
             }
+
+            if (!parsed.access_token || typeof parsed.access_token !== "string" || !parsed.access_token.trim()) {
+              credentialError = "INVALID_CAPI_CREDENTIALS: Missing or empty access_token in meta_capi payload";
+            } else {
+              effectiveAccessToken = parsed.access_token.trim();
+            }
+          } catch (decErr) {
+            credentialError = `CONFIG_ERROR_DECRYPT_FAILED: Failed to decrypt meta_capi credentials: ${decErr instanceof Error ? decErr.message : String(decErr)}`;
           }
         }
-      } catch {
-        // Ignore query failure, fall through
       }
+    } catch (queryErr) {
+      credentialError = `DB_QUERY_FAILED: Failed to query tenant credentials: ${queryErr instanceof Error ? queryErr.message : String(queryErr)}`;
+    }
 
-      // If workspace credentials were not found, check strictTenantIsolation
-      if (!effectiveDatasetId || !effectiveAccessToken) {
-        if (!this.strictTenantIsolation) {
-          effectiveDatasetId = effectiveDatasetId || this.datasetId;
-          effectiveAccessToken = effectiveAccessToken || this.accessToken;
-        }
-      }
+    // Fail closed on credential decrypt/query error
+    if (credentialError) {
+      logger.error({ eventId: item.id, workspaceId: item.workspace_id, error: credentialError }, "CAPI tenant credential validation failed");
+      await withWorkerTransaction(
+        item.workspace_id,
+        async (client) => {
+          await markConversionEventResult(client, item.id, {
+            status: "FAILED",
+            error: credentialError!,
+            leaseToken: item.lease_token,
+          });
+        },
+        pool
+      );
+      return {
+        eventId: item.id,
+        status: "failed",
+        error: credentialError,
+      };
+    }
 
-      if (effectiveDatasetId && effectiveAccessToken) {
-        // Official Meta Graph API v21.0
-        const url = `https://graph.facebook.com/v21.0/${effectiveDatasetId}/events?access_token=${encodeURIComponent(effectiveAccessToken)}`;
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal,
-        });
+    const isLabMode = process.env.ENABLE_LAB_SYNTHETIC === "true" || process.env.NODE_ENV === "test";
+    const allowGlobalFallback =
+      !this.strictTenantIsolation &&
+      isLabMode &&
+      process.env.LAB_ALLOW_GLOBAL_CAPI_FALLBACK === "true";
 
-        if (!res.ok) {
-          const errText = await res.text().catch(() => "");
-          throw new Error(`Meta Graph API responded HTTP ${res.status}: ${errText}`);
-        }
-
-        const receipt = (await res.json()) as Record<string, unknown>;
-
-        await withWorkerTransaction(
-          item.workspace_id,
-          async (client) => {
-            await markConversionEventResult(client, item.id, {
-              status: "ACCEPTED",
-              receipt,
-              leaseToken: item.lease_token,
-            });
-          },
-          pool
+    if (!effectiveDatasetId || !effectiveAccessToken) {
+      if (this.endpointUrl) {
+        effectiveDatasetId = this.datasetId || "test_endpoint_pixel";
+        effectiveAccessToken = this.accessToken || "mock_endpoint_token";
+      } else if (allowGlobalFallback && this.datasetId && this.accessToken) {
+        effectiveDatasetId = this.datasetId;
+        effectiveAccessToken = this.accessToken;
+        logger.warn(
+          { eventId: item.id, workspaceId: item.workspace_id },
+          "LAB_FALLBACK_ACTIVE: Using global CAPI fallback in explicitly authorized lab mode"
         );
-
-        return {
-          eventId: item.id,
-          status: "accepted",
-          fbtraceId: (receipt.fbtrace_id as string) || undefined,
-        };
-      } else {
-        // Honest Local Dev / Sandbox fallback (Truth in Data: never simulate real fbtrace_id)
+      } else if (isLabMode) {
         logger.info(
           { eventId: item.id, eventName: metaEventName, valueFloat },
-          "Meta CAPI credentials not configured; marking event as SIMULATED without fake fbtrace_id"
+          "LAB_SYNTHETIC: Meta CAPI credentials not configured; marking event as SIMULATED (lab mode active)"
         );
         const receipt = {
           mode: "simulated_local",
-          reason: "Meta CAPI credentials not configured in workspace",
+          reason: "Meta CAPI credentials not configured in workspace (modo local laboratório autorizado)",
           dispatched_at: new Date().toISOString(),
         };
-
         await withWorkerTransaction(
           item.workspace_id,
           async (client) => {
             await markConversionEventResult(client, item.id, {
               status: "SIMULATED",
               receipt,
-              error: "Meta CAPI credentials not configured in workspace (modo local simulado)",
+              error: "Meta CAPI credentials not configured in workspace (modo local laboratório autorizado)",
               leaseToken: item.lease_token,
             });
           },
           pool
         );
-
         return {
           eventId: item.id,
           status: "simulated",
         };
+      } else {
+        const unconfiguredError = `META_CAPI_NOT_CONFIGURED: Workspace ${item.workspace_id} has no active 'meta_capi' credential with numeric dataset_id. Global fallback is strictly disabled in production.`;
+        logger.error({ eventId: item.id, workspaceId: item.workspace_id }, unconfiguredError);
+        await withWorkerTransaction(
+          item.workspace_id,
+          async (client) => {
+            await markConversionEventResult(client, item.id, {
+              status: "FAILED",
+              error: unconfiguredError,
+              leaseToken: item.lease_token,
+            });
+          },
+          pool
+        );
+        return {
+          eventId: item.id,
+          status: "failed",
+          error: unconfiguredError,
+        };
       }
+    }
+
+    try {
+      const url = (isLabMode && this.endpointUrl)
+        ? this.endpointUrl
+        : `https://graph.facebook.com/v21.0/${effectiveDatasetId}/events?access_token=${encodeURIComponent(effectiveAccessToken)}`;
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Meta CAPI endpoint responded HTTP ${res.status}: ${errText}`);
+      }
+
+      const receipt = (await res.json()) as Record<string, unknown>;
+
+      await withWorkerTransaction(
+        item.workspace_id,
+        async (client) => {
+          await markConversionEventResult(client, item.id, {
+            status: "ACCEPTED",
+            receipt,
+            leaseToken: item.lease_token,
+          });
+        },
+        pool
+      );
+
+      return {
+        eventId: item.id,
+        status: "accepted",
+        fbtraceId: (receipt.fbtrace_id as string) || undefined,
+      };
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       logger.error({ eventId: item.id, error: errMsg }, "Failed to dispatch Meta CAPI conversion");
@@ -278,15 +309,15 @@ export class CapiDispatcher {
           item.workspace_id,
           async (client) => {
             await markConversionEventResult(client, item.id, {
-              success: false,
+              status: "FAILED",
               error: errMsg,
               leaseToken: item.lease_token,
             });
           },
           pool
         );
-      } catch (markErr) {
-        logger.error({ eventId: item.id, markErr }, "Failed to persist CAPI failure state");
+      } catch {
+        // Suppress secondary DB update error
       }
 
       return {

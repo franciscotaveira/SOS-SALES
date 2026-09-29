@@ -21,9 +21,9 @@ ALTER TABLE public.channel_instances
 ALTER TABLE public.channel_instances
     ALTER COLUMN is_active SET DEFAULT false;
 
--- Backfill existing active channels as 'connected', inactive as 'revoked'
+-- Backfill existing channels: active channels require validation ('validating'), inactive are 'unconfigured'
 UPDATE public.channel_instances
-SET status = CASE WHEN is_active = true THEN 'connected' ELSE 'revoked' END
+SET status = CASE WHEN is_active = true THEN 'validating' ELSE 'unconfigured' END
 WHERE status = 'unconfigured';
 
 -- 2. Trigger function to ensure status and is_active stay strictly synchronized
@@ -31,34 +31,28 @@ CREATE OR REPLACE FUNCTION public.sync_channel_instance_status()
 RETURNS TRIGGER AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        -- On INSERT:
-        IF NEW.status IS NOT NULL THEN
-            IF NEW.status = 'unconfigured' AND NEW.is_active = true THEN
-                -- Explicit legacy insert with is_active = true and default status
-                NEW.status := 'connected';
-            ELSE
-                -- Follow explicit status
-                NEW.is_active := (NEW.status = 'connected');
-            END IF;
+        -- If status is explicitly connected or legacy insert provided is_active = true
+        IF NEW.status = 'connected' OR (NEW.status IS NULL AND NEW.is_active = true) OR (NEW.status = 'unconfigured' AND NEW.is_active = true) THEN
+            NEW.status := 'connected';
+            NEW.is_active := true;
         ELSE
-            -- Default unconfigured / inactive
-            NEW.status := 'unconfigured';
-            NEW.is_active := false;
+            IF NEW.status IS NULL THEN
+                NEW.status := 'unconfigured';
+            END IF;
+            NEW.is_active := (NEW.status = 'connected');
         END IF;
     ELSIF TG_OP = 'UPDATE' THEN
-        -- On UPDATE:
         IF NEW.status IS DISTINCT FROM OLD.status THEN
-            -- status was explicitly changed
             NEW.is_active := (NEW.status = 'connected');
         ELSIF NEW.is_active IS DISTINCT FROM OLD.is_active THEN
-            -- is_active was explicitly changed
             IF NEW.is_active = true THEN
                 NEW.status := 'connected';
             ELSE
-                NEW.status := 'revoked';
+                IF NEW.status = 'connected' THEN
+                    NEW.status := 'revoked';
+                END IF;
             END IF;
         ELSE
-            -- Neither changed explicitly; maintain invariant
             NEW.is_active := (NEW.status = 'connected');
         END IF;
     END IF;

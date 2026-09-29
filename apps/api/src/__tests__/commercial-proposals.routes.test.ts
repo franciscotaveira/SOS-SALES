@@ -212,7 +212,7 @@ describe("Commercial Proposals API Routes Suite (M6)", () => {
       headers: {
         authorization: `Bearer ${tokenA}`,
       },
-      payload: { status: "sent" },
+      payload: { status: "sent", expectedVersion: 1 },
     });
     expect(sendRes.statusCode).toBe(200);
     expect(JSON.parse(sendRes.body).status).toBe("sent");
@@ -224,7 +224,7 @@ describe("Commercial Proposals API Routes Suite (M6)", () => {
       headers: {
         authorization: `Bearer ${tokenA}`,
       },
-      payload: { status: "accepted" },
+      payload: { status: "accepted", expectedVersion: 2 },
     });
     expect(acceptRes.statusCode).toBe(200);
     expect(JSON.parse(acceptRes.body).status).toBe("accepted");
@@ -236,7 +236,7 @@ describe("Commercial Proposals API Routes Suite (M6)", () => {
       headers: {
         authorization: `Bearer ${tokenA}`,
       },
-      payload: { status: "draft" },
+      payload: { status: "draft", expectedVersion: 3 },
     });
     expect(invalidRes.statusCode).toBe(409);
   });

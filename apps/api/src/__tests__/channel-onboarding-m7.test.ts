@@ -167,7 +167,18 @@ describe("M7 Channel Onboarding, Governance & Revocation Integration (Fastify + 
     expect(body.channel.id).toBeDefined();
     expect(body.channel.displayName).toBe("Linha Oficial Principal");
     expect(body.channel.provider).toBe("meta_waba");
-    expect(body.channel.isActive).toBe(true);
+    expect(body.channel.status).toBe("validating");
+    expect(body.channel.isActive).toBe(false);
+
+    // Verify session to transition channel to connected
+    const verifyWabaRes = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceAId}/channels/${body.channel.id}/verify-session`,
+      headers: { authorization: `Bearer ${adminAToken}` },
+    });
+    expect(verifyWabaRes.statusCode).toBe(200);
+    expect(verifyWabaRes.json().status).toBe("connected");
+    expect(verifyWabaRes.json().isActive).toBe(true);
 
     // Assert zero secret leaks in the response body
     const bodyStr = JSON.stringify(body);
@@ -207,6 +218,14 @@ describe("M7 Channel Onboarding, Governance & Revocation Integration (Fastify + 
       },
     });
     expect(wahaRes.statusCode).toBe(201);
+
+    // Verify WAHA session to transition to connected
+    const verifyWahaRes = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceAId}/channels/${wahaRes.json().channel.id}/verify-session`,
+      headers: { authorization: `Bearer ${adminAToken}` },
+    });
+    expect(verifyWahaRes.statusCode).toBe(200);
 
     const listRes = await app.inject({
       method: "GET",

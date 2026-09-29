@@ -242,6 +242,29 @@ describe("Phase R3 Integration Suite: Commercial Concurrency, State Machine & In
       expect(body.detail).toMatch(/INVALID_TRANSITION/);
     });
 
+    it("should reject proposal status transition if expectedVersion is omitted (400 Bad Request)", async () => {
+      const propRes = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceId}/threads/${threadId}/proposals`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          contactId,
+          title: "Proposta Version Check",
+          items: [{ title: "Item 1", unitPriceCents: 1000, quantity: 1 }],
+        },
+      });
+      const pId = propRes.json().id;
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/v1/workspaces/${workspaceId}/proposals/${pId}/status`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: { status: "sent" },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).detail).toMatch(/expectedVersion is strictly required/i);
+    });
+
     it("should enforce state machine in database trigger on direct SQL bypass", async () => {
       await expect(
         ownerPool.query(
@@ -402,6 +425,40 @@ describe("Phase R3 Integration Suite: Commercial Concurrency, State Machine & In
           [workspaceId, journeyId, adminUserId]
         )
       ).rejects.toThrow(/uq_commercial_outcomes_journey_won/);
+    });
+
+    it("should reject divergent outcome update from won to lost with 409 Conflict", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceId}/journeys/${journeyId}/outcomes`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          status: "lost",
+          valueCents: 250000,
+          currency: "BRL",
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      const body = res.json();
+      expect(body.detail).toMatch(/already reached terminal outcome 'won'/i);
+    });
+
+    it("should reject divergent outcome payload with different valueCents with 409 Conflict", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceId}/journeys/${journeyId}/outcomes`,
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          status: "won",
+          valueCents: 999999,
+          currency: "BRL",
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      const body = res.json();
+      expect(body.detail).toMatch(/already reached terminal outcome 'won'/i);
     });
   });
 

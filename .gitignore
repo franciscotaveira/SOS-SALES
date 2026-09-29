@@ -45,3 +45,6 @@ test-results/
 .tmp*
 .claude-flow/
 docs/audits/live-test/
+
+# ruflo runtime
+ruvector.db

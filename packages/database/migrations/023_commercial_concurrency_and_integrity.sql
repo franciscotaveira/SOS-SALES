@@ -68,7 +68,30 @@ CREATE TRIGGER trg_commercial_proposals_transition
     FOR EACH ROW
     EXECUTE FUNCTION public.check_commercial_proposal_transition();
 
--- 3. Outcomes Idempotency: Deduplicate any pre-existing won outcomes before creating unique index
+-- 3. Outcomes Idempotency: Archive duplicate records before creating unique index
+CREATE TABLE IF NOT EXISTS public.commercial_outcomes_reconciliation_archive (
+    archive_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    archived_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    archive_reason text NOT NULL,
+    original_outcome_id uuid NOT NULL,
+    workspace_id uuid NOT NULL,
+    journey_id uuid NOT NULL,
+    status varchar(32) NOT NULL,
+    value_cents bigint NOT NULL,
+    currency varchar(3) NOT NULL,
+    reason text,
+    registered_by_user_id text,
+    created_at timestamptz NOT NULL
+);
+
+ALTER TABLE public.commercial_outcomes_reconciliation_archive ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.commercial_outcomes_reconciliation_archive FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY migration_owner_archive ON public.commercial_outcomes_reconciliation_archive
+    TO sos_migration_owner USING (true) WITH CHECK (true);
+
+GRANT SELECT, INSERT ON TABLE public.commercial_outcomes_reconciliation_archive TO sos_migration_owner;
+
 DO $$
 DECLARE
     r RECORD;
@@ -86,6 +109,17 @@ BEGIN
         WHERE workspace_id = r.workspace_id AND journey_id = r.journey_id AND status = 'won'
         ORDER BY created_at ASC, id ASC
         LIMIT 1;
+
+        -- Safely archive duplicate outcomes prior to deletion
+        INSERT INTO public.commercial_outcomes_reconciliation_archive (
+            archive_reason, original_outcome_id, workspace_id, journey_id, status, value_cents, currency, reason, registered_by_user_id, created_at
+        )
+        SELECT 'deduplication_pre_index_023', id, workspace_id, journey_id, status, value_cents, currency, reason, registered_by_user_id, created_at
+        FROM public.commercial_outcomes
+        WHERE workspace_id = r.workspace_id
+          AND journey_id = r.journey_id
+          AND status = 'won'
+          AND id <> canonical_id;
 
         UPDATE public.conversion_events
         SET outcome_id = canonical_id
@@ -106,3 +140,4 @@ END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_commercial_outcomes_journey_won
     ON public.commercial_outcomes(workspace_id, journey_id)
     WHERE status = 'won';
+

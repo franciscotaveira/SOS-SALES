@@ -46,7 +46,10 @@ const createProposalBodySchema = z.object({
 
 const patchProposalStatusBodySchema = z.object({
   status: z.enum(["draft", "sent", "accepted", "rejected", "expired", "cancelled"] as const),
-  expectedVersion: z.number().int().positive().optional(),
+  expectedVersion: z.number({
+    required_error: "expectedVersion is strictly required for proposal status transitions",
+    invalid_type_error: "expectedVersion is strictly required for proposal status transitions",
+  }).int().positive(),
   reason: z.string().max(500).optional().nullable(),
 });
 
@@ -308,7 +311,9 @@ export const commercialProposalsRoutes: FastifyPluginAsync = async (app) => {
           type: "https://sos-sales.mct.br/errors/bad-request",
           title: "Bad Request",
           status: 400,
-          detail: "Invalid proposal status payload",
+          detail:
+            parseResult.error.issues.map((i) => i.message).join(", ") ||
+            "Invalid proposal status payload",
           details: parseResult.error.format(),
           instance: request.url,
           correlationId: request.id,

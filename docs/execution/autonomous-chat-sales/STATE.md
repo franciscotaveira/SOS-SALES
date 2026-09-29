@@ -1,20 +1,20 @@
 # STATE.md — Diário de Estado e Retomada
 
-> **Missão Autônoma de Remediação Pós-Auditoria — CHAT-SALES**  
-> **Filosofia:** *Poder invisível, simplicidade visível. Truth in Data.*  
+> **Missão Autônoma de Remediação Pós-Auditoria — CHAT-SALES**
+> **Filosofia:** *Poder invisível, simplicidade visível. Truth in Data.*
 > **Objetivo:** Executar continuamente a remediação pós-auditoria até produzir uma candidatura honesta e auditável a `VERIFIED_DOCKER_LAB`, sem n8n, sem efeitos externos reais e sem encerrar em diagnóstico parcial.
 
 ---
 
 ## 1. Fotografia do Estado Atual
 
-- **Data / Hora:** 2026-09-29T07:05:00-03:00
+- **Data / Hora:** 2026-09-29T09:40:00-03:00
 - **SHA Base da Auditoria:** `e55f15e0e327eb1dc0baf6603b82e26d63d329e9`
-- **HEAD Atual de Desenvolvimento:** `dcd1fb3` (preservando landing page e branding Chat Sales)
+- **HEAD Auditado:** `5a56c593b07f25abbb29a9f19a579441c4e9653d`
 - **Status Canônico da Declaração M10:** `REJECTED_BY_INDEPENDENT_REVIEW`
-- **Estado Honesto Atual:**  
-  `BUILD_AND_SYNTHETIC_INTEGRATION_TESTS_GREEN / SECURITY_AND_DOCKER_E2E_NOT_ACCEPTED`
-- **Fase Ativa do Ciclo de Remediação:** `Fase R5 — E2E Docker P1–P8 Verdadeiro`
+- **Estado Honesto Atual:**
+  `R1_COMPLETED / R2_COMPLETED / R3_COMPLETED / R4_COMPLETED / R5_IN_PROGRESS / R6_NOT_STARTED`
+- **Fase Ativa do Ciclo de Remediação:** `Fase R5 — True Docker E2E (P1–P8)`
 
 ---
 
@@ -38,7 +38,7 @@
 | **Fase R1** | Tornar gates verdadeiros e fail-closed: Lint real (ESLint), Gate 6 multi-manifest e scripts de QA | `COMPLETED` |
 | **Fase R2** | Segurança e isolamento: SSRF guard, estado honesto de canal, keyring v1/v2, RLS restrito e CAPI tenant-safe | `COMPLETED` |
 | **Fase R3** | Integridade comercial e concorrência: Proposta, outcome, próxima ação e Radar sem race conditions | `COMPLETED` |
-| **Fase R4** | Migração e recuperação: Motor sintético V2→V3 com fixture versionada e restore hermético | `COMPLETED` |
+| **Fase R4** | Migração e recuperação: Motor sintético V2→V3 com fixture versionada e restore hermético real | `COMPLETED` |
 | **Fase R5** | E2E Docker P1–P8 verdadeiro: Web + API + Worker + DB + Redis + Provedor Sintético HTTP | `IN_PROGRESS` |
 | **Fase R6** | Reconciliação documental, gates finais seriais e auditoria independente | `TODO` |
 

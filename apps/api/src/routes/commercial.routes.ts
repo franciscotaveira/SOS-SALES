@@ -261,6 +261,32 @@ export const commercialRoutes: FastifyPluginAsync = async (app) => {
             correlationId: request.id,
           });
         }
+        if (
+          err.code === "OUTCOME_CONFLICT" ||
+          err.status === 409 ||
+          err.message?.includes("already reached terminal outcome") ||
+          err.message?.includes("is already in terminal status") ||
+          err.message?.includes("uq_commercial_outcomes_journey_won")
+        ) {
+          return reply.status(409).send({
+            type: "https://sos-sales.mct.br/errors/conflict",
+            title: "Conflict",
+            status: 409,
+            detail: err.message,
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
+        if (err.message?.includes("REASON_REQUIRED") || err.message?.includes("ACTOR_REQUIRED")) {
+          return reply.status(400).send({
+            type: "https://sos-sales.mct.br/errors/bad-request",
+            title: "Bad Request",
+            status: 400,
+            detail: err.message,
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
         throw err;
       }
     }
@@ -446,6 +472,32 @@ export const commercialRoutes: FastifyPluginAsync = async (app) => {
             type: "https://sos-sales.mct.br/errors/not-found",
             title: "Not Found",
             status: 404,
+            detail: err.message,
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
+        if (
+          err.code === "OUTCOME_CONFLICT" ||
+          err.status === 409 ||
+          err.message?.includes("already reached terminal outcome") ||
+          err.message?.includes("is already in terminal status") ||
+          err.message?.includes("uq_commercial_outcomes_journey_won")
+        ) {
+          return reply.status(409).send({
+            type: "https://sos-sales.mct.br/errors/conflict",
+            title: "Conflict",
+            status: 409,
+            detail: err.message,
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
+        if (err.message?.includes("REASON_REQUIRED") || err.message?.includes("ACTOR_REQUIRED")) {
+          return reply.status(400).send({
+            type: "https://sos-sales.mct.br/errors/bad-request",
+            title: "Bad Request",
+            status: 400,
             detail: err.message,
             instance: request.url,
             correlationId: request.id,
