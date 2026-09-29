@@ -8,25 +8,24 @@
 
 ## 1. Fotografia do Estado Atual
 
-- **Data / Hora:** 2026-09-29T04:40:00-03:00
-- **SHA Base de Entrada:** `cedd45f`
-- **Milestone Atual:** `M8 — Resiliência, Restarts, Lease Recovery e Preparação para Migração` -> `COMPLETED`
-- **Próximo Milestone:** `M9 — E2E Integrado P1–P8 + Ensaio Sintético Haven de Ponta a Ponta`
+- **Data / Hora:** 2026-09-29T04:55:00-03:00
+- **SHA Base de Entrada:** `0d18057`
+- **Milestone Atual:** `M9 — E2E Integrado P1–P8 + Ensaio Sintético Haven de Ponta a Ponta` -> `COMPLETED`
+- **Próximo Milestone:** `M10 — Revisão Final Independente & Declaração VERIFIED_DOCKER_LAB`
 - **Último Gate Verde:**
-  - Database Test Suite (`pnpm test:db:run`): 55/55 arquivos de teste aprovados, 730/730 testes verdes com teardown limpo.
+  - Database Test Suite (`pnpm test:db:run`): 56/56 arquivos de teste aprovados, 737/737 testes verdes com teardown limpo.
   - Typecheck Repo (`pnpm typecheck`): 18/18 tarefas bem-sucedidas no Turbo sem erros.
-  - Monorepo Build (`pnpm build`): 10/10 pacotes construídos com sucesso (incluindo `@sos-sales/web` em 1.84s).
-  - Runbook de Operação & Resiliência: `docs/runbooks/BACKUP-RESTORE-ROLLBACK-RUNBOOK.md` documentando procedimentos de snapshot/restore para `sos-v3-postgres`, protocolo de rollback por tráfego e feature flags (expand-contract sem down-migration destrutiva) e procedimentos de recuperação de falhas do worker.
-  - Ferramenta de Dry-Run V2->V3: `scripts/migration-v2-to-v3-dryrun.ts` executando validação completa de schema (17 tabelas essenciais), verificação estrita de FORCE RLS, privilégios mínimos de `sos_app_user` (sem DELETE), integridade referencial sem registros órfãos e relatório estruturado de divergência.
-  - Suítes de Teste M8:
-    - `scripts/__tests__/migration-v2-to-v3-dryrun.test.ts`: 2/2 testes aprovados confirmando prontidão V3 e idempotência.
-    - `apps/worker/src/__tests__/resilience-and-recovery-m8.test.ts`: 3/3 testes aprovados validando:
-      1. Recuperação de lease expirado de outbox após crash de worker direcionando para `reconciliation_required` sem chamada cega ao provedor WhatsApp;
-      2. Recuperação de eventos CAPI em falhas com despacho honesto e seguro em modo simulado;
-      3. Rastreabilidade de ponta a ponta com correlação de IDs em eventos de auditoria imutáveis.
+  - Web Build (`pnpm --filter @sos-sales/web build`): Construído com sucesso em 1.84s.
+  - M9 E2E Integrado Suite (`apps/api/src/__tests__/e2e-integrated-p1-p8-haven.test.ts`): 7/7 testes aprovados cobrindo integralmente:
+    - P1 & P8: Atendimento normal e execução 100% nativa sem dependência de n8n (mensagens in/out com outbox transacional).
+    - P2: Isolamento cross-tenant estrito (leitura 403 / 0 mensagens e tentativa de escrita rejeitada com 403 entre Haven e Barbearia).
+    - P3: Idempotência de mensagens (replay idêntico com mesma chave retorna HTTP 200, isIdempotentReplay: true, mesmo commandId, sem duplicação de outbox).
+    - P6: Estados financeiros honestos: Pix EMV gerado no estado PENDING e confirmação via MANUAL_CASHIER sem inventar conciliação bancária automática.
+    - P7: Sugestões governadas e controle de concorrência com optimistic locking (`state_version`).
+    - Ensaio Sintético Haven Escovaria (Etapas 1 a 8): Jornada completa de ponta a ponta (catálogo Haven, inbound Fernanda, proposta imutável com congelamento de preços, próxima ação comercial, Pix EMV com conferência manual de caixa, desfecho comercial WON, trilha de auditoria e caso LOST com `REASON_REQUIRED`).
 - **Erro / Bloqueador Ativo no Momento:** Nenhum bloqueador interno em aberto.
 - **Próxima Ação Imediata:**
-  - Iniciar M9: Executar suíte de validação integrada dos percursos P1 a P8 no runtime local hermético, incluindo o ensaio sintético completo da jornada comercial Haven (solicitação de catálogo -> proposta imutável -> próxima ação -> Pix EMV -> conferência manual -> outcome WON -> auditoria completa) sem n8n e sem envio real externo.
+  - Iniciar M10: Execução dos gates finais independentes e seriais (`test:db:run`, `typecheck`, `build`, `lint`, `ci:check`, `test:docker:http`), validação de integridade do laboratório e emissão da declaração formal `VERIFIED_DOCKER_LAB`.
 
 ---
 
@@ -42,8 +41,8 @@
 | **M5** | Próxima Ação Comercial E2 (Schema `commercial_actions`, atomicidade Radar, Cockpit Lite) | `COMPLETED` | `5072e39` |
 | **M6** | Fluxo comercial, catálogo, proposta imutável, Pix EMV e outcome WON/LOST | `COMPLETED` | `3a0392d` |
 | **M7** | Onboarding assistido de canal por workspace (WABA/WAHA com credenciais protegidas) | `COMPLETED` | `cedd45f` |
-| **M8** | Resiliência, restarts, lease recovery e preparação para migração | `COMPLETED` | pendente commit M8 |
-| **M9** | E2E integrado P1–P8 + Ensaio sintético Haven de ponta a ponta | `TODO` | — |
+| **M8** | Resiliência, restarts, lease recovery e preparação para migração | `COMPLETED` | `0d18057` |
+| **M9** | E2E integrado P1–P8 + Ensaio sintético Haven de ponta a ponta | `COMPLETED` | pendente commit M9 |
 | **M10** | Revisão final independente & declaração `VERIFIED_DOCKER_LAB` | `TODO` | — |
 
 

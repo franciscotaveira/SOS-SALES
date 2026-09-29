@@ -274,6 +274,40 @@
   - `pnpm build`:
     - **Resultado:** 10/10 pacotes construídos com sucesso (Exit Code: 0, Duração: 4.28s).
 
+---
+
+## 11. Milestone M9 — E2E Integrado P1–P8 + Ensaio Sintético Haven de Ponta a Ponta
+
+- **Data:** 2026-09-29T04:55:00-03:00
+- **Mudanças Implementadas:**
+  - `apps/api/src/__tests__/e2e-integrated-p1-p8-haven.test.ts`:
+    - Suíte integrada de testes ponta a ponta validando integralmente os percursos P1 a P8 no runtime local hermético, com execução 100% nativa sem dependência de n8n:
+      - **P1 & P8 (Atendimento Normal & Sem n8n):** Mensagens inbound simuladas e outbound via outbox transacional (`outbound_commands`) com status `pending`, gerando IDs rastreáveis sem qualquer chamada ou pré-requisito de n8n.
+      - **P2 (Isolamento Cross-Tenant):** Camila (Haven Escovaria) tem leitura bloqueada com 403 nas rotas da Barbearia concorrente; rotas de mensagens retornam lista vazia via RLS; e tentativas de injeção outbound cruzada pelo concorrente são sumariamente rejeitadas com HTTP 403.
+      - **P3 (Repetição & Idempotência):** Replay de requisição idêntica com mesma `idempotencyKey` retorna HTTP 200 OK, `isIdempotentReplay: true`, mesmo `commandId` original e mantém exatamente 1 registro no banco de dados.
+      - **P6 (Estados Financeiros Honestos):** Geração de payload Pix EMV estático institucional para a Haven no estado PENDING, seguido de conferência manual de caixa (`confirmPixChargeManual`) com anotações de verificação e método `MANUAL_CASHIER`, marcando status `PAID` sem falsificar liquidação bancária automática.
+      - **P7 (Sugestões Governadas & Concorrência Otimista):** Transição de sugestão com controle de versão de concorrência (`state_version`), bloqueando alterações regressivas ou concorrentes desatualizadas após o aceite.
+      - **Ensaio Sintético Completo Haven Escovaria (Etapas 1 a 8):**
+        1. Catálogo real de serviços da Haven ("Escova Modelada" R$ 69,00);
+        2. Inbound da cliente Fernanda via WhatsApp solicitando agendamento;
+        3. Proposta comercial imutável criada congelando itens e preço unitário mesmo após aumento posterior no catálogo para R$ 89,00;
+        4. Próxima ação comercial vinculada na conversa para confirmação de presença;
+        5. Cobrança Pix EMV gerada e vinculada à proposta;
+        6. Conferência manual de caixa (`confirmPixChargeManual`) com comprovante verificado e status `PAID`;
+        7. Desfecho comercial `won` registrado com valor consolidado de R$ 69,00 e ator identificado;
+        8. Trilha de auditoria imutável correlacionando todos os IDs de ponta a ponta.
+      - **Caso de Desistência LOST:** Validação estrita de motivo obrigatório (`REASON_REQUIRED`) ao registrar desfecho de perda comercial.
+- **Resultados de Testes Executados:**
+  - `apps/api/src/__tests__/e2e-integrated-p1-p8-haven.test.ts`:
+    - **Resultado:** 7/7 testes aprovados (Exit Code: 0, Duração: 324ms).
+  - Execução Integral Monorepo (`pnpm test:db:run`):
+    - **Resultado:** 56/56 arquivos de teste aprovados, 737/737 testes verdes com teardown limpo (Exit Code: 0, Duração: 26.39s).
+  - `pnpm typecheck`:
+    - **Resultado:** 18/18 tarefas concluídas com sucesso no Turbo (Exit Code: 0, Duração: 2.33s).
+  - `pnpm --filter @sos-sales/web build`:
+    - **Resultado:** Build concluído com sucesso em 1.84s (Exit Code: 0).
+
+
 
 
 
