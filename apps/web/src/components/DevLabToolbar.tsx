@@ -39,6 +39,9 @@ export const DevLabToolbar: FC<DevLabToolbarProps> = ({
     return null;
   }
 
+  const LOCAL_DEV_DEMO_TOKEN =
+    "REDACTED_DEV_JWT";
+
   const [inputToken, setInputToken] = useState<string>(token || "");
   const [isOpen, setIsOpen] = useState<boolean>(true);
 
@@ -48,7 +51,18 @@ export const DevLabToolbar: FC<DevLabToolbarProps> = ({
 
   const handleClearToken = () => {
     setInputToken("");
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("sos_v3_explicit_logged_out", "true");
+    }
     onTokenChange(null);
+  };
+
+  const handleLoadDemo = () => {
+    setInputToken(LOCAL_DEV_DEMO_TOKEN);
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("sos_v3_explicit_logged_out");
+    }
+    onTokenChange(LOCAL_DEV_DEMO_TOKEN);
   };
 
   return (
@@ -137,6 +151,13 @@ export const DevLabToolbar: FC<DevLabToolbarProps> = ({
                 onClick={handleClearToken}
               >
                 Limpar (401)
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleLoadDemo}
+              >
+                Demo Matriz (Francisco)
               </Button>
             </div>
 

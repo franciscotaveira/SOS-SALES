@@ -1,5 +1,5 @@
 import type { ISigningSecretResolver } from "../services/signature-verification.service";
-import type { WabaTemplateMessage } from "@sos-sales/contracts";
+import type { WabaTemplateMessage, WabaInteractiveMessage } from "@sos-sales/contracts";
 
 export interface OutboundSendParams {
   readonly workspaceId: string;
@@ -10,6 +10,7 @@ export interface OutboundSendParams {
   readonly body: string;
   readonly mediaUrl?: string | null;
   readonly template?: WabaTemplateMessage | null;
+  readonly interactive?: WabaInteractiveMessage | null;
   readonly idempotencyKey: string;
   readonly lastInboundMessageAt?: Date | null;
   readonly signal?: AbortSignal;

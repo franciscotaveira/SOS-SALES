@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { WabaTemplateMessage } from "@sos-sales/contracts";
+import type { WabaTemplateMessage, WabaInteractiveMessage } from "@sos-sales/contracts";
 import type { ChannelInstanceRecord } from "@sos-sales/database";
 import type { ChannelAdapterRegistry } from "../registry/channel-adapter.registry";
 import type { ChannelSendResult, OutboundSendParams } from "../adapters/channel-adapter.interface";
@@ -13,7 +13,7 @@ import {
   ChannelProviderUnavailableError,
 } from "../errors/channel-dispatch.errors";
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface IChannelInstanceRepository {
   getById(workspaceId: string, channelInstanceId: string): Promise<ChannelInstanceRecord>;
@@ -30,6 +30,7 @@ export interface OutboundMessagePayload {
   readonly body: string;
   readonly mediaUrl?: string | null;
   readonly template?: WabaTemplateMessage | null;
+  readonly interactive?: WabaInteractiveMessage | null;
   readonly idempotencyKey: string;
   readonly commandId?: string;
   readonly messageId?: string;
@@ -146,6 +147,7 @@ export class ChannelDispatchService {
       provider: instance.provider,
       hasMedia: Boolean(payload.mediaUrl),
       hasTemplate: Boolean(payload.template),
+      hasInteractive: Boolean(payload.interactive),
     });
 
     const sendParams: OutboundSendParams = {
@@ -157,6 +159,7 @@ export class ChannelDispatchService {
       body: payload.body,
       mediaUrl: payload.mediaUrl,
       template: payload.template,
+      interactive: payload.interactive,
       idempotencyKey: payload.idempotencyKey,
       lastInboundMessageAt: payload.lastInboundMessageAt,
       signal: payload.signal,

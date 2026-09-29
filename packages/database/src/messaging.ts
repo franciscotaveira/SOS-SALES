@@ -64,6 +64,7 @@ export interface MessageRecord {
   content_type: MessageContentType;
   body: string | null;
   media_url: string | null;
+  metadata?: Record<string, unknown> | null;
   provider_message_id: string | null;
   delivery_status: MessageDeliveryStatus;
   status_rank: number;
@@ -95,6 +96,7 @@ export interface CreateMessageParams {
   contentType: MessageContentType;
   body?: string | null;
   mediaUrl?: string | null;
+  metadata?: Record<string, unknown> | null;
   providerMessageId?: string | null;
   deliveryStatus?: MessageDeliveryStatus;
   statusRank?: number;
@@ -222,11 +224,11 @@ export async function insertMessage(
     `INSERT INTO public.messages (
        workspace_id, channel_instance_id, thread_id, provider, direction,
        sender_e164, recipient_e164, content_type, body, media_url,
-       provider_message_id, delivery_status, status_rank
+       metadata, provider_message_id, delivery_status, status_rank
      ) VALUES (
        $1, $2, $3, $4, $5,
        $6, $7, $8, $9, $10,
-       $11, COALESCE($12, 'queued'), $13
+       COALESCE($11::jsonb, '{}'::jsonb), $12, COALESCE($13, 'queued'), $14
      )
      RETURNING *;`,
     [
@@ -240,6 +242,7 @@ export async function insertMessage(
       params.contentType,
       params.body ?? null,
       params.mediaUrl ?? null,
+      params.metadata ? JSON.stringify(params.metadata) : null,
       params.providerMessageId ?? null,
       params.deliveryStatus || "queued",
       rank,

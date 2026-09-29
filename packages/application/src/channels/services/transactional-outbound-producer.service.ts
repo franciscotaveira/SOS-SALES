@@ -163,6 +163,7 @@ export class TransactionalOutboundProducerService implements ITransactionalOutbo
               contentType: request.contentType,
               body: request.body,
               mediaUrl: request.mediaUrl,
+              metadata: (request.metadata as Record<string, unknown>) || null,
             },
             client
           );
@@ -179,6 +180,7 @@ export class TransactionalOutboundProducerService implements ITransactionalOutbo
               templateName: request.template?.name,
               templateLanguage: request.template?.language,
               templateComponents: request.template?.components,
+              interactivePayload: request.interactive ? (request.interactive as unknown as Record<string, unknown>) : undefined,
               idempotencyKey: request.idempotencyKey,
               payloadFingerprint: computedFingerprint,
             },

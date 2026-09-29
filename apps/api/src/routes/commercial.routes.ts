@@ -114,6 +114,7 @@ export const commercialRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [
         app.authenticate,
         app.requireWorkspaceContext,
+        app.requirePermission("journey:transition_stage"),
       ],
     },
     async (request, reply) => {
@@ -165,6 +166,7 @@ export const commercialRoutes: FastifyPluginAsync = async (app) => {
         workspaceId: journey.workspace_id,
         contactId: journey.contact_id,
         threadId: journey.thread_id,
+        title: journey.title,
         stage: journey.stage,
         status: journey.status,
         attributionSource: journey.attribution_source,
@@ -181,6 +183,7 @@ export const commercialRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [
         app.authenticate,
         app.requireWorkspaceContext,
+        app.requirePermission("outcome:register"),
       ],
     },
     async (request, reply) => {
@@ -335,6 +338,7 @@ export const commercialRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [
         app.authenticate,
         app.requireWorkspaceContext,
+        app.requirePermission("outcome:register"),
       ],
     },
     async (request, reply) => {

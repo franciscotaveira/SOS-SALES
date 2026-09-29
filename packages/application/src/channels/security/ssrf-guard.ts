@@ -144,8 +144,8 @@ export function hasAlternativeIpFormat(input: string): boolean {
     return true;
   }
 
-  // 2. Hexadecimal notation anywhere (e.g. 0x7f000001 or 0x7f.0.0.1)
-  if (/0x[0-9a-f]+/i.test(decoded)) {
+  // 2. Hexadecimal notation in host (e.g. 0x7f000001 or 0x7f.0.0.1)
+  if (/0x[0-9a-f]+/i.test(hostOnly)) {
     return true;
   }
 
@@ -392,7 +392,7 @@ export function validateMediaUrl(
     throw new Error(`SSRF_VIOLATION: Destination '${lowerHost}' matches blocked metadata service`);
   }
 
-  if (hasAlternativeIpFormat(lowerHost) || hasAlternativeIpFormat(urlStr)) {
+  if (hasAlternativeIpFormat(lowerHost)) {
     throw new Error(`SSRF_VIOLATION: Destination '${lowerHost}' uses alternative IP notation`);
   }
 

@@ -481,4 +481,140 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRoutesOptions> = async (
       });
     }
   );
+
+  /**
+   * Global Meta WABA Handshake & Verification (/api/meta/webhook & aliases)
+   */
+  const handleMetaGlobalVerification = async (request: FastifyRequest, reply: FastifyReply) => {
+    const queryParsed = WebhookChallengeQuerySchema.safeParse(request.query);
+    if (!queryParsed.success) {
+      return reply.status(400).send("Bad Request");
+    }
+
+    const mode = queryParsed.data["hub.mode"];
+    const challenge = queryParsed.data["hub.challenge"];
+    const verifyToken = queryParsed.data["hub.verify_token"];
+
+    if (mode !== "subscribe" || !verifyToken) {
+      return reply.status(403).send("Forbidden");
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(verifyToken.trim()).digest("hex");
+    const ingressPool = options.ingressPool || (await import("@sos-sales/database")).getDatabasePool();
+
+    try {
+      const res = await ingressPool.query<{
+        channel_instance_id: string;
+        workspace_id: string;
+        provider: string;
+        is_active: boolean;
+      }>("SELECT * FROM public.lookup_channel_by_verify_token($1::text);", [tokenHash]);
+
+      if (res.rows.length === 0 || !res.rows[0]?.is_active) {
+        request.log.warn({ verifyTokenHash: tokenHash }, "Meta global webhook verification token not found or inactive");
+        return reply.status(403).send("Forbidden");
+      }
+
+      return reply.status(200).type("text/plain").send(challenge);
+    } catch (err) {
+      request.log.error({ err }, "Error resolving Meta global verify token");
+      return reply.status(500).send("Internal Server Error");
+    }
+  };
+
+  app.get("/api/meta/webhook", handleMetaGlobalVerification);
+  app.get("/api/v1/channels/waba/webhook", handleMetaGlobalVerification);
+  app.get("/webhooks/waba", handleMetaGlobalVerification);
+
+  /**
+   * Global Meta WABA Event Ingestion (/api/meta/webhook & aliases)
+   */
+  const handleMetaGlobalEvents = async (request: FastifyRequest, reply: FastifyReply) => {
+    const rawBody = request.rawBody;
+    if (!rawBody || rawBody.length === 0) {
+      return reply.status(400).send({ error: "Missing payload" });
+    }
+
+    let phoneNumberId: string | null = null;
+    try {
+      const parsed = JSON.parse(rawBody.toString("utf-8"));
+      phoneNumberId = parsed?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id || null;
+    } catch {
+      return reply.status(400).send({ error: "Invalid JSON" });
+    }
+
+    if (!phoneNumberId) {
+      return reply.status(200).send({ received: true, status: "ignored_no_phone_id" });
+    }
+
+    const ingressPool = options.ingressPool || (await import("@sos-sales/database")).getDatabasePool();
+    const chanRes = await ingressPool.query<{
+      channel_instance_id: string;
+      workspace_id: string;
+      provider: string;
+      is_active: boolean;
+    }>("SELECT * FROM public.lookup_channel_by_meta_phone_id($1::text);", [phoneNumberId]);
+
+    const channel = chanRes.rows[0];
+    if (!channel || !channel.is_active) {
+      request.log.warn({ phoneNumberId }, "Channel instance not found for Meta phone number id");
+      return reply.status(200).send({ received: true, status: "unmapped_channel" });
+    }
+
+    const verification = await signatureService.verify({
+      channelInstanceId: channel.channel_instance_id,
+      workspaceId: channel.workspace_id,
+      provider: "meta_waba",
+      rawBody,
+      headers: request.headers as Record<string, string | string[] | undefined>,
+    });
+
+    if (!verification.valid) {
+      request.log.warn({ channelId: channel.channel_instance_id, reason: verification.reason }, "Invalid Meta webhook signature");
+      return reply.status(401).send({ error: "Unauthorized" });
+    }
+
+    const rawPayloadHash = crypto.createHash("sha256").update(rawBody).digest("hex");
+    const aad = `${channel.workspace_id}:${channel.channel_instance_id}:${rawPayloadHash}`;
+    const encrypted = encryptPayload(rawBody, keyringOrKey, { aad, keyVersion: activeKeyVersion });
+    const providerEventKey = `sha256:${rawPayloadHash}`;
+
+    try {
+      await withIngressTransaction(
+        channel.workspace_id,
+        async (client) => {
+          await client.query(
+            `INSERT INTO public.channel_webhook_inbox (
+               channel_instance_id, workspace_id, provider_event_key, raw_payload_hash,
+               encrypted_payload, payload_iv, payload_auth_tag, key_version,
+               status, retry_count, max_retries, next_attempt_at
+             ) VALUES (
+               $1, $2, $3, $4, $5, $6, $7, $8, 'pending', 0, 5, clock_timestamp()
+             )
+             ON CONFLICT (channel_instance_id, provider_event_key) DO NOTHING;`,
+            [
+              channel.channel_instance_id,
+              channel.workspace_id,
+              providerEventKey,
+              rawPayloadHash,
+              encrypted.encryptedBase64,
+              encrypted.ivBase64,
+              encrypted.authTagBase64,
+              encrypted.keyVersion ?? 1,
+            ]
+          );
+        },
+        ingressPool
+      );
+    } catch (err) {
+      request.log.error({ err }, "Database error inserting into channel_webhook_inbox");
+      return reply.status(500).send({ error: "Internal Error" });
+    }
+
+    return reply.status(200).send({ received: true, status: "accepted" });
+  };
+
+  app.post("/api/meta/webhook", handleMetaGlobalEvents);
+  app.post("/api/v1/channels/waba/webhook", handleMetaGlobalEvents);
+  app.post("/webhooks/waba", handleMetaGlobalEvents);
 };

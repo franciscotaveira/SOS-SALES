@@ -118,6 +118,48 @@ export const WabaTemplateMessageSchema = z.object({
 });
 export type WabaTemplateMessage = z.infer<typeof WabaTemplateMessageSchema>;
 
+export const WabaFlowActionParametersSchema = z.object({
+  flow_message_version: z.string().default("3"),
+  flow_token: z.string().min(1),
+  flow_id: z.string().min(1),
+  flow_cta: z.string().min(1).max(40),
+  flow_action: z.enum(["navigate", "data_exchange"]).default("navigate"),
+  flow_action_payload: z
+    .object({
+      screen: z.string().min(1),
+      data: z.record(z.unknown()).optional(),
+    })
+    .optional(),
+});
+export type WabaFlowActionParameters = z.infer<typeof WabaFlowActionParametersSchema>;
+
+export const WabaInteractiveMessageSchema = z.object({
+  type: z.enum([
+    "flow",
+    "button",
+    "list",
+    "product",
+    "product_list",
+    "catalog_message",
+  ]),
+  header: z
+    .object({
+      type: z.enum(["text", "image", "video", "document"]).default("text"),
+      text: z.string().max(60).optional(),
+    })
+    .optional(),
+  body: z.object({
+    text: z.string().min(1).max(1024),
+  }),
+  footer: z
+    .object({
+      text: z.string().max(60),
+    })
+    .optional(),
+  action: z.record(z.unknown()),
+});
+export type WabaInteractiveMessage = z.infer<typeof WabaInteractiveMessageSchema>;
+
 export const OutboundChannelCommandSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
@@ -127,6 +169,7 @@ export const OutboundChannelCommandSchema = z.object({
   body: z.string().min(1),
   mediaUrl: z.string().url().optional(),
   template: WabaTemplateMessageSchema.optional(),
+  interactive: WabaInteractiveMessageSchema.optional(),
   idempotencyKey: z.string().min(1),
   payloadFingerprint: z.string().regex(SHA256_HEX_REGEX).nullable().optional(),
   status: OutboundCommandStatusEnum,
@@ -153,10 +196,12 @@ export const PublicOutboundRequestSchema = z
     recipientPhoneE164: z
       .string()
       .regex(E164_PHONE_REGEX, "E.164 phone format required (e.g. +5511999998888)"),
-    contentType: z.enum(["text", "image", "audio", "video", "document", "template"]),
+    contentType: z.enum(["text", "image", "audio", "video", "document", "template", "interactive"]),
     body: z.string().min(1).max(4096),
     mediaUrl: z.string().url().optional(),
     template: WabaTemplateMessageSchema.optional(),
+    interactive: WabaInteractiveMessageSchema.optional(),
+    metadata: z.record(z.unknown()).optional(),
     idempotencyKey: z
       .string()
       .min(1)

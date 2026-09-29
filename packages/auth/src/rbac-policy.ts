@@ -14,6 +14,7 @@ const ROLE_PERMISSIONS: Record<Role, Set<Permission>> = {
     "outcome:register",
     "integration:view",
     "integration:manage",
+    "integration:suggestions:manage",
     "capi:dispatch",
     "audit:view",
   ]),
@@ -29,6 +30,7 @@ const ROLE_PERMISSIONS: Record<Role, Set<Permission>> = {
     "outcome:register",
     "integration:view",
     "integration:manage",
+    "integration:suggestions:manage",
     "capi:dispatch",
     "audit:view",
   ]),
@@ -42,6 +44,7 @@ const ROLE_PERMISSIONS: Record<Role, Set<Permission>> = {
     "journey:transition_stage",
     "outcome:register",
     "integration:view",
+    "integration:suggestions:manage",
     "audit:view",
   ]),
   operator: new Set([
@@ -51,6 +54,7 @@ const ROLE_PERMISSIONS: Record<Role, Set<Permission>> = {
     "journey:view",
     "journey:transition_stage",
     "outcome:register",
+    "integration:suggestions:manage",
   ]),
   analyst: new Set([
     "workspace:view",
@@ -59,10 +63,9 @@ const ROLE_PERMISSIONS: Record<Role, Set<Permission>> = {
     "audit:view",
   ]),
   integration_service: new Set([
-    "cockpit:send_message",
     "journey:view",
-    "outcome:register",
-    "capi:dispatch",
+    "integration:candidates:read",
+    "integration:suggestions:create",
   ]),
   support_auditor: new Set([
     "workspace:view",

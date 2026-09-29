@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { getDatabasePool } from "../client";
 import {
   decryptPayload,
   parseKeyringFromEnv,
@@ -75,7 +76,7 @@ export class DatabaseSigningSecretResolver implements ISigningSecretResolver {
   private readonly keyringOrKey: string | Keyring;
 
   constructor(options: DatabaseSigningSecretResolverOptions = {}) {
-    this.pool = options.pool;
+    this.pool = options.pool ?? getDatabasePool();
 
     if (options.keyring && Object.keys(options.keyring).length > 0) {
       this.keyringOrKey = options.keyring;

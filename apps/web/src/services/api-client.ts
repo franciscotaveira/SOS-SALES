@@ -28,6 +28,10 @@ export interface WorkspaceRecord {
   timezone: string;
   currency: string;
   isActive: boolean;
+  defaultPixKey?: string | null;
+  defaultPixKeyType?: string | null;
+  defaultPixMerchantName?: string | null;
+  defaultPixMerchantCity?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -144,17 +148,202 @@ export interface ThreadMessageSummary {
   contentType: string;
   body: string | null;
   mediaUrl: string | null;
+  metadata?: Record<string, unknown> | null;
   providerMessageId: string | null;
   deliveryStatus: "queued" | "sent" | "delivered" | "read" | "failed";
   createdAt: string;
   updatedAt: string;
 }
 
+export interface MessageTemplateButton {
+  type: string;
+  text: string;
+  url?: string;
+  phone_number?: string;
+}
+
+export interface MessageTemplateSummary {
+  id: string;
+  workspaceId: string;
+  name: string;
+  category: "UTILITY" | "MARKETING" | "AUTHENTICATION";
+  language: string;
+  headerText: string | null;
+  bodyText: string;
+  footerText: string | null;
+  buttons: MessageTemplateButton[];
+  variables: string[];
+  status: "APPROVED" | "PENDING" | "REJECTED" | "PAUSED";
+  metaTemplateId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WabaTemplateComponent {
+  type: "header" | "body" | "button";
+  parameters?: Array<Record<string, unknown>>;
+  sub_type?: string;
+  index?: number;
+}
+
+export interface WabaTemplateMessage {
+  name: string;
+  language: string;
+  components?: WabaTemplateComponent[];
+}
+
+export interface FlowScreenField {
+  id: string;
+  type: "text" | "select" | "radio" | "date" | "textarea";
+  label: string;
+  required?: boolean;
+  options?: Array<{ id: string; title: string }>;
+}
+
+export interface FlowScreen {
+  id: string;
+  title: string;
+  fields: FlowScreenField[];
+}
+
+export interface WhatsAppFlowSummary {
+  id: string;
+  workspaceId: string;
+  name: string;
+  title: string;
+  description: string | null;
+  category: "LEAD_GENERATION" | "APPOINTMENT_BOOKING" | "CUSTOMER_SUPPORT" | "SURVEY";
+  status: "DRAFT" | "PUBLISHED" | "DEPRECATED" | "BLOCKED";
+  metaFlowId: string;
+  ctaLabel: string;
+  headerText: string | null;
+  bodyText: string;
+  footerText: string | null;
+  initialScreen: string;
+  screensPreview: FlowScreen[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WabaInteractiveFlowActionParameters {
+  flow_message_version: string;
+  flow_token: string;
+  flow_id: string;
+  flow_cta: string;
+  flow_action: "navigate" | "data_exchange";
+  flow_action_payload?: {
+    screen: string;
+    data?: Record<string, unknown>;
+  };
+}
+
+export interface ProductRecord {
+  id: string;
+  workspaceId: string;
+  catalogId: string;
+  retailerId: string;
+  title: string;
+  subtitle: string | null;
+  description: string;
+  priceCents: number;
+  priceFormatted: string;
+  currency: string;
+  category: string;
+  imageUrl: string;
+  badge: string | null;
+  status: "ACTIVE" | "INACTIVE" | "OUT_OF_STOCK";
+  isFeatured: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PixChargeSummary {
+  id: string;
+  workspaceId: string;
+  threadId: string;
+  contactId: string;
+  productId: string | null;
+  title: string;
+  amountCents: number;
+  amountFormatted: string;
+  currency: string;
+  pixCode: string;
+  pixQrUrl: string | null;
+  verificationMethod?: "UNVERIFIED" | "MANUAL_CASHIER" | "BANK_WEBHOOK" | null;
+  verifiedByUserId?: string | null;
+  verifiedAt?: string | null;
+  verificationNotes?: string | null;
+  status: "PENDING" | "PAID" | "EXPIRED" | "CANCELLED";
+  expiresAt: string;
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IntegrationSuggestionSummary {
+  id: string;
+  idempotencyKey: string;
+  source: string;
+  threadId: string | null;
+  contactId: string | null;
+  suggestionType: string;
+  title: string;
+  body: string;
+  draftMessage: string | null;
+  priority: "low" | "normal" | "high" | "urgent";
+  metadata: Record<string, unknown>;
+  status: "pending" | "accepted" | "dismissed" | "expired";
+  stateVersion: number;
+  decidedByUserId: string | null;
+  decidedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IntegrationSuggestionDecisionResult {
+  id: string;
+  status: "accepted" | "dismissed";
+  stateVersion: number;
+  decidedByUserId: string | null;
+  decidedAt: string | null;
+  draftMessage: string | null;
+  threadId: string | null;
+}
+
+export interface WabaInteractiveMessage {
+  type: "flow" | "button" | "list" | "product" | "product_list" | "catalog_message";
+  header?: {
+    type: "text" | "image" | "video" | "document";
+    text?: string;
+  };
+  body: {
+    text: string;
+  };
+  footer?: {
+    text: string;
+  };
+  action: {
+    name?: string;
+    parameters?: WabaInteractiveFlowActionParameters | Record<string, unknown>;
+    catalog_id?: string;
+    product_retailer_id?: string;
+    sections?: Array<{
+      title: string;
+      product_items: Array<{ product_retailer_id: string }>;
+    }>;
+    [key: string]: unknown;
+  };
+}
+
 export interface SendOutboundMessagePayload {
   recipientPhoneE164: string;
-  contentType: "text" | "image" | "audio" | "video" | "document" | "template";
+  contentType: "text" | "image" | "audio" | "video" | "document" | "template" | "interactive";
   body: string;
   mediaUrl?: string;
+  template?: WabaTemplateMessage;
+  interactive?: WabaInteractiveMessage;
+  metadata?: Record<string, unknown>;
   idempotencyKey?: string;
 }
 
@@ -391,6 +580,9 @@ export class ApiClient {
           contentType: payload.contentType,
           body: payload.body,
           mediaUrl: payload.mediaUrl,
+          template: payload.template,
+          interactive: payload.interactive,
+          metadata: payload.metadata,
           idempotencyKey,
         },
       }
@@ -517,11 +709,19 @@ export class ApiClient {
       displayName: string;
       phoneNumberE164?: string;
       endpointToken?: string;
+      credentials?: {
+        accessToken?: string;
+        phoneNumberId?: string;
+        wabaAccountId?: string;
+        appSecret?: string;
+        apiKey?: string;
+        baseUrl?: string;
+      };
     },
     options?: RequestOptions
   ): Promise<{
     channel: ChannelSummary;
-    endpointToken: string;
+    webhookToken: string;
     webhookUrl: string;
   }> {
     return this.request(`/v1/workspaces/${workspaceId}/channels`, {
@@ -530,6 +730,61 @@ export class ApiClient {
       method: "POST",
       body: payload,
     });
+  }
+
+  async testChannelConnection(
+    workspaceId: string,
+    payload: {
+      provider: "meta_waba" | "waha" | "evolution";
+      credentials: {
+        accessToken?: string;
+        phoneNumberId?: string;
+        wabaAccountId?: string;
+        appSecret?: string;
+        apiKey?: string;
+        baseUrl?: string;
+      };
+    },
+    options?: RequestOptions
+  ): Promise<{
+    success: boolean;
+    verifiedName?: string;
+    displayPhoneNumber?: string;
+    qualityRating?: string;
+    codeVerificationStatus?: string;
+    error?: string;
+  }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/channels/test-connection`,
+      {
+        ...options,
+        workspaceId,
+        method: "POST",
+        body: payload,
+      }
+    );
+  }
+
+  async updateWorkspace(
+    workspaceId: string,
+    payload: {
+      name?: string;
+      defaultPixKey?: string | null;
+      defaultPixKeyType?: string | null;
+      defaultPixMerchantName?: string | null;
+      defaultPixMerchantCity?: string | null;
+    },
+    options?: RequestOptions
+  ): Promise<{ workspace: WorkspaceRecord }> {
+    return this.request<{ workspace: WorkspaceRecord }>(
+      `/v1/workspaces/${workspaceId}`,
+      {
+        ...options,
+        workspaceId,
+        method: "PATCH",
+        body: payload,
+      }
+    );
   }
 
   async getContacts(
@@ -565,7 +820,192 @@ export class ApiClient {
       body: payload,
     });
   }
+
+  async getTemplates(
+    workspaceId: string,
+    query?: { category?: string; status?: string },
+    options?: RequestOptions
+  ): Promise<{ templates: MessageTemplateSummary[]; total: number }> {
+    const params = new URLSearchParams();
+    if (query?.category) params.set("category", query.category);
+    if (query?.status) params.set("status", query.status);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+
+    return this.request(`/v1/workspaces/${workspaceId}/templates${qs}`, {
+      ...options,
+      workspaceId,
+      method: "GET",
+    });
+  }
+
+  async createTemplate(
+    workspaceId: string,
+    payload: {
+      name: string;
+      category: "UTILITY" | "MARKETING" | "AUTHENTICATION";
+      language?: string;
+      headerText?: string | null;
+      bodyText: string;
+      footerText?: string | null;
+      buttons?: MessageTemplateButton[];
+      variables?: string[];
+      status?: "APPROVED" | "PENDING" | "REJECTED" | "PAUSED";
+      metaTemplateId?: string;
+    },
+    options?: RequestOptions
+  ): Promise<{ template: MessageTemplateSummary }> {
+    return this.request(`/v1/workspaces/${workspaceId}/templates`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  async getFlows(
+    workspaceId: string,
+    query?: { category?: string; status?: string },
+    options?: RequestOptions
+  ): Promise<{ flows: WhatsAppFlowSummary[]; total: number }> {
+    const searchParams = new URLSearchParams();
+    if (query?.category) searchParams.set("category", query.category);
+    if (query?.status) searchParams.set("status", query.status);
+    const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<{ flows: WhatsAppFlowSummary[]; total: number }>(
+      `/v1/workspaces/${workspaceId}/flows${qs}`,
+      {
+        ...options,
+        method: "GET",
+        workspaceId,
+      }
+    );
+  }
+
+  async getProducts(
+    workspaceId: string,
+    query?: { category?: string; search?: string },
+    options?: RequestOptions
+  ): Promise<{ products: ProductRecord[]; total: number }> {
+    const searchParams = new URLSearchParams();
+    if (query?.category) searchParams.set("category", query.category);
+    if (query?.search) searchParams.set("search", query.search);
+    const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<{ products: ProductRecord[]; total: number }>(
+      `/v1/workspaces/${workspaceId}/products${qs}`,
+      {
+        ...options,
+        method: "GET",
+        workspaceId,
+      }
+    );
+  }
+
+  async createPixCharge(
+    workspaceId: string,
+    threadId: string,
+    payload: {
+      contactId: string;
+      productId?: string | null;
+      title: string;
+      amountCents: number;
+      expiresMinutes?: number;
+    },
+    options?: RequestOptions
+  ): Promise<{ charge: PixChargeSummary }> {
+    return this.request<{ charge: PixChargeSummary }>(
+      `/v1/workspaces/${workspaceId}/threads/${threadId}/pix-charges`,
+      {
+        ...options,
+        method: "POST",
+        workspaceId,
+        body: payload,
+      }
+    );
+  }
+
+  async getPixChargesByThread(
+    workspaceId: string,
+    threadId: string,
+    options?: RequestOptions
+  ): Promise<{ charges: PixChargeSummary[]; total: number }> {
+    return this.request<{ charges: PixChargeSummary[]; total: number }>(
+      `/v1/workspaces/${workspaceId}/threads/${threadId}/pix-charges`,
+      {
+        ...options,
+        method: "GET",
+        workspaceId,
+      }
+    );
+  }
+
+  async confirmPixPayment(
+    workspaceId: string,
+    chargeId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; charge: PixChargeSummary; outcomeId?: string }> {
+    return this.request<{ success: boolean; charge: PixChargeSummary; outcomeId?: string }>(
+      `/v1/workspaces/${workspaceId}/pix-charges/${chargeId}/confirm-payment`,
+      {
+        ...options,
+        method: "POST",
+        workspaceId,
+      }
+    );
+  }
+
+  // ─── Integration Suggestions (F1 Radar) ──────────────────────────────────
+
+  async getIntegrationSuggestionCount(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ pendingCount: number }> {
+    return this.request<{ pendingCount: number }>(
+      `/v1/workspaces/${workspaceId}/integrations/suggestions/count`,
+      {
+        ...options,
+        method: "GET",
+        workspaceId,
+      }
+    );
+  }
+
+  async getIntegrationSuggestions(
+    workspaceId: string,
+    params?: { status?: string; threadId?: string; limit?: number; offset?: number },
+    options?: RequestOptions
+  ): Promise<{ items: IntegrationSuggestionSummary[]; total: number }> {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set("status", params.status);
+    if (params?.threadId) searchParams.set("threadId", params.threadId);
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.offset) searchParams.set("offset", String(params.offset));
+    const qs = searchParams.toString();
+    const url = `/v1/workspaces/${workspaceId}/integrations/suggestions${qs ? `?${qs}` : ""}`;
+    return this.request<{ items: IntegrationSuggestionSummary[]; total: number }>(url, {
+      ...options,
+      method: "GET",
+      workspaceId,
+    });
+  }
+
+  async decideIntegrationSuggestion(
+    workspaceId: string,
+    suggestionId: string,
+    decision: { status: "accepted" | "dismissed"; stateVersion: number },
+    options?: RequestOptions
+  ): Promise<IntegrationSuggestionDecisionResult> {
+    return this.request<IntegrationSuggestionDecisionResult>(
+      `/v1/workspaces/${workspaceId}/integrations/suggestions/${suggestionId}`,
+      {
+        ...options,
+        method: "PATCH",
+        workspaceId,
+        body: decision,
+      }
+    );
+  }
 }
 
 export const apiClient = new ApiClient();
+
 

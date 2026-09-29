@@ -17,7 +17,7 @@ export interface CapiDispatcherOptions {
 
 export interface CapiDispatchResult {
   eventId: string;
-  status: "accepted" | "failed";
+  status: "accepted" | "failed" | "simulated";
   fbtraceId?: string;
   error?: string;
 }
@@ -36,7 +36,12 @@ export class CapiDispatcher {
   }
 
   async claimBatch(pool: Pool, batchSize = 10): Promise<ConversionEventRecord[]> {
-    return claimQueuedConversionEvents(pool, batchSize);
+    const leaseToken = crypto.randomUUID();
+    return claimQueuedConversionEvents(pool, {
+      limit: batchSize,
+      leaseToken,
+      leaseDurationSeconds: 60,
+    });
   }
 
   async dispatchItem(
@@ -76,8 +81,6 @@ export class CapiDispatcher {
     };
 
     try {
-      let receipt: Record<string, unknown>;
-
       if (this.endpointUrl) {
         // Explicit endpoint override (e.g. mock server or reverse proxy)
         const res = await fetch(this.endpointUrl, {
@@ -95,7 +98,25 @@ export class CapiDispatcher {
           throw new Error(`Meta CAPI endpoint responded HTTP ${res.status}: ${errText}`);
         }
 
-        receipt = (await res.json()) as Record<string, unknown>;
+        const receipt = (await res.json()) as Record<string, unknown>;
+
+        await withWorkerTransaction(
+          item.workspace_id,
+          async (client) => {
+            await markConversionEventResult(client, item.id, {
+              status: "ACCEPTED",
+              receipt,
+              leaseToken: item.lease_token,
+            });
+          },
+          pool
+        );
+
+        return {
+          eventId: item.id,
+          status: "accepted",
+          fbtraceId: (receipt.fbtrace_id as string) || undefined,
+        };
       } else if (this.datasetId && this.accessToken) {
         // Official Meta Graph API v21.0
         const url = `https://graph.facebook.com/v21.0/${this.datasetId}/events?access_token=${encodeURIComponent(this.accessToken)}`;
@@ -111,37 +132,55 @@ export class CapiDispatcher {
           throw new Error(`Meta Graph API responded HTTP ${res.status}: ${errText}`);
         }
 
-        receipt = (await res.json()) as Record<string, unknown>;
+        const receipt = (await res.json()) as Record<string, unknown>;
+
+        await withWorkerTransaction(
+          item.workspace_id,
+          async (client) => {
+            await markConversionEventResult(client, item.id, {
+              status: "ACCEPTED",
+              receipt,
+              leaseToken: item.lease_token,
+            });
+          },
+          pool
+        );
+
+        return {
+          eventId: item.id,
+          status: "accepted",
+          fbtraceId: (receipt.fbtrace_id as string) || undefined,
+        };
       } else {
-        // Hermetic Sandbox / Local Dev fallback
+        // Honest Local Dev / Sandbox fallback (Truth in Data: never simulate real fbtrace_id)
         logger.info(
           { eventId: item.id, eventName: metaEventName, valueFloat },
-          "Meta CAPI credentials not configured; recording local simulated receipt"
+          "Meta CAPI credentials not configured; marking event as SIMULATED without fake fbtrace_id"
         );
-        receipt = {
-          events_received: 1,
-          fbtrace_id: `mock_trace_${crypto.randomUUID()}`,
-          mode: "sandbox_simulated",
+        const receipt = {
+          mode: "simulated_local",
+          reason: "Meta CAPI credentials not configured in workspace",
           dispatched_at: new Date().toISOString(),
         };
+
+        await withWorkerTransaction(
+          item.workspace_id,
+          async (client) => {
+            await markConversionEventResult(client, item.id, {
+              status: "SIMULATED",
+              receipt,
+              error: "Meta CAPI credentials not configured in workspace (modo local simulado)",
+              leaseToken: item.lease_token,
+            });
+          },
+          pool
+        );
+
+        return {
+          eventId: item.id,
+          status: "simulated",
+        };
       }
-
-      await withWorkerTransaction(
-        item.workspace_id,
-        async (client) => {
-          await markConversionEventResult(client, item.id, {
-            success: true,
-            receipt,
-          });
-        },
-        pool
-      );
-
-      return {
-        eventId: item.id,
-        status: "accepted",
-        fbtraceId: (receipt.fbtrace_id as string) || undefined,
-      };
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       logger.error({ eventId: item.id, error: errMsg }, "Failed to dispatch Meta CAPI conversion");
@@ -153,6 +192,7 @@ export class CapiDispatcher {
             await markConversionEventResult(client, item.id, {
               success: false,
               error: errMsg,
+              leaseToken: item.lease_token,
             });
           },
           pool

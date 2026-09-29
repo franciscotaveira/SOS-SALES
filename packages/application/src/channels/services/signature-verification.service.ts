@@ -148,7 +148,8 @@ export class SignatureVerificationService {
       }
 
       return result;
-    } catch {
+    } catch (err) {
+      console.error("[SignatureVerificationService DEBUG]", err);
       // Fail-closed: Never crash or expose internal state
       return { valid: false, reason: "verification_exception" };
     }

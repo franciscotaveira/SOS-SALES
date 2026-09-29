@@ -38,6 +38,7 @@ export interface ClaimedOutboxItem {
   template_name?: string | null;
   template_language?: string | null;
   template_components?: Record<string, unknown>[] | null;
+  interactive_payload?: Record<string, unknown> | null;
   idempotency_key: string;
   retry_count: number;
   max_retries: number;
@@ -287,6 +288,10 @@ export class OutboxDispatcher {
           }
         : undefined;
 
+      const interactive = item.interactive_payload
+        ? (item.interactive_payload as any)
+        : undefined;
+
       // PRE-SEND FENCING VALIDATION (CH-02):
       // Verify that the lease is still valid and owned by this worker immediately before external send
       if (effectiveSignal.aborted) {
@@ -314,6 +319,7 @@ export class OutboxDispatcher {
             body: item.body,
             mediaUrl: item.media_url,
             template,
+            interactive,
             idempotencyKey: item.idempotency_key,
             commandId: item.id,
             messageId: item.message_id,

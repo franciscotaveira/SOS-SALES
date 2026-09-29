@@ -316,7 +316,63 @@ export class WabaWebhookNormalizer {
                   listRowId: reply?.id ? String(reply.id) : undefined,
                   ...(reply?.description ? { description: String(reply.description) } : {}),
                 };
+              } else if (interactiveType === "nfm_reply") {
+                const reply = interactive?.nfm_reply as Record<string, unknown> | undefined;
+                let summary = "📋 Formulário Respondido:";
+                let parsedResponse: Record<string, unknown> = {};
+                if (reply?.response_json) {
+                  try {
+                    parsedResponse =
+                      typeof reply.response_json === "string"
+                        ? JSON.parse(reply.response_json)
+                        : (reply.response_json as Record<string, unknown>);
+                    for (const [key, val] of Object.entries(parsedResponse)) {
+                      if (key === "flow_token") continue;
+                      const label = key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                      summary += `\n• ${label}: ${String(val)}`;
+                    }
+                  } catch {
+                    summary = reply?.body ? String(reply.body) : "📋 Formulário Respondido";
+                  }
+                } else if (reply?.body) {
+                  summary = String(reply.body);
+                }
+                body = summary;
+                interactiveMetadata = {
+                  interactiveType: "nfm_reply",
+                  flowName: reply?.name ? String(reply.name) : undefined,
+                  response: parsedResponse,
+                };
               }
+            } else if (rawType === "order") {
+              contentType = "interactive";
+              const order = msgObj.order as Record<string, unknown> | undefined;
+              const productItems = (order?.product_items as Array<Record<string, unknown>>) || [];
+              let summary = "🛍️ Pedido Enviado pelo Cliente (Catálogo):";
+              if (order?.text) {
+                summary += `\n"${String(order.text)}"`;
+              }
+              let totalAmount = 0;
+              let currency = "BRL";
+              for (const item of productItems) {
+                const sku = String(item.product_retailer_id || "Item");
+                const qty = Number(item.quantity || 1);
+                const price = Number(item.item_price || 0);
+                currency = String(item.currency || "BRL");
+                totalAmount += price * qty;
+                summary += `\n• ${sku} (x${qty}) — ${currency} ${price.toFixed(2)}`;
+              }
+              if (productItems.length > 0) {
+                summary += `\nTotal: ${currency} ${totalAmount.toFixed(2)}`;
+              }
+              body = summary;
+              interactiveMetadata = {
+                interactiveType: "order",
+                catalogId: order?.catalog_id ? String(order.catalog_id) : undefined,
+                productItems,
+                totalAmount,
+                currency,
+              };
             }
 
             let contactName: string | undefined;

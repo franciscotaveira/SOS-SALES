@@ -15,6 +15,11 @@ import { threadsRoutes } from "./routes/threads.routes";
 import { channelsRoutes } from "./routes/channels.routes";
 import { commercialRoutes } from "./routes/commercial.routes";
 import { contactsRoutes } from "./routes/contacts.routes";
+import { templatesRoutes } from "./routes/templates.routes";
+import { flowsRoutes } from "./routes/flows.routes";
+import { productsRoutes } from "./routes/products.routes";
+import { pixRoutes } from "./routes/pix.routes";
+import { integrationRoutes } from "./routes/integration.routes";
 import type { ISigningSecretResolver, ITransactionalOutboundProducerService } from "@sos-sales/application";
 
 
@@ -188,6 +193,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(threadsRoutes);
   await app.register(commercialRoutes);
   await app.register(contactsRoutes);
+  await app.register(templatesRoutes);
+  await app.register(flowsRoutes);
+  await app.register(productsRoutes);
+  await app.register(pixRoutes);
+  await app.register(integrationRoutes);
   await app.register(outboundMessagesRoutes, {
     producerService: options.outboundProducerService,
     rateLimiter: effectiveRateLimiter,

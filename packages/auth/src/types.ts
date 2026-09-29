@@ -12,6 +12,9 @@ export type Permission =
   | "outcome:register"
   | "integration:view"
   | "integration:manage"
+  | "integration:candidates:read"
+  | "integration:suggestions:create"
+  | "integration:suggestions:manage"
   | "capi:dispatch"
   | "audit:view";
 

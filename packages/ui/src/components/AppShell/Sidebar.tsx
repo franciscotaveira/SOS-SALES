@@ -115,6 +115,7 @@ export const Sidebar: FC<SidebarProps> = ({
           return (
             <button
               key={item.id}
+              data-nav-id={item.id}
               type="button"
               onClick={() => {
                 if (item.onClick) item.onClick();

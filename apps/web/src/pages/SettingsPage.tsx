@@ -1,7 +1,7 @@
 /**
  * SOS Sales V3 — SettingsPage (MCT OS v2.0)
- * Real destination for the "Configurações" navigation item.
- * Displays real active workspace parameters and WhatsApp channels from Fastify API.
+ * Onboarding guiado e configuração facilitada para WhatsApp e Cobrança Pix.
+ * Filosofia: "Poder invisível, simplicidade visível".
  */
 
 import { useState, useEffect, type FC } from "react";
@@ -19,23 +19,73 @@ import {
   Copy,
   Check,
   Smartphone,
+  QrCode,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowRight,
+  ArrowLeft,
 } from "lucide-react";
 
 export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => {
-  const { activeWorkspaceDetails, activeWorkspace, token, isLoadingWorkspace } = session;
+  const { activeWorkspaceDetails, activeWorkspace, token, isLoadingWorkspace, refreshWorkspace } = session;
 
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // New channel form state
-  const [isAddingChannel, setIsAddingChannel] = useState(false);
-  const [provider, setProvider] = useState<"waha" | "evolution" | "meta_waba">("waha");
+  // --- Estado do Bloco Pix Institucional ---
+  const [pixKey, setPixKey] = useState("");
+  const [pixKeyType, setPixKeyType] = useState<"cpf" | "cnpj" | "email" | "phone" | "random">("cnpj");
+  const [merchantName, setMerchantName] = useState("");
+  const [merchantCity, setMerchantCity] = useState("");
+  const [isSavingPix, setIsSavingPix] = useState(false);
+  const [pixSuccessMsg, setPixSuccessMsg] = useState<string | null>(null);
+  const [pixErrorMsg, setPixErrorMsg] = useState<string | null>(null);
+
+  // Sincronizar dados de Pix vindos do backend
+  useEffect(() => {
+    if (activeWorkspaceDetails?.workspace) {
+      const w = activeWorkspaceDetails.workspace;
+      setPixKey(w.defaultPixKey || "");
+      setPixKeyType((w.defaultPixKeyType as any) || "cnpj");
+      setMerchantName(w.defaultPixMerchantName || "");
+      setMerchantCity(w.defaultPixMerchantCity || "");
+    }
+  }, [activeWorkspaceDetails]);
+
+  // --- Estado do Assistente Wizard de Conexão WhatsApp (3 Passos) ---
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+
+  // Formulário do Wizard
+  const [provider, setProvider] = useState<"meta_waba" | "waha" | "evolution">("meta_waba");
   const [displayName, setDisplayName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [createSuccessMsg, setCreateSuccessMsg] = useState<string | null>(null);
-  const [createErrorMsg, setCreateErrorMsg] = useState<string | null>(null);
+  const [phoneNumberId, setPhoneNumberId] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [wabaAccountId, setWabaAccountId] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+
+  // Validação em Tempo Real (Meta / WAHA)
+  const [isTestingConn, setIsTestingConn] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message?: string;
+    verifiedName?: string;
+    displayPhoneNumber?: string;
+    qualityRating?: string;
+  } | null>(null);
+
+  // Criação & Resultado Webhook
+  const [isSubmittingChannel, setIsSubmittingChannel] = useState(false);
+  const [createdChannelData, setCreatedChannelData] = useState<{
+    id: string;
+    name: string;
+    webhookUrl: string;
+    webhookToken: string;
+  } | null>(null);
+  const [createChannelError, setCreateChannelError] = useState<string | null>(null);
 
   // Load active workspace channels
   const loadChannels = async () => {
@@ -61,13 +111,90 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  const handleCreateChannel = async (e: React.FormEvent) => {
+  // Salvar Parâmetros Pix da Empresa
+  const handleSavePix = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!activeWorkspace || !token) return;
+
+    setIsSavingPix(true);
+    setPixSuccessMsg(null);
+    setPixErrorMsg(null);
+
+    try {
+      await apiClient.updateWorkspace(
+        activeWorkspace.id,
+        {
+          defaultPixKey: pixKey.trim() || null,
+          defaultPixKeyType: pixKeyType,
+          defaultPixMerchantName: merchantName.trim() || null,
+          defaultPixMerchantCity: merchantCity.trim() || null,
+        },
+        { token }
+      );
+
+      setPixSuccessMsg("Configurações de Chave Pix salvas com sucesso! O Cockpit já está atualizado.");
+      if (refreshWorkspace) {
+        refreshWorkspace();
+      }
+    } catch (err: unknown) {
+      setPixErrorMsg(err instanceof Error ? err.message : "Falha ao salvar configurações de Pix.");
+    } finally {
+      setIsSavingPix(false);
+    }
+  };
+
+  // Testar Conexão em tempo real
+  const handleTestConnection = async () => {
+    if (!activeWorkspace || !token) return;
+
+    setIsTestingConn(true);
+    setTestResult(null);
+
+    try {
+      const res = await apiClient.testChannelConnection(
+        activeWorkspace.id,
+        {
+          provider,
+          credentials: {
+            phoneNumberId: phoneNumberId.trim() || undefined,
+            accessToken: accessToken.trim() || undefined,
+            apiKey: apiKey.trim() || undefined,
+            baseUrl: baseUrl.trim() || undefined,
+          },
+        },
+        { token }
+      );
+
+      if (res.success) {
+        setTestResult({
+          success: true,
+          verifiedName: res.verifiedName,
+          displayPhoneNumber: res.displayPhoneNumber,
+          qualityRating: res.qualityRating,
+          message: "Conexão validada com sucesso com a Meta Graph API!",
+        });
+      } else {
+        setTestResult({
+          success: false,
+          message: res.error || "A Meta não reconheceu as credenciais informadas.",
+        });
+      }
+    } catch (err: unknown) {
+      setTestResult({
+        success: false,
+        message: err instanceof Error ? err.message : "Erro ao testar conectividade.",
+      });
+    } finally {
+      setIsTestingConn(false);
+    }
+  };
+
+  // Concluir Wizard e Criar Linha
+  const handleFinishWizard = async () => {
     if (!activeWorkspace || !token || !displayName.trim()) return;
 
-    setIsSubmitting(true);
-    setCreateSuccessMsg(null);
-    setCreateErrorMsg(null);
+    setIsSubmittingChannel(true);
+    setCreateChannelError(null);
 
     try {
       const res = await apiClient.createChannel(
@@ -76,24 +203,48 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
           provider,
           displayName: displayName.trim(),
           phoneNumberE164: phoneNumber.trim() || undefined,
+          credentials: {
+            accessToken: accessToken.trim() || undefined,
+            phoneNumberId: phoneNumberId.trim() || undefined,
+            wabaAccountId: wabaAccountId.trim() || undefined,
+            apiKey: apiKey.trim() || undefined,
+            baseUrl: baseUrl.trim() || undefined,
+          },
         },
         { token }
       );
 
-      setCreateSuccessMsg(
-        `Canal "${res.channel.displayName}" criado! Webhook Ingress gerado com sucesso.`
-      );
-      setDisplayName("");
-      setPhoneNumber("");
-      setIsAddingChannel(false);
+      setCreatedChannelData({
+        id: res.channel.id,
+        name: res.channel.displayName,
+        webhookUrl: `${window.location.origin}${res.webhookUrl}`,
+        webhookToken: res.webhookToken,
+      });
+
+      setWizardStep(3);
       loadChannels();
     } catch (err: unknown) {
-      setCreateErrorMsg(
-        err instanceof Error ? err.message : "Falha ao criar instância de canal."
+      setCreateChannelError(
+        err instanceof Error ? err.message : "Falha ao provisionar instância de canal."
       );
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingChannel(false);
     }
+  };
+
+  const handleResetWizard = () => {
+    setIsWizardOpen(false);
+    setWizardStep(1);
+    setDisplayName("");
+    setPhoneNumber("");
+    setPhoneNumberId("");
+    setAccessToken("");
+    setWabaAccountId("");
+    setApiKey("");
+    setBaseUrl("");
+    setTestResult(null);
+    setCreatedChannelData(null);
+    setCreateChannelError(null);
   };
 
   return (
@@ -109,20 +260,20 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
       {/* Sub-header de Contexto */}
       <div
         style={{
-          height: "48px",
+          height: "52px",
           backgroundColor: "var(--bg-surface, #FFFFFF)",
           borderBottom: "1px solid var(--border-default, #E2E8F0)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0 24px",
+          padding: "0 28px",
           fontSize: "0.85rem",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <Settings size={16} color="var(--color-operational, #2563EB)" />
-          <span style={{ fontWeight: 600, color: "var(--text-primary, #0F172A)" }}>
-            Configurações & Canais de Atendimento
+          <Settings size={18} color="var(--color-operational, #2563EB)" />
+          <span style={{ fontWeight: 700, color: "var(--text-primary, #0F172A)", fontSize: "0.95rem" }}>
+            Configurações Soberanas & Integrações WhatsApp
           </span>
         </div>
 
@@ -136,7 +287,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
       <div
         style={{
           padding: "32px 24px",
-          maxWidth: "960px",
+          maxWidth: "980px",
           width: "100%",
           margin: "0 auto",
           display: "flex",
@@ -144,7 +295,812 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
           gap: "28px",
         }}
       >
-        {/* Bloco 1: Parâmetros do Tenant */}
+        {/* Bloco 1: Configuração Facilitada da Chave Pix (Fechamento no Chat) */}
+        <div
+          style={{
+            backgroundColor: "var(--bg-surface, #FFFFFF)",
+            borderRadius: "var(--radius-lg, 12px)",
+            border: "1px solid #A7F3D0",
+            boxShadow: "0 2px 8px rgba(16, 185, 129, 0.06)",
+            padding: "24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              borderBottom: "1px solid var(--border-subtle, #F1F5F9)",
+              paddingBottom: "16px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{
+                  width: "42px",
+                  height: "42px",
+                  borderRadius: "10px",
+                  backgroundColor: "#ECFDF5",
+                  border: "1px solid #A7F3D0",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#059669",
+                }}
+              >
+                <QrCode size={22} />
+              </div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#065F46" }}>
+                    Chave Pix Institucional da Empresa
+                  </h3>
+                  <Badge variant="action">Fechamento Imediato no Chat</Badge>
+                </div>
+                <p style={{ fontSize: "0.825rem", color: "var(--text-secondary, #64748B)", marginTop: "2px" }}>
+                  Ao gerar ordens de pagamento no Cockpit de Vendas, o QR Code BACEN e a linha Copia e Cola usarão esses dados automaticamente.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {pixSuccessMsg && (
+            <Alert variant="info" title="Configuração Atualizada">
+              {pixSuccessMsg}
+            </Alert>
+          )}
+
+          {pixErrorMsg && (
+            <Alert variant="danger" title="Erro ao Salvar">
+              {pixErrorMsg}
+            </Alert>
+          )}
+
+          <form onSubmit={handleSavePix} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "16px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary, #475569)", marginBottom: "6px" }}>
+                  Chave Pix (E-mail, Telefone, CNPJ ou Aleatória)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: financeiro@minhaempresa.com.br ou 00.000.000/0001-91"
+                  value={pixKey}
+                  onChange={(e) => setPixKey(e.target.value)}
+                  style={{
+                    width: "100%",
+                    height: "38px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border-default, #CBD5E1)",
+                    padding: "0 12px",
+                    fontSize: "0.875rem",
+                    backgroundColor: "#FFFFFF",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary, #475569)", marginBottom: "6px" }}>
+                  Tipo da Chave
+                </label>
+                <select
+                  value={pixKeyType}
+                  onChange={(e) => setPixKeyType(e.target.value as any)}
+                  style={{
+                    width: "100%",
+                    height: "38px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border-default, #CBD5E1)",
+                    padding: "0 10px",
+                    fontSize: "0.875rem",
+                    backgroundColor: "#FFFFFF",
+                  }}
+                >
+                  <option value="cnpj">CNPJ</option>
+                  <option value="email">E-mail</option>
+                  <option value="phone">Telefone (Celular)</option>
+                  <option value="cpf">CPF</option>
+                  <option value="random">Chave Aleatória (EVP)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "16px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary, #475569)", marginBottom: "6px" }}>
+                  Nome do Titular / Razão Social (Até 25 caracteres)
+                </label>
+                <input
+                  type="text"
+                  maxLength={25}
+                  placeholder="Ex: MCT LTDA"
+                  value={merchantName}
+                  onChange={(e) => setMerchantName(e.target.value)}
+                  style={{
+                    width: "100%",
+                    height: "38px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border-default, #CBD5E1)",
+                    padding: "0 12px",
+                    fontSize: "0.875rem",
+                    backgroundColor: "#FFFFFF",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary, #475569)", marginBottom: "6px" }}>
+                  Cidade da Conta (Até 15 caracteres)
+                </label>
+                <input
+                  type="text"
+                  maxLength={15}
+                  placeholder="Ex: CHAPECO"
+                  value={merchantCity}
+                  onChange={(e) => setMerchantCity(e.target.value)}
+                  style={{
+                    width: "100%",
+                    height: "38px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border-default, #CBD5E1)",
+                    padding: "0 12px",
+                    fontSize: "0.875rem",
+                    backgroundColor: "#FFFFFF",
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "4px" }}>
+              <Button size="sm" variant="primary" type="submit" disabled={isSavingPix}>
+                {isSavingPix ? "Salvando..." : "Salvar Chave Pix 💾"}
+              </Button>
+            </div>
+          </form>
+        </div>
+
+        {/* Bloco 2: Canais WhatsApp & Onboarding Guiado (3 Passos) */}
+        <div
+          style={{
+            backgroundColor: "var(--bg-surface, #FFFFFF)",
+            borderRadius: "var(--radius-lg, 12px)",
+            border: "1px solid var(--border-default, #E2E8F0)",
+            padding: "24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderBottom: "1px solid var(--border-subtle, #F1F5F9)",
+              paddingBottom: "16px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <Radio size={22} color="var(--color-operational, #2563EB)" />
+              <div>
+                <h3
+                  style={{
+                    fontSize: "1.1rem",
+                    fontWeight: 700,
+                    color: "var(--text-primary, #0F172A)",
+                  }}
+                >
+                  Conexões WhatsApp
+                </h3>
+                <p style={{ fontSize: "0.825rem", color: "var(--text-secondary, #64748B)" }}>
+                  Instâncias ativas conectadas para disparo oficial, catálogo, atendimento e fechamento.
+                </p>
+              </div>
+            </div>
+
+            {!isWizardOpen && (
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => {
+                  setIsWizardOpen(true);
+                  setWizardStep(1);
+                }}
+              >
+                <Plus size={16} />
+                Conectar Nova Linha ⚡
+              </Button>
+            )}
+          </div>
+
+          {/* WIZARD GUIADO EM 3 PASSOS */}
+          {isWizardOpen && (
+            <div
+              style={{
+                backgroundColor: "var(--bg-canvas, #F8FAFC)",
+                border: "1px solid var(--border-default, #CBD5E1)",
+                borderRadius: "10px",
+                padding: "24px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "20px",
+              }}
+            >
+              {/* Stepper Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div
+                    style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "50%",
+                      backgroundColor: wizardStep >= 1 ? "var(--color-operational, #2563EB)" : "#CBD5E1",
+                      color: "#FFFFFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                    }}
+                  >
+                    1
+                  </div>
+                  <span style={{ fontWeight: wizardStep === 1 ? 700 : 500, fontSize: "0.85rem" }}>
+                    Escolher Provedor
+                  </span>
+                  <ArrowRight size={14} color="#94A3B8" />
+
+                  <div
+                    style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "50%",
+                      backgroundColor: wizardStep >= 2 ? "var(--color-operational, #2563EB)" : "#CBD5E1",
+                      color: "#FFFFFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                    }}
+                  >
+                    2
+                  </div>
+                  <span style={{ fontWeight: wizardStep === 2 ? 700 : 500, fontSize: "0.85rem" }}>
+                    Credenciais & Teste
+                  </span>
+                  <ArrowRight size={14} color="#94A3B8" />
+
+                  <div
+                    style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "50%",
+                      backgroundColor: wizardStep === 3 ? "var(--color-action, #00A884)" : "#CBD5E1",
+                      color: "#FFFFFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                    }}
+                  >
+                    3
+                  </div>
+                  <span style={{ fontWeight: wizardStep === 3 ? 700 : 500, fontSize: "0.85rem" }}>
+                    Ativação Webhook
+                  </span>
+                </div>
+
+                <Button size="sm" variant="outline" onClick={handleResetWizard}>
+                  Cancelar
+                </Button>
+              </div>
+
+              {/* PASSO 1: Seleção de Provedor */}
+              {wizardStep === 1 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <p style={{ fontSize: "0.85rem", color: "var(--text-secondary, #475569)" }}>
+                    Selecione como deseja conectar a sua linha do WhatsApp:
+                  </p>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" }}>
+                    {/* Opção 1: Meta Cloud API */}
+                    <div
+                      onClick={() => setProvider("meta_waba")}
+                      style={{
+                        padding: "16px",
+                        borderRadius: "8px",
+                        border: provider === "meta_waba" ? "2px solid #2563EB" : "1px solid #E2E8F0",
+                        backgroundColor: provider === "meta_waba" ? "#EFF6FF" : "#FFFFFF",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "#1E3A8A" }}>
+                          Meta Cloud API
+                        </span>
+                        <Badge variant="action">Oficial</Badge>
+                      </div>
+                      <p style={{ fontSize: "0.8rem", color: "#475569", lineHeight: "1.4" }}>
+                        Linha oficial Meta WABA. Zero risco de banimento, disparo de modelos, flows e catálogo nativo de produtos.
+                      </p>
+                    </div>
+
+                    {/* Opção 2: WAHA */}
+                    <div
+                      onClick={() => setProvider("waha")}
+                      style={{
+                        padding: "16px",
+                        borderRadius: "8px",
+                        border: provider === "waha" ? "2px solid #2563EB" : "1px solid #E2E8F0",
+                        backgroundColor: provider === "waha" ? "#EFF6FF" : "#FFFFFF",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "#0F172A" }}>
+                          WAHA
+                        </span>
+                        <Badge variant="neutral">QR Code</Badge>
+                      </div>
+                      <p style={{ fontSize: "0.8rem", color: "#475569", lineHeight: "1.4" }}>
+                        WhatsApp HTTP API. Pareamento imediato via leitura de QR Code, ideal para testes locais e números de apoio.
+                      </p>
+                    </div>
+
+                    {/* Opção 3: Evolution API */}
+                    <div
+                      onClick={() => setProvider("evolution")}
+                      style={{
+                        padding: "16px",
+                        borderRadius: "8px",
+                        border: provider === "evolution" ? "2px solid #2563EB" : "1px solid #E2E8F0",
+                        backgroundColor: provider === "evolution" ? "#EFF6FF" : "#FFFFFF",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "#0F172A" }}>
+                          Evolution API
+                        </span>
+                        <Badge variant="neutral">Self-Hosted</Badge>
+                      </div>
+                      <p style={{ fontSize: "0.8rem", color: "#475569", lineHeight: "1.4" }}>
+                        Servidor autônomo Evolution API v2 em container dedicado.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
+                    <Button size="sm" variant="primary" onClick={() => setWizardStep(2)}>
+                      Próximo: Informar Credenciais <ArrowRight size={14} />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* PASSO 2: Formulário de Credenciais & Teste */}
+              {wizardStep === 2 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "14px" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                        Nome Identificador da Linha
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: Comercial WhatsApp Oficial"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        style={{
+                          width: "100%",
+                          height: "36px",
+                          borderRadius: "6px",
+                          border: "1px solid #CBD5E1",
+                          padding: "0 10px",
+                          fontSize: "0.85rem",
+                          backgroundColor: "#FFFFFF",
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                        Número E.164 (Ex: +554999998888)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="+5511999998888"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        style={{
+                          width: "100%",
+                          height: "36px",
+                          borderRadius: "6px",
+                          border: "1px solid #CBD5E1",
+                          padding: "0 10px",
+                          fontSize: "0.85rem",
+                          backgroundColor: "#FFFFFF",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {provider === "meta_waba" ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                            Phone Number ID (Meta Graph API)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ex: 109876543210987"
+                            value={phoneNumberId}
+                            onChange={(e) => setPhoneNumberId(e.target.value)}
+                            style={{
+                              width: "100%",
+                              height: "36px",
+                              borderRadius: "6px",
+                              border: "1px solid #CBD5E1",
+                              padding: "0 10px",
+                              fontSize: "0.85rem",
+                              backgroundColor: "#FFFFFF",
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                            WABA Account ID (Opcional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ex: 987654321098765"
+                            value={wabaAccountId}
+                            onChange={(e) => setWabaAccountId(e.target.value)}
+                            style={{
+                              width: "100%",
+                              height: "36px",
+                              borderRadius: "6px",
+                              border: "1px solid #CBD5E1",
+                              padding: "0 10px",
+                              fontSize: "0.85rem",
+                              backgroundColor: "#FFFFFF",
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                          Access Token Permanente (System User Token)
+                        </label>
+                        <input
+                          type="password"
+                          placeholder="EAAB..."
+                          value={accessToken}
+                          onChange={(e) => setAccessToken(e.target.value)}
+                          style={{
+                            width: "100%",
+                            height: "36px",
+                            borderRadius: "6px",
+                            border: "1px solid #CBD5E1",
+                            padding: "0 10px",
+                            fontSize: "0.85rem",
+                            backgroundColor: "#FFFFFF",
+                            fontFamily: "var(--font-mono)",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                          API Key do Servidor
+                        </label>
+                        <input
+                          type="password"
+                          placeholder="Chave secreta de autenticação"
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                          style={{
+                            width: "100%",
+                            height: "36px",
+                            borderRadius: "6px",
+                            border: "1px solid #CBD5E1",
+                            padding: "0 10px",
+                            fontSize: "0.85rem",
+                            backgroundColor: "#FFFFFF",
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                          URL Base da Instância
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="http://localhost:3000"
+                          value={baseUrl}
+                          onChange={(e) => setBaseUrl(e.target.value)}
+                          style={{
+                            width: "100%",
+                            height: "36px",
+                            borderRadius: "6px",
+                            border: "1px solid #CBD5E1",
+                            padding: "0 10px",
+                            fontSize: "0.85rem",
+                            backgroundColor: "#FFFFFF",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Feedback do Teste de Conexão */}
+                  {testResult && (
+                    <div
+                      style={{
+                        padding: "12px 16px",
+                        borderRadius: "8px",
+                        backgroundColor: testResult.success ? "#ECFDF5" : "#FEF2F2",
+                        border: `1px solid ${testResult.success ? "#A7F3D0" : "#FECACA"}`,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      {testResult.success ? (
+                        <CheckCircle2 size={18} color="#059669" />
+                      ) : (
+                        <AlertTriangle size={18} color="#DC2626" />
+                      )}
+                      <div>
+                        <span style={{ fontWeight: 700, color: testResult.success ? "#065F46" : "#991B1B" }}>
+                          {testResult.success ? "Conexão Validada com Sucesso!" : "Falha na Verificação"}
+                        </span>
+                        <div style={{ fontSize: "0.8rem", color: testResult.success ? "#047857" : "#B91C1C", marginTop: "2px" }}>
+                          {testResult.message}
+                          {testResult.verifiedName && ` • Nome Oficial: ${testResult.verifiedName}`}
+                          {testResult.qualityRating && ` • Qualidade da Linha: ${testResult.qualityRating}`}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {createChannelError && (
+                    <Alert variant="danger" title="Erro ao Conectar">
+                      {createChannelError}
+                    </Alert>
+                  )}
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
+                    <Button size="sm" variant="outline" onClick={() => setWizardStep(1)}>
+                      <ArrowLeft size={14} /> Voltar
+                    </Button>
+
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      {provider === "meta_waba" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleTestConnection}
+                          disabled={isTestingConn || !phoneNumberId || !accessToken}
+                        >
+                          {isTestingConn ? "Testando..." : "Testar Conexão com a Meta ⚡"}
+                        </Button>
+                      )}
+
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={handleFinishWizard}
+                        disabled={isSubmittingChannel || !displayName.trim()}
+                      >
+                        {isSubmittingChannel ? "Conectando..." : "Salvar e Gerar Webhook 🚀"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* PASSO 3: Sucesso & Webhook Gerado */}
+              {wizardStep === 3 && createdChannelData && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <div
+                    style={{
+                      padding: "16px",
+                      borderRadius: "8px",
+                      backgroundColor: "#ECFDF5",
+                      border: "1px solid #A7F3D0",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                    }}
+                  >
+                    <CheckCircle2 size={24} color="#059669" />
+                    <div>
+                      <h4 style={{ fontSize: "1rem", fontWeight: 700, color: "#065F46" }}>
+                        Canal "{createdChannelData.name}" Provisionado com Sucesso!
+                      </h4>
+                      <p style={{ fontSize: "0.8rem", color: "#047857", marginTop: "2px" }}>
+                        As credenciais foram criptografadas com AES-256-GCM no cofre seguro. Cole as informações abaixo no painel de Webhooks da Meta ou WAHA.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                        URL do Webhook Ingress (Callback URL)
+                      </label>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <input
+                          type="text"
+                          readOnly
+                          value={createdChannelData.webhookUrl}
+                          style={{
+                            width: "100%",
+                            height: "36px",
+                            borderRadius: "6px",
+                            border: "1px solid #CBD5E1",
+                            padding: "0 10px",
+                            fontSize: "0.825rem",
+                            backgroundColor: "#FFFFFF",
+                            fontFamily: "var(--font-mono)",
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleCopy(createdChannelData.webhookUrl, "wh-url")}
+                        >
+                          {copiedId === "wh-url" ? <Check size={14} color="#00A884" /> : <Copy size={14} />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                        Token de Verificação (Verify Token)
+                      </label>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <input
+                          type="text"
+                          readOnly
+                          value={createdChannelData.webhookToken}
+                          style={{
+                            width: "100%",
+                            height: "36px",
+                            borderRadius: "6px",
+                            border: "1px solid #CBD5E1",
+                            padding: "0 10px",
+                            fontSize: "0.825rem",
+                            backgroundColor: "#FFFFFF",
+                            fontFamily: "var(--font-mono)",
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleCopy(createdChannelData.webhookToken, "wh-token")}
+                        >
+                          {copiedId === "wh-token" ? <Check size={14} color="#00A884" /> : <Copy size={14} />}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
+                    <Button size="sm" variant="primary" onClick={handleResetWizard}>
+                      Concluir Onboarding
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* LISTA DE CANAIS CONECTADOS */}
+          {isLoadingChannels ? (
+            <LoadingState variant="skeleton" lines={3} text="Carregando canais..." />
+          ) : channels.length === 0 ? (
+            <div
+              style={{
+                padding: "36px",
+                textAlign: "center",
+                border: "1px dashed var(--border-default, #E2E8F0)",
+                borderRadius: "8px",
+              }}
+            >
+              <Smartphone size={36} color="var(--text-muted, #94A3B8)" style={{ margin: "0 auto 10px" }} />
+              <p style={{ fontWeight: 600, color: "var(--text-primary, #0F172A)", marginBottom: "4px" }}>
+                Nenhuma linha WhatsApp conectada ainda
+              </p>
+              <p style={{ fontSize: "0.85rem", color: "var(--text-secondary, #64748B)" }}>
+                Clique em "Conectar Nova Linha ⚡" para ativar seu canal Meta WABA ou WAHA com setup em 3 passos.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {channels.map((c) => (
+                <div
+                  key={c.id}
+                  style={{
+                    border: "1px solid var(--border-default, #E2E8F0)",
+                    borderRadius: "8px",
+                    padding: "16px 20px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    backgroundColor: "var(--bg-canvas, #F8FAFC)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                    <div
+                      style={{
+                        width: "42px",
+                        height: "42px",
+                        borderRadius: "8px",
+                        backgroundColor: c.provider === "meta_waba" ? "#EFF6FF" : "var(--color-action-subtle, #E6F7F3)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: c.provider === "meta_waba" ? "#2563EB" : "var(--color-action, #00A884)",
+                      }}
+                    >
+                      <Smartphone size={22} />
+                    </div>
+
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>{c.displayName}</span>
+                        <Badge variant={c.isActive ? "action" : "danger"}>
+                          {c.isActive ? "Pronto para Atendimento" : "Inativo"}
+                        </Badge>
+                        <Badge variant="neutral">{c.provider.toUpperCase()}</Badge>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "var(--text-secondary, #64748B)",
+                          marginTop: "2px",
+                        }}
+                      >
+                        {c.phoneNumberE164 ? `Telefone: ${c.phoneNumberE164}` : "Sem telefone vinculado"} • ID: {c.id}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleCopy(c.id, c.id)}
+                    >
+                      {copiedId === c.id ? <Check size={14} color="#00A884" /> : <Copy size={14} />}
+                      {copiedId === c.id ? "ID Copiado!" : "Copiar ID"}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Bloco 3: Parâmetros do Tenant */}
         {isLoadingWorkspace ? (
           <LoadingState variant="skeleton" lines={5} text="Carregando parâmetros do workspace..." />
         ) : activeWorkspaceDetails ? (
@@ -172,7 +1128,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
               <div>
                 <h2
                   style={{
-                    fontSize: "1.2rem",
+                    fontSize: "1.15rem",
                     fontWeight: 700,
                     color: "var(--text-primary, #0F172A)",
                   }}
@@ -186,8 +1142,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
                     color: "var(--text-muted, #94A3B8)",
                   }}
                 >
-                  ID: {activeWorkspaceDetails.workspace.id} • Slug:{" "}
-                  {activeWorkspaceDetails.workspace.slug}
+                  ID: {activeWorkspaceDetails.workspace.id} • Slug: {activeWorkspaceDetails.workspace.slug}
                 </span>
               </div>
             </div>
@@ -289,275 +1244,6 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
             Conecte-se com um token válido e selecione um workspace para visualizar seus parâmetros de configuração.
           </Alert>
         )}
-
-        {/* Bloco 2: Canais WhatsApp & Webhook Ingress */}
-        <div
-          style={{
-            backgroundColor: "var(--bg-surface, #FFFFFF)",
-            borderRadius: "var(--radius-lg, 12px)",
-            border: "1px solid var(--border-default, #E2E8F0)",
-            padding: "24px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "20px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              borderBottom: "1px solid var(--border-subtle, #F1F5F9)",
-              paddingBottom: "16px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Radio size={20} color="var(--color-action, #00A884)" />
-              <div>
-                <h3
-                  style={{
-                    fontSize: "1.05rem",
-                    fontWeight: 700,
-                    color: "var(--text-primary, #0F172A)",
-                  }}
-                >
-                  Canais WhatsApp Conectados
-                </h3>
-                <p style={{ fontSize: "0.8rem", color: "var(--text-secondary, #64748B)" }}>
-                  Instâncias ativas pareadas para envio e recebimento via WAHA, Evolution API ou Cloud API.
-                </p>
-              </div>
-            </div>
-
-            <Button
-              size="sm"
-              variant={isAddingChannel ? "outline" : "primary"}
-              onClick={() => setIsAddingChannel(!isAddingChannel)}
-            >
-              <Plus size={14} />
-              {isAddingChannel ? "Fechar" : "Novo Canal WhatsApp"}
-            </Button>
-          </div>
-
-          {createSuccessMsg && (
-            <Alert variant="info" title="Canal Provisionado">
-              {createSuccessMsg}
-            </Alert>
-          )}
-
-          {createErrorMsg && (
-            <Alert variant="danger" title="Erro no Provisionamento">
-              {createErrorMsg}
-            </Alert>
-          )}
-
-          {/* Formulário de Adicionar Canal */}
-          {isAddingChannel && (
-            <form
-              onSubmit={handleCreateChannel}
-              style={{
-                backgroundColor: "var(--bg-canvas, #F8FAFC)",
-                padding: "20px",
-                borderRadius: "var(--radius-md, 8px)",
-                border: "1px solid var(--border-default, #E2E8F0)",
-                display: "flex",
-                flexDirection: "column",
-                gap: "14px",
-              }}
-            >
-              <h4 style={{ fontSize: "0.9rem", fontWeight: 700 }}>Conectar Nova Instância WhatsApp</h4>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Provedor do WhatsApp
-                  </label>
-                  <select
-                    value={provider}
-                    onChange={(e) => setProvider(e.target.value as any)}
-                    style={{
-                      width: "100%",
-                      height: "36px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--border-default, #E2E8F0)",
-                      padding: "0 8px",
-                      backgroundColor: "#FFFFFF",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    <option value="waha">WAHA (WhatsApp HTTP API)</option>
-                    <option value="evolution">Evolution API v2</option>
-                    <option value="meta_waba">Meta Cloud API (Oficial)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Nome da Instância
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: Comercial Principal"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    style={{
-                      width: "100%",
-                      height: "36px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--border-default, #E2E8F0)",
-                      padding: "0 10px",
-                      backgroundColor: "#FFFFFF",
-                      fontSize: "0.85rem",
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Telefone E.164 (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="+5511999998888"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    style={{
-                      width: "100%",
-                      height: "36px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--border-default, #E2E8F0)",
-                      padding: "0 10px",
-                      backgroundColor: "#FFFFFF",
-                      fontSize: "0.85rem",
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "6px" }}>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  type="button"
-                  onClick={() => setIsAddingChannel(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button size="sm" variant="primary" type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Provisionando..." : "Salvar e Gerar Webhook"}
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {/* Lista de Canais */}
-          {isLoadingChannels ? (
-            <LoadingState variant="skeleton" lines={3} text="Carregando canais..." />
-          ) : channels.length === 0 ? (
-            <div
-              style={{
-                padding: "32px",
-                textAlign: "center",
-                border: "1px dashed var(--border-default, #E2E8F0)",
-                borderRadius: "8px",
-              }}
-            >
-              <Smartphone size={32} color="var(--text-muted, #94A3B8)" style={{ margin: "0 auto 8px" }} />
-              <p style={{ fontWeight: 600, color: "var(--text-primary, #0F172A)", marginBottom: "4px" }}>
-                Nenhum canal WhatsApp configurado
-              </p>
-              <p style={{ fontSize: "0.85rem", color: "var(--text-secondary, #64748B)" }}>
-                Clique em "Novo Canal WhatsApp" para cadastrar uma instância WAHA ou Evolution API.
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {channels.map((c) => (
-                <div
-                  key={c.id}
-                  style={{
-                    border: "1px solid var(--border-default, #E2E8F0)",
-                    borderRadius: "8px",
-                    padding: "16px 20px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    backgroundColor: "var(--bg-canvas, #F8FAFC)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                    <div
-                      style={{
-                        width: "40px",
-                        height: "40px",
-                        borderRadius: "8px",
-                        backgroundColor: "var(--color-action-subtle, #E6F7F3)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "var(--color-action, #00A884)",
-                      }}
-                    >
-                      <Smartphone size={20} />
-                    </div>
-
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>{c.displayName}</span>
-                        <Badge variant={c.isActive ? "action" : "danger"}>
-                          {c.isActive ? "Ativo" : "Inativo"}
-                        </Badge>
-                        <Badge variant="neutral">{c.provider.toUpperCase()}</Badge>
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.8rem",
-                          color: "var(--text-secondary, #64748B)",
-                          marginTop: "2px",
-                        }}
-                      >
-                        {c.phoneNumberE164 ? `Telefone: ${c.phoneNumberE164}` : "Sem telefone vinculado"} • ID: {c.id}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleCopy(c.id, c.id)}
-                    >
-                      {copiedId === c.id ? <Check size={14} color="#00A884" /> : <Copy size={14} />}
-                      {copiedId === c.id ? "ID Copiado!" : "Copiar ID"}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

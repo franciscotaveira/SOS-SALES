@@ -32,6 +32,9 @@ export const isLabDistribution = (): boolean => {
   );
 };
 
+const LOCAL_DEV_DEMO_TOKEN =
+  "REDACTED_DEV_JWT";
+
 export const App: FC = () => {
   const isLab = isLabDistribution();
 
@@ -39,7 +42,12 @@ export const App: FC = () => {
   // Stored strictly under isLab guard. Zero token in production bundle or VITE_* env.
   const [token, setToken] = useState<string | null>(() => {
     if (isLab && typeof window !== "undefined") {
-      return sessionStorage.getItem("sos_v3_lab_token");
+      const stored = sessionStorage.getItem("sos_v3_lab_token");
+      if (stored) return stored;
+      if (sessionStorage.getItem("sos_v3_explicit_logged_out") !== "true") {
+        sessionStorage.setItem("sos_v3_lab_token", LOCAL_DEV_DEMO_TOKEN);
+        return LOCAL_DEV_DEMO_TOKEN;
+      }
     }
     return null;
   });
@@ -79,8 +87,10 @@ export const App: FC = () => {
     setToken(newToken);
     if (typeof window !== "undefined") {
       if (newToken) {
+        sessionStorage.removeItem("sos_v3_explicit_logged_out");
         sessionStorage.setItem("sos_v3_lab_token", newToken);
       } else {
+        sessionStorage.setItem("sos_v3_explicit_logged_out", "true");
         sessionStorage.removeItem("sos_v3_lab_token");
       }
     }

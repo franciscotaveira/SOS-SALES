@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from "pg";
 import { getDatabasePool } from "../client";
 import { recordSecurityAuditEvent, type SecurityAuditEventParams } from "../helpers";
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const E164_REGEX = /^\+[1-9][0-9]{6,14}$/;
 
 export interface OutboundReplayProjection {
@@ -36,6 +36,7 @@ export interface InsertOutboundMessageParams {
   contentType: string;
   body: string | null;
   mediaUrl?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface InsertOutboundCommandParams {
@@ -49,6 +50,7 @@ export interface InsertOutboundCommandParams {
   templateName?: string | null;
   templateLanguage?: string | null;
   templateComponents?: Record<string, unknown>[] | null;
+  interactivePayload?: Record<string, unknown> | null;
   idempotencyKey: string;
   payloadFingerprint: string;
   maxRetries?: number;
@@ -347,11 +349,11 @@ export class TransactionalOutboundProducerRepository {
       INSERT INTO public.messages (
         workspace_id, channel_instance_id, thread_id, provider, direction,
         sender_e164, recipient_e164, content_type, body, media_url,
-        delivery_status, status_rank
+        metadata, delivery_status, status_rank
       ) VALUES (
         $1, $2, $3, $4, 'outbound',
         $5, $6, $7, $8, $9,
-        'queued', 0
+        COALESCE($10::jsonb, '{}'::jsonb), 'queued', 0
       )
       RETURNING id, delivery_status;
     `;
@@ -366,6 +368,7 @@ export class TransactionalOutboundProducerRepository {
       params.contentType,
       params.body,
       params.mediaUrl || null,
+      params.metadata ? JSON.stringify(params.metadata) : null,
     ]);
 
     return {
@@ -409,14 +412,16 @@ export class TransactionalOutboundProducerRepository {
         workspace_id, channel_instance_id, thread_id, message_id,
         recipient_e164, body, media_url,
         template_name, template_language, template_components,
+        interactive_payload,
         idempotency_key, payload_fingerprint,
         status, retry_count, max_retries, next_attempt_at
       ) VALUES (
         $1, $2, $3, $4,
         $5, $6, $7,
         $8, $9, $10,
-        $11, $12,
-        'pending', 0, COALESCE($13, 3), clock_timestamp()
+        $11,
+        $12, $13,
+        'pending', 0, COALESCE($14, 3), clock_timestamp()
       )
       ON CONFLICT (workspace_id, idempotency_key) DO NOTHING
       RETURNING 
@@ -449,6 +454,7 @@ export class TransactionalOutboundProducerRepository {
       params.templateName || null,
       params.templateLanguage || null,
       params.templateComponents ? JSON.stringify(params.templateComponents) : null,
+      params.interactivePayload ? JSON.stringify(params.interactivePayload) : null,
       params.idempotencyKey,
       params.payloadFingerprint,
       params.maxRetries ?? 3,

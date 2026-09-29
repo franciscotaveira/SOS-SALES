@@ -6,7 +6,7 @@ import type { IChannelAdapter } from "../adapters/channel-adapter.interface";
 import { ChannelInstanceNotFoundError } from "../errors/channel-dispatch.errors";
 import type { IChannelInstanceRepository } from "./channel-dispatch.service";
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type ChannelHealthState =
   | "healthy"

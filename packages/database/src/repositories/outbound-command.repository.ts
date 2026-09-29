@@ -1,7 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { getDatabasePool } from "../client";
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const E164_REGEX = /^\+[1-9][0-9]{6,14}$/;
 
 export type OutboundCommandStatus =
@@ -24,6 +24,7 @@ export interface OutboundCommandRecord {
   template_name: string | null;
   template_language: string | null;
   template_components: Record<string, unknown>[] | null;
+  interactive_payload?: Record<string, unknown> | null;
   idempotency_key: string;
   status: OutboundCommandStatus;
   retry_count: number;
@@ -67,6 +68,7 @@ export interface EnqueueOutboundCommandParams {
   templateName?: string | null;
   templateLanguage?: string | null;
   templateComponents?: Record<string, unknown>[] | null;
+  interactivePayload?: Record<string, unknown> | null;
   idempotencyKey: string;
   maxRetries?: number;
   nextAttemptAt?: Date;
@@ -170,12 +172,14 @@ export class OutboundCommandRepository {
         workspace_id, channel_instance_id, message_id, thread_id,
         recipient_e164, body, media_url,
         template_name, template_language, template_components,
+        interactive_payload,
         idempotency_key, max_retries, next_attempt_at, status
       ) VALUES (
         $1, $2, $3, $4,
         $5, $6, $7,
         $8, $9, $10,
-        $11, COALESCE($12, 3), COALESCE($13, clock_timestamp()), 'pending'
+        $11,
+        $12, COALESCE($13, 3), COALESCE($14, clock_timestamp()), 'pending'
       )
       ON CONFLICT (workspace_id, idempotency_key)
       DO UPDATE SET updated_at = public.outbound_commands.updated_at
@@ -193,6 +197,7 @@ export class OutboundCommandRepository {
       params.templateName || null,
       params.templateLanguage || null,
       params.templateComponents ? JSON.stringify(params.templateComponents) : null,
+      params.interactivePayload ? JSON.stringify(params.interactivePayload) : null,
       params.idempotencyKey,
       params.maxRetries ?? 3,
       params.nextAttemptAt || null,
@@ -263,6 +268,7 @@ export class OutboundCommandRepository {
                 o.lease_token::text, o.worker_id, o.error_message,
                 o.created_at, o.updated_at,
                 o.template_name, o.template_language, o.template_components,
+                o.interactive_payload,
                 claimed.previous_status;
     `;
 

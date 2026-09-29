@@ -368,6 +368,20 @@ export class MetaWabaAdapter implements IChannelAdapter {
           ...(filename ? { filename } : {}),
         },
       };
+    } else if (params.interactive) {
+      payload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: params.recipientE164,
+        type: "interactive",
+        interactive: {
+          type: params.interactive.type,
+          ...(params.interactive.header ? { header: params.interactive.header } : {}),
+          body: params.interactive.body,
+          ...(params.interactive.footer ? { footer: params.interactive.footer } : {}),
+          action: params.interactive.action,
+        },
+      };
     } else {
       payload = {
         messaging_product: "whatsapp",

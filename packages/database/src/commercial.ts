@@ -12,7 +12,15 @@ export type CanonicalConversionEvent =
   | "ProposalAccepted"
   | "PurchaseCompleted"
   | "PurchaseRefunded";
-export type CapiDispatchStatus = "QUEUED" | "ACCEPTED" | "FAILED" | "NOT_APPLICABLE";
+export type CapiDispatchStatus =
+  | "QUEUED"
+  | "PROCESSING"
+  | "ACCEPTED"
+  | "FAILED"
+  | "NOT_APPLICABLE"
+  | "SIMULATED"
+  | "NOT_CONFIGURED"
+  | "DISCARDED";
 
 export interface CommercialJourneyRecord {
   id: string;
@@ -55,9 +63,12 @@ export interface ConversionEventRecord {
   currency: string;
   user_data: Record<string, unknown>;
   status: CapiDispatchStatus;
+  lease_token?: string | null;
+  lease_expires_at?: Date | null;
   provider_receipt: Record<string, unknown> | null;
   error_message: string | null;
   created_at: Date;
+  updated_at?: Date;
 }
 
 export interface CreateJourneyInput {
@@ -281,47 +292,75 @@ export async function listCommercialJourneys(
 
 /**
  * Claims a batch of queued conversion events for the CAPI dispatcher.
+ * Uses atomic CTE with SKIP LOCKED and lease expiration to prevent duplicate worker dispatches.
  */
 export async function claimQueuedConversionEvents(
   pool: Pool,
-  limit = 10
+  options?: number | { limit?: number; leaseToken?: string; leaseDurationSeconds?: number }
 ): Promise<ConversionEventRecord[]> {
+  const limit = typeof options === "number" ? options : (options?.limit || 10);
+  const leaseToken = typeof options === "object" && options?.leaseToken ? options.leaseToken : crypto.randomUUID();
+  const durationSecs = typeof options === "object" && options?.leaseDurationSeconds ? options.leaseDurationSeconds : 60;
   const safeLimit = Math.min(Math.max(limit, 1), 50);
+
   const res = await pool.query<ConversionEventRecord>(
-    `SELECT * FROM public.conversion_events
-     WHERE status = 'QUEUED'
-     ORDER BY created_at ASC
-     LIMIT $1
-     FOR UPDATE SKIP LOCKED;`,
-    [safeLimit]
+    `WITH eligible AS (
+       SELECT id
+       FROM public.conversion_events
+       WHERE status = 'QUEUED'
+          OR (status = 'PROCESSING' AND lease_expires_at < now())
+       ORDER BY created_at ASC
+       LIMIT $1
+       FOR UPDATE SKIP LOCKED
+     )
+     UPDATE public.conversion_events ce
+     SET status = 'PROCESSING',
+         lease_token = $2,
+         lease_expires_at = now() + make_interval(secs => $3),
+         updated_at = now()
+     FROM eligible
+     WHERE ce.id = eligible.id
+     RETURNING ce.*;`,
+    [safeLimit, leaseToken, durationSecs]
   );
   return res.rows;
 }
 
 /**
  * Marks a conversion event as processed with Meta receipt or error.
+ * Supports honest status tracking (ACCEPTED, FAILED, SIMULATED, NOT_CONFIGURED, DISCARDED)
+ * and safely clears lease token.
  */
 export async function markConversionEventResult(
   client: Pool | PoolClient,
   eventId: string,
-  result: { success: boolean; receipt?: Record<string, unknown>; error?: string }
-): Promise<void> {
-  if (result.success) {
-    await client.query(
-      `UPDATE public.conversion_events
-       SET status = 'ACCEPTED',
-           provider_receipt = $1,
-           error_message = NULL
-       WHERE id = $2;`,
-      [JSON.stringify(result.receipt || {}), eventId]
-    );
-  } else {
-    await client.query(
-      `UPDATE public.conversion_events
-       SET status = 'FAILED',
-           error_message = $1
-       WHERE id = $2;`,
-      [result.error || "Unknown dispatch failure", eventId]
-    );
+  result: {
+    success?: boolean;
+    status?: "ACCEPTED" | "FAILED" | "SIMULATED" | "NOT_CONFIGURED" | "DISCARDED";
+    receipt?: Record<string, unknown>;
+    error?: string;
+    leaseToken?: string | null;
   }
+): Promise<void> {
+  const finalStatus =
+    result.status ||
+    (result.success ? "ACCEPTED" : "FAILED");
+
+  await client.query(
+    `UPDATE public.conversion_events
+     SET status = $1,
+         provider_receipt = $2,
+         error_message = $3,
+         lease_token = NULL,
+         lease_expires_at = NULL,
+         updated_at = now()
+     WHERE id = $4 AND ($5::text IS NULL OR lease_token IS NULL OR lease_token = $5);`,
+    [
+      finalStatus,
+      result.receipt ? JSON.stringify(result.receipt) : null,
+      result.error || null,
+      eventId,
+      result.leaseToken || null,
+    ]
+  );
 }

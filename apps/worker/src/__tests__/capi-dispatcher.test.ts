@@ -17,6 +17,7 @@ describe("Meta CAPI Conversion Dispatcher Integration Tests", () => {
   let workspaceId: string;
   let contactId: string;
   let userId: string;
+  let testJourneyId: string;
 
   beforeAll(async () => {
     await resetTestQueueState(ownerPool);
@@ -56,6 +57,14 @@ describe("Meta CAPI Conversion Dispatcher Integration Tests", () => {
       RETURNING id;
     `, [workspaceId]);
     contactId = contactRes.rows[0].id;
+
+    // 4. Base Journey
+    const journeyRes = await ownerPool.query(`
+      INSERT INTO commercial_journeys (workspace_id, contact_id, title)
+      VALUES ($1, $2, 'Journey Base Test')
+      RETURNING id;
+    `, [workspaceId, contactId]);
+    testJourneyId = journeyRes.rows[0].id;
   });
 
   afterAll(async () => {
@@ -63,7 +72,7 @@ describe("Meta CAPI Conversion Dispatcher Integration Tests", () => {
     await workerPool.end();
   });
 
-  it("CAPI-01: should claim and dispatch a queued conversion event in sandbox mode, transitioning to ACCEPTED with receipt", async () => {
+  it("CAPI-01: should claim and dispatch a queued conversion event in unconfigured mode, transitioning honestly to SIMULATED without fake fbtrace_id", async () => {
     // 1. Create a commercial journey & record won outcome
     const { conversionEvent } = await withTenantTransaction(workspaceId, async (client) => {
       const journey = await createCommercialJourney(client, workspaceId, {
@@ -96,8 +105,8 @@ describe("Meta CAPI Conversion Dispatcher Integration Tests", () => {
 
     // 3. Dispatch item
     const result = await dispatcher.dispatchItem(workerPool, item!);
-    expect(result.status).toBe("accepted");
-    expect(result.fbtraceId).toBeDefined();
+    expect(result.status).toBe("simulated");
+    expect(result.fbtraceId).toBeUndefined();
 
     // 4. Verify in DB
     const checkRes = await ownerPool.query(`
@@ -106,11 +115,11 @@ describe("Meta CAPI Conversion Dispatcher Integration Tests", () => {
       WHERE id = $1;
     `, [conversionEvent!.id]);
 
-    expect(checkRes.rows[0].status).toBe("ACCEPTED");
-    expect(checkRes.rows[0].error_message).toBeNull();
+    expect(checkRes.rows[0].status).toBe("SIMULATED");
     const receipt = checkRes.rows[0].provider_receipt;
-    expect(receipt.events_received).toBe(1);
-    expect(receipt.fbtrace_id).toBe(result.fbtraceId);
+    expect(receipt.mode).toBe("simulated_local");
+    expect(receipt.reason).toContain("Meta CAPI credentials not configured");
+    expect(receipt.fbtrace_id).toBeUndefined();
   });
 
   it("CAPI-02: should dispatch conversion payload to an HTTP endpoint and record real provider receipt", async () => {
@@ -294,7 +303,7 @@ describe("Meta CAPI Conversion Dispatcher Integration Tests", () => {
     await runtime.start();
     try {
       // Wait for WorkerRuntime loop to process and dispatch the conversion event
-      let accepted = false;
+      let processed = false;
       for (let i = 0; i < 20; i++) {
         const checkRes = await ownerPool.query(`
           SELECT status, provider_receipt
@@ -302,17 +311,149 @@ describe("Meta CAPI Conversion Dispatcher Integration Tests", () => {
           WHERE id = $1;
         `, [conversionEvent!.id]);
 
-        if (checkRes.rows[0]?.status === "ACCEPTED") {
-          accepted = true;
-          expect(checkRes.rows[0].provider_receipt.events_received).toBe(1);
+        if (checkRes.rows[0]?.status === "SIMULATED" || checkRes.rows[0]?.status === "ACCEPTED") {
+          processed = true;
+          const r = checkRes.rows[0].provider_receipt;
+          expect(r.mode === "simulated_local" || r.events_received === 1).toBe(true);
           break;
         }
         await new Promise((r) => setTimeout(r, 100));
       }
 
-      expect(accepted).toBe(true);
+      expect(processed).toBe(true);
     } finally {
       await runtime.stop();
+    }
+  });
+
+  it("CAPI-05: concurrent workers claiming the same queued conversion event must be mutually exclusive (zero double dispatch)", async () => {
+    // 1. Create journey & outcome
+    const { conversionEvent } = await withTenantTransaction(workspaceId, async (client) => {
+      const journey = await createCommercialJourney(client, workspaceId, {
+        contactId,
+        title: "Deal Concurrency CAPI Test",
+        stage: "won",
+        attributionSource: "ctwa_meta",
+        ctwaClid: "ctwa_conc_clid_445566",
+        estimatedValueCents: 32000,
+      });
+
+      return recordCommercialOutcome(client, workspaceId, {
+        journeyId: journey.id,
+        status: "won",
+        valueCents: 32000,
+        currency: "BRL",
+        registeredByUserId: userId,
+        userPhoneE164: "+5511999998888",
+      });
+    });
+
+    expect(conversionEvent).not.toBeNull();
+    expect(conversionEvent!.status).toBe("QUEUED");
+
+    // 2. Launch 2 concurrent claims
+    const dispatcherA = new CapiDispatcher();
+    const dispatcherB = new CapiDispatcher();
+
+    const [batchA, batchB] = await Promise.all([
+      dispatcherA.claimBatch(workerPool, 10),
+      dispatcherB.claimBatch(workerPool, 10),
+    ]);
+
+    const itemA = batchA.find((e) => e.id === conversionEvent!.id);
+    const itemB = batchB.find((e) => e.id === conversionEvent!.id);
+
+    // Exactly one worker got the claim
+    const claimedByA = !!itemA;
+    const claimedByB = !!itemB;
+    expect(claimedByA !== claimedByB).toBe(true);
+
+    const winner = claimedByA ? itemA! : itemB!;
+    const winnerDispatcher = claimedByA ? dispatcherA : dispatcherB;
+
+    // In DB, status is PROCESSING with winner's lease token
+    const dbRow = await ownerPool.query(
+      `SELECT status, lease_token, lease_expires_at FROM conversion_events WHERE id = $1`,
+      [conversionEvent!.id]
+    );
+    expect(dbRow.rows[0].status).toBe("PROCESSING");
+    expect(dbRow.rows[0].lease_token).toBe(winner.lease_token);
+    expect(new Date(dbRow.rows[0].lease_expires_at).getTime()).toBeGreaterThan(Date.now());
+
+    // Winner dispatches event
+    const result = await winnerDispatcher.dispatchItem(workerPool, winner);
+    expect(result.status).toBe("simulated");
+
+    // After dispatch, lease is cleared and final status persisted
+    const finalRow = await ownerPool.query(
+      `SELECT status, lease_token, lease_expires_at FROM conversion_events WHERE id = $1`,
+      [conversionEvent!.id]
+    );
+    expect(finalRow.rows[0].status).toBe("SIMULATED");
+    expect(finalRow.rows[0].lease_token).toBeNull();
+    expect(finalRow.rows[0].lease_expires_at).toBeNull();
+  });
+
+  it("CAPI-06: abandoned lease recovery allows safe reclamation after lease expires", async () => {
+    // 1. Insert an event already in PROCESSING with an expired lease
+    const insertRes = await ownerPool.query(`
+      INSERT INTO conversion_events (
+        workspace_id, journey_id, event_name, event_time, value_cents, currency,
+        user_data, status, lease_token, lease_expires_at
+      ) VALUES (
+        $1, $2, 'LeadCaptured', now() - interval '5 minutes', 0, 'BRL',
+        '{}'::jsonb, 'PROCESSING', 'dead-worker-lease', now() - interval '10 seconds'
+      )
+      RETURNING id;
+    `, [workspaceId, testJourneyId]);
+    const expiredEventId = insertRes.rows[0].id;
+
+    // 2. Claim batch with active dispatcher
+    const dispatcher = new CapiDispatcher();
+    const batch = await dispatcher.claimBatch(workerPool, 10);
+    const reclaimed = batch.find((e) => e.id === expiredEventId);
+
+    expect(reclaimed).toBeDefined();
+    expect(reclaimed!.lease_token).not.toBe("dead-worker-lease");
+
+    // 3. Verify DB state is refreshed with new lease
+    const checkRow = await ownerPool.query(
+      `SELECT status, lease_token, lease_expires_at FROM conversion_events WHERE id = $1`,
+      [expiredEventId]
+    );
+    expect(checkRow.rows[0].status).toBe("PROCESSING");
+    expect(checkRow.rows[0].lease_token).toBe(reclaimed!.lease_token);
+    expect(new Date(checkRow.rows[0].lease_expires_at).getTime()).toBeGreaterThan(Date.now());
+
+    // Clean up
+    await dispatcher.dispatchItem(workerPool, reclaimed!);
+  });
+
+  it("CAPI-07: conversion_events constraint accepts all canonical and honest status transitions including DISCARDED and NOT_CONFIGURED", async () => {
+    const statuses = [
+      "QUEUED",
+      "PROCESSING",
+      "ACCEPTED",
+      "FAILED",
+      "NOT_APPLICABLE",
+      "SIMULATED",
+      "NOT_CONFIGURED",
+      "DISCARDED",
+    ];
+
+    for (const status of statuses) {
+      const res = await ownerPool.query(`
+        INSERT INTO conversion_events (
+          workspace_id, journey_id, event_name, event_time, value_cents, currency,
+          user_data, status
+        ) VALUES (
+          $1, $2, 'ProposalAccepted', now(), 1000, 'BRL',
+          '{}'::jsonb, $3
+        )
+        RETURNING id, status;
+      `, [workspaceId, testJourneyId, status]);
+
+      expect(res.rows[0].status).toBe(status);
     }
   });
 });

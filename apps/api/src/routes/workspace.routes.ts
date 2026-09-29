@@ -4,6 +4,10 @@ import { z } from "zod";
 
 const updateWorkspaceSchema = z.object({
   name: z.string().min(2).max(100).optional(),
+  defaultPixKey: z.string().min(3).max(100).optional().nullable(),
+  defaultPixKeyType: z.enum(["cpf", "cnpj", "email", "phone", "random"]).optional().nullable(),
+  defaultPixMerchantName: z.string().min(2).max(25).optional().nullable(),
+  defaultPixMerchantCity: z.string().min(2).max(15).optional().nullable(),
 });
 
 export const workspaceRoutes: FastifyPluginAsync = async (app) => {
@@ -28,10 +32,16 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
           timezone: string;
           currency: string;
           is_active: boolean;
+          default_pix_key: string | null;
+          default_pix_key_type: string | null;
+          default_pix_merchant_name: string | null;
+          default_pix_merchant_city: string | null;
           created_at: string;
           updated_at: string;
         }>(
-          `SELECT id, name, slug, timezone, currency, is_active, created_at, updated_at
+          `SELECT id, name, slug, timezone, currency, is_active,
+                  default_pix_key, default_pix_key_type, default_pix_merchant_name, default_pix_merchant_city,
+                  created_at, updated_at
            FROM workspaces
            WHERE id = $1`,
           [workspaceId]
@@ -101,6 +111,10 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
           currency: workspace.currency,
           isActive: workspace.is_active,
           status: workspace.is_active ? "active" : "inactive",
+          defaultPixKey: workspace.default_pix_key,
+          defaultPixKeyType: workspace.default_pix_key_type,
+          defaultPixMerchantName: workspace.default_pix_merchant_name,
+          defaultPixMerchantCity: workspace.default_pix_merchant_city,
           createdAt: workspace.created_at,
           updatedAt: workspace.updated_at,
         },
@@ -138,8 +152,14 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      const { name } = parseResult.data;
-      if (!name) {
+      const { name, defaultPixKey, defaultPixKeyType, defaultPixMerchantName, defaultPixMerchantCity } = parseResult.data;
+      if (
+        name === undefined &&
+        defaultPixKey === undefined &&
+        defaultPixKeyType === undefined &&
+        defaultPixMerchantName === undefined &&
+        defaultPixMerchantCity === undefined
+      ) {
         return reply.status(400).send({
           type: "https://sos-sales.mct.br/errors/bad-request",
           title: "Bad Request",
@@ -151,6 +171,34 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const updated = await withTenantTransaction(workspaceId, async (client) => {
+        const updates: string[] = [];
+        const values: unknown[] = [];
+        let paramIdx = 1;
+
+        if (name !== undefined) {
+          updates.push(`name = $${paramIdx++}`);
+          values.push(name);
+        }
+        if (defaultPixKey !== undefined) {
+          updates.push(`default_pix_key = $${paramIdx++}`);
+          values.push(defaultPixKey);
+        }
+        if (defaultPixKeyType !== undefined) {
+          updates.push(`default_pix_key_type = $${paramIdx++}`);
+          values.push(defaultPixKeyType);
+        }
+        if (defaultPixMerchantName !== undefined) {
+          updates.push(`default_pix_merchant_name = $${paramIdx++}`);
+          values.push(defaultPixMerchantName);
+        }
+        if (defaultPixMerchantCity !== undefined) {
+          updates.push(`default_pix_merchant_city = $${paramIdx++}`);
+          values.push(defaultPixMerchantCity);
+        }
+
+        updates.push("updated_at = NOW()");
+        values.push(workspaceId);
+
         const res = await client.query<{
           id: string;
           name: string;
@@ -158,14 +206,20 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
           timezone: string;
           currency: string;
           is_active: boolean;
+          default_pix_key: string | null;
+          default_pix_key_type: string | null;
+          default_pix_merchant_name: string | null;
+          default_pix_merchant_city: string | null;
           created_at: string;
           updated_at: string;
         }>(
           `UPDATE workspaces
-           SET name = $1, updated_at = NOW()
-           WHERE id = $2
-           RETURNING id, name, slug, timezone, currency, is_active, created_at, updated_at`,
-          [name, workspaceId]
+           SET ${updates.join(", ")}
+           WHERE id = $${paramIdx}
+           RETURNING id, name, slug, timezone, currency, is_active,
+                     default_pix_key, default_pix_key_type, default_pix_merchant_name, default_pix_merchant_city,
+                     created_at, updated_at`,
+          values
         );
         return res.rows[0];
       });
@@ -190,6 +244,10 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
           currency: updated.currency,
           isActive: updated.is_active,
           status: updated.is_active ? "active" : "inactive",
+          defaultPixKey: updated.default_pix_key,
+          defaultPixKeyType: updated.default_pix_key_type,
+          defaultPixMerchantName: updated.default_pix_merchant_name,
+          defaultPixMerchantCity: updated.default_pix_merchant_city,
           createdAt: updated.created_at,
           updatedAt: updated.updated_at,
         },

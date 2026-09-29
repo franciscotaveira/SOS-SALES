@@ -168,6 +168,7 @@ export const threadsRoutes: FastifyPluginAsync = async (app) => {
           contentType: m.content_type,
           body: m.body,
           mediaUrl: m.media_url,
+          metadata: m.metadata || {},
           providerMessageId: m.provider_message_id,
           deliveryStatus: m.delivery_status,
           statusRank: m.status_rank,
