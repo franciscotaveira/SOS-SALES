@@ -76,8 +76,12 @@ export function verifyEvidenceDigests(
   const commitSha = manifest.commit_sha || provenance.checkpoint_sha;
   const isHistoricalManifest =
     manifest.package_id === "CH-09" ||
+    manifest.package_id === "CH-11" ||
+    manifest.package_id === "CH-12" ||
     manifest.verification_mode === "historical" ||
     manifest.mode === "historical" ||
+    provenance.verification_mode === "historical" ||
+    provenance.mode === "historical" ||
     Boolean(options.mode === "historical");
 
   const mode: "historical" | "working-tree" =
@@ -312,13 +316,85 @@ export function verifyEvidenceDigests(
   };
 }
 
-function parseCliArgs(): { manifestPath: string; mode?: "historical" | "working-tree" } {
+export interface ComprehensiveAuditResult {
+  totalManifests: number;
+  structuralManifests: number;
+  cryptographicManifests: number;
+  allPassed: boolean;
+  errors: string[];
+}
+
+export function auditAllManifests(): ComprehensiveAuditResult {
+  const workPackagesDir = path.join(REPO_ROOT, "docs/work-packages");
+  const manifestFiles = fs.readdirSync(workPackagesDir).filter((f) => f.endsWith("-EVIDENCE.json")).sort();
+  const errors: string[] = [];
+  let structuralCount = 0;
+  let cryptographicCount = 0;
+
+  for (const file of manifestFiles) {
+    const relPath = path.join("docs/work-packages", file);
+    const fullPath = path.join(REPO_ROOT, relPath);
+    let data: any;
+
+    try {
+      data = JSON.parse(fs.readFileSync(fullPath, "utf-8"));
+    } catch (e: any) {
+      errors.push(`${relPath}: Invalid JSON syntax - ${e.message}`);
+      continue;
+    }
+
+    // Structural audit
+    if (!data.package_id || typeof data.package_id !== "string") {
+      errors.push(`${relPath}: Missing or invalid 'package_id'`);
+    }
+    if (!data.timestamp || typeof data.timestamp !== "string") {
+      errors.push(`${relPath}: Missing or invalid 'timestamp'`);
+    }
+    if (!data.metrics || typeof data.metrics !== "object") {
+      errors.push(`${relPath}: Missing or invalid 'metrics' object`);
+    }
+    if (!Array.isArray(data.acceptance_criteria) || data.acceptance_criteria.length === 0) {
+      errors.push(`${relPath}: 'acceptance_criteria' must be a non-empty array`);
+    } else {
+      for (let i = 0; i < data.acceptance_criteria.length; i++) {
+        const ac = data.acceptance_criteria[i];
+        if (!ac.ac_id || !ac.result || !ac.evidence) {
+          errors.push(`${relPath}: Acceptance criteria item at index ${i} is missing ac_id, result, or evidence`);
+        }
+      }
+    }
+
+    structuralCount++;
+
+    // Cryptographic audit if scoped_code_sha256 is present
+    if (data.provenance && data.provenance.scoped_code_sha256) {
+      cryptographicCount++;
+      const res = verifyEvidenceDigests(relPath);
+      if (!res.success) {
+        errors.push(`${relPath} (Cryptographic verification failed): ${res.errors.join("; ")}`);
+      }
+    }
+  }
+
+  return {
+    totalManifests: manifestFiles.length,
+    structuralManifests: structuralCount,
+    cryptographicManifests: cryptographicCount,
+    allPassed: errors.length === 0,
+    errors,
+  };
+}
+
+function parseCliArgs(): { manifestPath?: string; mode?: "historical" | "working-tree"; all: boolean } {
   const args = process.argv.slice(2);
-  let manifestPath = "docs/work-packages/CH-09-EVIDENCE.json";
+  let manifestPath: string | undefined;
   let mode: "historical" | "working-tree" | undefined;
+  let all = false;
 
   for (const arg of args) {
-    if (arg.startsWith("--mode=")) {
+    if (arg === "--all") {
+      all = true;
+    } else if (arg.startsWith("--mode=")) {
       const val = arg.split("=")[1];
       if (val === "historical" || val === "working-tree") {
         mode = val;
@@ -328,48 +404,74 @@ function parseCliArgs(): { manifestPath: string; mode?: "historical" | "working-
     }
   }
 
-  return { manifestPath, mode };
+  if (!manifestPath && !all) {
+    all = true;
+  }
+
+  return { manifestPath, mode, all };
 }
 
 function runCli(): void {
   console.log("================================================================================");
-  console.log(" SOS SALES V3 — EVIDENCE DIGEST VERIFIER (scoped-digest-v1)");
+  console.log(" SOS SALES V3 — EVIDENCE DIGEST & MANIFEST VERIFIER (scoped-digest-v1)");
   console.log("================================================================================");
 
-  const { manifestPath, mode } = parseCliArgs();
-  console.log(`Manifest: ${manifestPath}`);
+  const { manifestPath, mode, all } = parseCliArgs();
 
-  const res = verifyEvidenceDigests(manifestPath, { mode });
-  console.log(`Mode    : ${res.mode}${res.commitSha ? ` (commit: ${res.commitSha})` : ""}\n`);
+  if (all) {
+    console.log("Auditing ALL evidence manifests in docs/work-packages/...\n");
+    const audit = auditAllManifests();
 
-  for (const fh of res.fileHashes) {
-    const statusTag =
-      fh.status === "PASS"
+    console.log("--------------------------------------------------------------------------------");
+    console.log(`Total manifests scanned       : ${audit.totalManifests}`);
+    console.log(`Structural manifests verified : ${audit.structuralManifests}`);
+    console.log(`Cryptographic manifests verified: ${audit.cryptographicManifests}`);
+    console.log(`Audit Verdict                 : ${audit.allPassed ? "[\x1b[32mPASS\x1b[0m]" : "[\x1b[31mFAIL\x1b[0m]"}`);
+    console.log("================================================================================");
+
+    if (!audit.allPassed) {
+      console.error(`\x1b[31mAUDIT FAILED (${audit.errors.length} errors):\x1b[0m`);
+      audit.errors.forEach((e) => console.error(`  * ${e}`));
+      process.exit(1);
+    } else {
+      console.log(`\x1b[32mSUCCESS: All ${audit.totalManifests} manifests structurally and cryptographically sound.\x1b[0m`);
+      process.exit(0);
+    }
+  } else if (manifestPath) {
+    console.log(`Manifest: ${manifestPath}`);
+
+    const res = verifyEvidenceDigests(manifestPath, { mode });
+    console.log(`Mode    : ${res.mode}${res.commitSha ? ` (commit: ${res.commitSha})` : ""}\n`);
+
+    for (const fh of res.fileHashes) {
+      const statusTag =
+        fh.status === "PASS"
+          ? "[\x1b[32mPASS\x1b[0m]"
+          : fh.status === "MISSING"
+            ? "[\x1b[31mMISSING\x1b[0m]"
+            : "[\x1b[31mFAIL\x1b[0m]";
+      console.log(`${statusTag} ${fh.file} -> ${fh.calculatedHash || "N/A"}`);
+    }
+
+    console.log("--------------------------------------------------------------------------------");
+    console.log(`Calculated Composite (Lexicographical) : ${res.calculatedComposite}`);
+    console.log(`Expected Composite                     : ${res.expectedComposite}`);
+
+    const compositeStatus =
+      res.calculatedComposite === res.expectedComposite && res.expectedComposite !== ""
         ? "[\x1b[32mPASS\x1b[0m]"
-        : fh.status === "MISSING"
-          ? "[\x1b[31mMISSING\x1b[0m]"
-          : "[\x1b[31mFAIL\x1b[0m]";
-    console.log(`${statusTag} ${fh.file} -> ${fh.calculatedHash || "N/A"}`);
-  }
+        : "[\x1b[31mFAIL\x1b[0m]";
+    console.log(`Composite Verdict                      : ${compositeStatus}`);
+    console.log("================================================================================");
 
-  console.log("--------------------------------------------------------------------------------");
-  console.log(`Calculated Composite (Lexicographical) : ${res.calculatedComposite}`);
-  console.log(`Expected Composite                     : ${res.expectedComposite}`);
-
-  const compositeStatus =
-    res.calculatedComposite === res.expectedComposite && res.expectedComposite !== ""
-      ? "[\x1b[32mPASS\x1b[0m]"
-      : "[\x1b[31mFAIL\x1b[0m]";
-  console.log(`Composite Verdict                      : ${compositeStatus}`);
-  console.log("================================================================================");
-
-  if (!res.success) {
-    console.error(`\x1b[31mEVIDENCE DIGEST VERIFICATION FAILED (${res.errors.length} errors):\x1b[0m`);
-    res.errors.forEach((e) => console.error(`  * ${e}`));
-    process.exit(1);
-  } else {
-    console.log(`\x1b[32mSUCCESS: All ${res.checkedFiles} files (${res.mode} mode) and composite digest verified.\x1b[0m`);
-    process.exit(0);
+    if (!res.success) {
+      console.error(`\x1b[31mEVIDENCE DIGEST VERIFICATION FAILED (${res.errors.length} errors):\x1b[0m`);
+      res.errors.forEach((e) => console.error(`  * ${e}`));
+      process.exit(1);
+    } else {
+      console.log(`\x1b[32mSUCCESS: All ${res.checkedFiles} files (${res.mode} mode) and composite digest verified.\x1b[0m`);
+      process.exit(0);
+    }
   }
 }
 

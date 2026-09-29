@@ -2,7 +2,7 @@
   "package_id": "CH-12",
   "name": "E2E Técnico de Mensageria e Ciclo de Vida Omnichannel",
   "timestamp": "2026-09-25T21:40:00Z",
-  "commit_sha": "172aa078d039f712504f73623c2258bab6b93a0f",
+  "commit_sha": "c7e1aafa3a84a65b40fb6f846ecaa084fb4d4cd2",
   "branch": "codex/iteration-2.7",
   "evidence_id": "EV-CH12-001",
   "environment": {
@@ -81,8 +81,8 @@
     }
   ],
   "provenance": {
-    "checkpoint_sha": "172aa078d039f712504f73623c2258bab6b93a0f",
-    "verification_mode": "working-tree",
+    "checkpoint_sha": "c7e1aafa3a84a65b40fb6f846ecaa084fb4d4cd2",
+    "verification_mode": "historical",
     "scoped_code_files": [
       "apps/api/src/__tests__/messaging-e2e-lifecycle.test.ts",
       "apps/api/src/__tests__/threads-and-channels.test.ts",

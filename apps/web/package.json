@@ -9,7 +9,8 @@
     "build:lab": "tsc && vite build --mode lab --outDir dist-lab",
     "preview": "vite preview --port 3400",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@sos-sales/contracts": "workspace:*",

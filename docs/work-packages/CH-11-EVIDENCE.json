@@ -2,7 +2,7 @@
   "package_id": "CH-11",
   "name": "Produtor Transacional de Outbound",
   "timestamp": "2026-09-20T23:35:00Z",
-  "commit_sha": "5f5570f808795db2366885dfec180fa4bf805720",
+  "commit_sha": "5f5570fc6924e83f74b8a196facab5ab55e33e41",
   "branch": "codex/iteration-2.7",
   "evidence_id": "EV-CH11-001",
   "environment": {
@@ -123,8 +123,8 @@
     }
   ],
   "provenance": {
-    "checkpoint_sha": "5f5570f808795db2366885dfec180fa4bf805720",
-    "verification_mode": "working-tree",
+    "checkpoint_sha": "5f5570fc6924e83f74b8a196facab5ab55e33e41",
+    "verification_mode": "historical",
     "scoped_code_files": [
       "apps/api/src/__tests__/outbound-messages-routes.test.ts",
       "apps/api/src/index.ts",

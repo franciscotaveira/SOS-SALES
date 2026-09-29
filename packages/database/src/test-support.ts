@@ -835,7 +835,7 @@ export async function executeTestRunnerSession(
         });
       });
     }
-  } catch (err) {
+  } catch (_err) {
     if (terminationSignal === "SIGINT") {
       exitCode = 130;
     } else if (terminationSignal === "SIGTERM") {

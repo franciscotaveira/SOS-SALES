@@ -191,10 +191,10 @@ export class WahaWebhookNormalizer {
       const { iso: timestamp } = resolveTimestamp(payload.timestamp, context);
 
       let contentType: MessageContentType = "text";
-      let body: string | undefined = payload.body
+      const body: string | undefined = payload.body
         ? String(payload.body)
         : undefined;
-      let mediaUrl: string | undefined = payload.mediaUrl
+      const mediaUrl: string | undefined = payload.mediaUrl
         ? String(payload.mediaUrl)
         : undefined;
 
