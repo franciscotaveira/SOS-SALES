@@ -236,6 +236,45 @@
   - `pnpm --filter @sos-sales/web build`:
     - **Resultado:** Build concluído com sucesso em 1.70s (Exit Code: 0).
 
+---
+
+## 10. Milestone M8 — Resiliência, Restarts, Lease Recovery e Preparação para Migração
+
+- **Data:** 2026-09-29T04:40:00-03:00
+- **Mudanças Implementadas:**
+  - `docs/runbooks/BACKUP-RESTORE-ROLLBACK-RUNBOOK.md`:
+    - Procedimentos operacionais detalhados de backup lógico (`pg_dump` completo) e físico (snapshots de volume Docker).
+    - Ensaio de restauração em banco descartável de laboratório com verificação automática de integridade.
+    - Estratégia de rollback por tráfego, revogação de canais e feature flags em conformidade com o princípio expand-contract (sem down migrations DDL destrutivas).
+    - Protocolo de recuperação de crash de worker (SIGKILL / OOM) e política de dead-letter em filas CAPI e outbox.
+  - `scripts/migration-v2-to-v3-dryrun.ts`:
+    - Script automatizado de dry-run para auditoria de prontidão V2->V3 sem credenciais reais.
+    - Validação de 17 tabelas estruturais de negócio e infraestrutura V3.
+    - Verificação estrita de `FORCE ROW LEVEL SECURITY` em todas as tabelas multi-tenant.
+    - Verificação de privilégios mínimos (garantindo que `DELETE` permaneça expressamente revogado para `sos_app_user` em tabelas imutáveis).
+    - Auditoria de integridade referencial: zero threads, mensagens, propostas, ações e cobranças órfãs.
+    - Emissão de relatório estruturado em formato CLI ou JSON.
+  - `scripts/__tests__/migration-v2-to-v3-dryrun.test.ts`:
+    - Suíte de testes automatizados com 2/2 testes aprovados confirmando que o dry-run executa com sucesso, sem divergências (`isReady: true`) e com garantia de idempotência.
+  - `apps/worker/src/__tests__/resilience-and-recovery-m8.test.ts`:
+    - Suíte de resiliência e integridade do worker com 3/3 testes aprovados:
+      1. Queda súbita de worker processando comando outbox: na retomada, o lease expirado é recuperado para `reconciliation_required` sem chamada repetida ou cega ao provedor WhatsApp (garantia de Truth in Data contra duplicação de mensagens no canal);
+      2. Reconciliação administrativa com registro de recibo externo (`externalMessageId`) e transição segura para `sent`;
+      3. Recuperação de eventos CAPI com despacho simulado honesto sem geração de falsos `fbtrace_id`;
+      4. Rastreabilidade ponta a ponta com correlação de IDs entre eventos de auditoria imutáveis, thread, mensagens e workspace.
+- **Resultados de Testes Executados:**
+  - `scripts/__tests__/migration-v2-to-v3-dryrun.test.ts`:
+    - **Resultado:** 2/2 testes aprovados (Exit Code: 0, Duração: 164ms).
+  - `apps/worker/src/__tests__/resilience-and-recovery-m8.test.ts`:
+    - **Resultado:** 3/3 testes aprovados (Exit Code: 0, Duração: 202ms).
+  - Execução Integral Monorepo (`pnpm test:db:run`):
+    - **Resultado:** 55/55 arquivos de teste aprovados, 730/730 testes verdes com teardown limpo (Exit Code: 0, Duração: 29.91s).
+  - `pnpm typecheck`:
+    - **Resultado:** 18/18 tarefas concluídas com sucesso no Turbo (Exit Code: 0, Duração: 3.59s).
+  - `pnpm build`:
+    - **Resultado:** 10/10 pacotes construídos com sucesso (Exit Code: 0, Duração: 4.28s).
+
+
 
 
 
