@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { ChevronLeft, ChevronRight, Shield } from "lucide-react";
+import { ChevronLeft, ChevronRight, MessageSquareText } from "lucide-react";
 import type { NavItem } from "./AppShell.types";
 
 interface SidebarProps {
@@ -67,7 +67,7 @@ export const Sidebar: FC<SidebarProps> = ({
           }}
           aria-hidden="true"
         >
-          <Shield size={18} />
+          <MessageSquareText size={18} />
         </div>
 
         {!collapsed && (
@@ -81,7 +81,7 @@ export const Sidebar: FC<SidebarProps> = ({
                 whiteSpace: "nowrap",
               }}
             >
-              SOS SALES
+              CHAT SALES
             </span>
             <span
               style={{

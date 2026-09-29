@@ -6,7 +6,7 @@ import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ErrorBoundary fallbackTitle="Falha no SOS Sales V3">
+    <ErrorBoundary fallbackTitle="Falha no Chat Sales V3">
       <App />
     </ErrorBoundary>
   </React.StrictMode>

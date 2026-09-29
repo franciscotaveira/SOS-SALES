@@ -10,6 +10,7 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
+    "landing:dev": "npx -y serve landing -l 3500",
     "test": "vitest run",
     "test:db:bootstrap": "ALLOW_TEST_DB_ADMIN_OPERATIONS=true tsx scripts/test-db-runner.ts bootstrap",
     "test:db:dispose": "ALLOW_TEST_DB_ADMIN_OPERATIONS=true tsx scripts/test-db-runner.ts dispose",

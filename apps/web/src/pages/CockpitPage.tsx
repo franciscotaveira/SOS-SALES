@@ -1064,7 +1064,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
           text: `Olá! Conforme combinamos, segue o link oficial da nossa solução:\n\n*${targetProduct.title}*\n${targetProduct.subtitle || targetProduct.description}`,
         },
         footer: {
-          text: "SOS Sales • Catálogo Oficial",
+          text: "Chat Sales • Catálogo Oficial",
         },
         action: {
           catalog_id: targetProduct.catalogId || "meta_catalog_default",
@@ -1142,7 +1142,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
           text: "Selecione uma das opções abaixo para ver detalhes completos e condições exclusivas:",
         },
         footer: {
-          text: "SOS Sales • Atendimento Comercial",
+          text: "Chat Sales • Atendimento Comercial",
         },
         action: {
           catalog_id: "meta_catalog_default",
@@ -1263,7 +1263,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
       setPixCharges((prev) => [charge, ...prev]);
 
       // 2. Dispatch message directly to WhatsApp conversation
-      const renderedBody = `💰 *Cobrança Pix Gerada — SOS Sales*\n\nOlá! Segue a chave Pix Copia e Cola para pagamento do seu pedido:\n\n📌 *Item:* ${charge.title}\n💵 *Valor:* ${charge.amountFormatted}\n\n🔑 *Chave Pix Copia e Cola:*\n\`${charge.pixCode}\`\n\n⏳ _Válido por ${pixExpiresMinutes} minutos._`;
+      const renderedBody = `💰 *Cobrança Pix Gerada — Chat Sales*\n\nOlá! Segue a chave Pix Copia e Cola para pagamento do seu pedido:\n\n📌 *Item:* ${charge.title}\n💵 *Valor:* ${charge.amountFormatted}\n\n🔑 *Chave Pix Copia e Cola:*\n\`${charge.pixCode}\`\n\n⏳ _Válido por ${pixExpiresMinutes} minutos._`;
 
       const optimisticMessage: ThreadMessageSummary = {
         id: `opt-pix-${Date.now()}`,
@@ -2251,7 +2251,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
                                       )}
                                       <div style={{ flex: 1 }}>
                                         <div style={{ fontSize: "0.84rem", color: "#166534", lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
-                                          {msg.body.replace("💰 *Cobrança Pix Gerada — SOS Sales*\n\n", "")}
+                                          {msg.body.replace("💰 *Cobrança Pix Gerada — Chat Sales*\n\n", "").replace("💰 *Cobrança Pix Gerada — SOS Sales*\n\n", "")}
                                         </div>
                                       </div>
                                     </div>
@@ -4766,7 +4766,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session }) => {
                   </div>
                   <div>
                     <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#1E293B" }}>
-                      Cobrança Pix — SOS Sales
+                      Cobrança Pix — Chat Sales
                     </div>
                     <div style={{ fontSize: "0.68rem", color: "#64748B" }}>
                       Válido por {pixExpiresMinutes} minutos
