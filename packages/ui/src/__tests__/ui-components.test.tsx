@@ -256,7 +256,7 @@ describe("SOS Sales V3 — packages/ui Component & Token Suite", () => {
       );
 
       // Verify Brand and Structure
-      expect(html).toContain("SOS SALES");
+      expect(html).toContain("CHAT SALES");
       expect(html).toContain("Soberano V3");
       expect(html).toContain("Atendimento");
       expect(html).toContain("Funil Comercial");
