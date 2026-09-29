@@ -1,5 +1,5 @@
 /**
- * Chat Sales — Integration Routes (F1.1 Radar Hardening)
+ * Chat Sales — Integration Routes (F1.1-B Radar Hardening)
  * 
  * Capabilities:
  * 1. GET   /v1/workspaces/:workspaceId/integrations/candidates  — governed candidate snapshot with stable cursor
@@ -12,7 +12,9 @@
  * - Accepting a suggestion NEVER sends external messages. It only pre-fills the composer draft.
  * - Same key + same payload = 200/201 idempotent replay.
  * - Same key + different payload = 409 Conflict.
- * - Origin state change (new message, closed thread, handoff, opt-out, expiry) rejects decision with 409 Conflict.
+ * - Origin state change (new message, closed thread, handoff, opt-out, expiry) persists invalidated/expired and responds 409 Conflict.
+ * - Client cannot spoof originSnapshot (strictly derived on server).
+ * - Malformed cursor returns 400 with INVALID_CURSOR code.
  */
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
@@ -26,7 +28,9 @@ import {
   countPendingSuggestions,
   SuggestionIdempotencyConflictError,
   SuggestionDecisionRejectionError,
+  InvalidCursorError,
   type SuggestionStatus,
+  type SuggestionSource,
 } from "@sos-sales/database";
 import type { Role } from "@sos-sales/contracts";
 
@@ -55,6 +59,7 @@ const listSuggestionsQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+// Strict schema: unknown fields (including spoofed originSnapshot) are rejected with 400 Bad Request
 const createSuggestionBodySchema = z.object({
   idempotencyKey: z.string().min(1).max(256),
   source: z.enum(["n8n", "manual", "system"]).optional(),
@@ -65,15 +70,18 @@ const createSuggestionBodySchema = z.object({
   body: z.string().min(1).max(2000),
   draftMessage: z.string().max(2000).optional().nullable(),
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  moduleKey: z.literal("radar_m01").default("radar_m01").optional(),
+  ruleVersion: z.string().max(32).default("1.0.0").optional(),
+  reasonCode: z.string().max(64).optional(),
+  evidence: z.record(z.unknown()).optional(),
   metadata: z.record(z.unknown()).optional(),
-  originSnapshot: z.record(z.unknown()).optional(),
   expiresAt: z.string().datetime().optional().nullable(),
-});
+}).strict();
 
 const decideSuggestionBodySchema = z.object({
   status: z.enum(["accepted", "dismissed"]),
   stateVersion: z.number().int().positive(),
-});
+}).strict();
 
 /**
  * Inline permission check: returns true if the request's active role
@@ -104,11 +112,12 @@ function forbidden(reply: FastifyReply, request: FastifyRequest, detail: string)
   });
 }
 
-function badRequest(reply: FastifyReply, request: FastifyRequest, detail: string, details?: unknown) {
+function badRequest(reply: FastifyReply, request: FastifyRequest, detail: string, code?: string, details?: unknown) {
   return reply.status(400).send({
     type: "https://chat-sales.mct.br/errors/bad-request",
     title: "Bad Request",
     status: 400,
+    ...(code ? { code } : {}),
     detail,
     ...(details ? { details } : {}),
     instance: request.url,
@@ -143,26 +152,33 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
 
       const parsedQuery = listCandidatesQuerySchema.safeParse(request.query);
       if (!parsedQuery.success) {
-        return badRequest(reply, request, "Invalid query parameters for candidates", parsedQuery.error.format());
+        return badRequest(reply, request, "Invalid query parameters for candidates", undefined, parsedQuery.error.format());
       }
 
       const { workspaceId } = parsedParams.data;
       const { minHoursSinceLastMessage, limit, cursor, moduleKey } = parsedQuery.data;
 
-      const result = await withTenantTransaction(workspaceId, async (client) => {
-        return listIntegrationCandidates(client, workspaceId, {
-          minHoursSinceLastMessage,
-          limit,
-          cursor,
-          moduleKey,
+      try {
+        const result = await withTenantTransaction(workspaceId, async (client) => {
+          return listIntegrationCandidates(client, workspaceId, {
+            minHoursSinceLastMessage,
+            limit,
+            cursor,
+            moduleKey,
+          });
         });
-      });
 
-      return reply.status(200).send({
-        items: result.items,
-        total: result.total,
-        nextCursor: result.nextCursor,
-      });
+        return reply.status(200).send({
+          items: result.items,
+          total: result.total,
+          nextCursor: result.nextCursor,
+        });
+      } catch (err: any) {
+        if (err instanceof InvalidCursorError || err.code === "INVALID_CURSOR") {
+          return badRequest(reply, request, err.message, "INVALID_CURSOR");
+        }
+        throw err;
+      }
     }
   );
 
@@ -191,11 +207,17 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
 
       const parseResult = createSuggestionBodySchema.safeParse(request.body);
       if (!parseResult.success) {
-        return badRequest(reply, request, "Invalid suggestion creation payload", parseResult.error.format());
+        return badRequest(reply, request, "Invalid suggestion creation payload", undefined, parseResult.error.format());
       }
 
       const { workspaceId } = parsedParams.data;
       const data = parseResult.data;
+
+      // Server-derived provenance: integration_service callers are strictly 'n8n'
+      const activeRole = (request.activeRole || request.user?.role) as Role | undefined;
+      const derivedSource: SuggestionSource = activeRole === "integration_service"
+        ? "n8n"
+        : (data.source || "system");
 
       try {
         const { suggestion, created } = await withTenantTransaction(
@@ -203,7 +225,7 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
           async (client) => {
             return createIntegrationSuggestion(client, workspaceId, {
               idempotencyKey: data.idempotencyKey,
-              source: data.source,
+              source: derivedSource,
               threadId: data.threadId,
               contactId: data.contactId,
               suggestionType: data.suggestionType,
@@ -211,8 +233,11 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
               body: data.body,
               draftMessage: data.draftMessage,
               priority: data.priority,
+              moduleKey: data.moduleKey,
+              ruleVersion: data.ruleVersion,
+              reasonCode: data.reasonCode,
+              evidence: data.evidence,
               metadata: data.metadata,
-              originSnapshot: data.originSnapshot as any,
               expiresAt: data.expiresAt,
             });
           }
@@ -223,6 +248,8 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
           id: suggestion.id,
           idempotencyKey: suggestion.idempotency_key,
           source: suggestion.source,
+          moduleKey: suggestion.module_key,
+          ruleVersion: suggestion.rule_version,
           threadId: suggestion.thread_id,
           contactId: suggestion.contact_id,
           suggestionType: suggestion.suggestion_type,
@@ -243,6 +270,19 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
             type: "https://chat-sales.mct.br/errors/conflict",
             title: "Idempotency Conflict",
             status: 409,
+            code: "IDEMPOTENCY_CONFLICT",
+            detail: err.message,
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
+        if (err instanceof SuggestionDecisionRejectionError) {
+          const statusCode = err.code === "INVALID_SNAPSHOT" ? 400 : 409;
+          return reply.status(statusCode).send({
+            type: "https://chat-sales.mct.br/errors/conflict",
+            title: "Suggestion Rejected",
+            status: statusCode,
+            code: err.code,
             detail: err.message,
             instance: request.url,
             correlationId: request.id,
@@ -278,7 +318,7 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
 
       const parsedQuery = listSuggestionsQuerySchema.safeParse(request.query);
       if (!parsedQuery.success) {
-        return badRequest(reply, request, "Invalid query parameters for suggestions", parsedQuery.error.format());
+        return badRequest(reply, request, "Invalid query parameters for suggestions", undefined, parsedQuery.error.format());
       }
 
       const { workspaceId } = parsedParams.data;
@@ -298,6 +338,8 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
           id: s.id,
           idempotencyKey: s.idempotency_key,
           source: s.source,
+          moduleKey: s.module_key,
+          ruleVersion: s.rule_version,
           threadId: s.thread_id,
           contactId: s.contact_id,
           suggestionType: s.suggestion_type,
@@ -358,6 +400,7 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
   //    Permission: integration:suggestions:manage OR integration:manage
   //    Accept or dismiss with transactional origin state revalidation.
   //    INVARIANT: Accepting ONLY pre-fills composer draft, NEVER auto-sends.
+  //    PERSISTENCE: If invalidated or expired, commits state and returns 409.
   // ─────────────────────────────────────────────────────────────────────────
   app.patch(
     "/v1/workspaces/:workspaceId/integrations/suggestions/:suggestionId",
@@ -382,6 +425,7 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
         return badRequest(
           reply, request,
           "Invalid decision payload. Required: { status: 'accepted'|'dismissed', stateVersion: number }",
+          undefined,
           parseResult.error.format()
         );
       }
@@ -389,40 +433,38 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
       const { workspaceId, suggestionId } = parsedParams.data;
       const { status, stateVersion } = parseResult.data;
 
-      try {
-        const updated = await withTenantTransaction(workspaceId, async (client) => {
-          return decideSuggestion(client, workspaceId, suggestionId, {
-            status,
-            decidedByUserId: request.user.id,
-            expectedStateVersion: stateVersion,
-          });
+      const decisionResult = await withTenantTransaction(workspaceId, async (client) => {
+        return decideSuggestion(client, workspaceId, suggestionId, {
+          status,
+          decidedByUserId: request.user.id,
+          expectedStateVersion: stateVersion,
         });
+      });
 
-        return reply.status(200).send({
-          id: updated.id,
-          status: updated.status,
-          stateVersion: updated.state_version,
-          decidedByUserId: updated.decided_by_user_id,
-          decidedAt: updated.decided_at?.toISOString() ?? null,
-          draftMessage: updated.draft_message,
-          threadId: updated.thread_id,
-          originSnapshot: updated.origin_snapshot,
+      if (!decisionResult.ok) {
+        const statusCode = decisionResult.code === "SUGGESTION_NOT_FOUND" ? 404 : 409;
+        return reply.status(statusCode).send({
+          type: "https://chat-sales.mct.br/errors/conflict",
+          title: "Decision Conflict",
+          status: statusCode,
+          code: decisionResult.code,
+          detail: decisionResult.reason,
+          instance: request.url,
+          correlationId: request.id,
         });
-      } catch (err: any) {
-        if (err instanceof SuggestionDecisionRejectionError || err.code) {
-          const statusCode = err.code === "SUGGESTION_NOT_FOUND" ? 404 : 409;
-          return reply.status(statusCode).send({
-            type: "https://chat-sales.mct.br/errors/conflict",
-            title: "Decision Conflict",
-            status: statusCode,
-            code: err.code,
-            detail: err.message,
-            instance: request.url,
-            correlationId: request.id,
-          });
-        }
-        throw err;
       }
+
+      const updated = decisionResult.suggestion;
+      return reply.status(200).send({
+        id: updated.id,
+        status: updated.status,
+        stateVersion: updated.state_version,
+        decidedByUserId: updated.decided_by_user_id,
+        decidedAt: updated.decided_at?.toISOString() ?? null,
+        draftMessage: updated.draft_message,
+        threadId: updated.thread_id,
+        originSnapshot: updated.origin_snapshot,
+      });
     }
   );
 };

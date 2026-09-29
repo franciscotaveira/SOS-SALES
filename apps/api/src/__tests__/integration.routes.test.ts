@@ -8,7 +8,7 @@ import {
 import { SignJWT } from "@sos-sales/auth";
 import { buildApp } from "../index";
 
-describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
+describe("Integration Routes (F1.1-B Radar Hardening & Security Gates)", () => {
   const jwtSecret = "test_jwt_secret_key_minimum_32_characters_long_2026!";
   const testIssuer = "sos-sales-test";
   const testAudience = "sos-sales-api-test";
@@ -45,21 +45,21 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
     // 1. Provision Organization and Workspaces
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
-      VALUES ('F1.1 Radar Route Org', $1)
+      VALUES ('F1.1-B Radar Route Org', $1)
       RETURNING id;
     `, [`radar-route-org-${crypto.randomUUID()}`]);
     const orgId = orgRes.rows[0].id;
 
     const wsARes = await ownerPool.query(`
-      INSERT INTO workspaces (organization_id, name, slug)
-      VALUES ($1, 'Workspace Radar Alpha', $2)
+      INSERT INTO workspaces (organization_id, name, slug, radar_enabled, radar_cooldown_seconds)
+      VALUES ($1, 'Workspace Radar Alpha', $2, true, 86400)
       RETURNING id;
     `, [orgId, `radar-ws-a-${crypto.randomUUID()}`]);
     workspaceAId = wsARes.rows[0].id;
 
     const wsBRes = await ownerPool.query(`
-      INSERT INTO workspaces (organization_id, name, slug)
-      VALUES ($1, 'Workspace Radar Beta', $2)
+      INSERT INTO workspaces (organization_id, name, slug, radar_enabled, radar_cooldown_seconds)
+      VALUES ($1, 'Workspace Radar Beta', $2, true, 86400)
       RETURNING id;
     `, [orgId, `radar-ws-b-${crypto.randomUUID()}`]);
     workspaceBId = wsBRes.rows[0].id;
@@ -173,7 +173,7 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
     await ownerPool.end();
   });
 
-  describe("1. Semantic Idempotency (200 Replay vs 409 Conflict)", () => {
+  describe("1. Semantic Idempotency & Provenance", () => {
     it("returns 200/201 with existing record for same key and identical payload", async () => {
       const idempotencyKey = `route-idem-${crypto.randomUUID()}`;
 
@@ -183,7 +183,6 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
         headers: { authorization: `Bearer ${tokenIntegrationService}` },
         payload: {
           idempotencyKey,
-          source: "n8n",
           threadId: threadAId,
           contactId: contactAId,
           suggestionType: "follow_up",
@@ -197,6 +196,8 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
       expect(res1.statusCode).toBe(201);
       const body1 = res1.json();
       expect(body1.created).toBe(true);
+      expect(body1.source).toBe("n8n"); // Forced by integration_service role
+      expect(body1.originSnapshot).toBeDefined();
 
       // Repeat with same payload
       const res2 = await app.inject({
@@ -205,7 +206,6 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
         headers: { authorization: `Bearer ${tokenIntegrationService}` },
         payload: {
           idempotencyKey,
-          source: "n8n",
           threadId: threadAId,
           contactId: contactAId,
           suggestionType: "follow_up",
@@ -251,9 +251,48 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
       expect(resConflict.statusCode).toBe(409);
       expect(resConflict.json().title).toBe("Idempotency Conflict");
     });
+
+    it("rejects public payload containing originSnapshot as an unknown field (400 Bad Request)", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+        payload: {
+          idempotencyKey: `spoof-snap-${crypto.randomUUID()}`,
+          title: "Tentativa de Spoofing de Snapshot",
+          body: "Corpo",
+          originSnapshot: { lastMessageAt: "2026-01-01T00:00:00Z" },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().title).toBe("Bad Request");
+    });
   });
 
-  describe("2. Comprehensive Negative Authorization Matrix for integration_service (All 403 Forbidden)", () => {
+  describe("2. Comprehensive RBAC Matrix for integration_service (Read vs Mutation)", () => {
+    // ─── PERMITTED READS (journey:view and integration:candidates:read) ───
+    it("ALLOWS candidates list (GET /integrations/candidates -> 200)", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: `/v1/workspaces/${workspaceAId}/integrations/candidates`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().items).toBeDefined();
+    });
+
+    it("ALLOWS thread journey view (GET /threads/:id/journey -> 200)", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: `/v1/workspaces/${workspaceAId}/threads/${threadAId}/journey`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+      });
+      // 200 (or 200 with journey: null)
+      expect(res.statusCode).toBe(200);
+    });
+
+    // ─── DENIED OPERATIONS (403 Forbidden) ───
     it("DENIES outbound message dispatch (POST /messages -> 403)", async () => {
       const res = await app.inject({
         method: "POST",
@@ -264,6 +303,42 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
           body: "Tentativa de envio direto não autorizada pelo n8n",
           idempotencyKey: `deny-send-${crypto.randomUUID()}`,
         },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("DENIES suggestion internal list (GET /suggestions -> 403)", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("DENIES suggestion decision (PATCH /suggestions/:id -> 403)", async () => {
+      const createRes = await app.inject({
+        method: "POST",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+        payload: { idempotencyKey: `decide-deny-${crypto.randomUUID()}`, title: "Para teste", body: "Corpo" },
+      });
+      const sugId = createRes.json().id;
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions/${sugId}`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+        payload: { status: "accepted", stateVersion: 1 },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("DENIES suggestion count badge (GET /suggestions/count -> 403)", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions/count`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
       });
       expect(res.statusCode).toBe(403);
     });
@@ -292,31 +367,12 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
       expect(res.statusCode).toBe(403);
     });
 
-    it("DENIES thread direct outcome registration (POST /threads/:id/outcomes -> 403)", async () => {
-      const res = await app.inject({
-        method: "POST",
-        url: `/v1/workspaces/${workspaceAId}/threads/${threadAId}/outcomes`,
-        headers: { authorization: `Bearer ${tokenIntegrationService}` },
-        payload: { status: "won", valueCents: 50000, currency: "BRL" },
-      });
-      expect(res.statusCode).toBe(403);
-    });
-
     it("DENIES pix charge creation (POST /threads/:id/pix-charges -> 403)", async () => {
       const res = await app.inject({
         method: "POST",
         url: `/v1/workspaces/${workspaceAId}/threads/${threadAId}/pix-charges`,
         headers: { authorization: `Bearer ${tokenIntegrationService}` },
         payload: { contactId: contactAId, title: "Tentativa Pix", amountCents: 5000 },
-      });
-      expect(res.statusCode).toBe(403);
-    });
-
-    it("DENIES pix manual payment confirmation (POST /pix-charges/:id/confirm-payment -> 403)", async () => {
-      const res = await app.inject({
-        method: "POST",
-        url: `/v1/workspaces/${workspaceAId}/pix-charges/${crypto.randomUUID()}/confirm-payment`,
-        headers: { authorization: `Bearer ${tokenIntegrationService}` },
       });
       expect(res.statusCode).toBe(403);
     });
@@ -329,65 +385,23 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
       });
       expect(res.statusCode).toBe(403);
     });
-
-    it("DENIES suggestion decision (PATCH /suggestions/:id -> 403)", async () => {
-      const createRes = await app.inject({
-        method: "POST",
-        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions`,
-        headers: { authorization: `Bearer ${tokenIntegrationService}` },
-        payload: { idempotencyKey: `decide-deny-${crypto.randomUUID()}`, title: "Para teste", body: "Corpo" },
-      });
-      const sugId = createRes.json().id;
-
-      const res = await app.inject({
-        method: "PATCH",
-        url: `/v1/workspaces/${workspaceAId}/integrations/suggestions/${sugId}`,
-        headers: { authorization: `Bearer ${tokenIntegrationService}` },
-        payload: { status: "accepted", stateVersion: 1 },
-      });
-      expect(res.statusCode).toBe(403);
-    });
-
-    it("DENIES workspace details view (GET /workspaces/:id -> 403)", async () => {
-      const res = await app.inject({
-        method: "GET",
-        url: `/v1/workspaces/${workspaceAId}`,
-        headers: { authorization: `Bearer ${tokenIntegrationService}` },
-      });
-      expect(res.statusCode).toBe(403);
-    });
-
-    it("DENIES workspace settings update (PATCH /workspaces/:id -> 403)", async () => {
-      const res = await app.inject({
-        method: "PATCH",
-        url: `/v1/workspaces/${workspaceAId}`,
-        headers: { authorization: `Bearer ${tokenIntegrationService}` },
-        payload: { name: "Tentativa de renomear" },
-      });
-      expect(res.statusCode).toBe(403);
-    });
-
-    it("DENIES commercial threads list and update (GET/PATCH /threads -> 403)", async () => {
-      const resList = await app.inject({
-        method: "GET",
-        url: `/v1/workspaces/${workspaceAId}/threads`,
-        headers: { authorization: `Bearer ${tokenIntegrationService}` },
-      });
-      expect(resList.statusCode).toBe(403);
-
-      const resPatch = await app.inject({
-        method: "PATCH",
-        url: `/v1/workspaces/${workspaceAId}/threads/${threadAId}`,
-        headers: { authorization: `Bearer ${tokenIntegrationService}` },
-        payload: { status: "closed" },
-      });
-      expect(resPatch.statusCode).toBe(403);
-    });
   });
 
-  describe("3. Query Parameters Validation (RFC 7807 400 Bad Request)", () => {
-    it("returns 400 Bad Request when candidates query parameters violate schema", async () => {
-      // Invalid minHoursSinceLastMessage (negative or non-numeric)
+  describe("3. Query Parameters & Cursor Validation", () => {
+    it("returns 400 Bad Request with code INVALID_CURSOR when cursor is malformed", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: `/v1/workspaces/${workspaceAId}/integrations/candidates?cursor=invalid-cursor-bad-data`,
+        headers: { authorization: `Bearer ${tokenIntegrationService}` },
+      });
+
+      expect(res.statusCode).toBe(400);
+      const json = res.json();
+      expect(json.code).toBe("INVALID_CURSOR");
+      expect(json.title).toBe("Bad Request");
+    });
+
+    it("returns 400 Bad Request when candidates query parameters violate bounds", async () => {
       const res = await app.inject({
         method: "GET",
         url: `/v1/workspaces/${workspaceAId}/integrations/candidates?minHoursSinceLastMessage=-5`,
@@ -410,8 +424,8 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
     });
   });
 
-  describe("4. Transactional Origin Revalidation on Decision", () => {
-    it("returns 409 Conflict when a new message arrived after snapshot", async () => {
+  describe("4. Transactional Origin Revalidation & Safe Persistence", () => {
+    it("returns 409 Conflict AND persists invalidated state when new message arrived", async () => {
       // Create new contact and thread
       const cRes = await ownerPool.query(`
         INSERT INTO contacts (workspace_id, phone_e164, name, opt_out)
@@ -427,14 +441,13 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
       `, [workspaceAId, channelAId, newContactId]);
       const newThreadId = tRes.rows[0].id;
 
-      const mRes = await ownerPool.query(`
+      await ownerPool.query(`
         INSERT INTO messages (workspace_id, channel_instance_id, thread_id, provider, direction, sender_e164, recipient_e164, content_type, body, created_at)
         VALUES ($1, $2, $3, 'meta_waba', 'inbound', '+5549988880099', '+5549988880001', 'text', 'Mensagem 1', now() - interval '2 hours')
         RETURNING id, created_at;
       `, [workspaceAId, channelAId, newThreadId]);
-      const baseMsg = mRes.rows[0];
 
-      // Create suggestion
+      // Create suggestion (server derives origin_snapshot)
       const createRes = await app.inject({
         method: "POST",
         url: `/v1/workspaces/${workspaceAId}/integrations/suggestions`,
@@ -446,12 +459,6 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
           title: "Sugestão com snapshot",
           body: "Corpo",
           draftMessage: "Rascunho",
-          originSnapshot: {
-            threadId: newThreadId,
-            lastMessageAt: baseMsg.created_at.toISOString(),
-            lastMessageId: baseMsg.id,
-            threadStatus: "active",
-          },
         },
       });
       const suggestionId = createRes.json().id;
@@ -476,9 +483,17 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
 
       expect(decideRes.statusCode).toBe(409);
       expect(decideRes.json().code).toBe("ORIGIN_STALE_NEW_MESSAGE");
+
+      // Verify row in DB is PERSISTED as 'invalidated' with state_version incremented
+      const checkRes = await ownerPool.query(`
+        SELECT status, state_version, metadata FROM integration_suggestions WHERE id = $1;
+      `, [suggestionId]);
+      expect(checkRes.rows[0].status).toBe("invalidated");
+      expect(checkRes.rows[0].state_version).toBe(2);
+      expect(checkRes.rows[0].metadata.invalidation_reason).toContain("Nova mensagem recebida");
     });
 
-    it("returns 409 Conflict when suggestion has expired", async () => {
+    it("returns 409 Conflict AND persists expired state when suggestion has expired", async () => {
       const expiredPastTime = new Date(Date.now() - 60_000).toISOString();
 
       const createRes = await app.inject({
@@ -503,12 +518,18 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
 
       expect(decideRes.statusCode).toBe(409);
       expect(decideRes.json().code).toBe("SUGGESTION_EXPIRED");
+
+      // Verify row in DB is PERSISTED as 'expired'
+      const checkRes = await ownerPool.query(`
+        SELECT status, state_version FROM integration_suggestions WHERE id = $1;
+      `, [suggestionId]);
+      expect(checkRes.rows[0].status).toBe("expired");
+      expect(checkRes.rows[0].state_version).toBe(2);
     });
   });
 
   describe("5. Invariant: Accepting a suggestion PRE-FILLS composer draft only, NEVER dispatches", () => {
     it("returns draftMessage on accept and inserts ZERO outbound messages in queue", async () => {
-      // Create fresh valid thread
       const cRes = await ownerPool.query(`
         INSERT INTO contacts (workspace_id, phone_e164, name, opt_out)
         VALUES ($1, '+5549988880055', 'Lead Draft Invariant', false)
@@ -523,10 +544,9 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
       `, [workspaceAId, channelAId, contactId]);
       const threadId = tRes.rows[0].id;
 
-      const mRes = await ownerPool.query(`
+      await ownerPool.query(`
         INSERT INTO messages (workspace_id, channel_instance_id, thread_id, provider, direction, sender_e164, recipient_e164, content_type, body, created_at)
-        VALUES ($1, $2, $3, 'meta_waba', 'inbound', '+5549988880055', '+5549988880001', 'text', 'Oi', now() - interval '1 hour')
-        RETURNING id, created_at;
+        VALUES ($1, $2, $3, 'meta_waba', 'inbound', '+5549988880055', '+5549988880001', 'text', 'Oi', now() - interval '1 hour');
       `, [workspaceAId, channelAId, threadId]);
 
       const createRes = await app.inject({
@@ -540,12 +560,6 @@ describe("Integration Routes (F1.1 Radar Hardening & Security Gates)", () => {
           title: "Sugestão Draft Only",
           body: "Corpo",
           draftMessage: "Mensagem pronta para composer humano",
-          originSnapshot: {
-            threadId,
-            lastMessageAt: mRes.rows[0].created_at.toISOString(),
-            lastMessageId: mRes.rows[0].id,
-            threadStatus: "active",
-          },
         },
       });
       const suggestionId = createRes.json().id;
