@@ -162,15 +162,15 @@ describe("Pix BR Code EMV & Financial Separation Suite (E1.1)", () => {
       expect(tags["59"]).toBe("HAVEN ESCOVARIA"); // Merchant
       expect(tags["60"]).toBe("CHAPECO"); // City
       expect(tags["63"]).toBeDefined(); // CRC16
-      expect(tags["63"].length).toBe(4);
+      expect(tags["63"]?.length).toBe(4);
 
       // Verify nested TLV Tag 26 (Merchant Account Information)
-      const maiTags = parseTLVElements(tags["26"]);
+      const maiTags = parseTLVElements(tags["26"] || "");
       expect(maiTags["00"]).toBe("br.gov.bcb.pix");
       expect(maiTags["01"]).toBe("financeiro@haven.com.br");
 
       // Verify nested TLV Tag 62 (Additional Data Field Template)
-      const addDataTags = parseTLVElements(tags["62"]);
+      const addDataTags = parseTLVElements(tags["62"] || "");
       expect(addDataTags["05"]).toBe("noiva12345");
     });
   });
@@ -225,9 +225,6 @@ describe("Pix BR Code EMV & Financial Separation Suite (E1.1)", () => {
           title: "Teste Concorrência Pix",
           amountCents: 8900,
         });
-
-        const actor1 = crypto.randomUUID();
-        const actor2 = crypto.randomUUID();
 
         // Sequential repeat call
         const first = await confirmPixChargeManual(client, {

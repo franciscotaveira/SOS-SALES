@@ -58,6 +58,7 @@ export const commercialRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [
         app.authenticate,
         app.requireWorkspaceContext,
+        app.requirePermission("journey:view"),
       ],
     },
     async (request, reply) => {
@@ -272,6 +273,7 @@ export const commercialRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [
         app.authenticate,
         app.requireWorkspaceContext,
+        app.requirePermission("journey:view"),
       ],
     },
     async (request, reply) => {
@@ -461,6 +463,7 @@ export const commercialRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [
         app.authenticate,
         app.requireWorkspaceContext,
+        app.requirePermission("outcome:register"),
       ],
     },
     async (request, reply) => {
