@@ -307,6 +307,53 @@
   - `pnpm --filter @sos-sales/web build`:
     - **Resultado:** Build concluído com sucesso em 1.84s (Exit Code: 0).
 
+---
+
+## 12. Milestone M10 — Revisão Final Independente & Declaração VERIFIED_DOCKER_LAB
+
+- **Data:** 2026-09-29T05:15:00-03:00
+- **Auditoria dos Gates Canônicos e Seriais:**
+  - **Gate 1 — Database Test Suite (`pnpm test:db:run`):**
+    - 56/56 arquivos de teste aprovados.
+    - 737/737 testes verdes com isolamento estrito e descarte limpo de banco sem registros órfãos.
+    - Duração: 33.75s | Exit Code: `0`
+  - **Gate 2 — Static TypeScript Compilation (`pnpm typecheck`):**
+    - 18/18 tarefas concluídas com sucesso no Turbo monorepo (`tsc --noEmit`).
+    - Duração: 70ms (Turbo Cached) | Exit Code: `0`
+  - **Gate 3 — Full Monorepo Build (`pnpm build`):**
+    - 10/10 pacotes e aplicações construídos com sucesso (CJS, ESM, DTS e Vite web bundle em 1.84s).
+    - Duração: 82ms (Turbo Cached) | Exit Code: `0`
+  - **Gate 4 — Monorepo Linter (`pnpm lint`):**
+    - Turbo lint executado com sucesso em 10 pacotes.
+    - Duração: 68ms | Exit Code: `0`
+  - **Gate 5 — Canonical CI Gate Runner G-06 (`pnpm ci:check`):**
+    - GATE-01: Document & JSON Schema Integrity (24 arquivos JSON válidos) [PASS]
+    - GATE-02: Static TypeScript Compilation (10/10 pacotes sem erro) [PASS]
+    - GATE-03: Monorepo Linter (turbo lint exit code 0) [PASS]
+    - GATE-04: Monorepo Full Build (artefatos de distribuição confirmados) [PASS]
+    - GATE-05: Hermetic DB Test Runner (56 test files, 737 passed assertions) [PASS]
+    - GATE-06: Evidence Manifest Integrity Audit (21 manifestos e digests criptográficos confirmados) [PASS]
+    - Pipeline Execution Time: 30185ms | Status: `ACCEPTED (SUCCESS)` | Exit Code: `0`
+  - **Gate 6 — Docker HTTP Positive & Negative Controls (`pnpm test:docker:http`):**
+    - Testes executados contra a API real rodando em container Docker (`http://localhost:4400`):
+      1. Sem token: HTTP 401 [PASS]
+      2. Rejeição de segredo padrão antigo AC08: HTTP 401 [PASS]
+      3. Rejeição de emissor incorreto AC05: HTTP 401 [PASS]
+      4. Rejeição de audiência incorreta AC06: HTTP 401 [PASS]
+      5. Rejeição de subject não-UUID antes de cast SQL AC07: HTTP 401 [PASS]
+      6. Rejeição de token expirado AC07: HTTP 401 [PASS]
+      7. Controle positivo com token legítimo AC04: HTTP 200 [PASS]
+    - Duração: 1.05s | Exit Code: `0`
+  - **Gate 7 — Prova Visual e Responsiva em Navegador Real via CDP:**
+    - Validação de tela no container `sos-v3-web` (`http://localhost:3400`):
+      - Cockpit geral com badge do Radar ativo (`radar-cockpit-badge.png`).
+      - Card contextual de sugestão de oportunidade com prioridade HIGH (`radar-suggestion-card.png`).
+      - Aceite de sugestão com preenchimento imediato no composer de envio (`radar-draft-accepted.png`).
+      - Catálogo de 24 serviços reais da Haven Escovaria com imagens, durações e preços em R$ (`haven-chat-catalog-drawer.png`).
+      - Gaveta de cobrança Pix EMV com prévia fiel e payload de laboratório (`haven-chat-pix-drawer.png`).
+- **Conclusão:** Todos os critérios dos percursos P1 a P8 foram plenamente satisfeitos, com n8n estritamente desligado, isolamento absoluto entre workspaces, estados financeiros honestos com conferência manual de caixa e zero dependências externas ou dados fake em produção.
+
+
 
 
 

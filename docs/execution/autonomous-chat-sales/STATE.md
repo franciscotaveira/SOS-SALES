@@ -8,24 +8,21 @@
 
 ## 1. Fotografia do Estado Atual
 
-- **Data / Hora:** 2026-09-29T04:55:00-03:00
-- **SHA Base de Entrada:** `0d18057`
-- **Milestone Atual:** `M9 — E2E Integrado P1–P8 + Ensaio Sintético Haven de Ponta a Ponta` -> `COMPLETED`
-- **Próximo Milestone:** `M10 — Revisão Final Independente & Declaração VERIFIED_DOCKER_LAB`
-- **Último Gate Verde:**
+- **Data / Hora:** 2026-09-29T05:15:00-03:00
+- **SHA Base de Entrada:** `0eb3123`
+- **Milestone Atual:** `M10 — Revisão Final Independente & Declaração VERIFIED_DOCKER_LAB` -> `COMPLETED`
+- **Estado do Objetivo:** `VERIFIED_DOCKER_LAB`
+- **Último Gate Verde (Auditoria Serial M10):**
   - Database Test Suite (`pnpm test:db:run`): 56/56 arquivos de teste aprovados, 737/737 testes verdes com teardown limpo.
-  - Typecheck Repo (`pnpm typecheck`): 18/18 tarefas bem-sucedidas no Turbo sem erros.
-  - Web Build (`pnpm --filter @sos-sales/web build`): Construído com sucesso em 1.84s.
-  - M9 E2E Integrado Suite (`apps/api/src/__tests__/e2e-integrated-p1-p8-haven.test.ts`): 7/7 testes aprovados cobrindo integralmente:
-    - P1 & P8: Atendimento normal e execução 100% nativa sem dependência de n8n (mensagens in/out com outbox transacional).
-    - P2: Isolamento cross-tenant estrito (leitura 403 / 0 mensagens e tentativa de escrita rejeitada com 403 entre Haven e Barbearia).
-    - P3: Idempotência de mensagens (replay idêntico com mesma chave retorna HTTP 200, isIdempotentReplay: true, mesmo commandId, sem duplicação de outbox).
-    - P6: Estados financeiros honestos: Pix EMV gerado no estado PENDING e confirmação via MANUAL_CASHIER sem inventar conciliação bancária automática.
-    - P7: Sugestões governadas e controle de concorrência com optimistic locking (`state_version`).
-    - Ensaio Sintético Haven Escovaria (Etapas 1 a 8): Jornada completa de ponta a ponta (catálogo Haven, inbound Fernanda, proposta imutável com congelamento de preços, próxima ação comercial, Pix EMV com conferência manual de caixa, desfecho comercial WON, trilha de auditoria e caso LOST com `REASON_REQUIRED`).
-- **Erro / Bloqueador Ativo no Momento:** Nenhum bloqueador interno em aberto.
+  - Typecheck Repo (`pnpm typecheck`): 18/18 tarefas bem-sucedidas no Turbo com zero erros.
+  - Monorepo Build (`pnpm build`): 10/10 pacotes construídos com sucesso (CJS, ESM, DTS e Vite web bundle em 1.84s).
+  - Monorepo Linter (`pnpm lint`): Executado com código de saída 0.
+  - Canonical CI Gate Runner G-06 (`pnpm ci:check`): 6/6 quality gates aprovados (schema JSON, typecheck, lint, build, hermetic DB test runner e 21 manifests/digests criptográficos verificados) com status `ACCEPTED (SUCCESS)`.
+  - Docker HTTP Controls (`pnpm test:docker:http`): 7/7 controles positivos e negativos validados contra a API rodando no container Docker (`http://localhost:4400`).
+  - Navegador Real via CDP: Interface validada contra container `sos-v3-web` (`http://localhost:3400`), com captura de screenshots de alta resolução da jornada completa Haven Escovaria, catálogo de 24 serviços reais, gaveta Pix EMV e card de oportunidade do Radar com auto-fill no composer.
+- **Erro / Bloqueador Ativo no Momento:** Nenhum bloqueador interno. Todas as suítes e gates locais 100% verdes.
 - **Próxima Ação Imediata:**
-  - Iniciar M10: Execução dos gates finais independentes e seriais (`test:db:run`, `typecheck`, `build`, `lint`, `ci:check`, `test:docker:http`), validação de integridade do laboratório e emissão da declaração formal `VERIFIED_DOCKER_LAB`.
+  - Missão autônoma noturna concluída. Emissão do relatório final e declaração `VERIFIED_DOCKER_LAB`.
 
 ---
 
@@ -42,7 +39,7 @@
 | **M6** | Fluxo comercial, catálogo, proposta imutável, Pix EMV e outcome WON/LOST | `COMPLETED` | `3a0392d` |
 | **M7** | Onboarding assistido de canal por workspace (WABA/WAHA com credenciais protegidas) | `COMPLETED` | `cedd45f` |
 | **M8** | Resiliência, restarts, lease recovery e preparação para migração | `COMPLETED` | `0d18057` |
-| **M9** | E2E integrado P1–P8 + Ensaio sintético Haven de ponta a ponta | `COMPLETED` | pendente commit M9 |
-| **M10** | Revisão final independente & declaração `VERIFIED_DOCKER_LAB` | `TODO` | — |
+| **M9** | E2E integrado P1–P8 + Ensaio sintético Haven de ponta a ponta | `COMPLETED` | `0eb3123` |
+| **M10** | Revisão final independente & declaração `VERIFIED_DOCKER_LAB` | `COMPLETED` | pendente commit M10 |
 
 
