@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import crypto from "node:crypto";
 import { withTenantTransaction, encryptPayload, parseKeyringFromEnv } from "@sos-sales/database";
+import { validateWahaBaseUrl, validateEvolutionBaseUrl } from "@sos-sales/application";
 
 const workspaceParamsSchema = z.object({
   workspaceId: z.string().uuid(),
@@ -94,7 +95,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  // 2. Test Connection with WhatsApp Provider before saving
+  // 2. Test Connection with WhatsApp Provider before saving (Truth in Data: real I/O and SSRF validation)
   app.post(
     "/v1/workspaces/:workspaceId/channels/test-connection",
     {
@@ -183,11 +184,115 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
-      // WAHA / Evolution test fallback
-      return reply.status(200).send({
-        success: true,
-        verifiedName: provider === "waha" ? "WAHA Service Ativo" : "Evolution API v2 Ativa",
-        qualityRating: "GREEN",
+      if (provider === "waha") {
+        if (!credentials.baseUrl) {
+          return reply.status(400).send({
+            success: false,
+            error: "URL Base da Instância é obrigatória para validar WAHA.",
+          });
+        }
+
+        let targetBaseUrl: string;
+        try {
+          targetBaseUrl = validateWahaBaseUrl(
+            credentials.baseUrl,
+            process.env.NODE_ENV !== "production"
+          );
+        } catch (ssrfErr) {
+          return reply.status(400).send({
+            success: false,
+            error:
+              ssrfErr instanceof Error
+                ? ssrfErr.message
+                : "Validação SSRF falhou para a URL fornecida.",
+          });
+        }
+
+        try {
+          const resp = await fetch(`${targetBaseUrl}/api/server/version`, {
+            headers: credentials.apiKey ? { "X-Api-Key": credentials.apiKey } : {},
+            signal: AbortSignal.timeout(8000),
+          });
+
+          if (!resp.ok) {
+            return reply.status(200).send({
+              success: false,
+              error: `Falha na conexão com WAHA (HTTP ${resp.status})`,
+            });
+          }
+
+          return reply.status(200).send({
+            success: true,
+            verifiedName: "WAHA Service Ativo",
+            qualityRating: "GREEN",
+          });
+        } catch (err: unknown) {
+          return reply.status(200).send({
+            success: false,
+            error:
+              err instanceof Error
+                ? err.message
+                : "Tempo limite ou erro de rede ao conectar com o serviço WAHA.",
+          });
+        }
+      }
+
+      if (provider === "evolution") {
+        if (!credentials.baseUrl) {
+          return reply.status(400).send({
+            success: false,
+            error: "URL Base da Instância é obrigatória para validar Evolution API.",
+          });
+        }
+
+        let targetBaseUrl: string;
+        try {
+          targetBaseUrl = validateEvolutionBaseUrl(
+            credentials.baseUrl,
+            process.env.NODE_ENV !== "production"
+          );
+        } catch (ssrfErr) {
+          return reply.status(400).send({
+            success: false,
+            error:
+              ssrfErr instanceof Error
+                ? ssrfErr.message
+                : "Validação SSRF falhou para a URL fornecida.",
+          });
+        }
+
+        try {
+          const resp = await fetch(`${targetBaseUrl}/instance/fetchInstances`, {
+            headers: credentials.apiKey ? { apikey: credentials.apiKey } : {},
+            signal: AbortSignal.timeout(8000),
+          });
+
+          if (!resp.ok) {
+            return reply.status(200).send({
+              success: false,
+              error: `Falha na conexão com Evolution API (HTTP ${resp.status})`,
+            });
+          }
+
+          return reply.status(200).send({
+            success: true,
+            verifiedName: "Evolution API v2 Ativa",
+            qualityRating: "GREEN",
+          });
+        } catch (err: unknown) {
+          return reply.status(200).send({
+            success: false,
+            error:
+              err instanceof Error
+                ? err.message
+                : "Tempo limite ou erro de rede ao conectar com a Evolution API.",
+          });
+        }
+      }
+
+      return reply.status(400).send({
+        success: false,
+        error: `Provider '${provider}' não suportado para teste de conexão`,
       });
     }
   );
@@ -258,11 +363,22 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
                 };
 
           const envKeyring = parseKeyringFromEnv();
-          const keyringOrKey = envKeyring
-            ? envKeyring.keyring
-            : process.env.MCT_CREDENTIALS_MASTER_KEY ||
+          let keyringOrKey: string | Record<string, string> | undefined = envKeyring?.keyring;
+          if (!keyringOrKey) {
+            const rawKey =
+              process.env.MCT_CREDENTIALS_MASTER_KEY ||
               process.env.APP_MASTER_KEY ||
-              "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+              process.env.MASTER_ENCRYPTION_KEY;
+            if (rawKey && /^[0-9a-fA-F]{64}$/.test(rawKey)) {
+              keyringOrKey = rawKey;
+            } else if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+              keyringOrKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+            } else {
+              throw new Error(
+                "FATAL_CONFIG_ERROR: Master encryption key must be explicitly provided as a 64-character hex string (no hardcoded fallback allowed outside test suites)"
+              );
+            }
+          }
 
           const enc = encryptPayload(JSON.stringify(rawPayload), keyringOrKey);
           const accountId =
@@ -328,6 +444,8 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           webhookToken: rawToken,
           webhookUrl: `/v1/webhooks/whatsapp/${rawToken}`,
         },
+        webhookToken: rawToken,
+        webhookUrl: `/v1/webhooks/whatsapp/${rawToken}`,
       });
     }
   );

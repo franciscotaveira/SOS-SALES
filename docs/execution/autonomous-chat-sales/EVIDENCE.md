@@ -72,4 +72,35 @@
   - `pnpm typecheck`: 18/18 tarefas concluídas com sucesso.
   - `pnpm build`: 10/10 pacotes construídos com sucesso.
 
+---
+
+## 5. Milestone M3 — Mensageria e Canais no Núcleo (Inbox, Outbox Transacional, Reconciliação, SSRF Guard)
+
+- **Data:** 2026-09-29T03:25:00-03:00
+- **Mudanças Implementadas:**
+  - `apps/api/src/routes/channels.routes.ts`:
+    - Validação SSRF real (`validateWahaBaseUrl`, `validateEvolutionBaseUrl`) e requisições HTTP reais com timeout para `test-connection` WAHA/Evolution (eliminação de sucesso simulado sem I/O).
+    - Remoção de fallback hardcoded de chave criptográfica (`FatalCryptographicConfigError` fora do ambiente de testes).
+    - Alinhamento de contrato em `createChannel` devolvendo `webhookToken` e `webhookUrl` tanto na raiz do JSON quanto no objeto `channel`.
+  - `apps/web/src/pages/SettingsPage.tsx`:
+    - Adicionado suporte a `appSecret` no assistente Meta WABA (input dedicado, envio para API e persistência).
+    - Resolução robusta de `webhookUrl` e `webhookToken` consumindo tanto raiz quanto `channel`.
+  - `packages/database/src/commercial.ts`:
+    - `markConversionEventResult`: adicionada cláusula `AND status IN ('QUEUED', 'PROCESSING')` para impedir que workers atrasados com lease expirada sobrescrevam status terminais (`ACCEPTED`, `SIMULATED`, `FAILED`, `DISCARDED`).
+  - `apps/worker/src/processors/capi-dispatcher.ts`:
+    - Adicionada resolução tenant-safe de credenciais Meta via `withWorkerTransaction` consultando `provider_credentials` do workspace antes de recorrer a variáveis globais de ambiente.
+  - `apps/api/src/__tests__/threads-and-channels.test.ts`:
+    - Novos testes para contrato de criação de canal, bloqueio SSRF em `test-connection` e falha honesta quando WAHA estiver inacessível.
+  - `apps/worker/src/__tests__/capi-dispatcher.test.ts`:
+    - Adicionados testes `CAPI-08` (imutabilidade de estado terminal) e `CAPI-09` (resolução tenant-safe de credenciais).
+- **Resultados de Testes Executados:**
+  - `pnpm vitest run apps/api/src/__tests__/threads-and-channels.test.ts`
+    - **Resultado:** 9/9 testes aprovados (Exit Code: 0, Duração: 969ms).
+  - `pnpm vitest run apps/worker/src/__tests__/capi-dispatcher.test.ts`
+    - **Resultado:** 9/9 testes aprovados (Exit Code: 0, Duração: 826ms).
+  - Execução Integral Monorepo (`pnpm test:db:run`):
+    - **Resultado:** 48/48 arquivos de teste aprovados, 686/686 testes aprovados (Exit Code: 0, Duração: 22.68s).
+  - `pnpm typecheck`: 18/18 tarefas concluídas com sucesso.
+  - `pnpm build`: 10/10 pacotes construídos com sucesso.
+
 

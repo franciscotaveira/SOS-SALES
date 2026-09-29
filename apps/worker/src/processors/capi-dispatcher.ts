@@ -5,6 +5,7 @@ import {
   claimQueuedConversionEvents,
   markConversionEventResult,
   withWorkerTransaction,
+  decryptPayload,
   type ConversionEventRecord,
 } from "@sos-sales/database";
 
@@ -13,6 +14,7 @@ export interface CapiDispatcherOptions {
   accessToken?: string;
   endpointUrl?: string;
   testEventCode?: string;
+  masterKeyHex?: string;
 }
 
 export interface CapiDispatchResult {
@@ -27,12 +29,18 @@ export class CapiDispatcher {
   private readonly accessToken?: string;
   private readonly endpointUrl?: string;
   private readonly testEventCode?: string;
+  private readonly masterKeyHex?: string;
 
   constructor(options: CapiDispatcherOptions = {}) {
     this.datasetId = options.datasetId || process.env.META_DATASET_ID || process.env.META_PIXEL_ID;
     this.accessToken = options.accessToken || process.env.META_CAPI_ACCESS_TOKEN;
     this.endpointUrl = options.endpointUrl || process.env.META_CAPI_ENDPOINT;
     this.testEventCode = options.testEventCode || process.env.META_CAPI_TEST_EVENT_CODE;
+    this.masterKeyHex =
+      options.masterKeyHex ||
+      process.env.MCT_CREDENTIALS_MASTER_KEY ||
+      process.env.APP_MASTER_KEY ||
+      process.env.MASTER_ENCRYPTION_KEY;
   }
 
   async claimBatch(pool: Pool, batchSize = 10): Promise<ConversionEventRecord[]> {
@@ -117,9 +125,70 @@ export class CapiDispatcher {
           status: "accepted",
           fbtraceId: (receipt.fbtrace_id as string) || undefined,
         };
-      } else if (this.datasetId && this.accessToken) {
+      }
+
+      // Check if workspace has dedicated Meta credentials in provider_credentials
+      let effectiveDatasetId = this.datasetId;
+      let effectiveAccessToken = this.accessToken;
+
+      if (!effectiveDatasetId || !effectiveAccessToken) {
+        try {
+          const credRows = await withWorkerTransaction(
+            item.workspace_id,
+            async (client) => {
+              const res = await client.query<{
+                encrypted_payload: string;
+                iv: string;
+                auth_tag: string;
+                account_id: string;
+              }>(
+                `SELECT encrypted_payload, iv, auth_tag, account_id
+                 FROM public.provider_credentials
+                 WHERE workspace_id = $1 AND provider IN ('meta_waba', 'meta_capi') AND status = 'ACTIVE'
+                 ORDER BY (CASE WHEN provider = 'meta_capi' THEN 0 ELSE 1 END) ASC
+                 LIMIT 1;`,
+                [item.workspace_id]
+              );
+              return res.rows;
+            },
+            pool
+          );
+
+          const row = credRows?.[0];
+          if (row) {
+            const masterKey =
+              this.masterKeyHex ||
+              process.env.MCT_CREDENTIALS_MASTER_KEY ||
+              process.env.APP_MASTER_KEY ||
+              process.env.MASTER_ENCRYPTION_KEY;
+
+            if (masterKey) {
+              try {
+                const decrypted = decryptPayload(row.encrypted_payload, row.iv, row.auth_tag, masterKey);
+                const parsed = JSON.parse(decrypted) as Record<string, unknown>;
+                if (parsed.access_token) {
+                  effectiveAccessToken = String(parsed.access_token);
+                }
+                if (parsed.pixel_id || parsed.dataset_id) {
+                  effectiveDatasetId = String(parsed.pixel_id || parsed.dataset_id);
+                } else if (parsed.waba_account_id) {
+                  effectiveDatasetId = String(parsed.waba_account_id);
+                } else if (row.account_id) {
+                  effectiveDatasetId = row.account_id;
+                }
+              } catch {
+                // Ignore decryption failure, fall back to unconfigured
+              }
+            }
+          }
+        } catch {
+          // Ignore query failure, fall back to unconfigured
+        }
+      }
+
+      if (effectiveDatasetId && effectiveAccessToken) {
         // Official Meta Graph API v21.0
-        const url = `https://graph.facebook.com/v21.0/${this.datasetId}/events?access_token=${encodeURIComponent(this.accessToken)}`;
+        const url = `https://graph.facebook.com/v21.0/${effectiveDatasetId}/events?access_token=${encodeURIComponent(effectiveAccessToken)}`;
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

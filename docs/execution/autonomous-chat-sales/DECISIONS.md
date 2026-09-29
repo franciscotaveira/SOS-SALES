@@ -20,3 +20,22 @@
   2. Se coincidir: retornar a linha existente imediatamente com `created: false`, sem mutação, sem revalidar cooldown e sem revalidar se a thread recebeu novas mensagens depois.
   3. Se divergir: lançar `SuggestionIdempotencyConflictError` (HTTP 409).
 - **Justificativa:** Idempotência é a garantia de que a repetição de uma operação previamente aceita retorna o mesmo resultado seguro.
+
+---
+
+### D-003: Alinhamento de Contrato de Canais, I/O Real em Teste de Conexão e Isolamento Tenant no CAPI
+- **Data:** 2026-09-29T03:25:00-03:00
+- **Contexto:** 
+  1. A rota `createChannel` devolvia `webhookToken` e `webhookUrl` aninhados em `channel`, enquanto a UI esperava também na raiz da resposta.
+  2. O teste de conexão de WAHA/Evolution retornava sucesso estático simulado sem I/O e sem validação SSRF.
+  3. Havia chave de criptografia de fallback estática em `channels.routes.ts`.
+  4. O dispatcher de Meta CAPI utilizava credenciais globais em vez de buscar `provider_credentials` do workspace, e callbacks de lease expirado podiam sobrescrever eventos terminais.
+  5. O formulário WABA no frontend não expunha campo para `appSecret`.
+- **Decisão:**
+  1. Devolver `webhookToken` e `webhookUrl` tanto na raiz do JSON quanto dentro de `channel` (retrocompatibilidade e contrato alinhado).
+  2. Implementar validação SSRF estrita (`validateWahaBaseUrl`, `validateEvolutionBaseUrl`) e requisições HTTP reais com timeout no teste de conexão (Truth in Data: zero mock de sucesso).
+  3. Fazer o fallback de chave de criptografia falhar fechado com erro fatal de configuração fora do ambiente de teste (`NODE_ENV === "test"` ou `VITEST`).
+  4. Em `CapiDispatcher`, resolver credenciais específicas do workspace via transação de worker RLS (`withWorkerTransaction`) antes de consultar defaults globais.
+  5. Em `markConversionEventResult`, adicionar `AND status IN ('QUEUED', 'PROCESSING')` na cláusula WHERE para assegurar imutabilidade de estados terminais contra workers atrasados.
+  6. Adicionar campo e estado para `appSecret` no assistente WABA de `SettingsPage.tsx`.
+- **Justificativa:** Conformidade integral com o princípio soberano MCT de Truth in Data, fail-closed criptográfico e isolamento estrito entre tenants.

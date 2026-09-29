@@ -23,6 +23,8 @@ describe("Threads and Channels Routes Integration (Fastify + RLS)", () => {
 
   const userOperatorId = crypto.randomUUID();
   let operatorToken: string;
+  const userAdminId = crypto.randomUUID();
+  let adminToken: string;
 
   beforeAll(async () => {
     app = await buildApp({
@@ -70,11 +72,34 @@ describe("Threads and Channels Routes Integration (Fastify + RLS)", () => {
       [workspaceAId, userOperatorId]
     );
 
+    await ownerPool.query(
+      `INSERT INTO users (id, email, name)
+       VALUES ($1, $2, 'Admin Bob');`,
+      [userAdminId, `admin-${Date.now()}@example.com`]
+    );
+
+    await ownerPool.query(
+      `INSERT INTO workspace_memberships (workspace_id, user_id, role)
+       VALUES ($1, $2, 'admin');`,
+      [workspaceAId, userAdminId]
+    );
+
     // 3. Generate JWT
     const secretKey = new TextEncoder().encode(jwtSecret);
     operatorToken = await new SignJWT({
       sub: userOperatorId,
       email: "operator@example.com",
+      role: "authenticated",
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuer(testIssuer)
+      .setAudience(testAudience)
+      .setExpirationTime("1h")
+      .sign(secretKey);
+
+    adminToken = await new SignJWT({
+      sub: userAdminId,
+      email: "admin@example.com",
       role: "authenticated",
     })
       .setProtectedHeader({ alg: "HS256" })
@@ -274,6 +299,86 @@ describe("Threads and Channels Routes Integration (Fastify + RLS)", () => {
     const convBody = convRes.json();
     expect(convBody.items.length).toBeGreaterThanOrEqual(1);
     expect(convBody.items[0].eventName).toBe("PurchaseCompleted");
+  });
+
+  it("creates a new channel instance and returns aligned webhookToken and webhookUrl both at root and inside channel", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceAId}/channels`,
+      headers: {
+        authorization: `Bearer ${adminToken}`,
+      },
+      payload: {
+        provider: "meta_waba",
+        displayName: "Linha Oficial Teste",
+        phoneNumberE164: "+5511988889999",
+        credentials: {
+          accessToken: "EAABtesttoken123",
+          phoneNumberId: "phone_123456789",
+          wabaAccountId: "waba_987654321",
+          appSecret: "secret_meta_app_key",
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.channel).toBeDefined();
+    expect(body.channel.displayName).toBe("Linha Oficial Teste");
+    expect(body.channel.provider).toBe("meta_waba");
+    expect(body.channel.phoneNumberE164).toBe("+5511988889999");
+    expect(body.channel.webhookToken).toBeDefined();
+    expect(body.channel.webhookUrl).toBeDefined();
+
+    // Verify contract alignment: root properties match channel properties
+    expect(body.webhookToken).toBe(body.channel.webhookToken);
+    expect(body.webhookUrl).toBe(body.channel.webhookUrl);
+    expect(body.webhookUrl).toContain(`/v1/webhooks/whatsapp/${body.webhookToken}`);
+  });
+
+  it("rejects SSRF cloud metadata attempt in test-connection with HTTP 400", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceAId}/channels/test-connection`,
+      headers: {
+        authorization: `Bearer ${adminToken}`,
+      },
+      payload: {
+        provider: "waha",
+        credentials: {
+          baseUrl: "http://169.254.169.254/latest/meta-data",
+          apiKey: "test-api-key",
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toMatch(/SSRF/i);
+  });
+
+  it("returns honest failure on unreachable WAHA instance (Truth in Data, zero fake success)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceAId}/channels/test-connection`,
+      headers: {
+        authorization: `Bearer ${adminToken}`,
+      },
+      payload: {
+        provider: "waha",
+        credentials: {
+          baseUrl: "http://localhost:59999",
+          apiKey: "test-api-key",
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toBeDefined();
+    expect(body.error).toMatch(/fetch failed|conectar|recusada|falha|tempo limite/i);
   });
 });
 

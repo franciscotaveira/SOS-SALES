@@ -8,6 +8,8 @@ import {
   withTenantTransaction,
   createCommercialJourney,
   recordCommercialOutcome,
+  markConversionEventResult,
+  encryptPayload,
 } from "@sos-sales/database";
 import { CapiDispatcher } from "../processors/capi-dispatcher";
 import { WorkerRuntime } from "../index";
@@ -454,6 +456,103 @@ describe("Meta CAPI Conversion Dispatcher Integration Tests", () => {
       `, [workspaceId, testJourneyId, status]);
 
       expect(res.rows[0].status).toBe(status);
+    }
+  });
+
+  it("CAPI-08: terminal conversion event state cannot be overwritten by stale or expired lease callbacks", async () => {
+    // 1. Insert an event already in ACCEPTED status
+    const insertRes = await ownerPool.query(`
+      INSERT INTO conversion_events (
+        workspace_id, journey_id, event_name, event_time, value_cents, currency,
+        user_data, status, provider_receipt
+      ) VALUES (
+        $1, $2, 'PurchaseCompleted', now(), 50000, 'BRL',
+        '{}'::jsonb, 'ACCEPTED', '{"fbtrace_id":"valid-original-trace"}'::jsonb
+      )
+      RETURNING id, status, provider_receipt;
+    `, [workspaceId, testJourneyId]);
+
+    const eventId = insertRes.rows[0].id;
+
+    // 2. Attempt late/stale markConversionEventResult with FAILED status and arbitrary lease token
+    await markConversionEventResult(workerPool, eventId, {
+      status: "FAILED",
+      error: "Stale worker late failure attempt",
+      leaseToken: "stale-worker-lease-token",
+    });
+
+    // 3. Verify status remained ACCEPTED and receipt was preserved
+    const checkRow = await ownerPool.query(
+      `SELECT status, provider_receipt, error_message FROM conversion_events WHERE id = $1`,
+      [eventId]
+    );
+
+    expect(checkRow.rows[0].status).toBe("ACCEPTED");
+    expect(checkRow.rows[0].provider_receipt.fbtrace_id).toBe("valid-original-trace");
+    expect(checkRow.rows[0].error_message).toBeNull();
+  });
+
+  it("CAPI-09: resolves tenant-specific Meta credentials from provider_credentials table", async () => {
+    const testMasterKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const tenantPayload = {
+      access_token: "TENANT_SPECIFIC_ACCESS_TOKEN_XYZ",
+      pixel_id: "tenant_pixel_123456",
+      waba_account_id: "tenant_waba_789",
+    };
+
+    const enc = encryptPayload(JSON.stringify(tenantPayload), testMasterKey);
+
+    // Insert active provider_credentials for this workspace
+    await ownerPool.query(`
+      INSERT INTO provider_credentials (
+        workspace_id, provider, account_id, encrypted_payload, iv, auth_tag, key_version, status
+      ) VALUES ($1, 'meta_waba', 'tenant_pixel_123456', $2, $3, $4, 'v1', 'ACTIVE')
+      ON CONFLICT (workspace_id, provider, account_id)
+      DO UPDATE SET encrypted_payload = EXCLUDED.encrypted_payload, iv = EXCLUDED.iv, auth_tag = EXCLUDED.auth_tag;
+    `, [workspaceId, enc.encryptedBase64, enc.ivBase64, enc.authTagBase64]);
+
+    // Create a conversion event
+    const insertRes = await ownerPool.query(`
+      INSERT INTO conversion_events (
+        workspace_id, journey_id, event_name, event_time, value_cents, currency,
+        user_data, status
+      ) VALUES (
+        $1, $2, 'PurchaseCompleted', now(), 9900, 'BRL',
+        '{}'::jsonb, 'QUEUED'
+      )
+      RETURNING *;
+    `, [workspaceId, testJourneyId]);
+
+    const targetItem = insertRes.rows[0];
+
+    // Intercept fetch for Graph API call
+    let capturedUrl: string | null = null;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const urlStr = String(input);
+      if (urlStr.includes("graph.facebook.com")) {
+        capturedUrl = urlStr;
+        return new Response(JSON.stringify({ fbtrace_id: "tenant_fbtrace_999", events_received: 1 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    };
+
+    try {
+      const dispatcher = new CapiDispatcher({
+        masterKeyHex: testMasterKey,
+      });
+
+      const result = await dispatcher.dispatchItem(workerPool, targetItem);
+
+      expect(result.status).toBe("accepted");
+      expect(result.fbtraceId).toBe("tenant_fbtrace_999");
+      expect(capturedUrl).toContain("tenant_pixel_123456");
+      expect(capturedUrl).toContain("TENANT_SPECIFIC_ACCESS_TOKEN_XYZ");
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });

@@ -354,7 +354,9 @@ export async function markConversionEventResult(
          lease_token = NULL,
          lease_expires_at = NULL,
          updated_at = now()
-     WHERE id = $4 AND ($5::text IS NULL OR lease_token IS NULL OR lease_token = $5);`,
+     WHERE id = $4
+       AND status IN ('QUEUED', 'PROCESSING')
+       AND ($5::text IS NULL OR lease_token IS NULL OR lease_token = $5);`,
     [
       finalStatus,
       result.receipt ? JSON.stringify(result.receipt) : null,

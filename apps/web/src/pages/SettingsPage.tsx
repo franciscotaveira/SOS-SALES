@@ -64,6 +64,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
   const [phoneNumberId, setPhoneNumberId] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [wabaAccountId, setWabaAccountId] = useState("");
+  const [appSecret, setAppSecret] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
 
@@ -207,6 +208,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
             accessToken: accessToken.trim() || undefined,
             phoneNumberId: phoneNumberId.trim() || undefined,
             wabaAccountId: wabaAccountId.trim() || undefined,
+            appSecret: appSecret.trim() || undefined,
             apiKey: apiKey.trim() || undefined,
             baseUrl: baseUrl.trim() || undefined,
           },
@@ -214,11 +216,14 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
         { token }
       );
 
+      const resolvedWebhookUrl = res.webhookUrl || (res.channel as any)?.webhookUrl || "";
+      const resolvedWebhookToken = res.webhookToken || (res.channel as any)?.webhookToken || "";
+
       setCreatedChannelData({
         id: res.channel.id,
         name: res.channel.displayName,
-        webhookUrl: `${window.location.origin}${res.webhookUrl}`,
-        webhookToken: res.webhookToken,
+        webhookUrl: resolvedWebhookUrl.startsWith("http") ? resolvedWebhookUrl : `${window.location.origin}${resolvedWebhookUrl}`,
+        webhookToken: resolvedWebhookToken,
       });
 
       setWizardStep(3);
@@ -240,6 +245,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
     setPhoneNumberId("");
     setAccessToken("");
     setWabaAccountId("");
+    setAppSecret("");
     setApiKey("");
     setBaseUrl("");
     setTestResult(null);
@@ -789,6 +795,28 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
                           placeholder="EAAB..."
                           value={accessToken}
                           onChange={(e) => setAccessToken(e.target.value)}
+                          style={{
+                            width: "100%",
+                            height: "36px",
+                            borderRadius: "6px",
+                            border: "1px solid #CBD5E1",
+                            padding: "0 10px",
+                            fontSize: "0.85rem",
+                            backgroundColor: "#FFFFFF",
+                            fontFamily: "var(--font-mono)",
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                          App Secret (Meta App Secret para validação de assinatura de webhook)
+                        </label>
+                        <input
+                          type="password"
+                          placeholder="Chave secreta do app Meta (opcional)"
+                          value={appSecret}
+                          onChange={(e) => setAppSecret(e.target.value)}
                           style={{
                             width: "100%",
                             height: "36px",

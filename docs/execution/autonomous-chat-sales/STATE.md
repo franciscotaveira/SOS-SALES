@@ -8,19 +8,21 @@
 
 ## 1. Fotografia do Estado Atual
 
-- **Data / Hora:** 2026-09-29T03:10:00-03:00
-- **SHA Base de Entrada:** `c8f5a09a977495d9e9084409767d5c768ba20413`
-- **Milestone Atual:** `M2 — Fundação, Auth JWT, RBAC com Efeitos, withTenantTransaction e RLS` -> `COMPLETED`
-- **Próximo Milestone:** `M3 — Mensageria e Canais no Núcleo (Inbox, Outbox Transacional, Reconciliação, SSRF Guard)`
+- **Data / Hora:** 2026-09-29T03:26:00-03:00
+- **SHA Base de Entrada:** `32d0bf4`
+- **Milestone Atual:** `M3 — Mensageria e Canais no Núcleo (Inbox, Outbox Transacional, Reconciliação, SSRF Guard)` -> `COMPLETED`
+- **Próximo Milestone:** `M4 — Cockpit Íntegro (Timeline, Isolamento de Rascunhos, Troca Rápida sem Corrida)`
 - **Último Gate Verde:**
-  - Full Test Runner (`pnpm test:db:run`): 48/48 arquivos de teste aprovados, 681/681 testes aprovados.
-  - Tenant Isolation: 16/16 testes comprovando isolamento negativo em contatos, threads, mensagens, catálogo (produtos), Pix, jornadas comerciais, outcomes e sugestões.
-  - Auth Vertical Slice: 19/19 testes comprovando rejeição de tokens forjados, RBAC, descoberta de memberships e auditoria imutável.
+  - Full Test Runner (`pnpm test:db:run`): 48/48 arquivos de teste aprovados, 686/686 testes aprovados.
+  - Alinhamento de Contrato de Canais: `createChannel` retornando `webhookToken` e `webhookUrl` em ambos os níveis.
+  - SSRF Guard & Truth in Data: `test-connection` com I/O real para WAHA/Evolution e bloqueio SSRF testado.
+  - CAPI Tenant-Safe: `provider_credentials` descriptografado sob contexto RLS do workspace.
+  - CAPI Imutabilidade: `markConversionEventResult` protegido contra leases atrasadas.
   - Workspace Typecheck: 18/18 tarefas bem-sucedidas.
   - Monorepo Build: 10/10 tarefas bem-sucedidas.
 - **Erro / Bloqueador Ativo no Momento:** Nenhum bloqueador interno em aberto.
 - **Próxima Ação Imediata:**
-  - Iniciar M3: Auditar fluxo transacional de outbox, reconciliação de status (`queued`, `processing`, `sent`, `delivered`, `failed`), proteção SSRF em webhooks e adapters WAHA/WABA.
+  - Iniciar M4: Auditar isolamento de rascunhos por workspace/thread, timelines, race condition de seleção rápida de contato e scripts de verificação de navegador.
 
 ---
 
@@ -30,9 +32,9 @@
 | :--- | :--- | :---: | :---: |
 | **M0** | Baseline reproduzível, verificação de ambiente, saúde e inventário | `COMPLETED` | `c8f5a09a` |
 | **M1** | Fechar F1.1-C.1 (Imutabilidade terminal e replay idempotente estável) | `COMPLETED` | `1e898fa` |
-| **M2** | Fundação, auth JWT, RBAC com efeitos, `withTenantTransaction` e RLS | `COMPLETED` | pendente commit M2 |
-| **M3** | Mensageria e canais no núcleo (inbox, outbox transacional, reconciliação, SSRF guard) | `IN_PROGRESS` | — |
-| **M4** | Cockpit íntegro (timeline, isolamento de rascunhos, troca rápida sem corrida) | `TODO` | — |
+| **M2** | Fundação, auth JWT, RBAC com efeitos, `withTenantTransaction` e RLS | `COMPLETED` | `32d0bf4` |
+| **M3** | Mensageria e canais no núcleo (inbox, outbox transacional, reconciliação, SSRF guard) | `COMPLETED` | pendente commit M3 |
+| **M4** | Cockpit íntegro (timeline, isolamento de rascunhos, troca rápida sem corrida) | `IN_PROGRESS` | — |
 | **M5** | Próxima Ação Comercial E2 (Schema `commercial_actions`, atomicidade Radar, Cockpit Lite) | `TODO` | — |
 | **M6** | Fluxo comercial, catálogo, proposta imutável, Pix EMV e outcome WON/LOST | `TODO` | — |
 | **M7** | Onboarding assistido de canal por workspace (WABA/WAHA com credenciais protegidas) | `TODO` | — |
