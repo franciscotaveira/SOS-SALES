@@ -1,20 +1,20 @@
 /**
- * Chat Sales — Integration Routes (F1.1-B Radar Hardening)
+ * Chat Sales — Integration Routes (F1.1-C Radar Hardening & Governance)
  * 
  * Capabilities:
- * 1. GET   /v1/workspaces/:workspaceId/integrations/candidates  — governed candidate snapshot with stable cursor
- * 2. POST  /v1/workspaces/:workspaceId/integrations/suggestions — semantically idempotent suggestion creation
+ * 1. GET   /v1/workspaces/:workspaceId/integrations/candidates  — governed candidate snapshot with stable cursor and candidateRevision
+ * 2. POST  /v1/workspaces/:workspaceId/integrations/suggestions — semantically idempotent suggestion creation linked to candidateRevision
  * 3. GET   /v1/workspaces/:workspaceId/integrations/suggestions — list suggestions with expiry exclusion
  * 4. GET   /v1/workspaces/:workspaceId/integrations/suggestions/count — active pending count for Cockpit badge
- * 5. PATCH /v1/workspaces/:workspaceId/integrations/suggestions/:suggestionId — transactional decision with origin revalidation
+ * 5. PATCH /v1/workspaces/:workspaceId/integrations/suggestions/:suggestionId — transactional decision with governance & origin revalidation
  * 
  * Invariants:
  * - Accepting a suggestion NEVER sends external messages. It only pre-fills the composer draft.
  * - Same key + same payload = 200/201 idempotent replay.
  * - Same key + different payload = 409 Conflict.
- * - Origin state change (new message, closed thread, handoff, opt-out, expiry) persists invalidated/expired and responds 409 Conflict.
- * - Client cannot spoof originSnapshot (strictly derived on server).
- * - Malformed cursor returns 400 with INVALID_CURSOR code.
+ * - Candidate-Suggestion link: POST requires opaque candidateRevision matching current DB facts; returns 409 CANDIDATE_STALE otherwise with zero inserts.
+ * - Server-owned configuration: moduleKey ('radar_m01'), ruleVersion (from workspace), and source are strictly server-derived.
+ * - Governance revalidation: inactive workspace, disabled radar, or changed rule version invalidates suggestion and persists rejection code before responding 409.
  */
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
@@ -45,12 +45,12 @@ const suggestionParamsSchema = z.object({
   suggestionId: z.string().uuid(),
 });
 
+// Strict candidate query schema: no moduleKey or arbitrary client filters
 const listCandidatesQuerySchema = z.object({
   minHoursSinceLastMessage: z.coerce.number().min(0).max(8760).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().optional(),
-  moduleKey: z.string().max(64).optional(),
-});
+}).strict();
 
 const listSuggestionsQuerySchema = z.object({
   status: z.enum(["pending", "accepted", "dismissed", "expired", "invalidated"]).optional(),
@@ -59,22 +59,35 @@ const listSuggestionsQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
-// Strict schema: unknown fields (including spoofed originSnapshot) are rejected with 400 Bad Request
+// Strict evidence schema: closed fields, bounded strings and arrays
+const suggestionEvidenceSchema = z.object({
+  hoursSinceLastMessage: z.number().nonnegative().optional(),
+  lastMessageSnippet: z.string().max(500).optional(),
+  lastMessageDirection: z.enum(["inbound", "outbound"]).optional(),
+  unreadCount: z.number().int().nonnegative().optional(),
+  signals: z.array(z.string().max(100)).max(10).optional(),
+}).strict().optional().nullable();
+
+// Strict body schema: unknown fields (including moduleKey, ruleVersion, source, metadata, originSnapshot)
+// are rejected with 400 Bad Request
 const createSuggestionBodySchema = z.object({
   idempotencyKey: z.string().min(1).max(256),
-  source: z.enum(["n8n", "manual", "system"]).optional(),
-  threadId: z.string().uuid().optional().nullable(),
+  threadId: z.string().uuid(),
   contactId: z.string().uuid().optional().nullable(),
   suggestionType: z.enum(["follow_up", "reengagement", "upsell", "reminder", "custom"]).optional(),
   title: z.string().min(1).max(200),
   body: z.string().min(1).max(2000),
   draftMessage: z.string().max(2000).optional().nullable(),
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
-  moduleKey: z.literal("radar_m01").default("radar_m01").optional(),
-  ruleVersion: z.string().max(32).default("1.0.0").optional(),
-  reasonCode: z.string().max(64).optional(),
-  evidence: z.record(z.unknown()).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  reasonCode: z.enum([
+    "COLD_LEAD_REENGAGEMENT",
+    "UNANSWERED_CLIENT_INQUIRY",
+    "FOLLOWUP_DUE",
+    "CART_ABANDONMENT",
+    "CUSTOM_FOLLOWUP",
+  ]).optional(),
+  evidence: suggestionEvidenceSchema,
+  candidateRevision: z.string().min(1),
   expiresAt: z.string().datetime().optional().nullable(),
 }).strict();
 
@@ -130,7 +143,7 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
   // ─────────────────────────────────────────────────────────────────────────
   // 1. GET /v1/workspaces/:workspaceId/integrations/candidates
   //    Permission: integration:candidates:read OR integration:manage
-  //    Returns a governed candidate snapshot with stable cursor.
+  //    Returns a governed candidate snapshot with stable cursor and candidateRevision.
   // ─────────────────────────────────────────────────────────────────────────
   app.get(
     "/v1/workspaces/:workspaceId/integrations/candidates",
@@ -156,7 +169,7 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const { workspaceId } = parsedParams.data;
-      const { minHoursSinceLastMessage, limit, cursor, moduleKey } = parsedQuery.data;
+      const { minHoursSinceLastMessage, limit, cursor } = parsedQuery.data;
 
       try {
         const result = await withTenantTransaction(workspaceId, async (client) => {
@@ -164,7 +177,6 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
             minHoursSinceLastMessage,
             limit,
             cursor,
-            moduleKey,
           });
         });
 
@@ -186,6 +198,7 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
   // 2. POST /v1/workspaces/:workspaceId/integrations/suggestions
   //    Permission: integration:suggestions:create OR integration:manage
   //    Idempotent: same key + same payload -> 200/201. Same key + different -> 409.
+  //    Requires candidateRevision matching current DB facts; 409 CANDIDATE_STALE otherwise.
   // ─────────────────────────────────────────────────────────────────────────
   app.post(
     "/v1/workspaces/:workspaceId/integrations/suggestions",
@@ -217,7 +230,7 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
       const activeRole = (request.activeRole || request.user?.role) as Role | undefined;
       const derivedSource: SuggestionSource = activeRole === "integration_service"
         ? "n8n"
-        : (data.source || "system");
+        : "system";
 
       try {
         const { suggestion, created } = await withTenantTransaction(
@@ -233,11 +246,9 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
               body: data.body,
               draftMessage: data.draftMessage,
               priority: data.priority,
-              moduleKey: data.moduleKey,
-              ruleVersion: data.ruleVersion,
               reasonCode: data.reasonCode,
               evidence: data.evidence,
-              metadata: data.metadata,
+              candidateRevision: data.candidateRevision,
               expiresAt: data.expiresAt,
             });
           }
@@ -398,7 +409,7 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
   // ─────────────────────────────────────────────────────────────────────────
   // 5. PATCH /v1/workspaces/:workspaceId/integrations/suggestions/:suggestionId
   //    Permission: integration:suggestions:manage OR integration:manage
-  //    Accept or dismiss with transactional origin state revalidation.
+  //    Accept or dismiss with transactional origin & module state revalidation.
   //    INVARIANT: Accepting ONLY pre-fills composer draft, NEVER auto-sends.
   //    PERSISTENCE: If invalidated or expired, commits state and returns 409.
   // ─────────────────────────────────────────────────────────────────────────

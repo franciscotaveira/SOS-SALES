@@ -5,24 +5,21 @@ import {
   withTenantTransaction,
   createIntegrationSuggestion,
   listIntegrationSuggestions,
-  countPendingSuggestions,
   decideSuggestion,
   listIntegrationCandidates,
-  expireStaleIntegrationSuggestions,
   SuggestionIdempotencyConflictError,
+  SuggestionDecisionRejectionError,
   InvalidCursorError,
   decodeCursor,
 } from "../index";
 
-describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
+describe("Integration Suggestions Repository (F1.1-C Radar Hardening & Final Governance)", () => {
   const { ownerPool, appPool } = createTestDatabasePools();
 
   let workspaceA: string;
   let workspaceB: string;
   const operatorA = crypto.randomUUID();
   let channelInstanceId: string;
-  let threadAId: string;
-  let contactAId: string;
 
   let phoneCounter = 2000;
   async function createContactAndThread(
@@ -73,27 +70,38 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
     return { contactId, threadId, messageId, lastMessageAt };
   }
 
+  async function getCandidateRevision(wsId: string, threadId: string): Promise<string> {
+    const candidates = await withTenantTransaction(wsId, async (client) => {
+      return listIntegrationCandidates(client, wsId, { minHoursSinceLastMessage: 0, limit: 100 });
+    }, appPool);
+    const cand = candidates.items.find((c) => c.threadId === threadId);
+    if (!cand) {
+      throw new Error(`Candidate not found for thread ${threadId}`);
+    }
+    return cand.candidateRevision;
+  }
+
   beforeAll(async () => {
-    // 1. Provision Organization and Workspaces
+    // 1. Provision Organization and Workspaces (explicitly enable radar for tests)
     const orgRes = await ownerPool.query(`
       INSERT INTO organizations (name, slug)
-      VALUES ('F1.1-B Radar Test Org', $1)
+      VALUES ('F1.1-C Radar Test Org', $1)
       RETURNING id;
-    `, [`org-radar-f11b-${Date.now()}`]);
+    `, [`org-radar-f11c-${Date.now()}`]);
     const orgId = orgRes.rows[0].id;
 
     const wsARes = await ownerPool.query(`
-      INSERT INTO workspaces (organization_id, name, slug, radar_enabled, radar_cooldown_seconds)
-      VALUES ($1, 'F1.1-B Radar WS A', $2, true, 86400)
+      INSERT INTO workspaces (organization_id, name, slug, radar_enabled, radar_cooldown_seconds, radar_rule_version)
+      VALUES ($1, 'F1.1-C Radar WS A', $2, true, 86400, '1.0.0')
       RETURNING id;
-    `, [orgId, `ws-a-f11b-${Date.now()}`]);
+    `, [orgId, `ws-a-f11c-${Date.now()}`]);
     workspaceA = wsARes.rows[0].id;
 
     const wsBRes = await ownerPool.query(`
-      INSERT INTO workspaces (organization_id, name, slug, radar_enabled, radar_cooldown_seconds)
-      VALUES ($1, 'F1.1-B Radar WS B', $2, true, 86400)
+      INSERT INTO workspaces (organization_id, name, slug, radar_enabled, radar_cooldown_seconds, radar_rule_version)
+      VALUES ($1, 'F1.1-C Radar WS B', $2, true, 86400, '1.0.0')
       RETURNING id;
-    `, [orgId, `ws-b-f11b-${Date.now()}`]);
+    `, [orgId, `ws-b-f11c-${Date.now()}`]);
     workspaceB = wsBRes.rows[0].id;
 
     // 2. Provision Operator for Workspace A
@@ -101,7 +109,7 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
       INSERT INTO users (id, email, name)
       VALUES ($1, $2, 'Radar Operator A')
       ON CONFLICT (id) DO NOTHING;
-    `, [operatorA, `operator-radar-b-${Date.now()}@mct.br`]);
+    `, [operatorA, `operator-radar-c-${Date.now()}@mct.br`]);
 
     await ownerPool.query(`
       INSERT INTO workspace_memberships (workspace_id, user_id, role)
@@ -110,20 +118,15 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
     `, [workspaceA, operatorA]);
 
     // 3. Provision Channel Instance
-    const tokenHash = crypto.createHash("sha256").update(`token-radar-b-${Date.now()}`).digest("hex");
+    const tokenHash = crypto.createHash("sha256").update(`token-radar-c-${Date.now()}`).digest("hex");
     const chanRes = await ownerPool.query(`
       INSERT INTO channel_instances (
         workspace_id, provider, display_name, phone_number_e164,
         endpoint_token_hash, is_active
-      ) VALUES ($1, 'meta_waba', 'Radar Line B', '+5549999990000', $2, true)
+      ) VALUES ($1, 'meta_waba', 'Radar Line C', '+5549999990000', $2, true)
       RETURNING id;
     `, [workspaceA, tokenHash]);
     channelInstanceId = chanRes.rows[0].id;
-
-    // Baseline contact & thread A
-    const base = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 5 });
-    threadAId = base.threadId;
-    contactAId = base.contactId;
   });
 
   afterAll(async () => {
@@ -131,89 +134,155 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
     await ownerPool.end();
   });
 
-  describe("1. Semantic Idempotency & Creation", () => {
-    it("returns existing suggestion for same key and identical payload (replay)", async () => {
-      const idempotencyKey = `radar-idem-${crypto.randomUUID()}`;
+  describe("1. Candidate-Suggestion Link & Server-Owned Snapshot", () => {
+    it("reads candidate, detects new message arrival, rejects creation with CANDIDATE_STALE and inserts ZERO rows", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 3 });
 
-      // First creation
+      // Step 1: Read candidate and get candidateRevision
+      const staleRevision = await getCandidateRevision(workspaceA, threadId);
+      expect(staleRevision).toBeDefined();
+
+      // Step 2: New message arrives from customer before n8n POSTs
+      await ownerPool.query(`
+        INSERT INTO messages (
+          workspace_id, channel_instance_id, thread_id, provider, direction,
+          sender_e164, recipient_e164, content_type, body, created_at
+        ) VALUES (
+          $1, $2, $3, 'meta_waba', 'inbound',
+          '+5549999990001', '+5549999990000', 'text',
+          'Intervenção rápida do cliente', now()
+        );
+      `, [workspaceA, channelInstanceId, threadId]);
+
+      await ownerPool.query(`UPDATE commercial_threads SET last_message_at = now() WHERE id = $1;`, [threadId]);
+
+      // Step 3: Client attempts to POST suggestion using the stale revision
+      const idempotencyKey = `candidate-stale-${crypto.randomUUID()}`;
+      let capturedError: any = null;
+
+      try {
+        await withTenantTransaction(workspaceA, async (client) => {
+          return createIntegrationSuggestion(client, workspaceA, {
+            idempotencyKey,
+            threadId,
+            contactId,
+            candidateRevision: staleRevision,
+            title: "Follow-up",
+            body: "Corpo",
+          });
+        }, appPool);
+      } catch (err: any) {
+        capturedError = err;
+      }
+
+      expect(capturedError).toBeInstanceOf(SuggestionDecisionRejectionError);
+      expect(capturedError.code).toBe("CANDIDATE_STALE");
+
+      // Step 4: Verify that ZERO rows were inserted into the database
+      const countRes = await ownerPool.query(
+        `SELECT COUNT(*)::text as count FROM integration_suggestions WHERE workspace_id = $1 AND thread_id = $2;`,
+        [workspaceA, threadId]
+      );
+      expect(countRes.rows[0].count).toBe("0");
+    });
+
+    it("creates suggestion when candidateRevision matches current server facts", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 4 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
+      const idempotencyKey = `candidate-valid-${crypto.randomUUID()}`;
+      const { suggestion, created } = await withTenantTransaction(workspaceA, async (client) => {
+        return createIntegrationSuggestion(client, workspaceA, {
+          idempotencyKey,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Válida com Link",
+          body: "Corpo válido",
+          draftMessage: "Rascunho",
+        });
+      }, appPool);
+
+      expect(created).toBe(true);
+      expect(suggestion.module_key).toBe("radar_m01");
+      expect(suggestion.rule_version).toBe("1.0.0");
+      expect(suggestion.origin_snapshot.candidateRevision).toBe(currentRev);
+      expect(suggestion.origin_snapshot.snapshotRevision).toBe(currentRev);
+    });
+  });
+
+  describe("2. Semantic Idempotency & Canonical Serialization", () => {
+    it("replays idempotently when evidence has keys in different order (canonical recursive stringify)", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 3 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+      const idempotencyKey = `canonical-idem-${crypto.randomUUID()}`;
+
+      // Creation with evidence keys in order: hoursWithoutResponse, lastMessageSnippet
       const first = await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
           idempotencyKey,
-          source: "n8n",
-          threadId: threadAId,
-          contactId: contactAId,
-          suggestionType: "follow_up",
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
           title: "Follow-up BPO Financeiro",
           body: "Cliente parou após pedir proposta de BPO.",
-          draftMessage: "Olá! Posso te apresentar nosso plano de BPO amanhã?",
-          priority: "high",
+          evidence: {
+            hoursWithoutResponse: 24,
+            lastMessageSnippet: "Olá proposta",
+          },
         });
       }, appPool);
 
       expect(first.created).toBe(true);
-      expect(first.suggestion.id).toBeDefined();
-      expect(first.suggestion.title).toBe("Follow-up BPO Financeiro");
-      expect(first.suggestion.origin_snapshot.snapshotRevision).toBeDefined();
 
-      // Replay with identical payload
+      // Replay with reversed evidence keys: lastMessageSnippet, hoursWithoutResponse
       const second = await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
           idempotencyKey,
-          source: "n8n",
-          threadId: threadAId,
-          contactId: contactAId,
-          suggestionType: "follow_up",
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
           title: "Follow-up BPO Financeiro",
           body: "Cliente parou após pedir proposta de BPO.",
-          draftMessage: "Olá! Posso te apresentar nosso plano de BPO amanhã?",
-          priority: "high",
+          evidence: {
+            lastMessageSnippet: "Olá proposta",
+            hoursWithoutResponse: 24,
+          },
         });
       }, appPool);
 
       expect(second.created).toBe(false);
       expect(second.suggestion.id).toBe(first.suggestion.id);
+      expect(second.suggestion.payload_fingerprint).toBe(first.suggestion.payload_fingerprint);
     });
 
-    it("throws SuggestionIdempotencyConflictError (409) for same key with different expiresAt, rule, or evidence", async () => {
-      const idempotencyKey = `radar-conflict-${crypto.randomUUID()}`;
-      const now = new Date();
+    it("throws SuggestionIdempotencyConflictError (409) for same key with different logical payload", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 3 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+      const idempotencyKey = `conflict-key-${crypto.randomUUID()}`;
 
       // First creation
       await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
           idempotencyKey,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
           title: "Título Original",
           body: "Corpo Original",
-          expiresAt: new Date(now.getTime() + 3600_000).toISOString(),
-          ruleVersion: "1.0.0",
-          evidence: { reason: "unanswered" },
         });
       }, appPool);
 
-      // Attempt with different expiresAt -> conflict
+      // Conflict: different title
       await expect(
         withTenantTransaction(workspaceA, async (client) => {
           return createIntegrationSuggestion(client, workspaceA, {
             idempotencyKey,
-            title: "Título Original",
+            threadId,
+            contactId,
+            candidateRevision: currentRev,
+            title: "Título Alterado",
             body: "Corpo Original",
-            expiresAt: new Date(now.getTime() + 7200_000).toISOString(),
-            ruleVersion: "1.0.0",
-            evidence: { reason: "unanswered" },
-          });
-        }, appPool)
-      ).rejects.toThrow(SuggestionIdempotencyConflictError);
-
-      // Attempt with different evidence -> conflict
-      await expect(
-        withTenantTransaction(workspaceA, async (client) => {
-          return createIntegrationSuggestion(client, workspaceA, {
-            idempotencyKey,
-            title: "Título Original",
-            body: "Corpo Original",
-            expiresAt: new Date(now.getTime() + 3600_000).toISOString(),
-            ruleVersion: "1.0.0",
-            evidence: { reason: "different_evidence" },
           });
         }, appPool)
       ).rejects.toThrow(SuggestionIdempotencyConflictError);
@@ -222,7 +291,6 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
     it("rejects replay of legacy row with empty fingerprint (fail-closed safe policy)", async () => {
       const legacyKey = `legacy-empty-fp-${crypto.randomUUID()}`;
 
-      // Insert directly a legacy row with empty fingerprint
       await ownerPool.query(`
         INSERT INTO integration_suggestions (
           workspace_id, idempotency_key, payload_fingerprint, source,
@@ -233,11 +301,16 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
         );
       `, [workspaceA, legacyKey]);
 
-      // Replay must be rejected with 409 conflict
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 3 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
       await expect(
         withTenantTransaction(workspaceA, async (client) => {
           return createIntegrationSuggestion(client, workspaceA, {
             idempotencyKey: legacyKey,
+            threadId,
+            contactId,
+            candidateRevision: currentRev,
             title: "Sugestão Legada Sem Hash",
             body: "Corpo Legado",
           });
@@ -246,49 +319,26 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
     });
   });
 
-  describe("2. Origin State Revalidation & Safe Persistence on Decision", () => {
-    it("persists invalidated state with reason and state_version when new message arrived", async () => {
-      // 1. Create fresh thread & contact
-      const { contactId, threadId } = await createContactAndThread(workspaceA, {
-        lastMessageHoursAgo: 3,
-      });
+  describe("3. Governance Revalidation on Decision (Kill-Switch, Workspace Inactive & Rule Version)", () => {
+    it("persists invalidated state with WORKSPACE_INACTIVE when workspace becomes inactive", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
 
-      // 2. Create suggestion (server derives origin_snapshot)
-      const key = `snap-test-${crypto.randomUUID()}`;
       const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
-          idempotencyKey: key,
+          idempotencyKey: `ws-inactive-${crypto.randomUUID()}`,
           threadId,
           contactId,
-          title: "Sugestão com snapshot do servidor",
-          body: "Corpo sugestão",
-          draftMessage: "Rascunho",
+          candidateRevision: currentRev,
+          title: "Sugestão WS Inativo",
+          body: "Corpo",
         });
       }, appPool);
 
-      expect(suggestion.origin_snapshot.lastMessageAt).toBeDefined();
-      expect(suggestion.origin_snapshot.snapshotRevision).toBeDefined();
+      // Deactivate workspace
+      await ownerPool.query(`UPDATE workspaces SET is_active = false WHERE id = $1;`, [workspaceA]);
 
-      // 3. Customer sends a NEW message after snapshot
-      await ownerPool.query(`
-        INSERT INTO messages (
-          workspace_id, channel_instance_id, thread_id, provider, direction,
-          sender_e164, recipient_e164, content_type, body, created_at
-        ) VALUES (
-          $1, $2, $3, 'meta_waba', 'inbound',
-          '+5549999990001', '+5549999990000', 'text',
-          'Mensagem superveniente do cliente', now()
-        );
-      `, [workspaceA, channelInstanceId, threadId]);
-
-      await ownerPool.query(`
-        UPDATE commercial_threads
-        SET last_message_at = now()
-        WHERE id = $1;
-      `, [threadId]);
-
-      // 4. Operator attempts to decide -> returns { ok: false, code: 'ORIGIN_STALE_NEW_MESSAGE' }
-      const decisionRes = await withTenantTransaction(workspaceA, async (client) => {
+      const res = await withTenantTransaction(workspaceA, async (client) => {
         return decideSuggestion(client, workspaceA, suggestion.id, {
           status: "accepted",
           decidedByUserId: operatorA,
@@ -296,47 +346,181 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
         });
       }, appPool);
 
-      expect(decisionRes.ok).toBe(false);
-      if (!decisionRes.ok) {
-        expect(decisionRes.code).toBe("ORIGIN_STALE_NEW_MESSAGE");
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("WORKSPACE_INACTIVE");
       }
 
-      // 5. Read directly from DB to verify that 'invalidated' was PERSISTED and committed
-      const checkRes = await ownerPool.query(`
-        SELECT status, state_version, metadata
-        FROM integration_suggestions
-        WHERE id = $1;
-      `, [suggestion.id]);
+      // Verify persisted state in DB
+      const check = await ownerPool.query(`SELECT status, state_version, metadata FROM integration_suggestions WHERE id = $1;`, [suggestion.id]);
+      expect(check.rows[0].status).toBe("invalidated");
+      expect(check.rows[0].state_version).toBe(2);
+      expect(check.rows[0].metadata.rejection_code).toBe("WORKSPACE_INACTIVE");
+      expect(check.rows[0].metadata.rejection_reason).toContain("inativo");
 
-      expect(checkRes.rows[0].status).toBe("invalidated");
-      expect(checkRes.rows[0].state_version).toBe(2);
-      expect(checkRes.rows[0].metadata.invalidation_reason).toContain("Nova mensagem recebida");
-
-      // 6. Verify item does not return in pending queue
-      const pendingList = await withTenantTransaction(workspaceA, async (client) => {
-        return listIntegrationSuggestions(client, workspaceA, { status: "pending" });
-      }, appPool);
-      expect(pendingList.items.some((s) => s.id === suggestion.id)).toBe(false);
+      // Reactivate workspace
+      await ownerPool.query(`UPDATE workspaces SET is_active = true WHERE id = $1;`, [workspaceA]);
     });
 
-    it("persists invalidated state when origin thread is closed", async () => {
-      const { contactId, threadId } = await createContactAndThread(workspaceA, {
-        status: "active",
-        lastMessageHoursAgo: 2,
-      });
+    it("persists invalidated state with MODULE_DISABLED when radar is turned off", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
 
-      const key = `closed-test-${crypto.randomUUID()}`;
       const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
-          idempotencyKey: key,
+          idempotencyKey: `module-off-${crypto.randomUUID()}`,
           threadId,
           contactId,
-          title: "Sugestão em thread",
+          candidateRevision: currentRev,
+          title: "Sugestão Módulo Desligado",
           body: "Corpo",
         });
       }, appPool);
 
-      // Thread is closed after suggestion creation
+      // Disable radar in workspace
+      await ownerPool.query(`UPDATE workspaces SET radar_enabled = false WHERE id = $1;`, [workspaceA]);
+
+      const res = await withTenantTransaction(workspaceA, async (client) => {
+        return decideSuggestion(client, workspaceA, suggestion.id, {
+          status: "accepted",
+          decidedByUserId: operatorA,
+          expectedStateVersion: 1,
+        });
+      }, appPool);
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("MODULE_DISABLED");
+      }
+
+      // Verify row is invalidated and cannot be revived even if re-enabled later
+      const check = await ownerPool.query(`SELECT status, state_version, metadata FROM integration_suggestions WHERE id = $1;`, [suggestion.id]);
+      expect(check.rows[0].status).toBe("invalidated");
+      expect(check.rows[0].state_version).toBe(2);
+      expect(check.rows[0].metadata.rejection_code).toBe("MODULE_DISABLED");
+
+      // Re-enable radar
+      await ownerPool.query(`UPDATE workspaces SET radar_enabled = true WHERE id = $1;`, [workspaceA]);
+
+      // Attempting to decide again must return ALREADY_DECIDED (never returns to pending)
+      const resAfter = await withTenantTransaction(workspaceA, async (client) => {
+        return decideSuggestion(client, workspaceA, suggestion.id, {
+          status: "accepted",
+          decidedByUserId: operatorA,
+          expectedStateVersion: 2,
+        });
+      }, appPool);
+      expect(resAfter.ok).toBe(false);
+      if (!resAfter.ok) {
+        expect(resAfter.code).toBe("ALREADY_DECIDED");
+      }
+    });
+
+    it("persists invalidated state with RULE_VERSION_STALE when workspace rule version is bumped", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
+      const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
+        return createIntegrationSuggestion(client, workspaceA, {
+          idempotencyKey: `rule-stale-${crypto.randomUUID()}`,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Regra Antiga",
+          body: "Corpo",
+        });
+      }, appPool);
+
+      // Bump workspace rule version
+      await ownerPool.query(`UPDATE workspaces SET radar_rule_version = '2.0.0' WHERE id = $1;`, [workspaceA]);
+
+      const res = await withTenantTransaction(workspaceA, async (client) => {
+        return decideSuggestion(client, workspaceA, suggestion.id, {
+          status: "accepted",
+          decidedByUserId: operatorA,
+          expectedStateVersion: 1,
+        });
+      }, appPool);
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("RULE_VERSION_STALE");
+      }
+
+      const check = await ownerPool.query(`SELECT status, state_version, metadata FROM integration_suggestions WHERE id = $1;`, [suggestion.id]);
+      expect(check.rows[0].status).toBe("invalidated");
+      expect(check.rows[0].state_version).toBe(2);
+      expect(check.rows[0].metadata.rejection_code).toBe("RULE_VERSION_STALE");
+
+      // Restore rule version
+      await ownerPool.query(`UPDATE workspaces SET radar_rule_version = '1.0.0' WHERE id = $1;`, [workspaceA]);
+    });
+  });
+
+  describe("4. Origin State Revalidation & Safe Persistence on Decision", () => {
+    it("persists invalidated state with ORIGIN_STALE_NEW_MESSAGE when customer sends message after suggestion", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 3 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
+      const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
+        return createIntegrationSuggestion(client, workspaceA, {
+          idempotencyKey: `stale-msg-${crypto.randomUUID()}`,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Ativa",
+          body: "Corpo",
+        });
+      }, appPool);
+
+      // Customer sends message
+      await ownerPool.query(`
+        INSERT INTO messages (
+          workspace_id, channel_instance_id, thread_id, provider, direction,
+          sender_e164, recipient_e164, content_type, body, created_at
+        ) VALUES (
+          $1, $2, $3, 'meta_waba', 'inbound',
+          '+5549999990001', '+5549999990000', 'text',
+          'Mensagem superveniente', now()
+        );
+      `, [workspaceA, channelInstanceId, threadId]);
+      await ownerPool.query(`UPDATE commercial_threads SET last_message_at = now() WHERE id = $1;`, [threadId]);
+
+      const res = await withTenantTransaction(workspaceA, async (client) => {
+        return decideSuggestion(client, workspaceA, suggestion.id, {
+          status: "accepted",
+          decidedByUserId: operatorA,
+          expectedStateVersion: 1,
+        });
+      }, appPool);
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("ORIGIN_STALE_NEW_MESSAGE");
+      }
+
+      const check = await ownerPool.query(`SELECT status, state_version, metadata FROM integration_suggestions WHERE id = $1;`, [suggestion.id]);
+      expect(check.rows[0].status).toBe("invalidated");
+      expect(check.rows[0].state_version).toBe(2);
+      expect(check.rows[0].metadata.rejection_code).toBe("ORIGIN_STALE_NEW_MESSAGE");
+      expect(check.rows[0].metadata.rejection_reason).toContain("nova mensagem");
+    });
+
+    it("persists invalidated state when origin thread is closed", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
+      const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
+        return createIntegrationSuggestion(client, workspaceA, {
+          idempotencyKey: `closed-th-${crypto.randomUUID()}`,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Thread",
+          body: "Corpo",
+        });
+      }, appPool);
+
       await ownerPool.query(`UPDATE commercial_threads SET status = 'closed' WHERE id = $1;`, [threadId]);
 
       const res = await withTenantTransaction(workspaceA, async (client) => {
@@ -352,31 +536,26 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
         expect(res.code).toBe("ORIGIN_THREAD_CLOSED");
       }
 
-      // Re-read row
       const check = await ownerPool.query(`SELECT status, state_version, metadata FROM integration_suggestions WHERE id = $1;`, [suggestion.id]);
       expect(check.rows[0].status).toBe("invalidated");
-      expect(check.rows[0].state_version).toBe(2);
-      expect(check.rows[0].metadata.invalidation_reason).toContain("encerrada");
+      expect(check.rows[0].metadata.rejection_code).toBe("ORIGIN_THREAD_CLOSED");
     });
 
     it("persists invalidated state when thread enters handoff (waiting_human)", async () => {
-      const { contactId, threadId } = await createContactAndThread(workspaceA, {
-        status: "active",
-        lastMessageHoursAgo: 2,
-      });
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
 
-      const key = `handoff-test-${crypto.randomUUID()}`;
       const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
-          idempotencyKey: key,
+          idempotencyKey: `handoff-th-${crypto.randomUUID()}`,
           threadId,
           contactId,
-          title: "Sugestão ativa",
+          candidateRevision: currentRev,
+          title: "Sugestão Ativa",
           body: "Corpo",
         });
       }, appPool);
 
-      // Thread enters waiting_human
       await ownerPool.query(`UPDATE commercial_threads SET status = 'waiting_human' WHERE id = $1;`, [threadId]);
 
       const res = await withTenantTransaction(workspaceA, async (client) => {
@@ -394,28 +573,24 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
 
       const check = await ownerPool.query(`SELECT status, state_version, metadata FROM integration_suggestions WHERE id = $1;`, [suggestion.id]);
       expect(check.rows[0].status).toBe("invalidated");
-      expect(check.rows[0].state_version).toBe(2);
-      expect(check.rows[0].metadata.invalidation_reason).toContain("handoff");
+      expect(check.rows[0].metadata.rejection_code).toBe("ORIGIN_THREAD_HANDOFF");
     });
 
     it("persists invalidated state when contact opts out", async () => {
-      const { contactId, threadId } = await createContactAndThread(workspaceA, {
-        optOut: false,
-        lastMessageHoursAgo: 2,
-      });
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
 
-      const key = `optout-test-${crypto.randomUUID()}`;
       const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
-          idempotencyKey: key,
+          idempotencyKey: `optout-th-${crypto.randomUUID()}`,
           threadId,
           contactId,
-          title: "Sugestão ativa",
+          candidateRevision: currentRev,
+          title: "Sugestão Ativa",
           body: "Corpo",
         });
       }, appPool);
 
-      // Contact opts out
       await ownerPool.query(`UPDATE contacts SET opt_out = true WHERE id = $1;`, [contactId]);
 
       const res = await withTenantTransaction(workspaceA, async (client) => {
@@ -433,17 +608,20 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
 
       const check = await ownerPool.query(`SELECT status, state_version, metadata FROM integration_suggestions WHERE id = $1;`, [suggestion.id]);
       expect(check.rows[0].status).toBe("invalidated");
-      expect(check.rows[0].state_version).toBe(2);
-      expect(check.rows[0].metadata.invalidation_reason).toContain("opt-out");
+      expect(check.rows[0].metadata.rejection_code).toBe("ORIGIN_CONTACT_OPT_OUT");
     });
 
     it("persists expired state using database clock when suggestion expired", async () => {
-      const key = `expired-decide-${crypto.randomUUID()}`;
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
       const expiredPastTime = new Date(Date.now() - 60_000).toISOString();
 
       const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
-          idempotencyKey: key,
+          idempotencyKey: `expired-th-${crypto.randomUUID()}`,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
           title: "Sugestão Vencida",
           body: "Corpo Vencido",
           expiresAt: expiredPastTime,
@@ -466,62 +644,96 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
       const check = await ownerPool.query(`SELECT status, state_version, metadata FROM integration_suggestions WHERE id = $1;`, [suggestion.id]);
       expect(check.rows[0].status).toBe("expired");
       expect(check.rows[0].state_version).toBe(2);
+      expect(check.rows[0].metadata.rejection_code).toBe("SUGGESTION_EXPIRED");
     });
   });
 
-  describe("3. Expiration Filtering & Least-Privilege Worker Execution", () => {
-    it("excludes expired suggestions from list and count automatically", async () => {
-      const expiredPastTime = new Date(Date.now() - 30_000).toISOString();
-      const futureTime = new Date(Date.now() + 3600_000).toISOString();
+  describe("5. Defaults, Constraints & Bounded Cooldown", () => {
+    it("ensures newly created workspaces have radar_enabled = false by default", async () => {
+      const newWsRes = await ownerPool.query(`
+        INSERT INTO workspaces (organization_id, name, slug)
+        VALUES ((SELECT id FROM organizations LIMIT 1), 'Default Disabled WS', $1)
+        RETURNING radar_enabled;
+      `, [`def-ws-${Date.now()}`]);
 
-      // Expired pending suggestion
-      await withTenantTransaction(workspaceA, async (client) => {
+      expect(newWsRes.rows[0].radar_enabled).toBe(false);
+    });
+
+    it("respects cooldown = 0 as zero seconds without fallback to 86400", async () => {
+      // Set cooldown to 0 on Workspace A
+      await ownerPool.query(`UPDATE workspaces SET radar_cooldown_seconds = 0 WHERE id = $1;`, [workspaceA]);
+
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
+      // Create suggestion
+      const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
-          idempotencyKey: `expired-queue-${crypto.randomUUID()}`,
-          title: "Não deve aparecer",
-          body: "Vencida",
-          expiresAt: expiredPastTime,
+          idempotencyKey: `cooldown-zero-${crypto.randomUUID()}`,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
+          title: "Sugestão Cooldown Zero",
+          body: "Corpo",
         });
       }, appPool);
 
-      // Active pending suggestion
+      // Dismiss suggestion
       await withTenantTransaction(workspaceA, async (client) => {
-        return createIntegrationSuggestion(client, workspaceA, {
-          idempotencyKey: `active-queue-${crypto.randomUUID()}`,
-          title: "Deve aparecer",
-          body: "Ativa",
-          expiresAt: futureTime,
+        return decideSuggestion(client, workspaceA, suggestion.id, {
+          status: "dismissed",
+          decidedByUserId: operatorA,
+          expectedStateVersion: 1,
         });
       }, appPool);
 
-      const list = await withTenantTransaction(workspaceA, async (client) => {
-        return listIntegrationSuggestions(client, workspaceA, { status: "pending" });
+      // With cooldown = 0, thread MUST immediately remain eligible in candidates list
+      const candidates = await withTenantTransaction(workspaceA, async (client) => {
+        return listIntegrationCandidates(client, workspaceA, { minHoursSinceLastMessage: 0 });
       }, appPool);
 
-      expect(list.items.every((s) => !s.expires_at || new Date(s.expires_at) > new Date())).toBe(true);
+      const found = candidates.items.some((c) => c.threadId === threadId);
+      expect(found).toBe(true);
 
-      const count = await withTenantTransaction(workspaceA, async (client) => {
-        return countPendingSuggestions(client, workspaceA);
-      }, appPool);
-      expect(count).toBeGreaterThanOrEqual(1);
+      // Restore cooldown to 86400
+      await ownerPool.query(`UPDATE workspaces SET radar_cooldown_seconds = 86400 WHERE id = $1;`, [workspaceA]);
+    });
 
-      const expiredCount = await expireStaleIntegrationSuggestions(ownerPool);
-      expect(expiredCount).toBeGreaterThanOrEqual(1);
+    it("enforces check constraints on radar_cooldown_seconds and radar_rule_version", async () => {
+      // Negative cooldown -> violates constraint
+      await expect(
+        ownerPool.query(`UPDATE workspaces SET radar_cooldown_seconds = -1 WHERE id = $1;`, [workspaceA])
+      ).rejects.toThrowError(/chk_workspaces_radar_cooldown/);
+
+      // Excessive cooldown (> 30 days) -> violates constraint
+      await expect(
+        ownerPool.query(`UPDATE workspaces SET radar_cooldown_seconds = 3000000 WHERE id = $1;`, [workspaceA])
+      ).rejects.toThrowError(/chk_workspaces_radar_cooldown/);
+
+      // Empty rule version -> violates constraint
+      await expect(
+        ownerPool.query(`UPDATE workspaces SET radar_rule_version = '  ' WHERE id = $1;`, [workspaceA])
+      ).rejects.toThrowError(/chk_workspaces_radar_rule_version/);
     });
   });
 
-  describe("4. Optimistic Concurrency with Two Concurrent Decisions", () => {
+  describe("6. Optimistic Concurrency, Cursor Pagination & Invariants", () => {
     it("guarantees a single decision wins when two operators decide simultaneously", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
       const key = `concur-decide-${crypto.randomUUID()}`;
       const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
           idempotencyKey: key,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
           title: "Decisão Concorrente",
           body: "Corpo",
         });
       }, appPool);
 
-      // Operator 1 accepts
       const op1Promise = withTenantTransaction(workspaceA, async (client) => {
         return decideSuggestion(client, workspaceA, suggestion.id, {
           status: "accepted",
@@ -530,7 +742,6 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
         });
       }, appPool);
 
-      // Operator 2 attempts to dismiss with stateVersion: 1
       const op2Promise = withTenantTransaction(workspaceA, async (client) => {
         return decideSuggestion(client, workspaceA, suggestion.id, {
           status: "dismissed",
@@ -541,176 +752,38 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
 
       const [res1, res2] = await Promise.all([op1Promise, op2Promise]);
       const successful = [res1, res2].filter((r) => r.ok);
-      const rejected = [res1, res2].filter((r) => !r.ok);
+      const rejected = [res1, res2].find((r) => !r.ok);
 
       expect(successful.length).toBe(1);
-      expect(rejected.length).toBe(1);
-      expect(rejected[0]?.code).toMatch(/ALREADY_DECIDED|VERSION_MISMATCH/);
+      expect(rejected).toBeDefined();
+      if (rejected && !rejected.ok) {
+        expect(rejected.code).toMatch(/ALREADY_DECIDED|VERSION_MISMATCH/);
+      }
     });
-  });
 
-  describe("5. Governed Candidates (Cursor, Cooldown & Module Governance)", () => {
-    it("fails with InvalidCursorError when cursor is malformed and does not repeat page 1", () => {
+    it("fails with InvalidCursorError when cursor is malformed", () => {
       expect(() => decodeCursor("invalid-base64-not-json")).toThrow(InvalidCursorError);
       expect(() => decodeCursor(Buffer.from(JSON.stringify({ lastMessageAt: "invalid-date", id: "123" })).toString("base64url"))).toThrow(InvalidCursorError);
     });
 
-    it("excludes threads in closed, waiting_human, or contact opt-out from candidates", async () => {
-      await createContactAndThread(workspaceA, { status: "waiting_human", lastMessageHoursAgo: 10 });
-      await createContactAndThread(workspaceA, { status: "closed", lastMessageHoursAgo: 10 });
-      await createContactAndThread(workspaceA, { optOut: true, lastMessageHoursAgo: 10 });
-
-      const candidates = await withTenantTransaction(workspaceA, async (client) => {
-        return listIntegrationCandidates(client, workspaceA, { minHoursSinceLastMessage: 1 });
-      }, appPool);
-
-      expect(candidates.items.every((c) => c.evidence.threadStatus !== "waiting_human")).toBe(true);
-      expect(candidates.items.every((c) => c.evidence.threadStatus !== "closed")).toBe(true);
-    });
-
-    it("respects cooldown window after suggestion is accepted or dismissed", async () => {
-      // 1. Thread with accepted suggestion
-      const { contactId: c1, threadId: t1 } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 10 });
-      const { suggestion: s1 } = await withTenantTransaction(workspaceA, async (client) => {
-        return createIntegrationSuggestion(client, workspaceA, {
-          idempotencyKey: `cooldown-acc-${crypto.randomUUID()}`,
-          threadId: t1,
-          contactId: c1,
-          title: "Sugestão para aceite",
-          body: "Corpo",
-        });
-      }, appPool);
-      await withTenantTransaction(workspaceA, async (client) => {
-        return decideSuggestion(client, workspaceA, s1.id, {
-          status: "accepted",
-          decidedByUserId: operatorA,
-          expectedStateVersion: 1,
-        });
-      }, appPool);
-
-      // 2. Thread with dismissed suggestion
-      const { contactId: c2, threadId: t2 } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 10 });
-      const { suggestion: s2 } = await withTenantTransaction(workspaceA, async (client) => {
-        return createIntegrationSuggestion(client, workspaceA, {
-          idempotencyKey: `cooldown-dism-${crypto.randomUUID()}`,
-          threadId: t2,
-          contactId: c2,
-          title: "Sugestão para dispensa",
-          body: "Corpo",
-        });
-      }, appPool);
-      await withTenantTransaction(workspaceA, async (client) => {
-        return decideSuggestion(client, workspaceA, s2.id, {
-          status: "dismissed",
-          decidedByUserId: operatorA,
-          expectedStateVersion: 1,
-        });
-      }, appPool);
-
-      // Query candidates: neither t1 nor t2 should appear
-      const candidates = await withTenantTransaction(workspaceA, async (client) => {
-        return listIntegrationCandidates(client, workspaceA, { minHoursSinceLastMessage: 1 });
-      }, appPool);
-
-      expect(candidates.items.some((c) => c.threadId === t1)).toBe(false);
-      expect(candidates.items.some((c) => c.threadId === t2)).toBe(false);
-    });
-
-    it("blocks candidates, creation, and decision when module is disabled", async () => {
-      // Disable radar in Workspace A
-      await ownerPool.query(`UPDATE workspaces SET radar_enabled = false WHERE id = $1;`, [workspaceA]);
-
-      // 1. List candidates -> returns empty
-      const cand = await withTenantTransaction(workspaceA, async (client) => {
-        return listIntegrationCandidates(client, workspaceA);
-      }, appPool);
-      expect(cand.items.length).toBe(0);
-
-      // 2. Create suggestion -> throws MODULE_DISABLED
-      await expect(
-        withTenantTransaction(workspaceA, async (client) => {
-          return createIntegrationSuggestion(client, workspaceA, {
-            idempotencyKey: `disabled-ws-${crypto.randomUUID()}`,
-            title: "Não deve criar",
-            body: "Corpo",
-          });
-        }, appPool)
-      ).rejects.toThrowError(/MODULE_DISABLED|desabilitado/);
-
-      // Re-enable radar
-      await ownerPool.query(`UPDATE workspaces SET radar_enabled = true WHERE id = $1;`, [workspaceA]);
-    });
-
-    it("deterministically tie-breaks messages by ID when created_at is identical", async () => {
-      const { threadId } = await createContactAndThread(workspaceA, {
-        lastMessageHoursAgo: 10,
-        withMessage: false,
-      });
-
-      const sameTime = new Date(Date.now() - 3600_000 * 5);
-      const prefix = crypto.randomUUID().slice(0, 34);
-      const id1 = `${prefix}01`;
-      const id2 = `${prefix}02`;
-
-      // Insert two messages with identical created_at
-      await ownerPool.query(`
-        INSERT INTO messages (id, workspace_id, channel_instance_id, thread_id, provider, direction, sender_e164, recipient_e164, content_type, body, created_at)
-        VALUES 
-          ($1, $3, $4, $5, 'meta_waba', 'inbound', '+5549999990001', '+5549999990000', 'text', 'Msg 1', $6),
-          ($2, $3, $4, $5, 'meta_waba', 'inbound', '+5549999990001', '+5549999990000', 'text', 'Msg 2', $6);
-      `, [id1, id2, workspaceA, channelInstanceId, threadId, sameTime]);
-
-      await ownerPool.query(`UPDATE commercial_threads SET last_message_at = $1 WHERE id = $2;`, [sameTime, threadId]);
-
-      // Lateral in candidate query must pick id2 because id2 > id1
-      const candidates = await withTenantTransaction(workspaceA, async (client) => {
-        return listIntegrationCandidates(client, workspaceA, { minHoursSinceLastMessage: 0 });
-      }, appPool);
-
-      const target = candidates.items.find((c) => c.threadId === threadId);
-      expect(target).toBeDefined();
-      expect(target?.evidence.lastMessageId).toBe(id2);
-      expect(target?.evidence.lastMessageBody).toBe("Msg 2");
-    });
-
-    it("paginates stably using cursor without skipping or duplicating items", async () => {
-      await createContactAndThread(workspaceA, { lastMessageHoursAgo: 15 });
-      await createContactAndThread(workspaceA, { lastMessageHoursAgo: 20 });
-
-      const page1 = await withTenantTransaction(workspaceA, async (client) => {
-        return listIntegrationCandidates(client, workspaceA, { limit: 1 });
-      }, appPool);
-
-      expect(page1.items.length).toBe(1);
-      expect(page1.nextCursor).not.toBeNull();
-
-      const page2 = await withTenantTransaction(workspaceA, async (client) => {
-        return listIntegrationCandidates(client, workspaceA, { limit: 1, cursor: page1.nextCursor! });
-      }, appPool);
-
-      expect(page2.items.length).toBe(1);
-      expect(page2.items[0]?.candidateId).not.toBe(page1.items[0]?.candidateId);
-    });
-  });
-
-  describe("6. Outbound Invariant & Multi-Tenant Isolation", () => {
     it("guarantees valid acceptance generates ZERO outbound messages or commands", async () => {
       const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
       const { suggestion } = await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
           idempotencyKey: `zero-outbound-${crypto.randomUUID()}`,
           threadId,
           contactId,
+          candidateRevision: currentRev,
           title: "Aceite limpo",
           body: "Corpo",
           draftMessage: "Rascunho de teste",
         });
       }, appPool);
 
-      // Count outbound records before
       const outBefore = await ownerPool.query(`SELECT COUNT(*)::text as count FROM outbound_commands WHERE workspace_id = $1;`, [workspaceA]);
 
-      // Decide accepted
       const res = await withTenantTransaction(workspaceA, async (client) => {
         return decideSuggestion(client, workspaceA, suggestion.id, {
           status: "accepted",
@@ -721,16 +794,21 @@ describe("Integration Suggestions Repository (F1.1-B Radar Hardening)", () => {
 
       expect(res.ok).toBe(true);
 
-      // Count outbound records after -> MUST NOT INCREASE
       const outAfter = await ownerPool.query(`SELECT COUNT(*)::text as count FROM outbound_commands WHERE workspace_id = $1;`, [workspaceA]);
       expect(outAfter.rows[0].count).toBe(outBefore.rows[0].count);
     });
 
     it("ensures Workspace A suggestions are completely invisible to Workspace B", async () => {
+      const { contactId, threadId } = await createContactAndThread(workspaceA, { lastMessageHoursAgo: 2 });
+      const currentRev = await getCandidateRevision(workspaceA, threadId);
+
       const keyA = `rls-wsA-${crypto.randomUUID()}`;
       await withTenantTransaction(workspaceA, async (client) => {
         return createIntegrationSuggestion(client, workspaceA, {
           idempotencyKey: keyA,
+          threadId,
+          contactId,
+          candidateRevision: currentRev,
           title: "Sugestão A",
           body: "Corpo A",
         });

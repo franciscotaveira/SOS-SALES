@@ -1,12 +1,13 @@
 /**
- * Chat Sales — Integration Suggestions Repository (F1.1-B Radar Hardening)
+ * Chat Sales — Integration Suggestions Repository (F1.1-C Radar Hardening & Governance)
  * 
  * Provides tenant-scoped CRUD for integration suggestions with:
- * - Server-owned origin snapshot (derived transactionally, client cannot spoof)
- * - Persisted invalidation and expiration (commits state before returning 409)
- * - Complete semantic idempotency (fingerprint covering validity, rules, snapshot)
- * - Governed candidates with strict cursor validation, deterministic message tie-breaking
- * - Real module enablement & cooldown across states (pending, accepted, dismissed)
+ * - Candidate-Suggestion link (mandatory opaque candidateRevision concurrency token)
+ * - Server-owned configuration (derived moduleKey = 'radar_m01', ruleVersion = workspaces.radar_rule_version)
+ * - Full governance revalidation on decision (WORKSPACE_INACTIVE, MODULE_DISABLED, RULE_VERSION_STALE)
+ * - Centralized structured invalidation persistence (rejection_code + rejection_reason + state_version increment)
+ * - Deep recursive canonical serialization for payload fingerprinting
+ * - Governed candidates with bounded cooldown (0 respected via ??), stable cursor, and tie-breaking
  */
 import type { Pool, PoolClient } from "pg";
 import crypto from "node:crypto";
@@ -31,6 +32,7 @@ export interface OriginSnapshot {
   moduleKey?: string | null;
   ruleVersion?: string | null;
   reasonCode?: string | null;
+  candidateRevision: string;
   snapshotRevision: string;
   [key: string]: unknown;
 }
@@ -64,18 +66,16 @@ export interface IntegrationSuggestionRecord {
 export interface CreateSuggestionInput {
   idempotencyKey: string;
   source?: SuggestionSource;
-  threadId?: string | null;
+  threadId: string;
   contactId?: string | null;
   suggestionType?: SuggestionType;
   title: string;
   body: string;
   draftMessage?: string | null;
   priority?: SuggestionPriority;
-  moduleKey?: string;
-  ruleVersion?: string;
   reasonCode?: string | null;
   evidence?: Record<string, unknown> | null;
-  metadata?: Record<string, unknown>;
+  candidateRevision: string;
   expiresAt?: string | null;
 }
 
@@ -101,6 +101,7 @@ export interface GovernedCandidateRecord {
   ruleVersion: string;
   reasonCode: string;
   evidence: CandidateEvidence;
+  candidateRevision: string;
   snapshotRevision: string;
   lastMessageAt: Date;
 }
@@ -140,7 +141,10 @@ export type SuggestionRejectionCode =
   | "ORIGIN_CONTACT_OPT_OUT"
   | "MODULE_DISABLED"
   | "COOLDOWN_ACTIVE"
-  | "INVALID_SNAPSHOT";
+  | "INVALID_SNAPSHOT"
+  | "WORKSPACE_INACTIVE"
+  | "RULE_VERSION_STALE"
+  | "CANDIDATE_STALE";
 
 export class SuggestionDecisionRejectionError extends Error {
   public readonly code: SuggestionRejectionCode;
@@ -162,6 +166,51 @@ export type SuggestionDecisionResult =
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Deep recursive canonical JSON serialization.
+ * Objects with keys in different orders produce identical canonical strings.
+ */
+export function canonicalStringify(val: unknown): string {
+  if (val === null || typeof val !== "object") {
+    return JSON.stringify(val);
+  }
+  if (Array.isArray(val)) {
+    return "[" + val.map(canonicalStringify).join(",") + "]";
+  }
+  const keys = Object.keys(val as Record<string, unknown>).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalStringify((val as Record<string, unknown>)[k])).join(",") + "}";
+}
+
+/**
+ * Computes deterministic revision token for a candidate from its current facts.
+ */
+export function computeCandidateRevision(input: {
+  threadId: string;
+  contactId: string;
+  lastMessageAtRaw: string;
+  lastMessageId: string | null;
+  threadStatus: string;
+  contactOptOut: boolean;
+  moduleKey: string;
+  ruleVersion: string;
+}): string {
+  return crypto
+    .createHash("sha256")
+    .update(
+      canonicalStringify({
+        contactId: input.contactId,
+        contactOptOut: input.contactOptOut,
+        lastMessageAt: input.lastMessageAtRaw,
+        lastMessageId: input.lastMessageId || null,
+        moduleKey: input.moduleKey,
+        ruleVersion: input.ruleVersion,
+        threadId: input.threadId,
+        threadStatus: input.threadStatus,
+      })
+    )
+    .digest("hex");
+}
+
 export function computeSuggestionFingerprint(input: {
   source?: SuggestionSource;
   threadId?: string | null;
@@ -176,10 +225,12 @@ export function computeSuggestionFingerprint(input: {
   ruleVersion?: string;
   reasonCode?: string | null;
   evidence?: Record<string, unknown> | null;
+  candidateRevision?: string | null;
   snapshotRevision?: string | null;
 }): string {
   const normalized = {
     body: (input.body || "").trim(),
+    candidateRevision: input.candidateRevision || null,
     contactId: input.contactId || null,
     draftMessage: input.draftMessage ? input.draftMessage.trim() : null,
     evidence: input.evidence || null,
@@ -194,7 +245,7 @@ export function computeSuggestionFingerprint(input: {
     threadId: input.threadId || null,
     title: (input.title || "").trim(),
   };
-  return crypto.createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+  return crypto.createHash("sha256").update(canonicalStringify(normalized)).digest("hex");
 }
 
 export function encodeCursor(lastMessageAtIso: string, id: string): string {
@@ -227,13 +278,49 @@ export function decodeCursor(cursor: string): { lastMessageAt: string; id: strin
   }
 }
 
+/**
+ * Centralized rejection updater: persists status, structured rejection code, human reason,
+ * timestamp, and increments state_version under the caller's transaction.
+ */
+export async function persistSuggestionRejection(
+  client: Pool | PoolClient,
+  workspaceId: string,
+  suggestionId: string,
+  status: "invalidated" | "expired",
+  code: SuggestionRejectionCode,
+  reason: string,
+  decidedByUserId?: string | null
+): Promise<IntegrationSuggestionRecord> {
+  const updateRes = await client.query<IntegrationSuggestionRecord>(
+    `UPDATE public.integration_suggestions
+     SET status = $1,
+         decided_by_user_id = COALESCE($2, decided_by_user_id),
+         decided_at = clock_timestamp(),
+         metadata = metadata || jsonb_build_object(
+           'rejection_code', $3::text,
+           'rejection_reason', $4::text,
+           'invalidation_reason', $4::text,
+           'rejected_at', to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+         ),
+         state_version = state_version + 1,
+         updated_at = clock_timestamp()
+     WHERE workspace_id = $5 AND id = $6
+     RETURNING *;`,
+    [status, decidedByUserId || null, code, reason, workspaceId, suggestionId]
+  );
+  if (!updateRes.rows[0]) {
+    throw new Error(`Failed to persist suggestion rejection: suggestion ${suggestionId} not found in workspace ${workspaceId}`);
+  }
+  return updateRes.rows[0];
+}
+
 // ---------------------------------------------------------------------------
 // Suggestion CRUD & State Machine
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a suggestion with server-derived origin snapshot, module governance,
- * and semantic idempotency.
+ * Creates a suggestion with candidate link verification, server-derived origin snapshot,
+ * server-owned configuration (radar_m01 + workspace rule_version), and semantic idempotency.
  */
 export async function createIntegrationSuggestion(
   client: Pool | PoolClient,
@@ -254,7 +341,15 @@ export async function createIntegrationSuggestion(
   );
 
   const ws = wsRes.rows[0];
-  if (!ws || !ws.is_active || !ws.radar_enabled) {
+  if (!ws || !ws.is_active) {
+    throw new SuggestionDecisionRejectionError(
+      workspaceId,
+      "WORKSPACE_INACTIVE",
+      "Workspace inativo"
+    );
+  }
+
+  if (!ws.radar_enabled) {
     throw new SuggestionDecisionRejectionError(
       workspaceId,
       "MODULE_DISABLED",
@@ -262,23 +357,22 @@ export async function createIntegrationSuggestion(
     );
   }
 
-  const moduleKey = input.moduleKey || "radar_m01";
-  if (moduleKey !== "radar_m01") {
+  // Server-owned moduleKey and ruleVersion
+  const moduleKey = "radar_m01";
+  const ruleVersion = ws.radar_rule_version || "1.0.0";
+  const cooldownSeconds = ws.radar_cooldown_seconds ?? 86400;
+
+  // 2. Validate origin thread and candidate revision
+  if (!input.threadId) {
     throw new SuggestionDecisionRejectionError(
       workspaceId,
-      "MODULE_DISABLED",
-      `Módulo '${moduleKey}' não suportado nesta versão`
+      "INVALID_SNAPSHOT",
+      "threadId é obrigatório para sugestões do Radar"
     );
   }
 
-  const ruleVersion = input.ruleVersion || ws.radar_rule_version || "1.0.0";
-
-  // 2. Validate origin thread and derive server-owned snapshot
-  let originSnapshot: OriginSnapshot | null = null;
-  let verifiedContactId: string | null = input.contactId || null;
-
-  if (input.threadId) {
-    // Cooldown check for the same thread/module/rule
+  // Cooldown check for the same thread/module if cooldown > 0
+  if (cooldownSeconds > 0) {
     const cooldownRes = await client.query<{
       id: string;
       idempotency_key: string;
@@ -288,11 +382,10 @@ export async function createIntegrationSuggestion(
        WHERE workspace_id = $1
          AND thread_id = $2
          AND module_key = $3
-         AND rule_version = $4
-         AND created_at > clock_timestamp() - ($5 || ' seconds')::interval
+         AND created_at > clock_timestamp() - ($4 || ' seconds')::interval
        ORDER BY created_at DESC
        LIMIT 1;`,
-      [workspaceId, input.threadId, moduleKey, ruleVersion, ws.radar_cooldown_seconds]
+      [workspaceId, input.threadId, moduleKey, cooldownSeconds]
     );
 
     const recentSug = cooldownRes.rows[0];
@@ -303,106 +396,122 @@ export async function createIntegrationSuggestion(
         "Thread em período de cooldown para este módulo"
       );
     }
-
-    // Query thread state + contact association + latest message with deterministic tie-breaking
-    const threadRes = await client.query<{
-      thread_id: string;
-      contact_id: string;
-      thread_status: string;
-      last_message_at: Date;
-      last_message_at_raw: string;
-      contact_opt_out: boolean;
-      last_message_id: string | null;
-      last_msg_created_at_raw: string | null;
-    }>(
-      `SELECT
-         t.id as thread_id,
-         t.contact_id,
-         t.status as thread_status,
-         t.last_message_at,
-         to_char(t.last_message_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as last_message_at_raw,
-         c.opt_out as contact_opt_out,
-         m.id as last_message_id,
-         to_char(m.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as last_msg_created_at_raw
-       FROM public.commercial_threads t
-       JOIN public.contacts c ON c.workspace_id = t.workspace_id AND c.id = t.contact_id
-       LEFT JOIN LATERAL (
-         SELECT id, created_at
-         FROM public.messages
-         WHERE workspace_id = t.workspace_id AND thread_id = t.id
-         ORDER BY created_at DESC, id DESC
-         LIMIT 1
-       ) m ON true
-       WHERE t.workspace_id = $1 AND t.id = $2;`,
-      [workspaceId, input.threadId]
-    );
-
-    const row = threadRes.rows[0];
-    if (!row) {
-      throw new SuggestionDecisionRejectionError(
-        input.threadId,
-        "INVALID_SNAPSHOT",
-        "Thread ou contato de origem não encontrado ou inconsistente"
-      );
-    }
-
-    if (input.contactId && input.contactId !== row.contact_id) {
-      throw new SuggestionDecisionRejectionError(
-        input.threadId,
-        "INVALID_SNAPSHOT",
-        "Contato informado não corresponde ao contato da conversa"
-      );
-    }
-    verifiedContactId = row.contact_id;
-
-    if (row.contact_opt_out) {
-      throw new SuggestionDecisionRejectionError(
-        input.threadId,
-        "ORIGIN_CONTACT_OPT_OUT",
-        "Contato realizou opt-out de mensagens"
-      );
-    }
-
-    if (row.thread_status === "closed") {
-      throw new SuggestionDecisionRejectionError(
-        input.threadId,
-        "ORIGIN_THREAD_CLOSED",
-        "A conversa de origem está encerrada"
-      );
-    }
-
-    if (row.thread_status === "waiting_human") {
-      throw new SuggestionDecisionRejectionError(
-        input.threadId,
-        "ORIGIN_THREAD_HANDOFF",
-        "A conversa de origem está em controle humano / handoff"
-      );
-    }
-
-    const lastMsgAtStr = row.last_msg_created_at_raw || row.last_message_at_raw;
-    const revHash = crypto
-      .createHash("sha256")
-      .update(`${row.thread_id}:${row.contact_id}:${lastMsgAtStr}:${row.last_message_id || ""}:${row.thread_status}:${row.contact_opt_out}`)
-      .digest("hex");
-
-    originSnapshot = {
-      threadId: row.thread_id,
-      contactId: row.contact_id,
-      lastMessageAt: lastMsgAtStr,
-      lastMessageId: row.last_message_id,
-      threadStatus: row.thread_status,
-      contactOptOut: row.contact_opt_out,
-      moduleKey,
-      ruleVersion,
-      reasonCode: input.reasonCode || null,
-      snapshotRevision: revHash,
-    };
   }
 
-  // 3. Compute canonical logical fingerprint
+  // Query thread state + contact association + latest message with deterministic tie-breaking
+  const threadRes = await client.query<{
+    thread_id: string;
+    contact_id: string;
+    thread_status: string;
+    last_message_at: Date;
+    last_message_at_raw: string;
+    contact_opt_out: boolean;
+    last_message_id: string | null;
+    last_msg_created_at_raw: string | null;
+  }>(
+    `SELECT
+       t.id as thread_id,
+       t.contact_id,
+       t.status as thread_status,
+       t.last_message_at,
+       to_char(t.last_message_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as last_message_at_raw,
+       c.opt_out as contact_opt_out,
+       m.id as last_message_id,
+       to_char(m.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as last_msg_created_at_raw
+     FROM public.commercial_threads t
+     JOIN public.contacts c ON c.workspace_id = t.workspace_id AND c.id = t.contact_id
+     LEFT JOIN LATERAL (
+       SELECT id, created_at
+       FROM public.messages
+       WHERE workspace_id = t.workspace_id AND thread_id = t.id
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1
+     ) m ON true
+     WHERE t.workspace_id = $1 AND t.id = $2;`,
+    [workspaceId, input.threadId]
+  );
+
+  const row = threadRes.rows[0];
+  if (!row) {
+    throw new SuggestionDecisionRejectionError(
+      input.threadId,
+      "INVALID_SNAPSHOT",
+      "Thread ou contato de origem não encontrado ou inconsistente"
+    );
+  }
+
+  if (input.contactId && input.contactId !== row.contact_id) {
+    throw new SuggestionDecisionRejectionError(
+      input.threadId,
+      "INVALID_SNAPSHOT",
+      "Contato informado não corresponde ao contato da conversa"
+    );
+  }
+  const verifiedContactId = row.contact_id;
+
+  if (row.contact_opt_out) {
+    throw new SuggestionDecisionRejectionError(
+      input.threadId,
+      "ORIGIN_CONTACT_OPT_OUT",
+      "Contato realizou opt-out de mensagens"
+    );
+  }
+
+  if (row.thread_status === "closed") {
+    throw new SuggestionDecisionRejectionError(
+      input.threadId,
+      "ORIGIN_THREAD_CLOSED",
+      "A conversa de origem está encerrada"
+    );
+  }
+
+  if (row.thread_status === "waiting_human") {
+    throw new SuggestionDecisionRejectionError(
+      input.threadId,
+      "ORIGIN_THREAD_HANDOFF",
+      "A conversa de origem está em controle humano / handoff"
+    );
+  }
+
+  // 3. Verify Candidate Revision Link
+  const lastMsgAtStr = row.last_msg_created_at_raw || row.last_message_at_raw;
+  const currentCandidateRevision = computeCandidateRevision({
+    threadId: row.thread_id,
+    contactId: row.contact_id,
+    lastMessageAtRaw: lastMsgAtStr,
+    lastMessageId: row.last_message_id,
+    threadStatus: row.thread_status,
+    contactOptOut: row.contact_opt_out,
+    moduleKey,
+    ruleVersion,
+  });
+
+  if (!input.candidateRevision || input.candidateRevision !== currentCandidateRevision) {
+    throw new SuggestionDecisionRejectionError(
+      input.threadId,
+      "CANDIDATE_STALE",
+      "O candidato informado está desatualizado em relação aos fatos atuais da conversa"
+    );
+  }
+
+  const originSnapshot: OriginSnapshot = {
+    threadId: row.thread_id,
+    contactId: row.contact_id,
+    lastMessageAt: lastMsgAtStr,
+    lastMessageId: row.last_message_id,
+    threadStatus: row.thread_status,
+    contactOptOut: row.contact_opt_out,
+    moduleKey,
+    ruleVersion,
+    reasonCode: input.reasonCode || null,
+    candidateRevision: currentCandidateRevision,
+    snapshotRevision: currentCandidateRevision,
+  };
+
+  // 4. Compute canonical logical fingerprint
   const fingerprint = computeSuggestionFingerprint({
     source: input.source || "n8n",
-    threadId: input.threadId || null,
+    threadId: input.threadId,
     contactId: verifiedContactId,
     suggestionType: input.suggestionType || "follow_up",
     title: input.title,
@@ -414,19 +523,19 @@ export async function createIntegrationSuggestion(
     ruleVersion,
     reasonCode: input.reasonCode || null,
     evidence: input.evidence || null,
-    snapshotRevision: originSnapshot?.snapshotRevision || null,
+    candidateRevision: currentCandidateRevision,
+    snapshotRevision: currentCandidateRevision,
   });
 
-  // Construct typed metadata
+  // Construct typed server metadata
   const metadata: Record<string, unknown> = {
-    ...(input.metadata || {}),
     moduleKey,
     ruleVersion,
     ...(input.reasonCode ? { reasonCode: input.reasonCode } : {}),
     ...(input.evidence ? { evidence: input.evidence } : {}),
   };
 
-  // 4. Attempt INSERT with ON CONFLICT DO NOTHING
+  // 5. Attempt INSERT with ON CONFLICT DO NOTHING
   const insertRes = await client.query<IntegrationSuggestionRecord>(
     `INSERT INTO public.integration_suggestions (
       workspace_id, idempotency_key, payload_fingerprint, source,
@@ -450,7 +559,7 @@ export async function createIntegrationSuggestion(
       input.source || "n8n",
       moduleKey,
       ruleVersion,
-      input.threadId || null,
+      input.threadId,
       verifiedContactId,
       input.suggestionType || "follow_up",
       input.title,
@@ -458,7 +567,7 @@ export async function createIntegrationSuggestion(
       input.draftMessage || null,
       input.priority || "normal",
       JSON.stringify(metadata),
-      JSON.stringify(originSnapshot || {}),
+      JSON.stringify(originSnapshot),
       input.expiresAt || null,
     ]
   );
@@ -467,7 +576,7 @@ export async function createIntegrationSuggestion(
     return { suggestion: insertRes.rows[0], created: true };
   }
 
-  // 5. Conflict: fetch existing record
+  // 6. Conflict: fetch existing record
   const existingRes = await client.query<IntegrationSuggestionRecord>(
     `SELECT * FROM public.integration_suggestions
      WHERE workspace_id = $1 AND idempotency_key = $2;`,
@@ -568,8 +677,9 @@ export async function countPendingSuggestions(
 }
 
 /**
- * Decides a suggestion with transactional origin revalidation and safe persistence.
- * If rejected/invalidated, commits the updated row with structured reason before returning.
+ * Decides a suggestion with transactional origin revalidation, module governance revalidation,
+ * and centralized structured persistence.
+ * If rejected/invalidated, commits the updated row with structured rejection_code and rejection_reason.
  * 
  * NEVER throws inside the transaction on domain rejection; returns SuggestionDecisionResult.
  */
@@ -587,8 +697,9 @@ export async function decideSuggestion(
   const sugRes = await client.query<IntegrationSuggestionRecord & {
     ws_is_active: boolean;
     radar_enabled: boolean;
+    ws_rule_version: string;
   }>(
-    `SELECT s.*, w.is_active as ws_is_active, w.radar_enabled
+    `SELECT s.*, w.is_active as ws_is_active, w.radar_enabled, w.radar_rule_version as ws_rule_version
      FROM public.integration_suggestions s
      JOIN public.workspaces w ON w.id = s.workspace_id
      WHERE s.workspace_id = $1 AND s.id = $2
@@ -606,13 +717,61 @@ export async function decideSuggestion(
     };
   }
 
-  // 1.1 Check workspace / radar enabled
-  if (!suggestion.ws_is_active || !suggestion.radar_enabled) {
+  // 1.1 Check workspace active
+  if (!suggestion.ws_is_active) {
+    const inv = await persistSuggestionRejection(
+      client, workspaceId, suggestionId, "invalidated",
+      "WORKSPACE_INACTIVE", "Workspace inativo", decision.decidedByUserId
+    );
+    return {
+      ok: false,
+      code: "WORKSPACE_INACTIVE",
+      reason: "Workspace inativo",
+      suggestion: inv,
+    };
+  }
+
+  // 1.2 Check radar enabled
+  if (!suggestion.radar_enabled) {
+    const inv = await persistSuggestionRejection(
+      client, workspaceId, suggestionId, "invalidated",
+      "MODULE_DISABLED", "Módulo Radar desabilitado para este workspace", decision.decidedByUserId
+    );
     return {
       ok: false,
       code: "MODULE_DISABLED",
       reason: "Módulo Radar desabilitado para este workspace",
-      suggestion,
+      suggestion: inv,
+    };
+  }
+
+  // 1.3 Check module key
+  if (suggestion.module_key !== "radar_m01") {
+    const inv = await persistSuggestionRejection(
+      client, workspaceId, suggestionId, "invalidated",
+      "MODULE_DISABLED", `Módulo '${suggestion.module_key}' não é suportado`, decision.decidedByUserId
+    );
+    return {
+      ok: false,
+      code: "MODULE_DISABLED",
+      reason: `Módulo '${suggestion.module_key}' não é suportado`,
+      suggestion: inv,
+    };
+  }
+
+  // 1.4 Check rule version stale
+  if (suggestion.rule_version !== suggestion.ws_rule_version) {
+    const inv = await persistSuggestionRejection(
+      client, workspaceId, suggestionId, "invalidated",
+      "RULE_VERSION_STALE",
+      `Versão da regra '${suggestion.rule_version}' desatualizada em relação à versão ativa '${suggestion.ws_rule_version}'`,
+      decision.decidedByUserId
+    );
+    return {
+      ok: false,
+      code: "RULE_VERSION_STALE",
+      reason: `Versão da regra '${suggestion.rule_version}' desatualizada em relação à versão ativa '${suggestion.ws_rule_version}'`,
+      suggestion: inv,
     };
   }
 
@@ -645,23 +804,15 @@ export async function decideSuggestion(
   );
 
   if (expiryCheck.rows[0]?.is_expired) {
-    const expiredRes = await client.query<IntegrationSuggestionRecord>(
-      `UPDATE public.integration_suggestions
-       SET status = 'expired',
-           decided_at = clock_timestamp(),
-           metadata = metadata || jsonb_build_object('invalidation_reason', 'Sugestão expirada pelo tempo limite'),
-           state_version = state_version + 1,
-           updated_at = clock_timestamp()
-       WHERE workspace_id = $1 AND id = $2
-       RETURNING *;`,
-      [workspaceId, suggestionId]
+    const expiredRes = await persistSuggestionRejection(
+      client, workspaceId, suggestionId, "expired",
+      "SUGGESTION_EXPIRED", "Sugestão expirada pelo tempo limite e não pode mais ser aceita", decision.decidedByUserId
     );
-
     return {
       ok: false,
       code: "SUGGESTION_EXPIRED",
       reason: "Sugestão expirada pelo tempo limite e não pode mais ser aceita",
-      suggestion: expiredRes.rows[0] || null,
+      suggestion: expiredRes || null,
     };
   }
 
@@ -669,23 +820,15 @@ export async function decideSuggestion(
   if (decision.status === "accepted" && suggestion.thread_id) {
     const originSnap = suggestion.origin_snapshot;
     if (!originSnap || !originSnap.lastMessageAt || !originSnap.threadId) {
-      const invRes = await client.query<IntegrationSuggestionRecord>(
-        `UPDATE public.integration_suggestions
-         SET status = 'invalidated',
-             decided_by_user_id = $1,
-             decided_at = clock_timestamp(),
-             metadata = metadata || jsonb_build_object('invalidation_reason', 'Snapshot de origem ausente ou incompleto'),
-             state_version = state_version + 1,
-             updated_at = clock_timestamp()
-         WHERE workspace_id = $2 AND id = $3
-         RETURNING *;`,
-        [decision.decidedByUserId, workspaceId, suggestionId]
+      const inv = await persistSuggestionRejection(
+        client, workspaceId, suggestionId, "invalidated",
+        "INVALID_SNAPSHOT", "Snapshot de origem ausente ou incompleto. Sugestão invalidada.", decision.decidedByUserId
       );
       return {
         ok: false,
         code: "INVALID_SNAPSHOT",
         reason: "Snapshot de origem ausente ou incompleto. Sugestão invalidada.",
-        suggestion: invRes.rows[0] || null,
+        suggestion: inv || null,
       };
     }
 
@@ -716,89 +859,57 @@ export async function decideSuggestion(
 
     const threadRow = threadRes.rows[0];
     if (!threadRow) {
-      const invRes = await client.query<IntegrationSuggestionRecord>(
-        `UPDATE public.integration_suggestions
-         SET status = 'invalidated',
-             decided_by_user_id = $1,
-             decided_at = clock_timestamp(),
-             metadata = metadata || jsonb_build_object('invalidation_reason', 'A conversa de origem não foi encontrada'),
-             state_version = state_version + 1,
-             updated_at = clock_timestamp()
-         WHERE workspace_id = $2 AND id = $3
-         RETURNING *;`,
-        [decision.decidedByUserId, workspaceId, suggestionId]
+      const inv = await persistSuggestionRejection(
+        client, workspaceId, suggestionId, "invalidated",
+        "ORIGIN_THREAD_CLOSED", "A conversa de origem não foi encontrada", decision.decidedByUserId
       );
       return {
         ok: false,
         code: "ORIGIN_THREAD_CLOSED",
         reason: "A conversa de origem não foi encontrada",
-        suggestion: invRes.rows[0] || null,
+        suggestion: inv || null,
       };
     }
 
     // 5.1 Closed thread check
     if (threadRow.status === "closed") {
-      const invRes = await client.query<IntegrationSuggestionRecord>(
-        `UPDATE public.integration_suggestions
-         SET status = 'invalidated',
-             decided_by_user_id = $1,
-             decided_at = clock_timestamp(),
-             metadata = metadata || jsonb_build_object('invalidation_reason', 'A conversa de origem foi encerrada'),
-             state_version = state_version + 1,
-             updated_at = clock_timestamp()
-         WHERE workspace_id = $2 AND id = $3
-         RETURNING *;`,
-        [decision.decidedByUserId, workspaceId, suggestionId]
+      const inv = await persistSuggestionRejection(
+        client, workspaceId, suggestionId, "invalidated",
+        "ORIGIN_THREAD_CLOSED", "A conversa de origem foi encerrada. Sugestão invalidada.", decision.decidedByUserId
       );
       return {
         ok: false,
         code: "ORIGIN_THREAD_CLOSED",
         reason: "A conversa de origem foi encerrada. Sugestão invalidada.",
-        suggestion: invRes.rows[0] || null,
+        suggestion: inv || null,
       };
     }
 
     // 5.2 Handoff / Human control check
     if (threadRow.status === "waiting_human") {
-      const invRes = await client.query<IntegrationSuggestionRecord>(
-        `UPDATE public.integration_suggestions
-         SET status = 'invalidated',
-             decided_by_user_id = $1,
-             decided_at = clock_timestamp(),
-             metadata = metadata || jsonb_build_object('invalidation_reason', 'A conversa está sob controle humano / handoff'),
-             state_version = state_version + 1,
-             updated_at = clock_timestamp()
-         WHERE workspace_id = $2 AND id = $3
-         RETURNING *;`,
-        [decision.decidedByUserId, workspaceId, suggestionId]
+      const inv = await persistSuggestionRejection(
+        client, workspaceId, suggestionId, "invalidated",
+        "ORIGIN_THREAD_HANDOFF", "A conversa está sob controle humano / handoff ativo. Sugestão não aplicável.", decision.decidedByUserId
       );
       return {
         ok: false,
         code: "ORIGIN_THREAD_HANDOFF",
         reason: "A conversa está sob controle humano / handoff ativo. Sugestão não aplicável.",
-        suggestion: invRes.rows[0] || null,
+        suggestion: inv || null,
       };
     }
 
     // 5.3 Contact opt-out check
     if (threadRow.opt_out) {
-      const invRes = await client.query<IntegrationSuggestionRecord>(
-        `UPDATE public.integration_suggestions
-         SET status = 'invalidated',
-             decided_by_user_id = $1,
-             decided_at = clock_timestamp(),
-             metadata = metadata || jsonb_build_object('invalidation_reason', 'Contato realizou opt-out'),
-             state_version = state_version + 1,
-             updated_at = clock_timestamp()
-         WHERE workspace_id = $2 AND id = $3
-         RETURNING *;`,
-        [decision.decidedByUserId, workspaceId, suggestionId]
+      const inv = await persistSuggestionRejection(
+        client, workspaceId, suggestionId, "invalidated",
+        "ORIGIN_CONTACT_OPT_OUT", "O contato realizou opt-out de mensagens. Sugestão invalidada.", decision.decidedByUserId
       );
       return {
         ok: false,
         code: "ORIGIN_CONTACT_OPT_OUT",
         reason: "O contato realizou opt-out de mensagens. Sugestão invalidada.",
-        suggestion: invRes.rows[0] || null,
+        suggestion: inv || null,
       };
     }
 
@@ -810,23 +921,17 @@ export async function decideSuggestion(
     const hasDifferentId = Boolean(originSnap.lastMessageId && threadRow.current_last_message_id && threadRow.current_last_message_id !== originSnap.lastMessageId);
 
     if (hasNewerTime || hasDifferentId) {
-      const invRes = await client.query<IntegrationSuggestionRecord>(
-        `UPDATE public.integration_suggestions
-         SET status = 'invalidated',
-             decided_by_user_id = $1,
-             decided_at = clock_timestamp(),
-             metadata = metadata || jsonb_build_object('invalidation_reason', 'Nova mensagem recebida após o snapshot de origem'),
-             state_version = state_version + 1,
-             updated_at = clock_timestamp()
-         WHERE workspace_id = $2 AND id = $3
-         RETURNING *;`,
-        [decision.decidedByUserId, workspaceId, suggestionId]
+      const inv = await persistSuggestionRejection(
+        client, workspaceId, suggestionId, "invalidated",
+        "ORIGIN_STALE_NEW_MESSAGE",
+        "Uma nova mensagem foi recebida na conversa após a geração da sugestão. O operador deve avaliar o contexto recente.",
+        decision.decidedByUserId
       );
       return {
         ok: false,
         code: "ORIGIN_STALE_NEW_MESSAGE",
         reason: "Uma nova mensagem foi recebida na conversa após a geração da sugestão. O operador deve avaliar o contexto recente.",
-        suggestion: invRes.rows[0] || null,
+        suggestion: inv || null,
       };
     }
   }
@@ -880,6 +985,12 @@ export async function expireStaleIntegrationSuggestions(
     `UPDATE public.integration_suggestions
      SET status = 'expired',
          decided_at = clock_timestamp(),
+         metadata = metadata || jsonb_build_object(
+           'rejection_code', 'SUGGESTION_EXPIRED',
+           'rejection_reason', 'Sugestão expirada pelo tempo limite',
+           'invalidation_reason', 'Sugestão expirada pelo tempo limite',
+           'rejected_at', to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+         ),
          state_version = state_version + 1,
          updated_at = clock_timestamp()
      WHERE status = 'pending'
@@ -898,7 +1009,6 @@ export interface ListCandidatesOptions {
   minHoursSinceLastMessage?: number;
   limit?: number;
   cursor?: string;
-  moduleKey?: string;
 }
 
 /**
@@ -906,9 +1016,10 @@ export interface ListCandidatesOptions {
  * Contract guarantees:
  * - Stable cursor pagination with ID tie-breaking (throws InvalidCursorError on malformed cursor)
  * - Single identity per candidate (LATERAL joins prevent row multiplication)
- * - Structured evidence, ruleVersion, moduleKey, reasonCode, snapshotRevision
+ * - Structured evidence, ruleVersion, moduleKey, reasonCode, candidateRevision
  * - Strict exclusion of closed, handoff (waiting_human), opt-out contacts, and active cooldown
  * - Exclusion if workspace or radar module is disabled
+ * - Bounded cooldown: 0 is respected via ?? (does not default to 86400)
  */
 export async function listIntegrationCandidates(
   client: Pool | PoolClient,
@@ -935,9 +1046,9 @@ export async function listIntegrationCandidates(
 
   const limit = Math.min(Math.max(options.limit || 50, 1), 100);
   const minHours = Math.max(options.minHoursSinceLastMessage ?? 0, 0);
-  const moduleKey = options.moduleKey || "radar_m01";
+  const moduleKey = "radar_m01";
   const ruleVersion = ws.radar_rule_version || "1.0.0";
-  const cooldownSeconds = ws.radar_cooldown_seconds || 86400;
+  const cooldownSeconds = ws.radar_cooldown_seconds ?? 86400;
 
   // Decode cursor if provided (throws InvalidCursorError if malformed)
   let cursorCondition = "";
@@ -966,7 +1077,7 @@ export async function listIntegrationCandidates(
           AND (
             (s.status = 'pending' AND (s.expires_at IS NULL OR s.expires_at > clock_timestamp()))
             OR
-            (s.created_at > clock_timestamp() - ($3 || ' seconds')::interval)
+            ($3::integer > 0 AND s.created_at > clock_timestamp() - ($3 || ' seconds')::interval)
           )
       )
   `;
@@ -987,10 +1098,12 @@ export async function listIntegrationCandidates(
     contact_id: string;
     contact_name: string | null;
     contact_phone: string;
+    contact_opt_out: boolean;
     thread_status: string;
     last_message_at: Date;
     last_message_at_raw: string;
     last_message_id: string | null;
+    last_msg_created_at_raw: string | null;
     last_message_direction: string | null;
     last_message_body: string | null;
     hours_since_last_message: number;
@@ -1003,10 +1116,12 @@ export async function listIntegrationCandidates(
        t.contact_id,
        c.name as contact_name,
        c.phone_e164 as contact_phone,
+       c.opt_out as contact_opt_out,
        t.status as thread_status,
        t.last_message_at,
        to_char(t.last_message_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as last_message_at_raw,
        last_msg.id as last_message_id,
+       to_char(last_msg.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as last_msg_created_at_raw,
        last_msg.direction as last_message_direction,
        last_msg.body as last_message_body,
        ROUND(EXTRACT(EPOCH FROM (now() - t.last_message_at)) / 3600)::integer as hours_since_last_message,
@@ -1016,7 +1131,7 @@ export async function listIntegrationCandidates(
      FROM public.commercial_threads t
      JOIN public.contacts c ON c.workspace_id = t.workspace_id AND c.id = t.contact_id
      LEFT JOIN LATERAL (
-       SELECT m.id, m.direction, m.body
+       SELECT m.id, m.direction, m.body, m.created_at
        FROM public.messages m
        WHERE m.workspace_id = t.workspace_id
          AND m.thread_id = t.id
@@ -1052,10 +1167,17 @@ export async function listIntegrationCandidates(
   }
 
   const items: GovernedCandidateRecord[] = resultRows.map((r) => {
-    const snapRev = crypto
-      .createHash("sha256")
-      .update(`${r.thread_id}:${r.contact_id}:${r.last_message_at_raw}:${r.last_message_id || ""}:${r.thread_status}:false`)
-      .digest("hex");
+    const lastMsgAtStr = r.last_msg_created_at_raw || r.last_message_at_raw;
+    const candidateRevision = computeCandidateRevision({
+      threadId: r.thread_id,
+      contactId: r.contact_id,
+      lastMessageAtRaw: lastMsgAtStr,
+      lastMessageId: r.last_message_id,
+      threadStatus: r.thread_status,
+      contactOptOut: r.contact_opt_out,
+      moduleKey,
+      ruleVersion,
+    });
 
     const reasonCode =
       r.hours_since_last_message >= 24
@@ -1084,7 +1206,8 @@ export async function listIntegrationCandidates(
         journeyStage: r.journey_stage,
         journeyStatus: r.journey_status,
       },
-      snapshotRevision: snapRev,
+      candidateRevision,
+      snapshotRevision: candidateRevision,
       lastMessageAt: r.last_message_at,
     };
   });
