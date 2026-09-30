@@ -24,12 +24,14 @@ export const LeadSummary: FC<LeadSummaryProps> = ({
       : "R$ 0,00";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          padding: "6px 0",
+          borderBottom: "1px solid var(--border-subtle)",
           fontSize: "var(--font-size-sm, 0.875rem)",
         }}
       >
@@ -44,6 +46,8 @@ export const LeadSummary: FC<LeadSummaryProps> = ({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          padding: "6px 0",
+          borderBottom: "1px solid var(--border-subtle)",
           fontSize: "var(--font-size-sm, 0.875rem)",
         }}
       >
@@ -56,6 +60,8 @@ export const LeadSummary: FC<LeadSummaryProps> = ({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          padding: "6px 0",
+          borderBottom: "1px solid var(--border-subtle)",
           fontSize: "var(--font-size-sm, 0.875rem)",
         }}
       >
@@ -68,6 +74,7 @@ export const LeadSummary: FC<LeadSummaryProps> = ({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          padding: "6px 0",
           fontSize: "var(--font-size-sm, 0.875rem)",
         }}
       >

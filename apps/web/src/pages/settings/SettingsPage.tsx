@@ -116,16 +116,22 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
             alignItems: "flex-start",
           }}
         >
-          {/* 200px Left Section Navigation */}
+          {/* 220px Left Section Navigation Card */}
           <nav
             aria-label="Seções de Configuração"
             style={{
-              width: isMobile ? "100%" : "200px",
-              minWidth: isMobile ? "100%" : "200px",
+              width: isMobile ? "100%" : "220px",
+              minWidth: isMobile ? "100%" : "220px",
               display: "flex",
               flexDirection: isMobile ? "row" : "column",
               gap: "4px",
               overflowX: isMobile ? "auto" : "visible",
+              backgroundColor: "var(--bg-surface)",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border-default)",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+              padding: "8px",
+              boxSizing: "border-box",
             }}
           >
             {tabs.map((tab) => {
@@ -152,15 +158,16 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
                     backgroundColor: isActive
                       ? isDanger
                         ? "var(--color-danger-subtle)"
-                        : "var(--bg-surface)"
+                        : "var(--color-action-subtle, #E6F4F1)"
                       : "transparent",
                     color: isDanger
                       ? "var(--color-danger)"
                       : isActive
                       ? "var(--color-action)"
                       : "var(--text-secondary)",
-                    boxShadow: isActive ? "var(--shadow-xs)" : "none",
+                    boxShadow: "none",
                     whiteSpace: "nowrap",
+                    transition: "background-color var(--transition-fast, 150ms ease), color var(--transition-fast, 150ms ease)",
                   }}
                 >
                   <Icon size={16} />

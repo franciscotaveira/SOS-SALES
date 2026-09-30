@@ -28,32 +28,46 @@ export const DossierDrawer: FC<DossierDrawerProps> = ({
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        <div>
-          <span style={{ fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)" }}>
-            Nome do Workspace
-          </span>
-          <div style={{ fontSize: "var(--font-size-sm, 0.875rem)", fontWeight: 500, marginTop: "2px" }}>
-            {workspace?.name || "Nenhum workspace selecionado"}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <span style={{ fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)" }}>
+              Workspace
+            </span>
+            <div style={{ fontSize: "var(--font-size-sm, 0.875rem)", fontWeight: 600, marginTop: "2px", color: "var(--text-primary)" }}>
+              {workspace?.name || "Nenhum workspace selecionado"}
+            </div>
           </div>
+          <Badge variant="action">Ativo</Badge>
         </div>
 
-        <div>
-          <span style={{ fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)" }}>
-            Tenant ID
-          </span>
-          <div
-            style={{
-              fontFamily: "var(--font-mono, monospace)",
-              fontSize: "var(--font-size-xs, 0.75rem)",
-              backgroundColor: "var(--bg-canvas)",
-              padding: "6px 8px",
-              borderRadius: "var(--radius-sm, 6px)",
-              marginTop: "4px",
-              border: "1px solid var(--border-default)",
-            }}
-          >
-            {workspace?.id || "N/A"}
+        <div
+          style={{
+            backgroundColor: "var(--bg-canvas)",
+            padding: "10px 12px",
+            borderRadius: "var(--radius-md, 8px)",
+            border: "1px solid var(--border-default)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <span style={{ fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)", display: "block" }}>
+              ID Técnico (RLS)
+            </span>
+            <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-muted)" }}>
+              {workspace?.id ? `${workspace.id.substring(0, 12)}...` : "N/A"}
+            </span>
           </div>
+          {workspace?.id && (
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => navigator.clipboard.writeText(workspace.id)}
+            >
+              Copiar
+            </Button>
+          )}
         </div>
 
         <div>

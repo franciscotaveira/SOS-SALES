@@ -8,6 +8,7 @@ import {
   Dialog,
   ListItem,
   Avatar,
+  Badge,
   useBreakpoint,
 } from "@sos-sales/ui";
 import { Search, Plus, PhoneCall } from "lucide-react";
@@ -114,14 +115,31 @@ export const ContactsPage: FC<{
           }
         />
 
-        {/* Search Input */}
-        <div style={{ maxWidth: "400px", width: "100%" }}>
-          <Input
-            placeholder="Buscar por telefone ou nome..."
-            prefixIcon={<Search size={16} />}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        {/* Search & Filter Bar Card */}
+        <div
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-lg)",
+            border: "1px solid var(--border-default)",
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "16px",
+            boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
+          }}
+        >
+          <div style={{ maxWidth: "400px", width: "100%" }}>
+            <Input
+              placeholder="Buscar por telefone ou nome..."
+              prefixIcon={<Search size={16} />}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", fontWeight: 500 }}>
+            {contacts.length} {contacts.length === 1 ? "contato cadastrado" : "contatos cadastrados"}
+          </div>
         </div>
 
         {/* Content Section */}
@@ -142,6 +160,7 @@ export const ContactsPage: FC<{
               backgroundColor: "var(--bg-surface)",
               borderRadius: "var(--radius-lg)",
               border: "1px solid var(--border-default)",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
               overflow: "hidden",
             }}
           >
@@ -167,6 +186,7 @@ export const ContactsPage: FC<{
               backgroundColor: "var(--bg-surface)",
               borderRadius: "var(--radius-lg)",
               border: "1px solid var(--border-default)",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
               overflow: "hidden",
             }}
           >
@@ -174,7 +194,7 @@ export const ContactsPage: FC<{
               <thead>
                 <tr
                   style={{
-                    backgroundColor: "var(--bg-canvas)",
+                    backgroundColor: "var(--bg-surface-elevated, #F1F5F9)",
                     borderBottom: "1px solid var(--border-default)",
                     position: "sticky",
                     top: 0,
@@ -188,10 +208,10 @@ export const ContactsPage: FC<{
                     Telefone
                   </th>
                   <th style={{ padding: "0 16px", height: "48px", fontWeight: 600, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                    ID
+                    Origem
                   </th>
                   <th style={{ padding: "0 16px", height: "48px", fontWeight: 600, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                    Criado em
+                    Cadastrado em
                   </th>
                 </tr>
               </thead>
@@ -220,15 +240,8 @@ export const ContactsPage: FC<{
                     >
                       {formatPhone(c.phoneE164)}
                     </td>
-                    <td
-                      style={{
-                        padding: "0 16px",
-                        fontFamily: "var(--font-mono, monospace)",
-                        fontSize: "var(--font-size-xs)",
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      {c.id.substring(0, 8)}...
+                    <td style={{ padding: "0 16px" }}>
+                      <Badge variant="operational">WhatsApp</Badge>
                     </td>
                     <td style={{ padding: "0 16px", color: "var(--text-secondary)", fontSize: "var(--font-size-xs)" }}>
                       {new Date(c.createdAt).toLocaleDateString("pt-BR")}

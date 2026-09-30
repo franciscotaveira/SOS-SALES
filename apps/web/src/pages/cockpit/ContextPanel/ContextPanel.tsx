@@ -1,6 +1,14 @@
 import type { FC } from "react";
 import { IconButton } from "@sos-sales/ui";
-import { X } from "lucide-react";
+import {
+  X,
+  User,
+  FileText,
+  QrCode,
+  GitCommit,
+  StickyNote,
+  Award,
+} from "lucide-react";
 import type {
   CommercialThreadSummary,
   CommercialProposalSummary,
@@ -74,7 +82,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
         minWidth: isMobile ? "100%" : "var(--context-panel-w, 360px)",
         maxWidth: isMobile ? "100%" : "var(--context-panel-w, 360px)",
         height: "100%",
-        backgroundColor: "var(--bg-surface)",
+        backgroundColor: "var(--bg-canvas)",
         borderLeft: isMobile ? "none" : "1px solid var(--border-default)",
         display: "flex",
         flexDirection: "column",
@@ -91,6 +99,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
           justifyContent: "space-between",
           padding: "0 var(--space-4, 16px)",
           borderBottom: "1px solid var(--border-default)",
+          backgroundColor: "var(--bg-surface)",
           boxSizing: "border-box",
         }}
       >
@@ -99,6 +108,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
             fontSize: "var(--font-size-sm, 0.875rem)",
             fontWeight: 600,
             color: "var(--text-primary)",
+            letterSpacing: "-0.01em",
           }}
         >
           Contexto do Lead
@@ -114,51 +124,93 @@ export const ContextPanel: FC<ContextPanelProps> = ({
         )}
       </div>
 
-      {/* Scrollable Sections */}
+      {/* Scrollable Sections as Framed Cards */}
       <div
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: "var(--space-4, 16px)",
+          padding: "var(--space-3, 12px) var(--space-4, 16px)",
           display: "flex",
           flexDirection: "column",
-          gap: "16px",
+          gap: "12px",
         }}
       >
-        {/* Section: Resumo do Lead */}
-        <div>
+        {/* Card 1: Lead & Origem */}
+        <section
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-lg, 10px)",
+            border: "1px solid var(--border-default)",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+            padding: "12px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
           <div
             style={{
-              fontSize: "var(--font-size-xs, 0.75rem)",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              color: "var(--text-muted)",
-              marginBottom: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              borderBottom: "1px solid var(--border-subtle)",
+              paddingBottom: "8px",
             }}
           >
-            Lead & Origem
+            <User size={14} style={{ color: "var(--color-action)" }} />
+            <span
+              style={{
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "var(--text-secondary)",
+              }}
+            >
+              Lead & Origem
+            </span>
           </div>
           <LeadSummary
             thread={thread}
             journeyStage={journeyStage}
             estimatedValueCents={estimatedValueCents}
           />
-        </div>
+        </section>
 
-        {/* Section: Propostas Comerciais (F3) */}
-        <div style={{ borderTop: "1px solid var(--border-default)", paddingTop: "14px" }}>
+        {/* Card 2: Propostas Comerciais */}
+        <section
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-lg, 10px)",
+            border: "1px solid var(--border-default)",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+            padding: "12px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
           <div
             style={{
-              fontSize: "var(--font-size-xs, 0.75rem)",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              color: "var(--text-muted)",
-              marginBottom: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              borderBottom: "1px solid var(--border-subtle)",
+              paddingBottom: "8px",
             }}
           >
-            Propostas Comerciais
+            <FileText size={14} style={{ color: "var(--color-operational)" }} />
+            <span
+              style={{
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "var(--text-secondary)",
+              }}
+            >
+              Propostas Comerciais
+            </span>
           </div>
           <ProposalsSection
             proposals={proposals}
@@ -167,91 +219,175 @@ export const ContextPanel: FC<ContextPanelProps> = ({
             onGeneratePix={onGenerateProposalPix}
             error={proposalError}
           />
-        </div>
+        </section>
 
-        {/* Section: Pix */}
-        <div style={{ borderTop: "1px solid var(--border-default)", paddingTop: "14px" }}>
+        {/* Card 3: Cobrança Pix */}
+        <section
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-lg, 10px)",
+            border: "1px solid var(--border-default)",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+            padding: "12px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
           <div
             style={{
-              fontSize: "var(--font-size-xs, 0.75rem)",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              color: "var(--text-muted)",
-              marginBottom: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              borderBottom: "1px solid var(--border-subtle)",
+              paddingBottom: "8px",
             }}
           >
-            Cobrança Pix
+            <QrCode size={14} style={{ color: "var(--color-action)" }} />
+            <span
+              style={{
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "var(--text-secondary)",
+              }}
+            >
+              Cobrança Pix Oficial
+            </span>
           </div>
           <PixStatus
             status={pixStatus}
             paidAt={pixPaidAt}
             onGeneratePix={onGeneratePix}
           />
-        </div>
+        </section>
 
-        {/* Section: Jornada e Histórico (F4) */}
-        <div style={{ borderTop: "1px solid var(--border-default)", paddingTop: "14px" }}>
+        {/* Card 4: Jornada do Cliente */}
+        <section
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-lg, 10px)",
+            border: "1px solid var(--border-default)",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+            padding: "12px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
           <div
             style={{
-              fontSize: "var(--font-size-xs, 0.75rem)",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              color: "var(--text-muted)",
-              marginBottom: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              borderBottom: "1px solid var(--border-subtle)",
+              paddingBottom: "8px",
             }}
           >
-            Jornada do Cliente
+            <GitCommit size={14} style={{ color: "var(--color-ai)" }} />
+            <span
+              style={{
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "var(--text-secondary)",
+              }}
+            >
+              Jornada & Histórico
+            </span>
           </div>
           <JourneyTimeline
             currentStage={journeyStage}
             actionHistory={actionHistory}
           />
-        </div>
+        </section>
 
-        {/* Section: Anotações */}
-        <div style={{ borderTop: "1px solid var(--border-default)", paddingTop: "14px" }}>
+        {/* Card 5: Notas Comerciais */}
+        <section
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-lg, 10px)",
+            border: "1px solid var(--border-default)",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+            padding: "12px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
           <div
             style={{
-              fontSize: "var(--font-size-xs, 0.75rem)",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              color: "var(--text-muted)",
-              marginBottom: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              borderBottom: "1px solid var(--border-subtle)",
+              paddingBottom: "8px",
             }}
           >
-            Notas Comerciais
+            <StickyNote size={14} style={{ color: "var(--color-warning)" }} />
+            <span
+              style={{
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "var(--text-secondary)",
+              }}
+            >
+              Notas Comerciais
+            </span>
           </div>
           <Notes
             initialNotes={notes}
             onSaveNotes={onSaveNotes}
             isSaving={isSavingNotes}
           />
-        </div>
+        </section>
 
-        {/* Section: Fechamento / Outcome */}
+        {/* Card 6: Fechamento / Outcome */}
         {onMarkWon && onMarkLost && (
-          <div style={{ borderTop: "1px solid var(--border-default)", paddingTop: "14px" }}>
+          <section
+            style={{
+              backgroundColor: "var(--bg-surface)",
+              borderRadius: "var(--radius-lg, 10px)",
+              border: "1px solid var(--border-default)",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.03)",
+              padding: "12px 14px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+            }}
+          >
             <div
               style={{
-                fontSize: "var(--font-size-xs, 0.75rem)",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                color: "var(--text-muted)",
-                marginBottom: "10px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                borderBottom: "1px solid var(--border-subtle)",
+                paddingBottom: "8px",
               }}
             >
-              Fechamento do Negócio
+              <Award size={14} style={{ color: "var(--color-action)" }} />
+              <span
+                style={{
+                  fontSize: "var(--font-size-xs, 0.75rem)",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                Fechamento do Negócio
+              </span>
             </div>
             <OutcomeActions
               onMarkWon={onMarkWon}
               onMarkLost={onMarkLost}
               currentOutcome={currentOutcome}
             />
-          </div>
+          </section>
         )}
       </div>
     </aside>

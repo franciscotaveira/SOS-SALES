@@ -141,7 +141,7 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
                     size="xs"
                     variant="danger"
                     prefixIcon={<Trash2 size={13} />}
-                    onClick={() => onRevoke(ch.id, ch.displayName || ch.id)}
+                    onClick={() => onRevoke(ch.id, ch.displayName || ch.phoneNumberE164 || "Linha WhatsApp")}
                     disabled={isRevoking}
                   >
                     {isRevoking ? "Revogando..." : "Revogar"}
