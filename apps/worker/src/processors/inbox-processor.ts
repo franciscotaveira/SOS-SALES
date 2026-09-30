@@ -30,6 +30,7 @@ export interface ClaimedInboxItem {
   max_retries: number;
   raw_payload_hash: string;
   lease_token: string;
+  received_at?: string | Date;
 }
 
 export interface InboxProcessorOptions {
@@ -105,7 +106,7 @@ export class InboxProcessor {
       WHERE i.id = claimed.id
       RETURNING i.id, i.workspace_id, i.channel_instance_id, i.encrypted_payload, 
                 i.payload_iv, i.payload_auth_tag, i.key_version, i.retry_count, i.max_retries, 
-                i.raw_payload_hash, i.lease_token::text;
+                i.raw_payload_hash, i.lease_token::text, i.received_at;
     `;
 
     const res = await pool.query<ClaimedInboxItem>(query, [workerId, limit]);
@@ -215,6 +216,7 @@ export class InboxProcessor {
             channelInstanceId: item.channel_instance_id,
             workspaceId: item.workspace_id,
             rawPayloadHash: item.raw_payload_hash,
+            receivedAt: item.received_at ? new Date(item.received_at).toISOString() : new Date().toISOString(),
           };
 
           if (provider === "meta_waba") {
@@ -267,6 +269,43 @@ export class InboxProcessor {
                 throw new Error("Failed to retrieve upserted thread id");
               }
               const threadId = threadRow.id;
+
+              // Correlate CTWA attribution (referral.ctwa_clid) to commercial journey under tenant scope
+              const inboundCtwaClid =
+                typeof event.metadata?.ctwaClid === "string" && event.metadata.ctwaClid.trim().length > 0
+                  ? event.metadata.ctwaClid.trim()
+                  : undefined;
+
+              if (inboundCtwaClid) {
+                const existingJourneyRes = await client.query<{ id: string; ctwa_clid: string | null }>(
+                  `SELECT id, ctwa_clid FROM public.commercial_journeys
+                   WHERE workspace_id = $1 AND thread_id = $2
+                   ORDER BY created_at DESC
+                   LIMIT 1;`,
+                  [item.workspace_id, threadId]
+                );
+
+                const journey = existingJourneyRes.rows[0];
+                if (journey) {
+                  if (!journey.ctwa_clid) {
+                    await client.query(
+                      `UPDATE public.commercial_journeys
+                       SET ctwa_clid = $1, attribution_source = 'ctwa_meta', updated_at = clock_timestamp()
+                       WHERE workspace_id = $2 AND id = $3;`,
+                      [inboundCtwaClid, item.workspace_id, journey.id]
+                    );
+                  }
+                } else {
+                  await client.query(
+                    `INSERT INTO public.commercial_journeys (
+                       workspace_id, contact_id, thread_id, title, stage, status, attribution_source, ctwa_clid
+                     ) VALUES (
+                       $1, $2, $3, 'Oportunidade Comercial (CTWA)', 'lead', 'open', 'ctwa_meta', $4
+                     );`,
+                    [item.workspace_id, contactId, threadId, inboundCtwaClid]
+                  );
+                }
+              }
 
               // Insert message idempotently
               const msgInsertRes = await client.query<{ id: string }>(
@@ -437,6 +476,30 @@ export class InboxProcessor {
                   event.timestamp,
                 ]
               );
+            } else if (normEvent.kind === "lifecycle") {
+              const event = normEvent.event;
+              let channelStatus: "connected" | "error" | "pairing" | null = null;
+              if (event.eventType === "connected") {
+                channelStatus = "connected";
+              } else if (event.eventType === "disconnected" || event.eventType === "auth_failure") {
+                channelStatus = "error";
+              } else if (event.eventType === "qr_received") {
+                channelStatus = "pairing";
+              }
+
+              if (channelStatus) {
+                const isActive = channelStatus === "connected";
+                await client.query(
+                  `UPDATE public.channel_instances
+                   SET status = $1, is_active = $2, updated_at = clock_timestamp()
+                   WHERE id = $3 AND workspace_id = $4;`,
+                  [channelStatus, isActive, item.channel_instance_id, item.workspace_id]
+                );
+              }
+              logger.info(
+                { inboxId: item.id, eventType: event.eventType, channelStatus },
+                "Processed channel lifecycle event"
+              );
             } else {
               throw new Error(`FAIL_CLOSED: Unrecognized event kind in normalized payload`);
             }
@@ -475,21 +538,31 @@ export class InboxProcessor {
         new Date()
       );
 
-      // Fencing update on failure: requires matching lease_token
-      if (decision.nextStatus === "dead_letter") {
-        await pool.query(
-          `UPDATE public.channel_webhook_inbox
-           SET status = 'dead_letter', error_message = $1, lease_until = NULL
-           WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
-          [errorMessage, item.id, workerId, item.lease_token]
+      // Fencing update on failure: requires matching lease_token and tenant context
+      try {
+        await withWorkerTransaction(
+          item.workspace_id,
+          async (client) => {
+            if (decision.nextStatus === "dead_letter") {
+              await client.query(
+                `UPDATE public.channel_webhook_inbox
+                 SET status = 'dead_letter', error_message = $1, lease_until = NULL
+                 WHERE id = $2 AND status = 'processing' AND worker_id = $3 AND lease_token = $4::uuid;`,
+                [errorMessage, item.id, workerId, item.lease_token]
+              );
+            } else {
+              await client.query(
+                `UPDATE public.channel_webhook_inbox
+                 SET status = 'failed', next_attempt_at = $1, error_message = $2, lease_until = NULL
+                 WHERE id = $3 AND status = 'processing' AND worker_id = $4 AND lease_token = $5::uuid;`,
+                [decision.nextAttemptAt, errorMessage, item.id, workerId, item.lease_token]
+              );
+            }
+          },
+          pool
         );
-      } else {
-        await pool.query(
-          `UPDATE public.channel_webhook_inbox
-           SET status = 'failed', next_attempt_at = $1, error_message = $2, lease_until = NULL
-           WHERE id = $3 AND status = 'processing' AND worker_id = $4 AND lease_token = $5::uuid;`,
-          [decision.nextAttemptAt, errorMessage, item.id, workerId, item.lease_token]
-        );
+      } catch (updateErr) {
+        logger.error({ inboxId: item.id, workerId, updateErr }, "Failed to update inbox status on failure");
       }
 
       return { success: false, eventCount: 0 };

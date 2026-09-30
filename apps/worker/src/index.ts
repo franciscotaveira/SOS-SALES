@@ -179,7 +179,11 @@ export class WorkerRuntime {
 
     if (!this.registry) {
       this.registry = new ChannelAdapterRegistry();
-      this.registry.register(new MetaWabaAdapter());
+      this.registry.register(
+        new MetaWabaAdapter({
+          baseUrl: process.env.META_WABA_BASE_URL || undefined,
+        })
+      );
 
       // P0: Startup WAHA validation
       // WorkerRuntime must NOT instantiate WahaAdapter with a forbidden default (e.g. localhost:3000).

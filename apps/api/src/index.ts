@@ -8,6 +8,7 @@ import { Redis } from "ioredis";
 import { authPlugin } from "./plugins/auth.plugin";
 import { rawBodyPlugin } from "./plugins/raw-body.plugin";
 import { meRoutes } from "./routes/me.routes";
+import { authRoutes } from "./routes/auth.routes";
 import { workspaceRoutes } from "./routes/workspace.routes";
 import { webhookRoutes } from "./routes/webhook.routes";
 import { outboundMessagesRoutes } from "./routes/outbound-messages.routes";
@@ -189,6 +190,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   // Register Domain Routes
+  await app.register(authRoutes);
   await app.register(meRoutes);
   await app.register(workspaceRoutes);
   await app.register(channelsRoutes);

@@ -17,6 +17,7 @@
     "test:db:run": "ALLOW_TEST_DB_ADMIN_OPERATIONS=true tsx scripts/test-db-runner.ts run",
     "seed:local": "tsx scripts/seed-local-demo.ts",
     "test:docker:http": "node --env-file=.env scripts/verify-docker-http.mjs",
+    "test:docker:e2e": "tsx scripts/test-docker-e2e.ts",
     "test:browser": "node scripts/verify-browser-qa.mjs",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",

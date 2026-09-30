@@ -28,6 +28,7 @@ declare module "fastify" {
   }
 
   interface FastifyInstance {
+    identityProvider: IIdentityProvider;
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     requireWorkspaceContext: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     requirePermission: (
@@ -390,6 +391,7 @@ const authPluginCallback: FastifyPluginAsync<AuthPluginOptions> = async (app, op
     };
   };
 
+  app.decorate("identityProvider", identityProvider);
   app.decorate("authenticate", authenticate);
   app.decorate("requireWorkspaceContext", requireWorkspaceContext);
   app.decorate("requirePermission", requirePermission);

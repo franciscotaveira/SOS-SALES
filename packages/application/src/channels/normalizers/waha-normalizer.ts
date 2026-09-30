@@ -20,7 +20,11 @@ export class WahaNormalizationError extends Error {
 function jidToE164(jid: string): string {
   const clean = jid.split("@")[0] || jid;
   const digits = clean.replace(/\D/g, "");
-  return `+${digits}`;
+  return digits ? `+${digits}` : "";
+}
+
+function isValidPhoneE164(phone: string): boolean {
+  return /^\+[1-9]\d{6,14}$/.test(phone);
 }
 
 function resolveTimestamp(
@@ -30,9 +34,10 @@ function resolveTimestamp(
   if (rawTimestamp !== undefined && rawTimestamp !== null && rawTimestamp !== "") {
     const num = Number(rawTimestamp);
     if (!isNaN(num) && num > 0) {
-      const date = new Date(num * 1000);
+      const timeMs = num > 1e11 ? num : num * 1000;
+      const date = new Date(timeMs);
       if (!isNaN(date.getTime())) {
-        return { iso: date.toISOString(), epochSec: num };
+        return { iso: date.toISOString(), epochSec: Math.floor(timeMs / 1000) };
       }
     }
     const date = new Date(String(rawTimestamp));
@@ -54,9 +59,11 @@ function resolveTimestamp(
     }
   }
 
-  throw new WahaNormalizationError(
-    "WAHA_NORMALIZATION_ERROR: Missing or invalid timestamp in payload and no explicit receivedAt provided"
-  );
+  const now = new Date();
+  return {
+    iso: now.toISOString(),
+    epochSec: Math.floor(now.getTime() / 1000),
+  };
 }
 
 /**
@@ -101,17 +108,13 @@ export class WahaWebhookNormalizer {
       }
 
       const rawTo = String(payload.to || "").trim();
-      if (!rawTo) {
-        throw new WahaNormalizationError(
-          "WAHA_NORMALIZATION_ERROR: Missing or empty payload.to in message.ack"
-        );
+      if (!rawTo || rawTo.includes("@broadcast") || rawTo.includes("@g.us")) {
+        return [];
       }
 
       const recipientPhoneE164 = jidToE164(rawTo);
-      if (!recipientPhoneE164 || recipientPhoneE164 === "+") {
-        throw new WahaNormalizationError(
-          "WAHA_NORMALIZATION_ERROR: Invalid recipient phone number in message.ack"
-        );
+      if (!isValidPhoneE164(recipientPhoneE164)) {
+        return [];
       }
 
       const ackValue = Number(payload.ack);
@@ -131,7 +134,7 @@ export class WahaWebhookNormalizer {
       }
 
       const { iso: timestamp, epochSec } = resolveTimestamp(
-        payload.timestamp,
+        payload.timestamp ?? rawPayload.timestamp,
         context
       );
 
@@ -169,26 +172,24 @@ export class WahaWebhookNormalizer {
 
       const rawFrom = String(payload.from || "").trim();
       const rawTo = String(payload.to || "").trim();
-      if (!rawFrom || !rawTo) {
-        throw new WahaNormalizationError(
-          "WAHA_NORMALIZATION_ERROR: Missing or empty sender/recipient in message"
-        );
+      if (
+        !rawFrom ||
+        !rawTo ||
+        rawFrom.includes("@broadcast") ||
+        rawTo.includes("@broadcast") ||
+        rawFrom.includes("@g.us") ||
+        rawTo.includes("@g.us")
+      ) {
+        return [];
       }
 
       const senderPhoneE164 = jidToE164(rawFrom);
       const recipientPhoneE164 = jidToE164(rawTo);
-      if (
-        !senderPhoneE164 ||
-        senderPhoneE164 === "+" ||
-        !recipientPhoneE164 ||
-        recipientPhoneE164 === "+"
-      ) {
-        throw new WahaNormalizationError(
-          "WAHA_NORMALIZATION_ERROR: Invalid sender or recipient phone number in message"
-        );
+      if (!isValidPhoneE164(senderPhoneE164) || !isValidPhoneE164(recipientPhoneE164)) {
+        return [];
       }
 
-      const { iso: timestamp } = resolveTimestamp(payload.timestamp, context);
+      const { iso: timestamp } = resolveTimestamp(payload.timestamp ?? rawPayload.timestamp, context);
 
       let contentType: MessageContentType = "text";
       const body: string | undefined = payload.body
@@ -245,7 +246,7 @@ export class WahaWebhookNormalizer {
       }
 
       if (eventTypeEnum) {
-        const { iso: timestamp } = resolveTimestamp(payload.timestamp, context);
+        const { iso: timestamp } = resolveTimestamp(payload.timestamp ?? rawPayload.timestamp, context);
         const event = ChannelLifecycleEventSchema.parse({
           channelInstanceId: context.channelInstanceId,
           workspaceId: context.workspaceId,
@@ -275,7 +276,7 @@ export class WahaWebhookNormalizer {
         );
       }
 
-      const { iso: timestamp } = resolveTimestamp(payload.timestamp, context);
+      const { iso: timestamp } = resolveTimestamp(payload.timestamp ?? rawPayload.timestamp, context);
       const event = ChannelLifecycleEventSchema.parse({
         channelInstanceId: context.channelInstanceId,
         workspaceId: context.workspaceId,
@@ -297,7 +298,7 @@ export class WahaWebhookNormalizer {
     }
 
     if (eventType === "session.auth_failure" || eventType === "session.unpaired") {
-      const { iso: timestamp } = resolveTimestamp(payload.timestamp, context);
+      const { iso: timestamp } = resolveTimestamp(payload.timestamp ?? rawPayload.timestamp, context);
       const event = ChannelLifecycleEventSchema.parse({
         channelInstanceId: context.channelInstanceId,
         workspaceId: context.workspaceId,

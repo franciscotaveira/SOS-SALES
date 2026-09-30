@@ -71,6 +71,66 @@ describe("Channel Gateway & Normalizers Unit Tests", () => {
       }
     });
 
+    it("should normalize inbound message with CTWA referral and ctwa_clid in metadata", () => {
+      const ctwaPayload = {
+        object: "whatsapp_business_account",
+        entry: [
+          {
+            id: "WABA_ID_999",
+            changes: [
+              {
+                value: {
+                  messaging_product: "whatsapp",
+                  metadata: {
+                    display_phone_number: "+5511999998888",
+                    phone_number_id: "PHONE_ID_123",
+                  },
+                  messages: [
+                    {
+                      from: "5511988887777",
+                      id: "wamid.HBgLMTIzNDU2",
+                      timestamp: "1675999999",
+                      type: "text",
+                      text: {
+                        body: "Vi o anúncio e quero comprar!",
+                      },
+                      referral: {
+                        source_url: "https://fb.me/ad123",
+                        source_id: "ad_123456789",
+                        source_type: "ad",
+                        headline: "Promoção Especial",
+                        body: "Compre agora com 20% off",
+                        media_type: "image",
+                        ctwa_clid: "AR_CTWA_CLICK_ID_999",
+                      },
+                    },
+                  ],
+                },
+                field: "messages",
+              },
+            ],
+          },
+        ],
+      };
+
+      const results = WabaWebhookNormalizer.normalize(ctwaPayload, context);
+      expect(results).toHaveLength(1);
+      const res = results[0];
+      expect(res?.kind).toBe("message");
+      if (res?.kind === "message") {
+        expect(res.event.metadata?.ctwaClid).toBe("AR_CTWA_CLICK_ID_999");
+        expect(res.event.metadata?.referral).toEqual({
+          sourceUrl: "https://fb.me/ad123",
+          sourceId: "ad_123456789",
+          sourceType: "ad",
+          headline: "Promoção Especial",
+          body: "Compre agora com 20% off",
+          mediaType: "image",
+          ctwaClid: "AR_CTWA_CLICK_ID_999",
+        });
+      }
+    });
+
     it("should normalize inbound image message with mediaId, mimeType, and sha256 in metadata", () => {
       const results = WabaWebhookNormalizer.normalize(
         WABA_INBOUND_IMAGE_FIXTURE,

@@ -390,6 +390,28 @@ export class WabaWebhookNormalizer {
               contactName = matchingContact?.profile?.name;
             }
 
+            const rawReferral = msgObj.referral as Record<string, unknown> | undefined;
+            let referralData: Record<string, unknown> | undefined;
+            let ctwaClid: string | undefined;
+            if (rawReferral && typeof rawReferral === "object") {
+              const rawClid = rawReferral.ctwa_clid;
+              if (typeof rawClid === "string" && rawClid.trim().length > 0) {
+                ctwaClid = rawClid.trim();
+              }
+              referralData = {
+                ...(rawReferral.source_url ? { sourceUrl: String(rawReferral.source_url) } : {}),
+                ...(rawReferral.source_id ? { sourceId: String(rawReferral.source_id) } : {}),
+                ...(rawReferral.source_type ? { sourceType: String(rawReferral.source_type) } : {}),
+                ...(rawReferral.headline ? { headline: String(rawReferral.headline) } : {}),
+                ...(rawReferral.body ? { body: String(rawReferral.body) } : {}),
+                ...(rawReferral.media_type ? { mediaType: String(rawReferral.media_type) } : {}),
+                ...(rawReferral.image_url ? { imageUrl: String(rawReferral.image_url) } : {}),
+                ...(rawReferral.video_url ? { videoUrl: String(rawReferral.video_url) } : {}),
+                ...(rawReferral.thumbnail_url ? { thumbnailUrl: String(rawReferral.thumbnail_url) } : {}),
+                ...(ctwaClid ? { ctwaClid } : {}),
+              };
+            }
+
             const parsedEvent = InboundMessageEventSchema.parse({
               channelInstanceId: context.channelInstanceId,
               workspaceId: context.workspaceId,
@@ -410,6 +432,8 @@ export class WabaWebhookNormalizer {
                 ...(fileSha256 ? { fileSha256 } : {}),
                 ...(filename ? { filename } : {}),
                 ...(interactiveMetadata ? interactiveMetadata : {}),
+                ...(referralData ? { referral: referralData } : {}),
+                ...(ctwaClid ? { ctwaClid } : {}),
               },
             });
 

@@ -9,7 +9,7 @@ WORKDIR /app
 FROM base AS builder
 COPY . .
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
-RUN pnpm --filter @sos-sales/worker... build
+RUN pnpm --filter @sos-sales/worker... build -- --no-dts
 
 FROM base AS runner
 WORKDIR /app

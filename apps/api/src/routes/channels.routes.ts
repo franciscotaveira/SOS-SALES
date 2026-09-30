@@ -23,14 +23,7 @@ const channelParamsSchema = z.object({
   channelId: z.string().uuid(),
 });
 
-const channelStatusSchema = z.enum([
-  "unconfigured",
-  "validating",
-  "pairing",
-  "connected",
-  "error",
-  "revoked",
-]);
+
 
 const channelCredentialsSchema = z.object({
   accessToken: z.string().optional(),
@@ -979,6 +972,13 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         );
         return res.rows[0];
       });
+
+      if (!updatedChannel) {
+        return reply.status(404).send({
+          error: "CHANNEL_NOT_FOUND",
+          message: "Channel not found in workspace",
+        });
+      }
 
       return reply.status(200).send({
         success: newStatus === "connected",
