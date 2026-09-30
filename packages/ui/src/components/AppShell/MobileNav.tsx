@@ -5,15 +5,19 @@ interface MobileNavProps {
   navItems: NavItem[];
   activeNavId: string;
   onNavSelect: (id: string) => void;
+  hidden?: boolean;
 }
 
 export const MobileNav: FC<MobileNavProps> = ({
   navItems,
   activeNavId,
   onNavSelect,
+  hidden = false,
 }) => {
-  // Mobile nav shows up to 4 items
-  const displayItems = navItems.slice(0, 4);
+  if (hidden) return null;
+
+  // Mobile nav shows up to 5 primary items
+  const displayItems = navItems.slice(0, 5);
 
   return (
     <nav
@@ -24,14 +28,15 @@ export const MobileNav: FC<MobileNavProps> = ({
         bottom: 0,
         left: 0,
         right: 0,
-        height: "60px",
+        height: "calc(var(--mobile-nav-h, 56px) + env(safe-area-inset-bottom, 0px))",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
         backgroundColor: "var(--bg-surface, #FFFFFF)",
         borderTop: "1px solid var(--border-default, #E2E8F0)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-around",
         zIndex: 30,
-        boxShadow: "0 -2px 8px rgba(0, 0, 0, 0.05)",
+        boxShadow: "var(--shadow-sm)",
       }}
     >
       {displayItems.map((item) => {
@@ -50,19 +55,19 @@ export const MobileNav: FC<MobileNavProps> = ({
             style={{
               flex: 1,
               height: "100%",
-              minHeight: "44px", // Accessible tap target
+              minHeight: "44px", // Accessible touch target
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              gap: "3px",
+              gap: "2px",
               background: "none",
               border: "none",
               color: isActive
                 ? "var(--color-action, #008069)"
                 : "var(--text-secondary, #64748B)",
               cursor: item.disabled ? "not-allowed" : "pointer",
-              fontSize: "0.6875rem",
+              fontSize: "var(--font-size-xs, 0.75rem)",
               fontWeight: isActive ? 600 : 500,
               fontFamily: "var(--font-sans, sans-serif)",
             }}
@@ -70,7 +75,9 @@ export const MobileNav: FC<MobileNavProps> = ({
             <span style={{ display: "inline-flex", alignItems: "center" }}>
               {item.icon}
             </span>
-            <span>{item.label}</span>
+            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "60px" }}>
+              {item.label}
+            </span>
           </button>
         );
       })}

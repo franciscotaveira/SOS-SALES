@@ -47,3 +47,14 @@
 | `POST /v1/workspaces/:id/journeys/:id/outcomes` | `operator` | Registro de desfecho comercial (WON/LOST) | `OPERACIONAL_TESTADO` | `OPERACIONAL_TESTADO` |
 | `POST /v1/ingress/waba` | `sos_ingress_user` | Webhook público Meta Cloud API com assinatura HMAC | `OPERACIONAL_TESTADO` | `OPERACIONAL_TESTADO` |
 | `POST /v1/ingress/waha` | `sos_ingress_user` | Webhook público WAHA com token hash | `OPERACIONAL_TESTADO` | `OPERACIONAL_TESTADO` |
+
+---
+
+## 4. Background Workers & Processadores de Canal
+
+| Componente | Responsabilidade | Estado Alvo | Status Atual |
+| :--- | :--- | :---: | :---: |
+| **WABA CTWA Normalizer** (`packages/application`) | Extração determinística de objeto `referral` e `ctwa_clid` nos webhooks Meta WABA inbound | `OPERACIONAL_TESTADO` | `OPERACIONAL_TESTADO (Local — 54 testes)` |
+| **Propagação de Atribuição CTWA** (`apps/worker` & `packages/database`) | Percurso end-to-end de `ctwa_clid`: Webhook referral -> InboundMessageEvent metadata -> `commercial_journeys.ctwa_clid` -> `recordCommercialOutcome` -> `conversion_events.user_data.ctwaClid` -> CAPI payload | `OPERACIONAL_TESTADO` | `OPERACIONAL_TESTADO (Local — Integrado)` |
+| **CAPI Conversion Dispatcher** (`apps/worker`) | Despacho de conversões Meta Conversions API para Business Messaging (`whatsapp`) na Graph API `v26.0`, cabeçalho `Authorization: Bearer`, WABA explícito, dataset numérico estrito e receipt protegido | `OPERACIONAL_TESTADO` | `OPERACIONAL_TESTADO (Local — 31 testes)` |
+| **Homologação Meta em Produção** (Rede Externa) | Validação em tráfego real com Meta Graph API de produção e WABA real | `HOMOLOGADO_PRODUCAO` | `BLOCKED_EXTERNAL (Pendente de credenciais/janela)` |

@@ -131,7 +131,12 @@ async function run() {
     await sleep(2000);
 
     const token =
-      "REDACTED_DEV_JWT";
+      process.env.SOS_SALES_AUTH_TOKEN ||
+      process.env.VITE_DEV_DEMO_TOKEN ||
+      "";
+    if (!token) {
+      console.warn("WARN: Missing SOS_SALES_AUTH_TOKEN / VITE_DEV_DEMO_TOKEN in environment.");
+    }
 
     await cdp.eval(`
       localStorage.setItem("sos_sales_auth_token", "${token}");

@@ -27,6 +27,7 @@
   /* Precision Borders & Lines */
   --border-subtle: #F1F5F9;        /* Inset divider */
   --border-default: #E2E8F0;       /* Slate 200 container border */
+  --border-strong: #CBD5E1;        /* Slate 300 strong border */
   --border-focus: #008069;         /* Action green focus ring */
 
   /* Operational Semantic Accents */
@@ -69,6 +70,9 @@
   --font-size-xl: 1.25rem;    /* 20px */
   --font-size-2xl: 1.5rem;    /* 24px */
 
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
@@ -81,8 +85,25 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Control Heights */
+  --control-h-xs: 28px;  /* icon buttons em toolbars densas, chips */
+  --control-h-sm: 32px;  /* padrão da app */
+  --control-h-md: 40px;  /* formulários, CTA principal, login */
+  --control-h-lg: 44px;  /* só mobile/touch */
+
+  /* Layout */
+  --topbar-h: 56px;
+  --sidebar-w: 232px;
+  --sidebar-w-collapsed: 64px;
+  --inbox-list-w: 320px;
+  --context-panel-w: 360px;
+  --mobile-nav-h: 56px;
 
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -180,3 +201,14 @@
 .animate-pulse {
   animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* Spinner animation for button and loading states */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+

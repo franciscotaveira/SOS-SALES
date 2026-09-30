@@ -131,7 +131,13 @@ async function run() {
     await cdp.send("Page.navigate", { url: BASE_URL });
     await sleep(2000);
 
-    const token = "REDACTED_DEV_JWT";
+    const token =
+      process.env.SOS_SALES_AUTH_TOKEN ||
+      process.env.VITE_DEV_DEMO_TOKEN ||
+      "";
+    if (!token) {
+      console.warn("WARN: Missing SOS_SALES_AUTH_TOKEN / VITE_DEV_DEMO_TOKEN in environment.");
+    }
     const workspaceId = "f6205c16-6777-43c1-8017-4b78417a00fa";
 
     console.log("2. Injecting auth credentials and reloading...");

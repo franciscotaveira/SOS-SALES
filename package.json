@@ -21,6 +21,7 @@
     "test:browser": "node scripts/verify-browser-qa.mjs",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
+    "lint:ui": "tsx scripts/check-ui-tokens.ts",
     "ci:gate": "tsx scripts/ci-gate-runner.ts",
     "ci:check": "tsx scripts/ci-gate-runner.ts",
     "docker:up": "docker compose up -d",

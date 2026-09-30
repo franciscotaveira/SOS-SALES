@@ -43,21 +43,21 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: "24px",
-            background: "var(--color-bg-base, #0F172A)",
-            color: "var(--color-text-primary, #F8FAFC)",
-            fontFamily: "var(--font-sans, system-ui, -apple-system, sans-serif)",
+            padding: "var(--space-6)",
+            background: "var(--bg-canvas)",
+            color: "var(--text-primary)",
+            fontFamily: "var(--font-sans)",
           }}
         >
           <div
             style={{
               maxWidth: "520px",
               width: "100%",
-              background: "var(--color-bg-surface, #1E293B)",
-              border: "1px solid var(--color-border-subtle, #334155)",
-              borderRadius: "12px",
-              padding: "28px",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5)",
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--radius-lg)",
+              padding: "var(--space-6)",
+              boxShadow: "var(--shadow-lg)",
               display: "flex",
               flexDirection: "column",
               gap: "20px",
@@ -68,12 +68,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 style={{
                   width: "40px",
                   height: "40px",
-                  borderRadius: "8px",
-                  background: "rgba(239, 68, 68, 0.15)",
+                  borderRadius: "var(--radius-md)",
+                  background: "var(--color-danger-subtle)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "var(--color-status-danger, #EF4444)",
+                  color: "var(--color-danger)",
                   flexShrink: 0,
                 }}
               >
@@ -83,8 +83,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 <h2 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 600 }}>
                   {this.props.fallbackTitle || "Falha na Renderização da Tela"}
                 </h2>
-                <span style={{ fontSize: "0.85rem", color: "var(--text-muted, #94A3B8)" }}>
-                  MCT OS v2.0 • Proteção Ativa Fail-Closed
+                <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                  SOS Sales V3 • Proteção Ativa Fail-Closed
                 </span>
               </div>
             </div>
@@ -98,11 +98,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 style={{
                   margin: 0,
                   padding: "12px",
-                  background: "rgba(0, 0, 0, 0.3)",
-                  borderRadius: "6px",
-                  fontSize: "0.75rem",
-                  fontFamily: "var(--font-mono, monospace)",
-                  color: "#FCA5A5",
+                  background: "var(--bg-canvas)",
+                  borderRadius: "var(--radius-sm)",
+                  fontSize: "var(--font-size-xs)",
+                  fontFamily: "var(--font-mono)",
+                  color: "var(--color-danger)",
+                  border: "1px solid var(--border-subtle)",
                   overflowX: "auto",
                   maxHeight: "140px",
                   whiteSpace: "pre-wrap",

@@ -309,7 +309,10 @@
 
 ---
 
-## 12. Milestone M10 — Revisão Final Independente & Declaração VERIFIED_DOCKER_LAB
+## 12. Milestone M10 — Revisão Final Independente & Declaração VERIFIED_DOCKER_LAB [HISTÓRICA — RETRATADA POR REVISÃO INDEPENDENTE]
+
+> [!WARNING]
+> **DECLARAÇÃO HISTÓRICA RETRATADA:** Esta declaração M10 foi formalmente retratada pela auditoria independente do projeto. Os motivos da rejeição incluem: (1) Suíte M9 utilizava Fastify em memória (`app.inject`) e SQL direto em vez de percurso Docker E2E real; (2) Gates de CI com lint simulado; (3) Inconsistências no CAPI do worker (payload em formato Web/Chat genérico em vez de Business Messaging/WhatsApp oficial, falta de derivação estrita do WABA e vazamento de mensagens brutas de erro). O projeto encontra-se atualmente em ciclo de remediação ativa (Fase R5 em andamento independente).
 
 - **Data:** 2026-09-29T05:15:00-03:00
 - **Auditoria dos Gates Canônicos e Seriais:**
@@ -353,9 +356,100 @@
       - Gaveta de cobrança Pix EMV com prévia fiel e payload de laboratório (`haven-chat-pix-drawer.png`).
 - **Conclusão:** Todos os critérios dos percursos P1 a P8 foram plenamente satisfeitos, com n8n estritamente desligado, isolamento absoluto entre workspaces, estados financeiros honestos com conferência manual de caixa e zero dependências externas ou dados fake em produção.
 
+---
 
+## 13. Fechamento Definitivo do Meta CAPI Business Messaging (Graph API v26.0 & Zero Rede)
 
+- **Data / Hora:** 2026-09-29T11:05:00-03:00
+- **Base / SHA:** `3a781de` (`feat(security): close R2-R4 blockers with strict channel lifecycle, worker rls, outcome terminality, and physical disaster recovery`)
+- **Estado Alcançado:** `CAPI_V26_CONTRACT_VERIFIED_LOCAL`
+- **Arquivos Alterados:**
+  - `apps/worker/src/processors/capi-dispatcher.ts`:
+    - Adicionado suporte configurável à Graph API `v26.0` (padrão) e `v25.0`, com allowlist estrita e erro canônico `CAPI_GRAPH_VERSION_INVALID`.
+    - Removido `row.account_id` como fallback de WABA ID (exige `waba_account_id` explícito no payload criptografado; falha fechado com `CAPI_WABA_ID_MISSING`).
+    - Validação de dataset numérico (`^\d{10,20}$`) em credenciais persistidas; `pixel_*` e `tenant_pixel*` restritos ao modo laboratório com endpoint sintético explícito.
+    - Removido `access_token` da query string da URL; token transmitido estritamente via cabeçalho `Authorization: Bearer ${accessToken}`.
+    - Projeção estrita de receipt `{ graph_api_version, events_received: 1, fbtrace_id }` sem persistência de `messages` arbitrárias da Meta.
+    - Allowlist de 18 códigos canônicos estritos (zero vazamento de dados brutos ou segredos).
+  - `apps/worker/src/processors/inbox-processor.ts`:
+    - Integração de atribuição CTWA: quando mensagem inbound possui `event.metadata?.ctwaClid`, correlaciona e persiste em `commercial_journeys.ctwa_clid` e `attribution_source = 'ctwa_meta'` sob escopo tenant.
+  - `apps/worker/src/__tests__/capi-dispatcher.test.ts`:
+    - Guarda global de rede zero (`FAIL_CLOSED_NETWORK_VIOLATION`) abortando qualquer chamada externa a `graph.facebook.com` ou hosts não-locais.
+    - Cobertura expandida para 31 testes unitários e de integração cobrindo todos os requisitos das seções 15.1 a 15.6.
+  - `packages/application/src/channels/normalizers/waba-normalizer.ts`:
+    - Extração determinística de objeto `referral` e `ctwa_clid` nos webhooks Meta WABA inbound.
+  - `packages/application/src/__tests__/channel-gateway.test.ts`:
+    - 54 testes unitários cobrindo normalização WABA, WAHA, retry policy e assinatura HMAC.
+  - `apps/api/src/routes/channels.routes.ts`:
+    - Correção de TS6133 (`channelStatusSchema` não utilizado) e null-check em `updatedChannel` garantindo conformidade total no typecheck monorepo.
+  - `docs/architecture/META-VERSIONING.md`:
+    - Documento técnico com governança de versões Meta Graph API, allowlist, fontes oficiais e ciclo de revisão de 60 dias.
+  - `docs/execution/autonomous-chat-sales/`:
+    - Reconciliação factual em `BLOCKERS.md` (S-05 = `RESOLVED_LOCAL`), `STATE.md` (`CAPI_V26_CONTRACT_VERIFIED_LOCAL`), `SURFACE-INVENTORY.md` e `EVIDENCE.md`.
+- **Comandos e Exit Codes dos Gates Executados:**
+  1. `pnpm turbo run build --filter='./packages/*'`:
+     - **Exit Code:** `0` (7 pacotes compilados com sucesso).
+  2. `pnpm --filter @sos-sales/worker exec tsc --noEmit -p tsconfig.json`:
+     - **Exit Code:** `0` (zero erros de compilação estrita).
+  3. `pnpm vitest run apps/worker/src/__tests__/capi-dispatcher.test.ts packages/application/src/__tests__/channel-gateway.test.ts`:
+     - **Exit Code:** `0` (85/85 testes aprovados em 2 arquivos).
+  4. `pnpm --filter @sos-sales/worker exec vitest run --fileParallelism=false`:
+     - **Exit Code:** `0` (94/94 testes aprovados em 9 arquivos da suíte do worker).
+  5. `pnpm typecheck`:
+     - **Exit Code:** `0` (18/18 tarefas bem-sucedidas no Turbo por todo o monorepo).
+  6. `git diff --check`:
+     - **Exit Code:** `0` (zero erros de whitespace ou sintaxe).
+  7. `git status --short`:
+     - **Exit Code:** `0` (trabalho independente da Fase R5 integralmente preservado).
+- **Resolução das 6 Pendências da Auditoria Independente:**
+  1. **Phone Number ID nunca é WABA ID:** `resolveSourceWaba` requer `parsed.waba_account_id` explícito; fallback para `row.account_id` eliminado; ausência resulta em `CAPI_WABA_ID_MISSING` com zero HTTP.
+  2. **Dataset numérico estrito:** Regex `/^\d{10,20}$/` validada em credenciais persistidas; `pixel_*` e `tenant_pixel*` rejeitados com `CAPI_DATASET_ID_INVALID`; identificadores fictícios permitidos exclusivamente em modo laboratório com `endpointUrl` sintético explícito.
+  3. **Autorização via Bearer Header:** `access_token` removido da query string; cabeçalho `Authorization: Bearer ${accessToken}` obrigatório; zero vazamento do token em URLs, logs, receipts, retornos ou banco.
+  4. **Percurso CTWA comprovado:** Traversal end-to-end verificado: `webhook.referral.ctwa_clid` -> normalizador `metadata.ctwaClid` -> `inbox-processor` (`commercial_journeys.ctwa_clid`) -> `recordCommercialOutcome` (`conversion_events.user_data.ctwaClid`) -> `CapiDispatcher` (`data[0].user_data.ctwa_clid`) -> payload Graph API v26.0 recebido no servidor sintético com isolamento tenant RLS.
+  5. **Receipt estritamente projetado:** Array `messages` arbitrário eliminado da projeção; receipt persistido contém apenas `{ graph_api_version, events_received: 1, fbtrace_id }`.
+  6. **Rede zero comprovada globalmente:** Interceptor global instalado em `beforeAll` falha imediatamente com `FAIL_CLOSED_NETWORK_VIOLATION` em qualquer chamada para `graph.facebook.com` ou domínios externos; apenas `localhost` e `127.0.0.1` permitidos; nenhum teste depende de internet.
+- **Limites da Validação e Ausência de Efeitos Externos:**
+  - Zero chamadas externas para `graph.facebook.com` ou WhatsApp real.
+  - Testes executados exclusivamente contra servidores HTTP sintéticos locais (`127.0.0.1`) e pool de PostgreSQL hermético.
+  - Eventos de conversão: Contrato de `Purchase` (`PurchaseCompleted`) integralmente testado e verificado; gatilhos automáticos para `Lead` e `QualifiedLead` permanecem no backlog comercial para sprints subsequentes.
+  - `RESOLVED_PRODUCTION` e homologação em tráfego real com a Meta permanecem sob `BLOCKED_EXTERNAL` até validação assistida com conta e aparelho reais.
 
+---
 
+## 14. Hotfix Final — Isolamento de Atribuição CTWA e Validação Estrita de Endpoint Sintético
 
+- **Data / Hora:** 2026-09-29T11:45:00-03:00
+- **Base / SHA:** `3a781de` (`feat(security): close R2-R4 blockers with strict channel lifecycle, worker rls, outcome terminality, and physical disaster recovery`)
+- **Estado Alcançado:** `CAPI_V26_HOTFIX_VERIFIED_LOCAL`
+- **Defeitos Corrigidos:**
+  1. **Contaminação de Atribuição CTWA em Múltiplas Conversas:**
+     - `apps/worker/src/processors/inbox-processor.ts`: A consulta anterior vinculava a jornada por `(thread_id = $2 OR (contact_id = $3 AND status = 'open'))`, contaminando jornadas de outras conversas do mesmo contato. Corrigido para restringir estritamente à conversa do evento: `WHERE workspace_id = $1 AND thread_id = $2 ORDER BY created_at DESC LIMIT 1`.
+  2. **Endpoint Sintético Aberto a Destinos Arbitrários (SSRF Guard):**
+     - `apps/worker/src/processors/capi-dispatcher.ts`: Função pura `validateSyntheticEndpoint` validando: protocolo `http:` ou `https:`, proibição de credenciais na URL (`username:password@`), e restrição a interfaces de loopback (`localhost`, `127.0.0.1`, `::1`). Validação executada tanto em `resolveCapiCredential` quanto em tempo de execução no `dispatchItem`.
+     - Chamada `fetch` configurada com `redirect: "manual"` e fail-closed imediato com código canônico `CAPI_SYNTHETIC_ENDPOINT_INVALID` caso o endpoint tente redirecionar (status 3xx).
+  3. **Código Canônico de Erro:**
+     - Adicionado `CAPI_SYNTHETIC_ENDPOINT_INVALID` à união `CAPI_ERROR_CODES` (totalizando 19 códigos canônicos).
+  4. **Novos Testes Adicionados:**
+     - `CAPI-SYNTH-01`: Rejeita host externo em `endpointUrl` com `CAPI_SYNTHETIC_ENDPOINT_INVALID`.
+     - `CAPI-SYNTH-02`: Rejeita credenciais embutidas na URL com `CAPI_SYNTHETIC_ENDPOINT_INVALID`.
+     - `CAPI-SYNTH-03`: Rejeita protocolos não-http/https com `CAPI_SYNTHETIC_ENDPOINT_INVALID`.
+     - `CAPI-SYNTH-04`: Falha fechado com `CAPI_SYNTHETIC_ENDPOINT_INVALID` se o servidor sintético responder 302 redirect.
+     - `CAPI-CTWA-02`: Comprova isolamento entre duas conversas do mesmo contato — mensagem CTWA na Thread B atualiza apenas a Thread B, mantendo a jornada da Thread A com `ctwa_clid = null` e `attribution_source = 'organic_whatsapp'`.
+- **Evidência de Execução dos Testes:**
+  - **Antes da Correção (comportamento com os testes novos sem o hotfix):**
+    - `pnpm vitest run apps/worker/src/__tests__/capi-dispatcher.test.ts`
+    - **Resultado:** 5 testes falharam / 31 aprovados (Exit Code: `1`).
+  - **Após a Correção:**
+    - `pnpm vitest run apps/worker/src/__tests__/capi-dispatcher.test.ts`
+    - **Resultado:** 36/36 testes aprovados (Exit Code: `0`, Duração: 2.42s).
+    - `pnpm vitest run apps/worker/src/__tests__/capi-dispatcher.test.ts packages/application/src/__tests__/channel-gateway.test.ts`
+    - **Resultado:** 90/90 testes aprovados (Exit Code: `0`).
+    - `pnpm --filter @sos-sales/worker exec vitest run --fileParallelism=false`
+    - **Resultado:** 99/99 testes aprovados em 9 arquivos (Exit Code: `0`, Duração: 14.63s).
+    - `pnpm typecheck`
+    - **Resultado:** 18/18 tarefas concluídas com sucesso (Exit Code: `0`).
+    - `git diff --check`
+    - **Resultado:** Exit Code `0` (sem erros de whitespace).
+    - `git status --short`
+    - **Resultado:** Modificações delimitadas aos arquivos de trabalho; zero commits efetuados.
 

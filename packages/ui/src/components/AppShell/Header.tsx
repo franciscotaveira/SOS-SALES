@@ -1,6 +1,5 @@
-import { useState, type FC, type ReactNode } from "react";
-import { Building2, ChevronDown, Check, Menu } from "lucide-react";
-import { Badge } from "../Badge/Badge";
+import { useState, useRef, useEffect, type FC, type ReactNode } from "react";
+import { Building2, ChevronDown, Check, Menu, Search, LogOut } from "lucide-react";
 import type { WorkspaceItem } from "./AppShell.types";
 
 interface HeaderProps {
@@ -10,6 +9,7 @@ interface HeaderProps {
   isLoadingWorkspaces?: boolean;
   userEmail?: string;
   userRole?: string;
+  onLogout?: () => void;
   systemStatus?: {
     label: string;
     shortLabel?: string;
@@ -27,42 +27,84 @@ export const Header: FC<HeaderProps> = ({
   onWorkspaceSelect,
   isLoadingWorkspaces = false,
   userEmail,
-  userRole,
+  userRole = "owner",
+  onLogout,
   systemStatus,
   onOpenMobileMenu,
   actions,
   isMobile = false,
 }) => {
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
   const isMobileView = isMobile || Boolean(onOpenMobileMenu);
+
+  // Close menus on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (workspaceRef.current && !workspaceRef.current.contains(e.target as Node)) {
+        setIsWorkspaceDropdownOpen(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  // Compute initials for Avatar
+  const getInitials = () => {
+    if (!userEmail) return "U";
+    const namePart = userEmail.split("@")[0] || "U";
+    const clean = namePart.replace(/[^a-zA-Z]/g, "").toUpperCase();
+    return clean.slice(0, 2) || "U";
+  };
+
+  // Status dot color mapping
+  const statusDotColor =
+    systemStatus?.variant === "action"
+      ? "var(--color-action, #008069)"
+      : systemStatus?.variant === "danger"
+      ? "var(--color-danger, #DC2626)"
+      : systemStatus?.variant === "warning"
+      ? "var(--color-warning, #D97706)"
+      : "var(--color-operational, #2563EB)";
+
+  const formattedRole = userRole
+    ? userRole.charAt(0).toUpperCase() + userRole.slice(1).toLowerCase()
+    : "Owner";
 
   return (
     <header
       className="sos-app-header"
       style={{
-        height: "64px",
+        height: "var(--topbar-h, 56px)",
         backgroundColor: "var(--bg-surface, #FFFFFF)",
         borderBottom: "1px solid var(--border-default, #E2E8F0)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: isMobileView ? "0 12px" : "0 24px",
+        padding: isMobileView ? "0 12px" : "0 20px",
         position: "sticky",
         top: 0,
         zIndex: 15,
         fontFamily: "var(--font-sans, sans-serif)",
         width: "100%",
         boxSizing: "border-box",
+        gap: "12px",
       }}
     >
-      {/* Left: Mobile Menu Trigger + Workspace Selector */}
+      {/* 1. Left Region: Mobile Trigger + Workspace Selector */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: isMobileView ? "8px" : "16px",
+          gap: "8px",
           minWidth: 0,
-          flexShrink: 1,
+          flexShrink: 0,
         }}
       >
         {onOpenMobileMenu && (
@@ -76,22 +118,22 @@ export const Header: FC<HeaderProps> = ({
               border: "none",
               cursor: "pointer",
               color: "var(--text-primary, #0F172A)",
-              padding: "6px",
+              padding: "4px",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
               borderRadius: "var(--radius-sm, 6px)",
-              minWidth: "44px",
-              minHeight: "44px",
+              width: "var(--control-h-sm, 32px)",
+              height: "var(--control-h-sm, 32px)",
               flexShrink: 0,
             }}
           >
-            <Menu size={22} />
+            <Menu size={20} />
           </button>
         )}
 
-        {/* Workspace Selector Dropdown */}
-        <div style={{ position: "relative", minWidth: 0, flexShrink: 1 }}>
+        {/* Workspace Selector Dropdown (sm: 32px) */}
+        <div ref={workspaceRef} style={{ position: "relative", minWidth: 0 }}>
           <button
             type="button"
             onClick={() => setIsWorkspaceDropdownOpen((prev) => !prev)}
@@ -101,35 +143,34 @@ export const Header: FC<HeaderProps> = ({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: isMobileView ? "6px" : "8px",
-              padding: isMobileView ? "8px 10px" : "8px 14px",
+              gap: "6px",
+              padding: "0 10px",
+              height: "var(--control-h-sm, 32px)",
               borderRadius: "var(--radius-md, 8px)",
               border: "1px solid var(--border-default, #E2E8F0)",
               backgroundColor: "var(--bg-surface-elevated, #F1F5F9)",
               color: "var(--text-primary, #0F172A)",
-              fontSize: "0.875rem",
-              fontWeight: 600,
+              fontSize: "var(--font-size-sm, 0.875rem)",
+              fontWeight: 500,
               cursor: "pointer",
-              transition: "border-color 0.15s ease",
-              maxWidth: isMobileView ? "160px" : "200px",
-              minHeight: "44px",
-              minWidth: "44px",
+              transition: "border-color var(--transition-fast, 150ms ease)",
+              maxWidth: isMobileView ? "160px" : "220px",
               boxSizing: "border-box",
             }}
           >
-            <Building2 size={16} color="var(--color-operational, #2563EB)" style={{ flexShrink: 0 }} />
+            <Building2 size={15} color="var(--color-action, #008069)" style={{ flexShrink: 0 }} />
             <span
               style={{
-                maxWidth: isMobileView ? "85px" : "130px",
+                maxWidth: isMobileView ? "90px" : "150px",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                fontSize: isMobileView ? "0.8125rem" : "0.875rem",
+                fontSize: "var(--font-size-sm, 0.875rem)",
               }}
             >
               {isLoadingWorkspaces
                 ? "Carregando..."
-                : activeWorkspace?.name || "Nenhum workspace"}
+                : activeWorkspace?.name || "Selecionar Negócio"}
             </span>
             <ChevronDown size={14} color="var(--text-muted, #64748B)" style={{ flexShrink: 0 }} />
           </button>
@@ -142,7 +183,7 @@ export const Header: FC<HeaderProps> = ({
                 position: "absolute",
                 top: "calc(100% + 4px)",
                 left: 0,
-                width: "240px",
+                width: "260px",
                 backgroundColor: "var(--bg-surface, #FFFFFF)",
                 border: "1px solid var(--border-default, #E2E8F0)",
                 borderRadius: "var(--radius-md, 8px)",
@@ -154,21 +195,21 @@ export const Header: FC<HeaderProps> = ({
               <div
                 style={{
                   padding: "6px 8px",
-                  fontSize: "0.6875rem",
-                  fontWeight: 700,
+                  fontSize: "var(--font-size-xs, 0.75rem)",
+                  fontWeight: 600,
                   textTransform: "uppercase",
                   color: "var(--text-muted, #64748B)",
-                  letterSpacing: "0.05em",
+                  letterSpacing: "0.04em",
                 }}
               >
-                Seus Workspaces
+                Negócios Ativos
               </div>
 
               {workspaces.length === 0 ? (
                 <div
                   style={{
                     padding: "8px",
-                    fontSize: "0.8125rem",
+                    fontSize: "var(--font-size-sm, 0.875rem)",
                     color: "var(--text-muted, #64748B)",
                   }}
                 >
@@ -192,18 +233,20 @@ export const Header: FC<HeaderProps> = ({
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        padding: "8px 10px",
+                        padding: "6px 10px",
+                        height: "var(--control-h-md, 40px)",
                         borderRadius: "var(--radius-sm, 6px)",
                         border: "none",
                         backgroundColor: isSelected
-                          ? "var(--bg-surface-elevated, #F1F5F9)"
+                          ? "var(--color-action-subtle, #E6F4F1)"
                           : "transparent",
-                        color: "var(--text-primary, #0F172A)",
-                        fontSize: "0.875rem",
+                        color: isSelected
+                          ? "var(--color-action, #008069)"
+                          : "var(--text-primary, #0F172A)",
+                        fontSize: "var(--font-size-sm, 0.875rem)",
                         fontWeight: isSelected ? 600 : 400,
                         cursor: "pointer",
                         textAlign: "left",
-                        minHeight: "44px",
                       }}
                     >
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -221,63 +264,175 @@ export const Header: FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right: Actions, Status & User Profile */}
+      {/* 2. Center Region: Global Search (Desktop/Tablet) */}
+      {!isMobileView && (
+        <div
+          style={{
+            flex: 1,
+            maxWidth: "380px",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 10px",
+            height: "var(--control-h-sm, 32px)",
+            borderRadius: "var(--radius-md, 8px)",
+            backgroundColor: "var(--bg-canvas, #F8FAFC)",
+            border: "1px solid var(--border-default, #E2E8F0)",
+            color: "var(--text-muted, #64748B)",
+            fontSize: "var(--font-size-sm, 0.875rem)",
+            gap: "8px",
+            cursor: "pointer",
+          }}
+          title="Busca global em conversas, leads e produtos"
+        >
+          <Search size={14} />
+          <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            Buscar (⌘K)
+          </span>
+        </div>
+      )}
+
+      {/* 3. Right Region: Status Indicator + Actions + User Avatar Menu */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: isMobileView ? "6px" : "12px",
-          flexWrap: "nowrap",
+          gap: "12px",
           flexShrink: 0,
         }}
       >
         {actions}
 
+        {/* System Connection Dot with xs text */}
         {systemStatus && (
-          <Badge
-            variant={systemStatus.variant}
-            pulseDot
-            className="sos-header-status-badge"
-            title={systemStatus.tooltip || systemStatus.label}
-          >
-            {isMobileView && systemStatus.shortLabel
-              ? systemStatus.shortLabel
-              : systemStatus.label}
-          </Badge>
-        )}
-
-        {userEmail && (
           <div
             style={{
-              display: isMobileView ? "none" : "flex",
+              display: "flex",
               alignItems: "center",
-              gap: "8px",
+              gap: "6px",
               padding: "4px 8px",
-              borderRadius: "var(--radius-md, 8px)",
+              borderRadius: "var(--radius-full, 9999px)",
               backgroundColor: "var(--bg-surface-elevated, #F1F5F9)",
-              border: "1px solid var(--border-default, #E2E8F0)",
+              fontSize: "var(--font-size-xs, 0.75rem)",
+              color: "var(--text-secondary, #475569)",
+              fontWeight: 500,
+              whiteSpace: "nowrap",
             }}
+            title={systemStatus.tooltip || systemStatus.label}
           >
             <span
               style={{
-                fontSize: "0.8125rem",
-                color: "var(--text-primary, #0F172A)",
-                fontWeight: 500,
-                maxWidth: "120px",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                backgroundColor: statusDotColor,
+                display: "inline-block",
               }}
-            >
-              {userEmail}
-            </span>
-            {userRole && (
-              <Badge variant="neutral">
-                {userRole.toUpperCase()}
-              </Badge>
-            )}
+              aria-hidden="true"
+            />
+            <span>{isMobileView && systemStatus.shortLabel ? systemStatus.shortLabel : systemStatus.label}</span>
           </div>
         )}
+
+        {/* User Profile Avatar with dropdown menu */}
+        <div ref={userMenuRef} style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setIsUserMenuOpen((prev) => !prev)}
+            aria-expanded={isUserMenuOpen}
+            aria-label="Menu do Usuário"
+            style={{
+              width: "var(--control-h-sm, 32px)",
+              height: "var(--control-h-sm, 32px)",
+              borderRadius: "50%",
+              backgroundColor: "var(--color-action-subtle, #E6F4F1)",
+              border: "1px solid var(--color-action-border, #80C0B4)",
+              color: "var(--color-action, #008069)",
+              fontSize: "var(--font-size-xs, 0.75rem)",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            {getInitials()}
+          </button>
+
+          {isUserMenuOpen && (
+            <div
+              role="menu"
+              aria-label="Opções do Usuário"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 6px)",
+                right: 0,
+                width: "220px",
+                backgroundColor: "var(--bg-surface, #FFFFFF)",
+                border: "1px solid var(--border-default, #E2E8F0)",
+                borderRadius: "var(--radius-md, 8px)",
+                boxShadow: "var(--shadow-md)",
+                padding: "6px",
+                zIndex: 50,
+              }}
+            >
+              {/* User Profile Info */}
+              <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border-default, #E2E8F0)" }}>
+                <div
+                  style={{
+                    fontSize: "var(--font-size-sm, 0.875rem)",
+                    fontWeight: 500,
+                    color: "var(--text-primary, #0F172A)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {userEmail || "Operador"}
+                </div>
+                <div
+                  style={{
+                    fontSize: "var(--font-size-xs, 0.75rem)",
+                    color: "var(--text-muted, #64748B)",
+                    marginTop: "2px",
+                  }}
+                >
+                  Papel: <strong style={{ color: "var(--text-primary, #0F172A)" }}>{formattedRole}</strong>
+                </div>
+              </div>
+
+              {/* Sair action */}
+              {onLogout && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    onLogout();
+                  }}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "8px 10px",
+                    marginTop: "4px",
+                    borderRadius: "var(--radius-sm, 6px)",
+                    border: "none",
+                    background: "none",
+                    color: "var(--color-danger, #DC2626)",
+                    fontSize: "var(--font-size-sm, 0.875rem)",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <LogOut size={14} />
+                  <span>Sair da Conta</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

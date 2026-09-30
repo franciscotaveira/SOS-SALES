@@ -1,8 +1,9 @@
-import { useState, useEffect, type FC } from "react";
+import { useState, type FC } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { MobileNav } from "./MobileNav";
 import { Drawer } from "../Drawer/Drawer";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
 import type { AppShellProps } from "./AppShell.types";
 
 export const AppShell: FC<AppShellProps> = ({
@@ -15,48 +16,61 @@ export const AppShell: FC<AppShellProps> = ({
   isLoadingWorkspaces,
   userEmail,
   userRole,
+  onLogout,
   systemStatus,
   children,
   headerActions,
+  noPadding = false,
+  hideMobileNav = false,
   sidebarCollapsed: controlledCollapsed,
   onSidebarCollapseToggle,
 }) => {
-  const [internalCollapsed, setInternalCollapsed] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const { isMobile, isTablet } = useBreakpoint();
 
-  const isCollapsed =
-    controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
+  // Stored sidebar collapse state
+  const [internalCollapsed, setInternalCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem("sos_sales_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Tablet forces collapsed sidebar (64px) for compact efficiency
+  const effectiveCollapsed = isTablet
+    ? true
+    : controlledCollapsed !== undefined
+    ? controlledCollapsed
+    : internalCollapsed;
 
   const handleToggleCollapse = () => {
+    const next = !effectiveCollapsed;
     if (onSidebarCollapseToggle) {
       onSidebarCollapseToggle();
     } else {
-      setInternalCollapsed((prev) => !prev);
+      setInternalCollapsed(next);
+    }
+    try {
+      localStorage.setItem("sos_sales_sidebar_collapsed", String(next));
+    } catch {
+      // Storage unavailable or disabled
     }
   };
-
-  // Window resize observer to adapt responsive layout
-  useEffect(() => {
-    const checkViewport = () => {
-      setIsMobile(window.innerWidth < 760);
-    };
-
-    checkViewport();
-    window.addEventListener("resize", checkViewport);
-    return () => window.removeEventListener("resize", checkViewport);
-  }, []);
 
   return (
     <div
       className="sos-app-shell"
       style={{
         display: "flex",
-        minHeight: "100vh",
+        height: "100dvh",
+        maxHeight: "100dvh",
         backgroundColor: "var(--bg-canvas, #F8FAFC)",
         color: "var(--text-primary, #0F172A)",
         fontFamily: "var(--font-sans, sans-serif)",
-        overflowX: "hidden",
+        overflow: "hidden",
         width: "100%",
         maxWidth: "100vw",
       }}
@@ -67,8 +81,8 @@ export const AppShell: FC<AppShellProps> = ({
           navItems={navItems}
           activeNavId={activeNavId}
           onNavSelect={onNavSelect}
-          collapsed={isCollapsed}
-          onToggleCollapse={handleToggleCollapse}
+          collapsed={effectiveCollapsed}
+          onToggleCollapse={isTablet ? undefined : handleToggleCollapse}
         />
       )}
 
@@ -77,12 +91,12 @@ export const AppShell: FC<AppShellProps> = ({
         <Drawer
           isOpen={isMobileMenuOpen}
           onClose={() => setIsMobileMenuOpen(false)}
-          title="SOS SALES"
+          title="SOS Sales"
           description="Navegação do Operador"
           position="left"
           width="280px"
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
             {navItems.map((item) => {
               const isActive = item.id === activeNavId;
               return (
@@ -99,23 +113,28 @@ export const AppShell: FC<AppShellProps> = ({
                     display: "flex",
                     alignItems: "center",
                     gap: "12px",
-                    padding: "12px 14px",
+                    padding: "0 12px",
+                    height: "var(--control-h-md, 40px)",
                     borderRadius: "var(--radius-md, 8px)",
                     border: "none",
+                    borderLeft: isActive
+                      ? "3px solid var(--color-action, #008069)"
+                      : "3px solid transparent",
                     backgroundColor: isActive
-                      ? "var(--bg-surface-elevated, #F1F5F9)"
+                      ? "var(--color-action-subtle, #E6F4F1)"
                       : "transparent",
                     color: isActive
                       ? "var(--color-action, #008069)"
                       : "var(--text-primary, #0F172A)",
                     cursor: item.disabled ? "not-allowed" : "pointer",
-                    fontSize: "0.9375rem",
+                    fontSize: "var(--font-size-sm, 0.875rem)",
                     fontWeight: isActive ? 600 : 500,
                     textAlign: "left",
-                    minHeight: "44px",
                   }}
                 >
-                  {item.icon}
+                  <span style={{ display: "inline-flex", alignItems: "center" }}>
+                    {item.icon}
+                  </span>
                   <span>{item.label}</span>
                 </button>
               );
@@ -124,15 +143,19 @@ export const AppShell: FC<AppShellProps> = ({
         </Drawer>
       )}
 
-      {/* Right Main Region: Header + Scrollable Content Area */}
+      {/* Right Main Region: Header + Content */}
       <div
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
           minWidth: 0,
-          overflowX: "hidden",
-          paddingBottom: isMobile ? "68px" : 0, // Space for mobile bottom bar
+          height: "100dvh",
+          maxHeight: "100dvh",
+          overflow: "hidden",
+          paddingBottom: isMobile && !hideMobileNav
+            ? "calc(var(--mobile-nav-h, 56px) + env(safe-area-inset-bottom, 0px))"
+            : 0,
         }}
       >
         <Header
@@ -142,6 +165,7 @@ export const AppShell: FC<AppShellProps> = ({
           isLoadingWorkspaces={isLoadingWorkspaces}
           userEmail={userEmail}
           userRole={userRole}
+          onLogout={onLogout}
           systemStatus={systemStatus}
           onOpenMobileMenu={isMobile ? () => setIsMobileMenuOpen(true) : undefined}
           actions={headerActions}
@@ -153,9 +177,16 @@ export const AppShell: FC<AppShellProps> = ({
           tabIndex={-1}
           style={{
             flex: 1,
-            padding: isMobile ? "16px" : "28px 32px",
-            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            overflowY: noPadding ? "hidden" : "auto",
             overflowX: "hidden",
+            padding: noPadding
+              ? 0
+              : isMobile
+              ? "var(--space-4, 16px)"
+              : "var(--space-6, 24px)",
             outline: "none",
           }}
         >
@@ -169,6 +200,7 @@ export const AppShell: FC<AppShellProps> = ({
           navItems={navItems}
           activeNavId={activeNavId}
           onNavSelect={onNavSelect}
+          hidden={hideMobileNav}
         />
       )}
     </div>

@@ -5,7 +5,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
     {
       variant = "primary",
-      size = "md",
+      size = "sm",
       loading = false,
       disabled = false,
       prefixIcon,
@@ -19,18 +19,39 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     const isDisabled = disabled || loading;
 
-    // Size-based padding and font sizes (accessible touch targets)
+    // Fixed control heights and padding according to visual system scale
     const sizeStyles: Record<string, CSSProperties> = {
-      sm: { padding: "6px 12px", fontSize: "0.75rem", minHeight: "36px", minWidth: "36px", gap: "6px" },
-      md: { padding: "8px 16px", fontSize: "0.875rem", minHeight: "44px", minWidth: "44px", gap: "8px" },
-      lg: { padding: "12px 24px", fontSize: "1rem", minHeight: "48px", minWidth: "48px", gap: "10px" },
+      xs: {
+        height: "var(--control-h-xs, 28px)",
+        padding: "0 8px",
+        fontSize: "var(--font-size-xs, 0.75rem)",
+        gap: "4px",
+      },
+      sm: {
+        height: "var(--control-h-sm, 32px)",
+        padding: "0 12px",
+        fontSize: "var(--font-size-sm, 0.875rem)",
+        gap: "6px",
+      },
+      md: {
+        height: "var(--control-h-md, 40px)",
+        padding: "0 16px",
+        fontSize: "var(--font-size-sm, 0.875rem)",
+        gap: "8px",
+      },
+      lg: {
+        height: "var(--control-h-lg, 44px)",
+        padding: "0 20px",
+        fontSize: "var(--font-size-sm, 0.875rem)",
+        gap: "8px",
+      },
     };
 
-    // Variant-based color styles
+    // Variant-based color styles conforming to tokens
     const variantStyles: Record<string, CSSProperties> = {
       primary: {
         backgroundColor: "var(--color-action, #008069)",
-        color: "#FFFFFF",
+        color: "var(--text-inverse, #FFFFFF)",
         border: "1px solid transparent",
       },
       secondary: {
@@ -50,7 +71,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       },
       danger: {
         backgroundColor: "var(--color-danger, #DC2626)",
-        color: "#FFFFFF",
+        color: "var(--text-inverse, #FFFFFF)",
         border: "1px solid transparent",
       },
     };
@@ -59,15 +80,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
-      fontWeight: 600,
+      fontWeight: 500,
       fontFamily: "var(--font-sans, sans-serif)",
       borderRadius: "var(--radius-md, 8px)",
       cursor: isDisabled ? "not-allowed" : "pointer",
       opacity: isDisabled ? 0.65 : 1,
-      transition: "background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease",
+      transition: "background-color var(--transition-fast, 150ms ease), border-color var(--transition-fast, 150ms ease), opacity var(--transition-fast, 150ms ease)",
       lineHeight: 1,
       textDecoration: "none",
       boxSizing: "border-box",
+      whiteSpace: "nowrap",
       ...sizeStyles[size],
       ...variantStyles[variant],
       ...style,
@@ -92,15 +114,22 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
               borderRadius: "50%",
               display: "inline-block",
               animation: "spin 0.6s linear infinite",
+              flexShrink: 0,
             }}
             aria-hidden="true"
           />
         ) : (
-          prefixIcon && <span style={{ display: "inline-flex", alignItems: "center" }}>{prefixIcon}</span>
+          prefixIcon && (
+            <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+              {prefixIcon}
+            </span>
+          )
         )}
-        <span>{children}</span>
+        {children && <span>{children}</span>}
         {!loading && suffixIcon && (
-          <span style={{ display: "inline-flex", alignItems: "center" }}>{suffixIcon}</span>
+          <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+            {suffixIcon}
+          </span>
         )}
       </button>
     );

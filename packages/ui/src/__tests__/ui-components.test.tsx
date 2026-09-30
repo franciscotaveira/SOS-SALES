@@ -6,6 +6,11 @@ import {
   spacing,
   radii,
   Button,
+  IconButton,
+  SegmentedControl,
+  Avatar,
+  PageHeader,
+  ListItem,
   Input,
   Badge,
   Alert,
@@ -256,15 +261,13 @@ describe("SOS Sales V3 — packages/ui Component & Token Suite", () => {
       );
 
       // Verify Brand and Structure
-      expect(html).toContain("CHAT SALES");
-      expect(html).toContain("Soberano V3");
+      expect(html).toContain("SOS Sales");
+      expect(html).not.toContain("Soberano");
       expect(html).toContain("Atendimento");
       expect(html).toContain("Funil Comercial");
 
       // Verify Header & User context
       expect(html).toContain("Matriz Chapecó");
-      expect(html).toContain("operador@iaparavendas.tech");
-      expect(html).toContain("OWNER");
       expect(html).toContain("Docker Lab 55440");
 
       // Verify Main Content
@@ -272,4 +275,113 @@ describe("SOS Sales V3 — packages/ui Component & Token Suite", () => {
       expect(html).toContain("Painel Operacional Ativo");
     });
   });
+
+  describe("11. Componente IconButton", () => {
+    it("should render square icon button with accessible aria-label and title", () => {
+      const html = renderToString(
+        <IconButton
+          aria-label="Recolher Dossiê Lateral"
+          icon={<span id="test-icon">icon</span>}
+          size="sm"
+        />
+      );
+      expect(html).toContain('aria-label="Recolher Dossiê Lateral"');
+      expect(html).toContain('title="Recolher Dossiê Lateral"');
+      expect(html).toContain("sos-icon-button-sm");
+      expect(html).toContain("test-icon");
+    });
+  });
+
+  describe("12. Componente SegmentedControl", () => {
+    it("should render radio group with active elevated segment", () => {
+      const options = [
+        { value: "abertas", label: "Abertas", badge: 3 },
+        { value: "todas", label: "Todas" },
+      ];
+      const html = renderToString(
+        <SegmentedControl
+          options={options}
+          value="abertas"
+          onChange={() => {}}
+          aria-label="Filtro de Conversas"
+        />
+      );
+      expect(html).toContain('role="radiogroup"');
+      expect(html).toContain('aria-label="Filtro de Conversas"');
+      expect(html).toContain('aria-checked="true"');
+      expect(html).toContain("Abertas");
+      expect(html).toContain("3");
+    });
+  });
+
+  describe("13. Componente Avatar", () => {
+    it("should render initials without DDI numbers", () => {
+      const html = renderToString(
+        <Avatar name="Dra. Mariana Costa" id="lead-123" size="lg" />
+      );
+      expect(html).toContain("DC");
+      expect(html).toContain("sos-avatar-lg");
+    });
+
+    it("should render person fallback icon when no name is provided", () => {
+      const html = renderToString(<Avatar id="lead-456" size="md" />);
+      expect(html).toContain("sos-avatar-md");
+      expect(html).toContain("svg");
+    });
+  });
+
+  describe("14. Componente PageHeader", () => {
+    it("should render title, description and actions", () => {
+      const html = renderToString(
+        <PageHeader
+          title="Modelos de Mensagem"
+          description="Gerencie templates oficiais WABA"
+          actions={<button type="button">Novo Modelo</button>}
+        />
+      );
+      expect(html).toContain("Modelos de Mensagem");
+      expect(html).toContain("Gerencie templates oficiais WABA");
+      expect(html).toContain("Novo Modelo");
+    });
+  });
+
+  describe("15. Componente ListItem", () => {
+    it("should render leading, title, subtitle and trailing with 72px height", () => {
+      const html = renderToString(
+        <ListItem
+          leading={<span>Avatar</span>}
+          title="Carlos Eduardo"
+          subtitle="Vi o anúncio no Instagram"
+          meta="10:48"
+          trailing={<span>●</span>}
+          height="lg"
+          selected
+        />
+      );
+      expect(html).toContain("Carlos Eduardo");
+      expect(html).toContain("Vi o anúncio no Instagram");
+      expect(html).toContain("10:48");
+      expect(html).toContain("sos-list-item-selected");
+    });
+  });
+
+  describe("16. Componente Drawer com Bottom Sheet", () => {
+    it("should render bottom sheet with proper aria attributes", () => {
+      const html = renderToString(
+        <Drawer
+          isOpen
+          onClose={() => {}}
+          title="Contexto do Lead"
+          position="bottom"
+        >
+          <div>Detalhes do Lead</div>
+        </Drawer>
+      );
+      expect(html).toContain('role="dialog"');
+      expect(html).toContain('aria-modal="true"');
+      expect(html).toContain("sos-drawer-bottom");
+      expect(html).toContain("Contexto do Lead");
+    });
+  });
 });
+

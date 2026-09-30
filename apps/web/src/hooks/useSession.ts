@@ -86,6 +86,9 @@ export function useSession(token: string | null): UseSessionReturn {
     setWorkspaces([]);
     setActiveWorkspaceId(null);
     activeWorkspaceIdRef.current = null;
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("sos_sales_active_workspace_id");
+    }
     setActiveWorkspaceDetails(null);
     setError(null);
     setIsLoadingMe(false);
@@ -112,6 +115,9 @@ export function useSession(token: string | null): UseSessionReturn {
       setError(null);
       setActiveWorkspaceId(targetWorkspaceId);
       activeWorkspaceIdRef.current = targetWorkspaceId;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sos_sales_active_workspace_id", targetWorkspaceId);
+      }
 
       // 2. Abort prior pending request
       if (workspaceAbortControllerRef.current) {
@@ -262,11 +268,17 @@ export function useSession(token: string | null): UseSessionReturn {
           type: "membership",
         });
       } else {
-        // Auto-select first workspace or current if still valid
+        // Auto-select preferred workspace from localStorage, active ref, or first
+        const storedWorkspaceId =
+          typeof window !== "undefined"
+            ? localStorage.getItem("sos_sales_active_workspace_id")
+            : null;
         const validWorkspaceId =
           activeWorkspaceIdRef.current &&
           meData.workspaces.some((w) => w.id === activeWorkspaceIdRef.current)
             ? activeWorkspaceIdRef.current
+            : storedWorkspaceId && meData.workspaces.some((w) => w.id === storedWorkspaceId)
+            ? storedWorkspaceId
             : meData.workspaces[0]!.id;
 
         await selectWorkspace(validWorkspaceId);

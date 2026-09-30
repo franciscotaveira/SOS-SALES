@@ -31,6 +31,7 @@ export interface AppShellProps {
   // User & Status
   userEmail?: string;
   userRole?: string;
+  onLogout?: () => void;
   systemStatus?: {
     label: string;
     shortLabel?: string;
@@ -41,6 +42,8 @@ export interface AppShellProps {
   // Content
   children: ReactNode;
   headerActions?: ReactNode;
+  noPadding?: boolean;
+  hideMobileNav?: boolean;
 
   // Sidebar collapsible state
   sidebarCollapsed?: boolean;

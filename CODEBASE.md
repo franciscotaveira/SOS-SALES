@@ -2,7 +2,7 @@
 
 > MCT OS v2.0 | Francisco Rios | MCT LTDA | Chapecó, BR  
 > Filosofia: Poder invisível, simplicidade visível. Truth in Data.  
-> Última atualização: 19 de setembro de 2026 (CH-10 Dual-Engine Integration)
+> Última atualização: 29 de setembro de 2026 (Meta CAPI v26.0 Business Messaging & CTWA Traversal)
 
 ---
 
@@ -18,9 +18,10 @@
     - `sos_worker_user`: Polling de filas (`outbound_commands`, `channel_webhook_inbox`) e transições de estado via `withWorkerTransaction`.
     - `sos_migration_owner`: DDL e migrações estruturais.
 - **Fila & Cache:** Redis 7 (Docker Compose), BullMQ 5.41.6.
-- **Motores de Mensageria:**
+- **Motores de Mensageria & Conversão:**
   - `meta_waba`: Meta WhatsApp Cloud API Oficial (Templates, HSM, Webhooks normatizados).
   - `waha`: WhatsApp HTTP API local em container Docker com engine `WEBJS` e pinning estrito por digest de imagem (`latest-2026.8.2@sha256:...`). Zero modo privilegiado.
+  - `meta_capi`: Meta Conversions API para Business Messaging (`whatsapp`) na Graph API `v26.0` (padrão) com envio estrito via Bearer Token, WABA account ID explícito e percurso CTWA ponta a ponta.
 - **Criptografia & Segredos:** Keyring versionado com AES-256-GCM, derivação scrypt, `DatabaseSigningSecretResolver` e trigger de auditoria imutável (`audit_events`).
 - **Observabilidade:** Pino logger estruturado (`@sos-sales/observability`) com ausência de telefone (mesmo mascarado) nos logs de dispatch/worker e ausência de tokens ou segredos em claro.
 
@@ -100,24 +101,44 @@
 - Erros persistidos em `outbound_commands.error_message` e logs utilizam exclusivamente códigos canônicos e mensagens allowlisted sanitizadas, sendo proibida a persistência de `err.message` bruto, respostas brutas de provedores, telefones, corpos de mensagem, URLs de mídia, tokens, hashes, idempotency keys ou stack traces.
 - Erros de domínio (`ChannelDispatchBaseError`) implementam método `.toJSON()` que suprime a propriedade interna `cause`, impedindo vazamento de stack traces ou credenciais em APIs externas.
 
+### 3.8 Meta Conversions API (CAPI) para Business Messaging (v26.0)
+- **Governança da Graph API:** Contrato padrão `v26.0`, com allowlist restrita de versões suportadas `["v25.0", "v26.0"]`. Qualquer versão fora desse escopo gera fail-closed imediato com código canônico `CAPI_GRAPH_VERSION_INVALID`. Política preventiva de revisão a cada 60 dias documentada em `docs/architecture/META-VERSIONING.md`.
+- **Segurança de Transporte & Segredos:** Token de acesso Meta transmitido **exclusivamente** via cabeçalho `Authorization: Bearer <token>`. É terminantemente proibido o envio de token via query string (`?access_token=...`). Tokens são mascarados preventivamente contra vazamentos em logs, DB e receipts (`replace(/EA[A-Za-z0-9]+/g, '[REDACTED_ACCESS_TOKEN]')`).
+- **Resolução Estrita de WABA ID:** `resolveSourceWaba` requer obrigatoriamente `parsed.waba_account_id` ou `parsed.waba_id`. Phone Number ID (`row.account_id`) é categoricamente rejeitado como identificador de conta WABA CAPI, gerando `CAPI_WABA_ID_MISSING` com zero chamadas HTTP.
+- **Validação Numérica de Dataset ID:** Credenciais persistidas no banco são validadas pela regex `/^\d{10,20}$/`. Prefixos legados (`pixel_*`) ou strings arbitrárias são rejeitados com `CAPI_DATASET_ID_INVALID`. Identificadores sintéticos são restritos ao modo laboratório com `endpointUrl` explícito.
+- **Validação Estrita de Endpoint Sintético (SSRF Guard):** Em modo laboratório, `validateSyntheticEndpoint` exige que o `endpointUrl` utilize estritamente protocolo `http:` ou `https:`, proíba credenciais embutidas (`username:password@`) e restrinja o destino exclusivamente a interfaces de loopback locais (`localhost`, `127.0.0.1`, `::1`). Redirecionamentos HTTP 3xx são desabilitados (`redirect: "manual"`) e rejeitados imediatamente com `CAPI_SYNTHETIC_ENDPOINT_INVALID`.
+- **Atribuição CTWA Ponta a Ponta e Isolamento por Conversa:** Percurso end-to-end verificado: webhook referral WABA (`referral.ctwa_clid`) -> normalizador (`metadata.ctwaClid`) -> `inbox-processor` (`commercial_journeys.ctwa_clid` + `attribution_source='ctwa_meta'`) -> `recordCommercialOutcome` -> `conversion_events.user_data.ctwaClid` -> payload CAPI despachado com isolamento multi-tenant RLS. A correlação de jornada pelo `inbox-processor` é restrita estritamente à conversa receptora (`WHERE workspace_id = $1 AND thread_id = $2`), impedindo contaminação de jornadas orgânicas do mesmo contato em outros canais/conversas.
+- **Projeção de Receipt Protegido:** O receipt gravado em `conversion_events.receipt` é estritamente projetado contendo apenas `{ graph_api_version, events_received: 1, fbtrace_id }`. O array `messages` arbitrário foi eliminado.
+- **Garantia Global Zero-Network:** Interceptor HTTP instalado nos testes de integração do worker bloqueia qualquer tentativa de chamada para `graph.facebook.com` ou redes externas com `FAIL_CLOSED_NETWORK_VIOLATION`. Testes executam exclusivamente contra mock servers locais (`127.0.0.1`).
+- **Códigos Canônicos de Erro:** Allowlist estrita de 19 códigos canônicos (`CAPI_ERROR_CODES`), prevenindo vazamento de stack traces ou payloads externos.
+
 ---
 
 ## 4. Estado de Homologação e Limites Operacionais
 
-- **Implementado e Homologado:**
+- **Implementado e Homologado Localmente:**
   - Persistência atômica e autoridade única via repositório transacional Outbox (`OutboundCommandRepository`).
   - Worker de despacho outbox (`OutboxDispatcher`) com claiming concorrente `FOR UPDATE SKIP LOCKED`, heartbeat de renovação de lease e fencing anti-split-brain.
   - RLS estrito fail-closed em todas as tabelas comerciais e filas.
   - Fail-closed entre canais (zero fallback entre WAHA e Meta WABA).
   - Sanitização de erros allowlisted e ausência absoluta de PII telefônica em logs operacionais.
   - Reconciliação governada de timeouts ambíguos via `provider_delivery_events`.
-- **Testado Hermeticamente:**
-  - Suíte completa de testes unitários e de integração em PostgreSQL isolado temporário com teardown determinístico (`ALLOW_TEST_DB_ADMIN_OPERATIONS=true pnpm test:db:run`).
-  - Verificação de tipos TypeScript e compilação de todos os pacotes via Turborepo.
-- **Bloqueado Externamente (Limites Canônicos):**
-  - Zero envio de mensagens a redes externas de produção ou celulares reais.
-  - Zero geração de QR codes ou pareamento com instâncias reais de WhatsApp.
-  - VPS de produção e sistema V2 permanecem 100% intocados e segregados.
+  - **Produção Ativa (VPS 179.197.72.221 - Chapecó/BR):**
+  - **Absorção de Dados V2 -> V3:** 100% concluída com zero data loss.
+    - 30 Workspaces consolidados (incluindo Haven Escovaria, SOS Sales Oficial, Sora Ritual Spa, Geral e Chapecó Matriz).
+    - 759 Contatos com normalização E.164 estrita.
+    - 851 Conversas Comerciais (`commercial_threads`).
+    - 826 Jornadas Comerciais (`commercial_journeys`) preservadas com atribuição CTWA Meta Ads.
+    - 15.455 Mensagens preservadas com histórico completo e status de entrega.
+    - 11 Instâncias de Canal e 6 Credenciais criptografadas via AES-256-GCM.
+  - **Containers Operacionais:**
+    - `chat-sales-api`: Fastify 5.12.5 (porta interna 4400, health check HTTP 200).
+    - `chat-sales-worker`: Background runtime processando `channel_webhook_inbox` e `outbound_commands`.
+    - `chat-sales-web`: Cockpit administrativo servido via Nginx/Caddy.
+    - `sos-sales-postgres`: PostgreSQL 16 Alpine com RLS estrito e roles segregadas.
+    - `sos-sales-redis`: Redis 7 Alpine com caching e rate limiting.
+    - `sos-sales-waha`: WAHA Core 2026.8.1 (Chromium com sessões ativas preservadas, `default` +554988447562 em status `WORKING`).
+    - `sos-sales-caddy`: Reverse proxy TLS automático gerenciando `crm.iaparavendas.tech` e `iaparavendas.tech`.
 
 ---
 
@@ -127,7 +148,10 @@
   ```bash
   ALLOW_TEST_DB_ADMIN_OPERATIONS=true pnpm test:db:run
   ```
-  *Executa a suíte hermética completa em banco PostgreSQL isolado com criação e descarte atômico.*
+- **Suíte de Workers (Hermética / Concorrência Segura):**
+  ```bash
+  pnpm --filter @sos-sales/worker exec vitest run --fileParallelism=false
+  ```
 - **Verificação de Tipos Monorepo:**
   ```bash
   pnpm turbo typecheck

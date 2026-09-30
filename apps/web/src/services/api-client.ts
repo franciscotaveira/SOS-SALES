@@ -433,8 +433,18 @@ export interface ContactSummary {
 export class ApiClient {
   private baseUrl: string;
 
-  constructor(baseUrl = "http://localhost:4400") {
-    this.baseUrl = baseUrl.replace(/\/$/, "");
+  constructor(baseUrl?: string) {
+    if (baseUrl) {
+      this.baseUrl = baseUrl.replace(/\/$/, "");
+    } else if (
+      typeof window !== "undefined" &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1"
+    ) {
+      this.baseUrl = window.location.origin;
+    } else {
+      this.baseUrl = ((import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:4400").replace(/\/$/, "");
+    }
   }
 
   setBaseUrl(url: string) {
@@ -510,11 +520,42 @@ export class ApiClient {
       );
     }
 
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      throw new NetworkError(`Resposta inesperada do servidor (${response.status})`);
+    }
+
     return response.json() as Promise<T>;
   }
 
   async getReady(options?: RequestOptions): Promise<HealthResponse> {
-    return this.request<HealthResponse>("/ready", options);
+    try {
+      return await this.request<HealthResponse>("/ready", options);
+    } catch (err) {
+      // Resilient fallback to /health if /ready is not routed
+      try {
+        const live = await this.request<{ status: string }>("/health", options);
+        return {
+          status: live.status === "live" ? "ready" : "degraded",
+        };
+      } catch {
+        throw err;
+      }
+    }
+  }
+
+  async requestAuthSession(
+    payload: { email: string; accessKey?: string },
+    options?: RequestOptions
+  ): Promise<{ token: string; user: MeUser; workspaces: WorkspaceSummary[] }> {
+    return this.request<{ token: string; user: MeUser; workspaces: WorkspaceSummary[] }>(
+      "/v1/auth/session",
+      {
+        ...options,
+        method: "POST",
+        body: payload,
+      }
+    );
   }
 
   async getMe(options?: RequestOptions): Promise<MeResponse> {
@@ -1151,6 +1192,35 @@ export class ApiClient {
         ...options,
         method: "GET",
         workspaceId,
+      }
+    );
+  }
+
+  async createProduct(
+    workspaceId: string,
+    payload: {
+      retailerId: string;
+      title: string;
+      subtitle?: string | null;
+      description: string;
+      priceCents: number;
+      currency?: string;
+      category?: string;
+      imageUrl: string;
+      badge?: string | null;
+      catalogId?: string;
+      status?: "ACTIVE" | "INACTIVE" | "OUT_OF_STOCK";
+      isFeatured?: boolean;
+    },
+    options?: RequestOptions
+  ): Promise<{ product: ProductRecord }> {
+    return this.request<{ product: ProductRecord }>(
+      `/v1/workspaces/${workspaceId}/products`,
+      {
+        ...options,
+        method: "POST",
+        workspaceId,
+        body: payload,
       }
     );
   }

@@ -123,7 +123,13 @@ async function run() {
     await sleep(1500);
 
     // Inject demo token in sessionStorage
-    const token = "REDACTED_DEV_JWT";
+    const token =
+      process.env.SOS_SALES_AUTH_TOKEN ||
+      process.env.VITE_DEV_DEMO_TOKEN ||
+      "";
+    if (!token) {
+      console.warn("WARN: Missing SOS_SALES_AUTH_TOKEN / VITE_DEV_DEMO_TOKEN in environment.");
+    }
     await cdp.eval(`(() => {
       sessionStorage.setItem("sos_v3_lab_token", "${token}");
       window.location.reload();

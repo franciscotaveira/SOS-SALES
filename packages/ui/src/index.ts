@@ -5,6 +5,21 @@ export * from "./tokens";
 export * from "./components/Button/Button";
 export * from "./components/Button/Button.types";
 
+export * from "./components/IconButton/IconButton";
+export * from "./components/IconButton/IconButton.types";
+
+export * from "./components/SegmentedControl/SegmentedControl";
+export * from "./components/SegmentedControl/SegmentedControl.types";
+
+export * from "./components/Avatar/Avatar";
+export * from "./components/Avatar/Avatar.types";
+
+export * from "./components/PageHeader/PageHeader";
+export * from "./components/PageHeader/PageHeader.types";
+
+export * from "./components/ListItem/ListItem";
+export * from "./components/ListItem/ListItem.types";
+
 export * from "./components/Input/Input";
 export * from "./components/Input/Input.types";
 
@@ -31,3 +46,6 @@ export * from "./components/AppShell/AppShell.types";
 export * from "./components/AppShell/Sidebar";
 export * from "./components/AppShell/Header";
 export * from "./components/AppShell/MobileNav";
+
+// Hooks
+export * from "./hooks/useBreakpoint";

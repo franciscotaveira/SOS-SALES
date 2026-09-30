@@ -17,6 +17,11 @@ export const typography = {
     semibold: 600,
     bold: 700,
   },
+
+  lineHeight: {
+    tight: 1.25,
+    normal: 1.5,
+  },
 } as const;
 
 export type Typography = typeof typography;

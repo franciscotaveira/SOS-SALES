@@ -9,6 +9,7 @@ export const Drawer: FC<DrawerProps> = ({
   description,
   position = "right",
   width = "380px",
+  height,
   children,
   footer,
 }) => {
@@ -82,6 +83,7 @@ export const Drawer: FC<DrawerProps> = ({
   if (!isOpen) return null;
 
   const isLeft = position === "left";
+  const isBottom = position === "bottom";
 
   return (
     <div
@@ -90,7 +92,8 @@ export const Drawer: FC<DrawerProps> = ({
         inset: 0,
         zIndex: 9999,
         display: "flex",
-        justifyContent: isLeft ? "flex-start" : "flex-end",
+        justifyContent: isLeft ? "flex-start" : isBottom ? "center" : "flex-end",
+        alignItems: isBottom ? "flex-end" : "stretch",
       }}
     >
       {/* Backdrop */}
@@ -118,8 +121,9 @@ export const Drawer: FC<DrawerProps> = ({
         style={{
           position: "relative",
           width: "100%",
-          maxWidth: width,
-          height: "100%",
+          maxWidth: isBottom ? "100%" : width,
+          height: isBottom ? (height || "auto") : "100%",
+          maxHeight: isBottom ? (height || "85dvh") : "100%",
           backgroundColor: "var(--bg-surface, #FFFFFF)",
           boxShadow: "var(--shadow-lg)",
           display: "flex",
@@ -127,17 +131,33 @@ export const Drawer: FC<DrawerProps> = ({
           outline: "none",
           fontFamily: "var(--font-sans, sans-serif)",
           zIndex: 1,
-          borderLeft: isLeft ? "none" : "1px solid var(--border-default, #E2E8F0)",
+          borderRadius: isBottom ? "var(--radius-lg, 12px) var(--radius-lg, 12px) 0 0" : 0,
+          borderTop: isBottom ? "1px solid var(--border-default, #E2E8F0)" : "none",
+          borderLeft: isLeft ? "none" : isBottom ? "none" : "1px solid var(--border-default, #E2E8F0)",
           borderRight: isLeft ? "1px solid var(--border-default, #E2E8F0)" : "none",
         }}
       >
+        {/* Mobile drag handle for bottom sheet */}
+        {isBottom && (
+          <div
+            style={{
+              width: "36px",
+              height: "4px",
+              borderRadius: "2px",
+              backgroundColor: "var(--border-strong, #CBD5E1)",
+              margin: "8px auto 0 auto",
+            }}
+            aria-hidden="true"
+          />
+        )}
+
         {/* Header */}
         <div
           style={{
             display: "flex",
             alignItems: "flex-start",
             justifyContent: "space-between",
-            padding: "20px 24px",
+            padding: "16px 20px",
             borderBottom: "1px solid var(--border-default, #E2E8F0)",
           }}
         >
@@ -146,7 +166,7 @@ export const Drawer: FC<DrawerProps> = ({
               id={titleId}
               style={{
                 margin: 0,
-                fontSize: "1.125rem",
+                fontSize: "var(--font-size-lg, 1.125rem)",
                 fontWeight: 600,
                 color: "var(--text-primary, #0F172A)",
               }}
@@ -158,7 +178,7 @@ export const Drawer: FC<DrawerProps> = ({
                 id={descId}
                 style={{
                   margin: "4px 0 0 0",
-                  fontSize: "0.875rem",
+                  fontSize: "var(--font-size-sm, 0.875rem)",
                   color: "var(--text-secondary, #475569)",
                 }}
               >
@@ -188,12 +208,12 @@ export const Drawer: FC<DrawerProps> = ({
         {/* Content */}
         <div
           style={{
-            padding: "20px 24px",
+            padding: "20px",
             overflowY: "auto",
             flex: 1,
             color: "var(--text-primary, #0F172A)",
-            fontSize: "0.875rem",
-            lineHeight: 1.5,
+            fontSize: "var(--font-size-sm, 0.875rem)",
+            lineHeight: "var(--line-height-normal, 1.5)",
           }}
         >
           {children}
@@ -203,12 +223,12 @@ export const Drawer: FC<DrawerProps> = ({
         {footer && (
           <div
             style={{
-              padding: "16px 24px",
+              padding: "14px 20px",
               borderTop: "1px solid var(--border-default, #E2E8F0)",
               backgroundColor: "var(--bg-surface-subtle, #F8FAFC)",
               display: "flex",
               justifyContent: "flex-end",
-              gap: "12px",
+              gap: "10px",
             }}
           >
             {footer}

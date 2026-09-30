@@ -1,30 +1,35 @@
-/**
- * SOS Sales V3 — ContactsPage (MCT OS v2.0)
- * Real destination for the "Contatos & Leads" navigation item.
- * Conforms to Truth in Data: live contacts under strict tenant RLS.
- */
-
 import { useState, useEffect, type FC } from "react";
-import { Input, Badge, EmptyState, Button, LoadingState, Alert } from "@sos-sales/ui";
+import {
+  PageHeader,
+  Input,
+  Button,
+  LoadingState,
+  EmptyState,
+  Dialog,
+  ListItem,
+  Avatar,
+  useBreakpoint,
+} from "@sos-sales/ui";
+import { Search, Plus, PhoneCall } from "lucide-react";
 import type { UseSessionReturn } from "../hooks/useSession";
 import { apiClient, type ContactSummary } from "../services/api-client";
-import { Search, Users, PhoneCall, Plus, UserCheck } from "lucide-react";
+import { formatPhone } from "./cockpit/utils/formatPhone";
 
 export const ContactsPage: FC<{
   session: UseSessionReturn;
 }> = ({ session }) => {
   const { activeWorkspace, token } = session;
+  const { isMobile } = useBreakpoint();
   const [contacts, setContacts] = useState<ContactSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState("");
 
-  // New Contact Form State
-  const [isAddingContact, setIsAddingContact] = useState(false);
+  // New Contact Dialog
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("+55");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const loadContacts = async () => {
     if (!activeWorkspace || !token) return;
@@ -35,9 +40,9 @@ export const ContactsPage: FC<{
         { search: search.trim() || undefined },
         { token }
       );
-      setContacts(res.contacts);
+      setContacts(res.contacts || []);
     } catch {
-      // ignore
+      // Non-fatal
     } finally {
       setIsLoading(false);
     }
@@ -56,10 +61,9 @@ export const ContactsPage: FC<{
 
     setIsSubmitting(true);
     setErrorMsg(null);
-    setSuccessMsg(null);
 
     try {
-      const res = await apiClient.createContact(
+      await apiClient.createContact(
         activeWorkspace.id,
         {
           phoneE164: phoneInput.trim(),
@@ -68,15 +72,12 @@ export const ContactsPage: FC<{
         { token }
       );
 
-      setSuccessMsg(`Contato "${res.contact.name || res.contact.phoneE164}" salvo com sucesso!`);
       setNameInput("");
       setPhoneInput("+55");
-      setIsAddingContact(false);
+      setIsDialogOpen(false);
       loadContacts();
     } catch (err: unknown) {
-      setErrorMsg(
-        err instanceof Error ? err.message : "Falha ao registrar novo contato."
-      );
+      setErrorMsg(err instanceof Error ? err.message : "Falha ao registrar novo contato.");
     } finally {
       setIsSubmitting(false);
     }
@@ -88,206 +89,110 @@ export const ContactsPage: FC<{
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        minHeight: "calc(100vh - 64px)",
-        backgroundColor: "var(--bg-canvas, #F8FAFC)",
+        backgroundColor: "var(--bg-canvas)",
+        overflowY: "auto",
+        padding: "var(--space-6)",
+        boxSizing: "border-box",
       }}
     >
-      {/* Sub-header de Contexto */}
-      <div
-        style={{
-          height: "48px",
-          backgroundColor: "var(--bg-surface, #FFFFFF)",
-          borderBottom: "1px solid var(--border-default, #E2E8F0)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 24px",
-          fontSize: "0.85rem",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <Users size={16} color="var(--color-operational, #2563EB)" />
-          <span style={{ fontWeight: 600, color: "var(--text-primary, #0F172A)" }}>
-            Contatos & Leads do Tenant
-          </span>
-          <Badge variant="neutral">
-            {contacts.length} {contacts.length === 1 ? "Cadastrado" : "Cadastrados"}
-          </Badge>
-        </div>
+      <div style={{ maxWidth: "1080px", width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
+        <PageHeader
+          title="Contatos & Leads"
+          description="Gestão unificada de contatos do WhatsApp com isolamento estrito de dados."
+          actions={
+            <Button
+              size="sm"
+              variant="primary"
+              prefixIcon={<Plus size={14} />}
+              onClick={() => {
+                setErrorMsg(null);
+                setIsDialogOpen(true);
+              }}
+            >
+              Novo Contato
+            </Button>
+          }
+        />
 
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={() => setIsAddingContact(!isAddingContact)}
-          >
-            <Plus size={14} />
-            {isAddingContact ? "Fechar" : "Novo Contato"}
-          </Button>
-          <Badge variant="operational">
-            Workspace: {session.activeWorkspace?.name || "Nenhum"}
-          </Badge>
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div style={{ padding: "24px", maxWidth: "1000px", width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
-        {successMsg && (
-          <Alert variant="info" title="Sucesso">
-            {successMsg}
-          </Alert>
-        )}
-
-        {errorMsg && (
-          <Alert variant="danger" title="Erro no Cadastro">
-            {errorMsg}
-          </Alert>
-        )}
-
-        {/* Modal/Card de Cadastro */}
-        {isAddingContact && (
-          <form
-            onSubmit={handleCreateContact}
-            style={{
-              backgroundColor: "var(--bg-surface, #FFFFFF)",
-              padding: "20px",
-              borderRadius: "var(--radius-lg, 12px)",
-              border: "1px solid var(--border-default, #E2E8F0)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "14px",
-            }}
-          >
-            <h3 style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0 }}>
-              Cadastrar Novo Contato / Lead
-            </h3>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "0.75rem",
-                    fontWeight: 600,
-                    marginBottom: "4px",
-                  }}
-                >
-                  Telefone E.164 (Obrigatório)
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="+5511999998888"
-                  value={phoneInput}
-                  onChange={(e) => setPhoneInput(e.target.value)}
-                  style={{
-                    width: "100%",
-                    height: "36px",
-                    borderRadius: "6px",
-                    border: "1px solid var(--border-default, #E2E8F0)",
-                    padding: "0 10px",
-                    backgroundColor: "#FFFFFF",
-                    fontSize: "0.85rem",
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "0.75rem",
-                    fontWeight: 600,
-                    marginBottom: "4px",
-                  }}
-                >
-                  Nome Completo (Opcional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Carlos Eduardo"
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  style={{
-                    width: "100%",
-                    height: "36px",
-                    borderRadius: "6px",
-                    border: "1px solid var(--border-default, #E2E8F0)",
-                    padding: "0 10px",
-                    backgroundColor: "#FFFFFF",
-                    fontSize: "0.85rem",
-                  }}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px" }}>
-              <Button
-                size="sm"
-                variant="outline"
-                type="button"
-                onClick={() => setIsAddingContact(false)}
-              >
-                Cancelar
-              </Button>
-              <Button size="sm" variant="primary" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Salvando..." : "Salvar Contato"}
-              </Button>
-            </div>
-          </form>
-        )}
-
-        {/* Filters and Search */}
-        <div
-          style={{
-            backgroundColor: "var(--bg-surface, #FFFFFF)",
-            padding: "16px 20px",
-            borderRadius: "var(--radius-lg, 12px)",
-            border: "1px solid var(--border-default, #E2E8F0)",
-            display: "flex",
-            gap: "16px",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
+        {/* Search Input */}
+        <div style={{ maxWidth: "400px", width: "100%" }}>
           <Input
             placeholder="Buscar por telefone ou nome..."
             prefixIcon={<Search size={16} />}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ width: "360px", fontSize: "0.85rem" }}
           />
-
-          <span style={{ fontSize: "0.8rem", color: "var(--text-secondary, #64748B)" }}>
-            Filtragem dinâmica sob RLS
-          </span>
         </div>
 
-        {/* Lista de Contatos */}
+        {/* Content Section */}
         {isLoading && contacts.length === 0 ? (
-          <LoadingState variant="skeleton" lines={4} text="Carregando contatos..." />
+          <div style={{ padding: "32px 0" }}>
+            <LoadingState variant="skeleton" lines={5} text="Carregando contatos..." />
+          </div>
         ) : contacts.length === 0 ? (
           <EmptyState
-            icon={<PhoneCall size={32} />}
-            title="Nenhum Contato Encontrado"
-            description="Cadastre um novo contato acima ou envie uma mensagem via WhatsApp para captura automática no banco de dados."
+            icon={<PhoneCall size={48} />}
+            title="Nenhum contato encontrado"
+            description="Cadastre um novo contato acima ou envie uma mensagem no WhatsApp para captura automática."
           />
-        ) : (
+        ) : isMobile ? (
+          /* Mobile List View (64px ListItems, no horizontal scrolling) */
           <div
             style={{
-              backgroundColor: "var(--bg-surface, #FFFFFF)",
-              borderRadius: "var(--radius-lg, 12px)",
-              border: "1px solid var(--border-default, #E2E8F0)",
+              backgroundColor: "var(--bg-surface)",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border-default)",
               overflow: "hidden",
             }}
           >
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
+            {contacts.map((c) => (
+              <ListItem
+                key={c.id}
+                height="md"
+                leading={<Avatar id={c.id} name={c.name || undefined} size="md" />}
+                title={<span style={{ fontWeight: 500 }}>{c.name || "Contato sem nome"}</span>}
+                subtitle={
+                  <span style={{ fontFamily: "var(--font-mono, monospace)", fontVariantNumeric: "tabular-nums" }}>
+                    {formatPhone(c.phoneE164)}
+                  </span>
+                }
+                meta={new Date(c.createdAt).toLocaleDateString("pt-BR")}
+              />
+            ))}
+          </div>
+        ) : (
+          /* Desktop / Tablet Table View (48px rows, sticky header) */
+          <div
+            style={{
+              backgroundColor: "var(--bg-surface)",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border-default)",
+              overflow: "hidden",
+            }}
+          >
+            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "var(--font-size-sm)" }}>
               <thead>
-                <tr style={{ backgroundColor: "var(--bg-canvas, #F8FAFC)", borderBottom: "1px solid var(--border-default, #E2E8F0)" }}>
-                  <th style={{ padding: "12px 16px", fontWeight: 600, color: "var(--text-secondary, #475569)" }}>Contato</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600, color: "var(--text-secondary, #475569)" }}>Telefone E.164</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600, color: "var(--text-secondary, #475569)" }}>ID do Contato</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600, color: "var(--text-secondary, #475569)" }}>Data de Cadastro</th>
+                <tr
+                  style={{
+                    backgroundColor: "var(--bg-canvas)",
+                    borderBottom: "1px solid var(--border-default)",
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 1,
+                  }}
+                >
+                  <th style={{ padding: "0 16px", height: "48px", fontWeight: 600, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                    Nome
+                  </th>
+                  <th style={{ padding: "0 16px", height: "48px", fontWeight: 600, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                    Telefone
+                  </th>
+                  <th style={{ padding: "0 16px", height: "48px", fontWeight: 600, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                    ID
+                  </th>
+                  <th style={{ padding: "0 16px", height: "48px", fontWeight: 600, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                    Criado em
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -295,37 +200,38 @@ export const ContactsPage: FC<{
                   <tr
                     key={c.id}
                     style={{
-                      borderBottom: "1px solid var(--border-subtle, #F1F5F9)",
-                      transition: "background-color 0.15s ease",
+                      height: "48px",
+                      borderBottom: "1px solid var(--border-subtle)",
                     }}
                   >
-                    <td style={{ padding: "14px 16px", fontWeight: 600, color: "var(--text-primary, #0F172A)" }}>
+                    <td style={{ padding: "0 16px", fontWeight: 500, color: "var(--text-primary)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <div
-                          style={{
-                            width: "32px",
-                            height: "32px",
-                            borderRadius: "50%",
-                            backgroundColor: "var(--color-operational-subtle, #EFF6FF)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "var(--color-operational, #2563EB)",
-                          }}
-                        >
-                          <UserCheck size={16} />
-                        </div>
-                        {c.name || "Sem Nome"}
+                        <Avatar id={c.id} name={c.name || undefined} size="sm" />
+                        <span>{c.name || "Sem nome"}</span>
                       </div>
                     </td>
-                    <td style={{ padding: "14px 16px", fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-                      {c.phoneE164}
+                    <td
+                      style={{
+                        padding: "0 16px",
+                        fontFamily: "var(--font-mono, monospace)",
+                        fontVariantNumeric: "tabular-nums",
+                        color: "var(--text-secondary)",
+                      }}
+                    >
+                      {formatPhone(c.phoneE164)}
                     </td>
-                    <td style={{ padding: "14px 16px", fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--text-muted, #94A3B8)" }}>
+                    <td
+                      style={{
+                        padding: "0 16px",
+                        fontFamily: "var(--font-mono, monospace)",
+                        fontSize: "var(--font-size-xs)",
+                        color: "var(--text-muted)",
+                      }}
+                    >
                       {c.id.substring(0, 8)}...
                     </td>
-                    <td style={{ padding: "14px 16px", color: "var(--text-secondary, #64748B)" }}>
-                      {new Date(c.createdAt).toLocaleDateString()}
+                    <td style={{ padding: "0 16px", color: "var(--text-secondary)", fontSize: "var(--font-size-xs)" }}>
+                      {new Date(c.createdAt).toLocaleDateString("pt-BR")}
                     </td>
                   </tr>
                 ))}
@@ -334,6 +240,57 @@ export const ContactsPage: FC<{
           </div>
         )}
       </div>
+
+      {/* New Contact Dialog */}
+      <Dialog
+        isOpen={isDialogOpen}
+        onClose={() => setIsDialogOpen(false)}
+        title="Cadastrar Novo Contato"
+        description="Adicione o número e nome para iniciar atendimentos e disparos."
+      >
+        <form onSubmit={handleCreateContact} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {errorMsg && (
+            <div
+              role="alert"
+              style={{
+                padding: "8px 12px",
+                backgroundColor: "var(--color-danger-subtle)",
+                color: "var(--color-danger)",
+                borderRadius: "var(--radius-md)",
+                fontSize: "var(--font-size-xs)",
+              }}
+            >
+              {errorMsg}
+            </div>
+          )}
+
+          <Input
+            label="Telefone WhatsApp (Formato E.164)"
+            placeholder="+55 49 99999-8888"
+            required
+            value={phoneInput}
+            onChange={(e) => setPhoneInput(e.target.value)}
+          />
+
+          <Input
+            label="Nome Completo (Opcional)"
+            placeholder="Ex: Carlos Eduardo"
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+          />
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
+            <Button size="sm" variant="secondary" type="button" onClick={() => setIsDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button size="sm" variant="primary" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Salvando..." : "Salvar Contato"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 };
+
+export default ContactsPage;

@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, type FC } from "react";
-import { AppShell, Button } from "@sos-sales/ui";
+import { AppShell } from "@sos-sales/ui";
 import { useSession } from "./hooks/useSession";
 import { useConnectivity } from "./hooks/useConnectivity";
 import { apiClient } from "./services/api-client";
@@ -14,6 +14,8 @@ import { DevLabToolbar } from "./components/DevLabToolbar";
 import { CockpitPage } from "./pages/CockpitPage";
 import { ContactsPage } from "./pages/ContactsPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
+import { TemplatesPage } from "./pages/TemplatesPage";
+import { ProductsPage } from "./pages/ProductsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -22,7 +24,10 @@ import {
   Users,
   Send,
   Settings,
+  FileText,
+  Package,
 } from "lucide-react";
+import { LoginPage } from "./pages/LoginPage";
 
 export const isLabDistribution = (): boolean => {
   return Boolean(
@@ -32,48 +37,100 @@ export const isLabDistribution = (): boolean => {
   );
 };
 
-const LOCAL_DEV_DEMO_TOKEN =
-  "REDACTED_DEV_JWT";
+const getInitialRoute = (): { navId: string; isCatalog: boolean } => {
+  if (typeof window === "undefined") return { navId: "cockpit", isCatalog: false };
+  const path = window.location.pathname.toLowerCase();
+  const hash = window.location.hash.toLowerCase();
+
+  if (path === "/dev/ui" || hash === "#catalog" || hash === "#dev/ui") {
+    return { navId: "cockpit", isCatalog: true };
+  }
+  if (path === "/modelos" || hash === "#modelos") {
+    return { navId: "modelos", isCatalog: false };
+  }
+  if (path === "/produtos" || hash === "#produtos") {
+    return { navId: "produtos", isCatalog: false };
+  }
+  if (path === "/conversoes" || path === "/campaigns" || hash === "#conversoes") {
+    return { navId: "conversoes", isCatalog: false };
+  }
+  if (path === "/contacts" || path === "/contatos" || hash === "#contacts") {
+    return { navId: "contacts", isCatalog: false };
+  }
+  if (path === "/settings" || path === "/configuracoes" || hash === "#settings") {
+    return { navId: "settings", isCatalog: false };
+  }
+  return { navId: "cockpit", isCatalog: false };
+};
 
 export const App: FC = () => {
   const isLab = isLabDistribution();
 
-  // Token state: In explicit lab distribution only, allow persistence in sessionStorage for lab convenience.
-  // Stored strictly under isLab guard. Zero token in production bundle or VITE_* env.
+  // Token state: Checked in URL parameters, persistent localStorage, and dev sessionStorage
   const [token, setToken] = useState<string | null>(() => {
-    if (isLab && typeof window !== "undefined") {
+    if (typeof window === "undefined") return null;
+
+    // 1. Direct URL token parameter bootstrap (?token=... or ?auth=...)
+    try {
+      const url = new URL(window.location.href);
+      const urlToken = url.searchParams.get("token") || url.searchParams.get("auth");
+      if (urlToken && urlToken.trim()) {
+        const cleanToken = urlToken.trim();
+        localStorage.setItem("sos_sales_auth_token", cleanToken);
+        url.searchParams.delete("token");
+        url.searchParams.delete("auth");
+        window.history.replaceState(
+          {},
+          document.title,
+          url.pathname + (url.search ? url.search : "") + url.hash
+        );
+        return cleanToken;
+      }
+    } catch {
+      // Fallback if URL parsing fails
+    }
+
+    // 2. Persistent localStorage for authenticated operators
+    const storedAuthToken = localStorage.getItem("sos_sales_auth_token");
+    if (storedAuthToken && storedAuthToken.trim()) {
+      return storedAuthToken.trim();
+    }
+
+    // 3. Dev Lab fallback (only if already stored in session)
+    if (isLab) {
       const stored = sessionStorage.getItem("sos_v3_lab_token");
       if (stored) return stored;
-      if (sessionStorage.getItem("sos_v3_explicit_logged_out") !== "true") {
-        sessionStorage.setItem("sos_v3_lab_token", LOCAL_DEV_DEMO_TOKEN);
-        return LOCAL_DEV_DEMO_TOKEN;
-      }
     }
     return null;
   });
 
-  const [activeNavId, setActiveNavId] = useState<string>("cockpit");
+  const [activeNavId, setActiveNavId] = useState<string>(() => getInitialRoute().navId);
   const [activeView, setActiveView] = useState<"cockpit" | "catalog">(() => {
-    if (isLab && typeof window !== "undefined" && window.location.hash === "#catalog") {
+    const route = getInitialRoute();
+    if (isLab && route.isCatalog) {
       return "catalog";
     }
     return "cockpit";
   });
   const [isOfflineSimulated, setIsOfflineSimulated] = useState<boolean>(false);
 
-  // Synchronize hash with activeView ONLY in explicit lab distribution
+  // Synchronize URL and hash changes with active views
   useEffect(() => {
-    if (!isLab) return;
-
-    const handleHash = () => {
-      if (window.location.hash === "#catalog") {
+    const handleLocationChange = () => {
+      const route = getInitialRoute();
+      setActiveNavId(route.navId);
+      if (isLab && route.isCatalog) {
         setActiveView("catalog");
-      } else if (window.location.hash === "" || window.location.hash === "#cockpit") {
+      } else {
         setActiveView("cockpit");
       }
     };
-    window.addEventListener("hashchange", handleHash);
-    return () => window.removeEventListener("hashchange", handleHash);
+    window.addEventListener("popstate", handleLocationChange);
+    window.addEventListener("hashchange", handleLocationChange);
+    return () => {
+      window.removeEventListener("popstate", handleLocationChange);
+      window.removeEventListener("hashchange", handleLocationChange);
+    };
   }, [isLab]);
 
   // Real-time Fastify /ready health polling
@@ -83,15 +140,20 @@ export const App: FC = () => {
   const session = useSession(token);
 
   const handleTokenChange = useCallback((newToken: string | null) => {
-    if (!isLab) return;
     setToken(newToken);
     if (typeof window !== "undefined") {
       if (newToken) {
+        localStorage.setItem("sos_sales_auth_token", newToken);
         sessionStorage.removeItem("sos_v3_explicit_logged_out");
-        sessionStorage.setItem("sos_v3_lab_token", newToken);
+        if (isLab) {
+          sessionStorage.setItem("sos_v3_lab_token", newToken);
+        }
       } else {
+        localStorage.removeItem("sos_sales_auth_token");
         sessionStorage.setItem("sos_v3_explicit_logged_out", "true");
-        sessionStorage.removeItem("sos_v3_lab_token");
+        if (isLab) {
+          sessionStorage.removeItem("sos_v3_lab_token");
+        }
       }
     }
   }, [isLab]);
@@ -122,8 +184,18 @@ export const App: FC = () => {
       icon: <Users size={18} />,
     },
     {
-      id: "campaigns",
-      label: "Disparos CAPI",
+      id: "modelos",
+      label: "Modelos WABA",
+      icon: <FileText size={18} />,
+    },
+    {
+      id: "produtos",
+      label: "Produtos",
+      icon: <Package size={18} />,
+    },
+    {
+      id: "conversoes",
+      label: "Conversões",
       icon: <Send size={18} />,
     },
     {
@@ -167,23 +239,37 @@ export const App: FC = () => {
         : ("neutral" as const),
   };
 
+  // If unauthenticated or token expired, show Sovereign Login Portal
+  if (!token || session.error?.type === "auth") {
+    return (
+      <ErrorBoundary fallbackTitle="Falha de Autenticação">
+        <LoginPage
+          onLoginSuccess={handleTokenChange}
+          initialError={session.error?.type === "auth" ? session.error.detail : null}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
-      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-        {/* Dev Lab Toolbar — Quarantined strictly to import.meta.env.DEV */}
-        <DevLabToolbar
-          token={token}
-          onTokenChange={handleTokenChange}
-          onSimulateOffline={handleSimulateOffline}
-          onResetOffline={handleResetOffline}
-          isOfflineSimulated={isOfflineSimulated}
-          activeView={activeView}
-          onToggleView={setActiveView}
-          onRefresh={() => {
-            session.refreshSession();
-            connectivity.checkNow();
-          }}
-        />
+      <div style={{ height: "100dvh", minHeight: "100dvh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* Dev Lab Toolbar — Floating pill in bottom left */}
+        {isLab && (
+          <DevLabToolbar
+            token={token}
+            onTokenChange={handleTokenChange}
+            onSimulateOffline={handleSimulateOffline}
+            onResetOffline={handleResetOffline}
+            isOfflineSimulated={isOfflineSimulated}
+            activeView={activeView}
+            onToggleView={setActiveView}
+            onRefresh={() => {
+              session.refreshSession();
+              connectivity.checkNow();
+            }}
+          />
+        )}
 
         {/* Main Responsive Sovereign Shell */}
         <AppShell
@@ -192,8 +278,9 @@ export const App: FC = () => {
           onNavSelect={(id) => {
             setActiveNavId(id);
             setActiveView("cockpit");
-            if (window.location.hash === "#catalog") {
-              window.location.hash = "";
+            const targetPath = id === "cockpit" ? "/" : `/${id}`;
+            if (typeof window !== "undefined" && window.location.pathname !== targetPath) {
+              window.history.pushState({}, "", targetPath);
             }
           }}
           workspaces={session.workspaces}
@@ -202,28 +289,23 @@ export const App: FC = () => {
           isLoadingWorkspaces={session.isLoadingMe}
           userEmail={session.user?.email || undefined}
           userRole={session.user?.activeRole || undefined}
+          onLogout={() => {
+            session.logout();
+            handleTokenChange(null);
+          }}
           systemStatus={systemStatus}
-          headerActions={
-            session.user ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  session.logout();
-                  handleTokenChange(null);
-                }}
-              >
-                Sair
-              </Button>
-            ) : undefined
-          }
+          noPadding={activeNavId === "cockpit"}
         >
           <ErrorBoundary fallbackTitle="Falha no Módulo Ativo">
             {isLab && activeView === "catalog" ? (
               <CatalogPage onClose={() => setActiveView("cockpit")} />
             ) : activeNavId === "contacts" ? (
               <ContactsPage session={session} />
-            ) : activeNavId === "campaigns" ? (
+            ) : activeNavId === "modelos" ? (
+              <TemplatesPage session={session} />
+            ) : activeNavId === "produtos" ? (
+              <ProductsPage session={session} />
+            ) : activeNavId === "conversoes" || activeNavId === "campaigns" ? (
               <CampaignsPage session={session} />
             ) : activeNavId === "settings" ? (
               <SettingsPage session={session} />
@@ -236,3 +318,4 @@ export const App: FC = () => {
     </ErrorBoundary>
   );
 };
+

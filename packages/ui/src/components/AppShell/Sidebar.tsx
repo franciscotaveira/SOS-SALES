@@ -17,7 +17,7 @@ export const Sidebar: FC<SidebarProps> = ({
   collapsed,
   onToggleCollapse,
 }) => {
-  const width = collapsed ? "64px" : "240px";
+  const width = collapsed ? "var(--sidebar-w-collapsed, 64px)" : "var(--sidebar-w, 232px)";
 
   return (
     <aside
@@ -25,13 +25,13 @@ export const Sidebar: FC<SidebarProps> = ({
       style={{
         width,
         minWidth: width,
-        height: "100vh",
+        height: "100dvh",
         backgroundColor: "var(--bg-sidebar, #0B132B)",
         color: "var(--text-sidebar, #F8FAFC)",
         display: "flex",
         flexDirection: "column",
         borderRight: "1px solid rgba(255, 255, 255, 0.08)",
-        transition: "width 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+        transition: "width var(--transition-normal, 200ms cubic-bezier(0.4, 0, 0.2, 1))",
         zIndex: 20,
         position: "sticky",
         top: 0,
@@ -41,7 +41,7 @@ export const Sidebar: FC<SidebarProps> = ({
       {/* Brand Logo Header */}
       <div
         style={{
-          height: "64px",
+          height: "var(--topbar-h, 56px)",
           display: "flex",
           alignItems: "center",
           padding: collapsed ? "0 16px" : "0 20px",
@@ -60,7 +60,7 @@ export const Sidebar: FC<SidebarProps> = ({
             alignItems: "center",
             justifyContent: "center",
             color: "#FFFFFF",
-            fontWeight: 800,
+            fontWeight: 700,
             fontSize: "1rem",
             flexShrink: 0,
             boxShadow: "0 0 12px rgba(0, 128, 105, 0.35)",
@@ -74,25 +74,14 @@ export const Sidebar: FC<SidebarProps> = ({
           <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <span
               style={{
-                fontSize: "1rem",
-                fontWeight: 800,
+                fontSize: "var(--font-size-base, 1rem)",
+                fontWeight: 600,
                 letterSpacing: "-0.02em",
                 color: "#FFFFFF",
                 whiteSpace: "nowrap",
               }}
             >
-              CHAT SALES
-            </span>
-            <span
-              style={{
-                fontSize: "0.6875rem",
-                color: "var(--text-sidebar-muted, #94A3B8)",
-                letterSpacing: "0.05em",
-                textTransform: "uppercase",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Soberano V3
+              SOS Sales
             </span>
           </div>
         )}
@@ -102,7 +91,7 @@ export const Sidebar: FC<SidebarProps> = ({
       <nav
         style={{
           flex: 1,
-          padding: "16px 8px",
+          padding: "12px 6px",
           display: "flex",
           flexDirection: "column",
           gap: "4px",
@@ -129,24 +118,28 @@ export const Sidebar: FC<SidebarProps> = ({
                 alignItems: "center",
                 gap: "12px",
                 width: "100%",
-                padding: collapsed ? "10px" : "10px 12px",
+                height: "var(--control-h-md, 40px)",
+                padding: collapsed ? "0" : "0 12px",
                 borderRadius: "var(--radius-md, 8px)",
                 border: "none",
+                borderLeft: isActive
+                  ? "3px solid var(--color-action-accent, #00A884)"
+                  : "3px solid transparent",
                 backgroundColor: isActive
                   ? "var(--bg-sidebar-hover, #152243)"
                   : "transparent",
                 color: isActive
-                  ? "var(--color-action, #008069)"
+                  ? "var(--color-action-accent, #00A884)"
                   : item.disabled
                   ? "rgba(148, 163, 184, 0.4)"
                   : "var(--text-sidebar-muted, #94A3B8)",
                 cursor: item.disabled ? "not-allowed" : "pointer",
                 textAlign: "left",
                 fontFamily: "var(--font-sans, sans-serif)",
-                fontSize: "0.875rem",
-                fontWeight: isActive ? 600 : 500,
+                fontSize: "var(--font-size-sm, 0.875rem)",
+                fontWeight: 500,
                 justifyContent: collapsed ? "center" : "flex-start",
-                transition: "background-color 0.15s ease, color 0.15s ease",
+                transition: "background-color var(--transition-fast, 150ms ease), color var(--transition-fast, 150ms ease)",
               }}
             >
               <span
@@ -155,7 +148,9 @@ export const Sidebar: FC<SidebarProps> = ({
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
-                  color: isActive ? "var(--color-action, #008069)" : "inherit",
+                  width: "20px",
+                  height: "20px",
+                  color: isActive ? "var(--color-action-accent, #00A884)" : "inherit",
                 }}
               >
                 {item.icon}
@@ -172,8 +167,8 @@ export const Sidebar: FC<SidebarProps> = ({
                   style={{
                     padding: "2px 6px",
                     borderRadius: "var(--radius-full, 9999px)",
-                    fontSize: "0.6875rem",
-                    fontWeight: 700,
+                    fontSize: "var(--font-size-xs, 0.75rem)",
+                    fontWeight: 500,
                     backgroundColor: isActive
                       ? "var(--color-action, #008069)"
                       : "rgba(255, 255, 255, 0.1)",
