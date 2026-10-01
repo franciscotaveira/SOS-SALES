@@ -12,4 +12,4 @@ export const panelFrame = (isMobile: boolean): CSSProperties =>
       };
 
 /** Gutter between framed panels on the canvas. */
-export const PANEL_GAP = "var(--space-3, 12px)";
+export const PANEL_GAP = "var(--space-4, 16px)";

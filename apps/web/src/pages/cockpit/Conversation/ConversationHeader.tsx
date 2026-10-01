@@ -39,8 +39,8 @@ export const ConversationHeader: FC<ConversationHeaderProps> = ({
       style={{
         height: "var(--topbar-h, 56px)",
         minHeight: "var(--topbar-h, 56px)",
-        backgroundColor: "var(--bg-surface)",
-        borderBottom: "1px solid var(--border-default)",
+        backgroundColor: "var(--bg-surface-elevated)",
+        borderBottom: "2px solid var(--border-strong)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",

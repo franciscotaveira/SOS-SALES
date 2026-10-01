@@ -7,7 +7,7 @@
   /* ==========================================================================
      1. COLOR PALETTE: LIGHT THEME (CANONICAL DEFAULT)
      ========================================================================== */
-  --bg-canvas: #E9EEF4;            /* Canvas — distinct from white panels */
+  --bg-canvas: #D5DDE7;            /* Canvas — distinct from white panels */
   --bg-surface: #FFFFFF;           /* Pure White card/panel surface */
   --bg-surface-elevated: #EEF2F7;  /* Panel headers, hover & table headers */
   --bg-surface-subtle: #F6F8FB;    /* Subtle inset container */
@@ -26,7 +26,7 @@
 
   /* Precision Borders & Lines */
   --border-subtle: #E6EBF1;        /* Inset divider */
-  --border-default: #D3DBE5;       /* Panel container border */
+  --border-default: #BFCAD7;       /* Panel container border */
   --border-strong: #B4BFCD;        /* Control strong border */
   --border-focus: #008069;         /* Action green focus ring */
 
@@ -111,7 +111,7 @@
   --radius-full: 9999px;
 
   --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.08);
-  --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.12), 0 1px 2px -1px rgba(15, 23, 42, 0.10);
+  --shadow-sm: 0 2px 8px 0 rgba(15, 23, 42, 0.14), 0 1px 2px 0 rgba(15, 23, 42, 0.12);
   --shadow-md: 0 4px 10px -2px rgba(15, 23, 42, 0.14), 0 2px 4px -2px rgba(15, 23, 42, 0.10);
   --shadow-lg: 0 12px 24px -6px rgba(15, 23, 42, 0.18), 0 4px 8px -4px rgba(15, 23, 42, 0.10);
 

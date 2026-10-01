@@ -52,8 +52,8 @@ export const Composer: FC<ComposerProps> = ({
   return (
     <footer
       style={{
-        backgroundColor: "var(--bg-surface)",
-        borderTop: "1px solid var(--border-default)",
+        backgroundColor: "var(--bg-surface-elevated)",
+        borderTop: "2px solid var(--border-strong)",
         padding: "var(--space-3, 12px) var(--space-4, 16px)",
         display: "flex",
         flexDirection: "column",

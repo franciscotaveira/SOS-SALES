@@ -155,11 +155,11 @@ export const InboxList: FC<InboxListProps> = ({
       <div
         style={{
           padding: "var(--space-3) var(--space-4)",
-          borderBottom: "1px solid var(--border-default)",
+          borderBottom: "2px solid var(--border-strong)",
           display: "flex",
           flexDirection: "column",
           gap: "10px",
-          backgroundColor: "var(--bg-surface)",
+          backgroundColor: "var(--bg-surface-elevated)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

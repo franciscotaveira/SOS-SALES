@@ -99,8 +99,8 @@ export const ContextPanel: FC<ContextPanelProps> = ({
           alignItems: "center",
           justifyContent: "space-between",
           padding: "0 var(--space-4, 16px)",
-          borderBottom: "1px solid var(--border-default)",
-          backgroundColor: "var(--bg-surface)",
+          borderBottom: "2px solid var(--border-strong)",
+          backgroundColor: "var(--bg-surface-elevated)",
           boxSizing: "border-box",
         }}
       >
