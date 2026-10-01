@@ -18,6 +18,7 @@ import { PixStatus } from "./PixStatus";
 import { OutcomeActions } from "./OutcomeActions";
 import { Notes } from "./Notes";
 import { ProposalsSection } from "./ProposalsSection";
+import { panelFrame } from "../utils/panelFrame";
 import { JourneyTimeline } from "./JourneyTimeline";
 
 interface ContextPanelProps {
@@ -82,8 +83,8 @@ export const ContextPanel: FC<ContextPanelProps> = ({
         minWidth: isMobile ? "100%" : "var(--context-panel-w, 360px)",
         maxWidth: isMobile ? "100%" : "var(--context-panel-w, 360px)",
         height: "100%",
-        backgroundColor: "var(--bg-canvas)",
-        borderLeft: isMobile ? "none" : "1px solid var(--border-default)",
+        backgroundColor: "var(--bg-surface-subtle)",
+        ...panelFrame(isMobile),
         display: "flex",
         flexDirection: "column",
         boxSizing: "border-box",
@@ -153,7 +154,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -195,7 +196,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -239,7 +240,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -281,7 +282,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -322,7 +323,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -365,7 +366,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
-                borderBottom: "1px solid var(--border-subtle)",
+                borderBottom: "1px solid var(--border-default)",
                 paddingBottom: "8px",
               }}
             >

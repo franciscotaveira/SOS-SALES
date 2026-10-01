@@ -7,10 +7,10 @@
   /* ==========================================================================
      1. COLOR PALETTE: LIGHT THEME (CANONICAL DEFAULT)
      ========================================================================== */
-  --bg-canvas: #F8FAFC;            /* Clean Slate 50 background */
+  --bg-canvas: #E9EEF4;            /* Canvas — distinct from white panels */
   --bg-surface: #FFFFFF;           /* Pure White card/panel surface */
-  --bg-surface-elevated: #F1F5F9;  /* Slate 100 for hover & table headers */
-  --bg-surface-subtle: #F8FAFC;    /* Subtle inset container */
+  --bg-surface-elevated: #EEF2F7;  /* Panel headers, hover & table headers */
+  --bg-surface-subtle: #F6F8FB;    /* Subtle inset container */
 
   /* Structural Dark Navy (Sidebar & Continuity Ribbon) */
   --bg-sidebar: #0B132B;           /* Sovereign Dark Navy */
@@ -25,9 +25,9 @@
   --text-inverse: #FFFFFF;         /* Pure White on action buttons */
 
   /* Precision Borders & Lines */
-  --border-subtle: #F1F5F9;        /* Inset divider */
-  --border-default: #E2E8F0;       /* Slate 200 container border */
-  --border-strong: #CBD5E1;        /* Slate 300 strong border */
+  --border-subtle: #E6EBF1;        /* Inset divider */
+  --border-default: #D3DBE5;       /* Panel container border */
+  --border-strong: #B4BFCD;        /* Control strong border */
   --border-focus: #008069;         /* Action green focus ring */
 
   /* Operational Semantic Accents */
@@ -110,10 +110,10 @@
   --radius-lg: 12px;
   --radius-full: 9999px;
 
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.08);
+  --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.12), 0 1px 2px -1px rgba(15, 23, 42, 0.10);
+  --shadow-md: 0 4px 10px -2px rgba(15, 23, 42, 0.14), 0 2px 4px -2px rgba(15, 23, 42, 0.10);
+  --shadow-lg: 0 12px 24px -6px rgba(15, 23, 42, 0.18), 0 4px 8px -4px rgba(15, 23, 42, 0.10);
 
   /* Transition timings */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);

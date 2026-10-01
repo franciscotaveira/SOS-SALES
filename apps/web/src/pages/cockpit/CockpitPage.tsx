@@ -12,6 +12,7 @@ import { MessageList } from "./Conversation/MessageList";
 import { Composer } from "./Conversation/Composer";
 import { ContextPanel } from "./ContextPanel/ContextPanel";
 import { CockpitDrawers, type DrawerType } from "./drawers/CockpitDrawers";
+import { panelFrame, PANEL_GAP } from "./utils/panelFrame";
 
 interface CockpitPageProps {
   session?: UseSessionReturn;
@@ -58,7 +59,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
   const isThreadActive = Boolean(layout.selectedThreadId && conversation.selectedThread);
 
   return (
-    <div style={{ display: "flex", width: "100%", height: "100%", overflow: "hidden", backgroundColor: "var(--bg-canvas)" }}>
+    <div style={{ display: "flex", width: "100%", height: "100%", overflow: "hidden", backgroundColor: "var(--bg-canvas)", gap: isMobile ? 0 : PANEL_GAP, padding: isMobile ? 0 : PANEL_GAP, boxSizing: "border-box" }}>
       {/* 1. Inbox List Panel */}
       {(!isMobile || !isThreadActive) && (
         <InboxList
@@ -78,7 +79,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
 
       {/* 2. Conversation / Empty State Area */}
       {(!isMobile || isThreadActive) && (
-        <main style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", minWidth: 0, backgroundColor: "var(--bg-surface)" }}>
+        <main style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", minWidth: 0, backgroundColor: "var(--bg-surface)", ...panelFrame(isMobile) }}>
           {conversation.selectedThread ? (
             <>
               <ConversationHeader

@@ -194,7 +194,7 @@ export const ContactsPage: FC<{
               <thead>
                 <tr
                   style={{
-                    backgroundColor: "var(--bg-surface-elevated, #F1F5F9)",
+                    backgroundColor: "var(--bg-surface-elevated)",
                     borderBottom: "1px solid var(--border-default)",
                     position: "sticky",
                     top: 0,

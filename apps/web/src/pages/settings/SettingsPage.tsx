@@ -158,7 +158,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
                     backgroundColor: isActive
                       ? isDanger
                         ? "var(--color-danger-subtle)"
-                        : "var(--color-action-subtle, #E6F4F1)"
+                        : "var(--color-action-subtle)"
                       : "transparent",
                     color: isDanger
                       ? "var(--color-danger)"
