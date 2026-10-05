@@ -2,7 +2,7 @@
 
 > MCT OS v2.0 | Francisco Rios | MCT LTDA | Chapecó, BR  
 > Filosofia: Poder invisível, simplicidade visível. Truth in Data.  
-> Última atualização: 29 de setembro de 2026 (Meta CAPI v26.0 Business Messaging & CTWA Traversal)
+> Última atualização: 02 de outubro de 2026 (Curadoria de Workflows, Engenharia Reversa e Sanitização de Quarentena)
 
 ---
 
@@ -164,4 +164,16 @@
   ```bash
   ALLOW_TEST_DB_ADMIN_OPERATIONS=true pnpm ci:gate
   ```
+
+---
+
+## 6. Integração com a Biblioteca Soberana de Workflows (n8n Brain)
+
+A infraestrutura de automações externas da MCT LTDA está centralizada em um diretório local de workflows (fora deste monorepo, path configurado por ambiente/operador):
+
+- **Acervo Auditado:** 13.053 JSONs brutos, 4.715 workflows n8n classificados e traduzidos em PT-BR (`00 - Catalogo/workflows-completo-4715-ptbr.csv`).
+- **Top 256 Homologados:** Seleção prioritária íntegra (`workflows-256-selecionados-ptbr.csv`) com links simbólicos em `01 - Selecionados para revisao/`.
+- **Engenharia Reversa de Órfãos:** 763 blueprints estruturais resgatados de fluxos com nós rompidos do repositório Zie619, minerando 512 prompts de IA e 477 snippets de JavaScript (`blueprints-engenharia-reversa-ptbr.csv`).
+- **Resgate e Sanitização de Quarentena:** 18 workflows que continham credenciais esquecidas de terceiros (tokens Apify, GitLab, Perplexity, Google API e chaves privadas RSA do Meta WhatsApp Flows) foram 100% desinfetados, validados e salvos como JSONs prontos para teste na subpasta `01 - Selecionados para revisao/11 - Resgatados da Quarentena/`.
+- **Fronteira Arquitetural (P0):** Workflows n8n operam como laboratório de apoio, scrapers auxiliares e esteiras de prototipagem rápida. Toda lógica comercial transacional de alta confiabilidade, mensageria CTWA, ingestão de webhooks e outbox assíncrono pertencem estritamente a este monorepo SOS Sales.
 

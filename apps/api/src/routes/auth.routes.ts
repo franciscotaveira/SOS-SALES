@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import type { Role } from "@sos-sales/contracts";
 import { getDatabasePool, getUserWorkspaces } from "@sos-sales/database";
 import { logger } from "@sos-sales/observability";
 
@@ -93,7 +94,18 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const primaryMembership = memberships[0];
-    const role = primaryMembership.role;
+    if (!primaryMembership) {
+      return reply.status(403).send({
+        type: "https://sos-sales.mct.br/errors/forbidden",
+        title: "Forbidden",
+        status: 403,
+        detail: "Usuário não possui nenhum workspace atribuído",
+        instance: request.url,
+        correlationId: request.id,
+      });
+    }
+
+    const role = primaryMembership.role as Role;
     const activeWorkspaceId = primaryMembership.workspace_id;
 
     if (!app.identityProvider?.generateToken) {

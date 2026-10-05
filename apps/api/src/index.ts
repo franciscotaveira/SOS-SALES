@@ -20,6 +20,9 @@ import { templatesRoutes } from "./routes/templates.routes";
 import { flowsRoutes } from "./routes/flows.routes";
 import { productsRoutes } from "./routes/products.routes";
 import { pixRoutes } from "./routes/pix.routes";
+import { pixWebhookRoutes } from "./routes/pix-webhook.routes";
+import { mediaUploadRoutes } from "./routes/media-upload.routes";
+import type { MediaStorage } from "./services/media-storage";
 import { integrationRoutes } from "./routes/integration.routes";
 import { commercialActionsRoutes } from "./routes/commercial-actions.routes";
 import { commercialProposalsRoutes } from "./routes/commercial-proposals.routes";
@@ -81,6 +84,8 @@ export interface BuildAppOptions {
   keyPrefix?: string;
   trustProxy?: boolean | string | string[];
   outboundProducerService?: ITransactionalOutboundProducerService;
+  /** Outbound media storage (null = explicitly unconfigured). Defaults to Supabase Storage from env. */
+  mediaStorage?: MediaStorage | null;
 }
 
 export function sanitizeUrl(rawUrl: string | undefined): string {
@@ -201,6 +206,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(flowsRoutes);
   await app.register(productsRoutes);
   await app.register(pixRoutes);
+  await app.register(pixWebhookRoutes);
+  await app.register(mediaUploadRoutes, { storage: options.mediaStorage });
   await app.register(integrationRoutes);
   await app.register(commercialActionsRoutes);
   await app.register(commercialProposalsRoutes);

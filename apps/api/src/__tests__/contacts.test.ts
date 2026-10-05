@@ -170,4 +170,74 @@ describe("Contacts Routes Integration (Fastify + RLS)", () => {
 
     expect(res.statusCode).toBe(403);
   });
+  it("updates and deletes a contact in Workspace A", async () => {
+    const auth = { authorization: `Bearer ${operatorToken}` };
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceAId}/contacts`,
+      headers: auth,
+      payload: { phoneE164: "+5511977770001", name: "Para Editar" },
+    });
+    expect(created.statusCode).toBe(201);
+    const contactId = created.json().contact.id as string;
+    const base = `/v1/workspaces/${workspaceAId}/contacts/${contactId}`;
+
+    const patched = await app.inject({ method: "PATCH", url: base, headers: auth, payload: { name: "Renomeado" } });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().contact.name).toBe("Renomeado");
+    expect(patched.json().contact.phoneE164).toBe("+5511977770001");
+
+    const empty = await app.inject({ method: "PATCH", url: base, headers: auth, payload: {} });
+    expect(empty.statusCode).toBe(400);
+
+    const badPhone = await app.inject({ method: "PATCH", url: base, headers: auth, payload: { phoneE164: "123" } });
+    expect(badPhone.statusCode).toBe(400);
+
+    // Hard delete is revoked for sos_app_user (migration 005) — API must fail closed with 403, never 500.
+    const removed = await app.inject({ method: "DELETE", url: base, headers: auth });
+    expect(removed.statusCode).toBe(403);
+  });
+
+  it("returns 409 when patching a contact's phone to one already in use", async () => {
+    const auth = { authorization: `Bearer ${operatorToken}` };
+    const base = `/v1/workspaces/${workspaceAId}/contacts`;
+
+    const created = await app.inject({
+      method: "POST",
+      url: base,
+      headers: auth,
+      payload: { phoneE164: "+5511977770002", name: "Contato Duplicado" },
+    });
+    expect(created.statusCode).toBe(201);
+    const contactId = created.json().contact.id as string;
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `${base}/${contactId}`,
+      headers: auth,
+      payload: { phoneE164: "+5511999990001" },
+    });
+
+    expect(patched.statusCode).toBe(409);
+    expect(patched.json().status).toBe(409);
+  });
+
+  it("returns 404 when patching an unknown contact", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/workspaces/${workspaceAId}/contacts/00000000-0000-4000-8000-000000000000`,
+      headers: { authorization: `Bearer ${operatorToken}` },
+      payload: { name: "Ninguém" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("blocks cross-tenant PATCH/DELETE on Workspace B", async () => {
+    const url = `/v1/workspaces/${workspaceBId}/contacts/00000000-0000-4000-8000-000000000000`;
+    const auth = { authorization: `Bearer ${operatorToken}` };
+    const patch = await app.inject({ method: "PATCH", url, headers: auth, payload: { name: "X" } });
+    const del = await app.inject({ method: "DELETE", url, headers: auth });
+    expect(patch.statusCode).toBe(403);
+    expect(del.statusCode).toBe(403);
+  });
 });

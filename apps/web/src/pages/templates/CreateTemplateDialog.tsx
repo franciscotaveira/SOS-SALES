@@ -169,6 +169,7 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Cadastrar Modelo WABA"
+      maxWidth="880px"
       description="Defina os parâmetros do template conforme especificações da Meta Cloud API."
     >
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -217,8 +218,8 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 0.8fr", gap: "20px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 300px)", gap: "20px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", minWidth: 0 }}>
             <Input
               label="Identificador do Modelo (slug)"
               placeholder="ex: confirmacao_proposta_v1"
@@ -294,7 +295,7 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
           </div>
 
           {/* Live WhatsApp Bubble Preview */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 }}>
             <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase" }}>
               Pré-visualização WhatsApp
             </span>
@@ -315,7 +316,6 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
                   padding: "12px 14px",
                   borderRadius: "10px 0 10px 10px",
                   boxShadow: "var(--shadow-sm)",
-                  maxWidth: "280px",
                   width: "100%",
                   display: "flex",
                   flexDirection: "column",
@@ -325,11 +325,11 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
                 }}
               >
                 {formHeader && (
-                  <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.85rem" }}>
+                  <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.85rem", overflowWrap: "anywhere" }}>
                     {formHeader}
                   </div>
                 )}
-                <div style={{ color: "var(--text-primary)", wordBreak: "break-word" }}>
+                <div style={{ color: "var(--text-primary)", overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
                   {formBody ? renderWhatsappMarkdown(formBody) : <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Corpo do modelo aparecerá aqui...</span>}
                 </div>
                 {formFooter && (

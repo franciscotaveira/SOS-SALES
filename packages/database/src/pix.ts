@@ -346,6 +346,57 @@ export async function confirmPixChargeManual(
   return { charge, alreadySettled: false };
 }
 
+export interface ConfirmPixChargeBankWebhookParams {
+  workspaceId: string;
+  chargeId: string;
+  paidAmountCents: number;
+  providerEventId: string;
+}
+
+/**
+ * Settles a Pix charge from an authenticated PSP webhook (verification_method = BANK_WEBHOOK).
+ * Idempotent (only PENDING -> PAID); rejects amount mismatches; no human actor is recorded.
+ * Does NOT register commercial outcomes and does NOT enqueue Meta CAPI.
+ */
+export async function confirmPixChargeBankWebhook(
+  client: PoolClient,
+  params: ConfirmPixChargeBankWebhookParams
+): Promise<{ charge: PixChargeRecord; alreadySettled: boolean }> {
+  const existing = await getPixChargeById(client, params.workspaceId, params.chargeId);
+  if (!existing) {
+    throw new Error("COBRANCA_NOT_FOUND: Cobrança Pix não encontrada");
+  }
+  if (Number(existing.amount_cents) !== params.paidAmountCents) {
+    throw new Error("COBRANCA_AMOUNT_MISMATCH: Valor pago difere do valor da cobrança");
+  }
+
+  const updated = await client.query(
+    `
+    UPDATE public.pix_charges
+    SET
+      status = 'PAID',
+      verification_method = 'BANK_WEBHOOK',
+      verified_at = now(),
+      verification_notes = $3,
+      paid_at = COALESCE(paid_at, now()),
+      updated_at = now()
+    WHERE workspace_id = $1 AND id = $2 AND status = 'PENDING'
+    RETURNING *
+  `,
+    [params.workspaceId, params.chargeId, `PSP event ${params.providerEventId}`.slice(0, 200)]
+  );
+
+  if (updated.rows.length === 0) {
+    if (existing.status === "PAID") {
+      return { charge: existing, alreadySettled: true };
+    }
+    throw new Error(`COBRANCA_INVALID_STATE: Cobrança Pix já está com status ${existing.status}`);
+  }
+
+  const row = updated.rows[0];
+  return { charge: { ...row, amount_cents: Number(row.amount_cents) }, alreadySettled: false };
+}
+
 /**
  * Backward compatibility alias for confirmPixChargeManual
  */

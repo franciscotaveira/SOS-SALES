@@ -173,6 +173,39 @@ export async function listContacts(
 }
 
 /**
+ * Updates a contact's name and/or phone. Returns null when the contact does not exist in the workspace.
+ */
+export async function updateContact(
+  client: Pool | PoolClient,
+  params: { workspaceId: string; contactId: string; name?: string | null; phoneE164?: string }
+): Promise<ContactRecord | null> {
+  const res = await client.query<ContactRecord>(
+    `UPDATE public.contacts
+     SET name = CASE WHEN $3::boolean THEN $4 ELSE name END,
+         phone_e164 = COALESCE($5, phone_e164),
+         updated_at = now()
+     WHERE workspace_id = $1 AND id = $2
+     RETURNING id, workspace_id, phone_e164, name, created_at, updated_at;`,
+    [params.workspaceId, params.contactId, params.name !== undefined, params.name ?? null, params.phoneE164 ?? null]
+  );
+  return res.rows[0] ?? null;
+}
+
+/**
+ * Deletes a contact. Returns false when the contact does not exist in the workspace.
+ */
+export async function deleteContact(
+  client: Pool | PoolClient,
+  params: { workspaceId: string; contactId: string }
+): Promise<boolean> {
+  const res = await client.query(
+    `DELETE FROM public.contacts WHERE workspace_id = $1 AND id = $2;`,
+    [params.workspaceId, params.contactId]
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
+/**
  * Creates or retrieves a commercial thread between a channel instance and a contact.
  * Enforces composite FKs linking workspace_id with channel_instance_id and contact_id.
  */

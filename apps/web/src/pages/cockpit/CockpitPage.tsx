@@ -97,6 +97,8 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
               <Composer
                 draft={conversation.messageInput}
                 onDraftChange={conversation.handleMessageInputChange}
+                attachedFile={conversation.attachedFile}
+                onAttachFile={conversation.setAttachedFile}
                 onSend={conversation.handleSendMessage}
                 isSending={conversation.isSendingMessage}
                 windowInfo={conversation.windowInfo}

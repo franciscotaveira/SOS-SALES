@@ -303,6 +303,74 @@ export async function resolveChannelSigningCredential(
 }
 
 /**
+ * Pairing-only variant of lookupChannelIngress (migration 025).
+ * Returns ONLY WAHA channels with status = 'pairing' (is_active = false). Never returns active channels.
+ */
+export async function lookupChannelIngressPairing(
+  tokenHash: string,
+  pool?: Pool
+): Promise<IngressLookupResult | null> {
+  const p = pool || getIngressDatabasePool();
+  const client = await p.connect();
+
+  try {
+    await client.query("SET ROLE sos_ingress_user");
+    const res = await client.query(
+      "SELECT channel_instance_id, workspace_id, provider, is_active FROM public.lookup_channel_ingress_pairing($1)",
+      [tokenHash]
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return {
+      channelInstanceId: row.channel_instance_id,
+      workspaceId: row.workspace_id,
+      provider: row.provider,
+      isActive: row.is_active,
+    };
+  } finally {
+    try {
+      await client.query("RESET ROLE");
+    } finally {
+      client.release();
+    }
+  }
+}
+
+/**
+ * Pairing-only variant of resolveChannelSigningCredential (migration 025).
+ */
+export async function resolveChannelSigningCredentialPairing(
+  channelInstanceId: string,
+  workspaceId: string,
+  pool?: Pool
+): Promise<SigningCredentialResult | null> {
+  const p = pool || getIngressDatabasePool();
+  const client = await p.connect();
+
+  try {
+    await client.query("SET ROLE sos_ingress_user");
+    const res = await client.query(
+      "SELECT encrypted_payload, payload_iv, payload_auth_tag, verify_token_hash FROM public.resolve_channel_signing_credential_pairing($1, $2)",
+      [channelInstanceId, workspaceId]
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return {
+      encryptedPayload: row.encrypted_payload || null,
+      payloadIv: row.payload_iv || null,
+      payloadAuthTag: row.payload_auth_tag || null,
+      verifyTokenHash: row.verify_token_hash || null,
+    };
+  } finally {
+    try {
+      await client.query("RESET ROLE");
+    } finally {
+      client.release();
+    }
+  }
+}
+
+/**
  * Health check ping for database readiness.
  */
 export async function checkDatabaseHealth(pool?: Pool): Promise<{ healthy: boolean; latencyMs: number }> {

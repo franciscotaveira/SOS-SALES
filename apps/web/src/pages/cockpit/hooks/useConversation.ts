@@ -21,6 +21,7 @@ export const useConversation = (
   const [isLoadingMessages, setIsLoadingMessages] = useState<boolean>(false);
   const [isSendingMessage, setIsSendingMessage] = useState<boolean>(false);
   const [messageInput, setMessageInput] = useState<string>("");
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
 
   const draftsByThreadRef = useRef<Record<string, string>>({});
@@ -56,6 +57,7 @@ export const useConversation = (
   // Restore draft when switching thread
   useEffect(() => {
     activeThreadIdRef.current = selectedThreadId;
+    setAttachedFile(null);
     if (selectedThreadId) {
       let draft = draftsByThreadRef.current[selectedThreadId];
       if (!draft && activeWorkspace?.id) {
@@ -160,50 +162,62 @@ export const useConversation = (
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = messageInput.trim();
-    if (!trimmed || !selectedThread || !activeWorkspace?.id || !token || isSendingMessage) {
+    if ((!trimmed && !attachedFile) || !selectedThread || !activeWorkspace?.id || !token || isSendingMessage) {
       return;
     }
 
     setIsSendingMessage(true);
     setSendError(null);
-
-    const optimisticMessage: ThreadMessageSummary = {
-      id: `opt-${Date.now()}`,
-      workspaceId: activeWorkspace.id,
-      channelInstanceId: selectedThread.channelInstanceId,
-      threadId: selectedThread.id,
-      provider: selectedThread.channelProvider,
-      direction: "outbound",
-      senderE164: selectedThread.contactPhone,
-      recipientE164: selectedThread.contactPhone,
-      contentType: "text",
-      body: trimmed,
-      mediaUrl: null,
-      providerMessageId: null,
-      deliveryStatus: "queued",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, optimisticMessage]);
-    setMessageInput("");
-    if (selectedThread.id) {
-      delete draftsByThreadRef.current[selectedThread.id];
-      if (activeWorkspace.id) {
-        try {
-          sessionStorage.removeItem(getDraftKey(activeWorkspace.id, selectedThread.id));
-        } catch {}
-      }
-    }
+    const fileToSend = attachedFile;
 
     try {
+      let mediaUrl: string | undefined;
+      let contentType: "text" | "image" | "audio" | "video" | "document" = "text";
+
+      if (fileToSend) {
+        const uploadRes = await apiClient.uploadMedia(activeWorkspace.id, fileToSend, { token });
+        mediaUrl = uploadRes.mediaUrl;
+        contentType = uploadRes.category;
+      }
+
+      const optimisticMessage: ThreadMessageSummary = {
+        id: `opt-${Date.now()}`,
+        workspaceId: activeWorkspace.id,
+        channelInstanceId: selectedThread.channelInstanceId,
+        threadId: selectedThread.id,
+        provider: selectedThread.channelProvider,
+        direction: "outbound",
+        senderE164: selectedThread.contactPhone,
+        recipientE164: selectedThread.contactPhone,
+        contentType,
+        body: trimmed || (fileToSend ? fileToSend.name : ""),
+        mediaUrl: mediaUrl || null,
+        providerMessageId: null,
+        deliveryStatus: "queued",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, optimisticMessage]);
+      setMessageInput("");
+      setAttachedFile(null);
+      if (selectedThread.id) {
+        delete draftsByThreadRef.current[selectedThread.id];
+        if (activeWorkspace.id) {
+          try {
+            sessionStorage.removeItem(getDraftKey(activeWorkspace.id, selectedThread.id));
+          } catch {}
+        }
+      }
+
       await apiClient.sendOutboundMessage(
         activeWorkspace.id,
         selectedThread.channelInstanceId,
         {
           recipientPhoneE164: selectedThread.contactPhone,
-          contentType: "text",
-          body: trimmed,
+          contentType,
+          body: trimmed || (fileToSend ? fileToSend.name : "Anexo"),
+          mediaUrl,
         },
         { token }
       );
@@ -232,6 +246,8 @@ export const useConversation = (
     messages,
     isLoadingMessages,
     messageInput,
+    attachedFile,
+    setAttachedFile,
     handleMessageInputChange,
     handleSendMessage,
     isSendingMessage,

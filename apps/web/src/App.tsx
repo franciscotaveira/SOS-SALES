@@ -18,10 +18,12 @@ import { TemplatesPage } from "./pages/TemplatesPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { CatalogPage } from "./pages/CatalogPage";
+import { OpportunitiesPage } from "./pages/opportunities/OpportunitiesPage";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import {
   MessageSquare,
   Users,
+  TrendingUp,
   Send,
   Settings,
   FileText,
@@ -56,6 +58,9 @@ const getInitialRoute = (): { navId: string; isCatalog: boolean } => {
   }
   if (path === "/contacts" || path === "/contatos" || hash === "#contacts") {
     return { navId: "contacts", isCatalog: false };
+  }
+  if (path === "/oportunidades" || path === "/opportunities" || hash === "#oportunidades" || hash === "#opportunities") {
+    return { navId: "oportunidades", isCatalog: false };
   }
   if (path === "/settings" || path === "/configuracoes" || hash === "#settings") {
     return { navId: "settings", isCatalog: false };
@@ -184,6 +189,11 @@ export const App: FC = () => {
       icon: <Users size={18} />,
     },
     {
+      id: "oportunidades",
+      label: "Oportunidades",
+      icon: <TrendingUp size={18} />,
+    },
+    {
       id: "modelos",
       label: "Modelos WABA",
       icon: <FileText size={18} />,
@@ -301,6 +311,8 @@ export const App: FC = () => {
               <CatalogPage onClose={() => setActiveView("cockpit")} />
             ) : activeNavId === "contacts" ? (
               <ContactsPage session={session} />
+            ) : activeNavId === "oportunidades" ? (
+              <OpportunitiesPage session={session} />
             ) : activeNavId === "modelos" ? (
               <TemplatesPage session={session} />
             ) : activeNavId === "produtos" ? (

@@ -421,6 +421,15 @@ export interface SendOutboundMessagePayload {
   idempotencyKey?: string;
 }
 
+export interface UploadMediaResponse {
+  mediaUrl: string;
+  expiresInSeconds: number;
+  contentType: string;
+  category: "image" | "audio" | "video" | "document";
+  sizeBytes: number;
+  fileName: string;
+}
+
 export interface ContactSummary {
   id: string;
   workspaceId: string;
@@ -428,6 +437,18 @@ export interface ContactSummary {
   name: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type JourneyStage = "lead" | "qualified" | "proposal" | "scheduled" | "won" | "lost";
+
+export interface JourneySummary {
+  id: string;
+  contactId: string;
+  title: string | null;
+  stage: JourneyStage;
+  estimatedValueCents: number | null;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export class ApiClient {
@@ -518,6 +539,10 @@ export class ApiClient {
         correlationId,
         body.instance
       );
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
     }
 
     const contentType = response.headers.get("content-type") || "";
@@ -847,6 +872,46 @@ export class ApiClient {
     );
   }
 
+  async uploadMedia(
+    workspaceId: string,
+    file: File,
+    options?: RequestOptions
+  ): Promise<UploadMediaResponse> {
+    const url = `${this.baseUrl}/v1/workspaces/${workspaceId}/media`;
+    const headers: Record<string, string> = {
+      "Content-Type": file.type,
+      "x-file-name": file.name,
+      "x-correlation-id": this.getCorrelationId(options?.correlationId),
+    };
+    if (options?.token) {
+      headers["Authorization"] = `Bearer ${options.token}`;
+    }
+    if (options?.workspaceId || workspaceId) {
+      headers["X-Workspace-Id"] = options?.workspaceId || workspaceId;
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: file,
+      signal: options?.signal,
+    });
+
+    if (!response.ok) {
+      let body: { detail?: string; title?: string } = {};
+      try {
+        body = await response.json();
+      } catch {}
+      throw new ApiError(
+        response.status,
+        body.title || "Erro no upload",
+        body.detail || "Falha ao enviar arquivo"
+      );
+    }
+
+    return response.json() as Promise<UploadMediaResponse>;
+  }
+
   async updateThreadStatus(
     workspaceId: string,
     threadId: string,
@@ -1110,6 +1175,63 @@ export class ApiClient {
     options?: RequestOptions
   ): Promise<{ contact: ContactSummary }> {
     return this.request(`/v1/workspaces/${workspaceId}/contacts`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  async updateContact(
+    workspaceId: string,
+    contactId: string,
+    payload: { phoneE164?: string; name?: string | null },
+    options?: RequestOptions
+  ): Promise<{ contact: ContactSummary }> {
+    return this.request(`/v1/workspaces/${workspaceId}/contacts/${contactId}`, {
+      ...options,
+      workspaceId,
+      method: "PATCH",
+      body: payload,
+    });
+  }
+
+  async deleteContact(workspaceId: string, contactId: string, options?: RequestOptions): Promise<void> {
+    return this.request(`/v1/workspaces/${workspaceId}/contacts/${contactId}`, {
+      ...options,
+      workspaceId,
+      method: "DELETE",
+    });
+  }
+
+  async listJourneys(
+    workspaceId: string,
+    query?: { status?: string; limit?: number },
+    options?: RequestOptions
+  ): Promise<{ items: JourneySummary[]; total: number }> {
+    const params = new URLSearchParams();
+    if (query?.status) params.set("status", query.status);
+    if (query?.limit) params.set("limit", String(query.limit));
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/v1/workspaces/${workspaceId}/journeys${qs}`, {
+      ...options,
+      workspaceId,
+      method: "GET",
+    });
+  }
+
+  async createJourney(
+    workspaceId: string,
+    payload: {
+      contactId: string;
+      title?: string;
+      stage?: JourneyStage;
+      attributionSource?: string;
+      estimatedValueCents?: number;
+    },
+    options?: RequestOptions
+  ): Promise<JourneySummary> {
+    return this.request(`/v1/workspaces/${workspaceId}/journeys`, {
       ...options,
       workspaceId,
       method: "POST",
