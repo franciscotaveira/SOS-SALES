@@ -19,6 +19,7 @@ interface CockpitDrawersProps {
   onTemplateSent?: () => void;
   onProposalCreated?: () => void;
   onPixCreated?: () => void;
+  onRadarDraftApplied?: (draft: string) => void;
 }
 
 export const CockpitDrawers: FC<CockpitDrawersProps> = ({
@@ -29,6 +30,7 @@ export const CockpitDrawers: FC<CockpitDrawersProps> = ({
   onTemplateSent,
   onProposalCreated,
   onPixCreated,
+  onRadarDraftApplied,
 }) => {
   const token = session.token ?? undefined;
 
@@ -61,12 +63,17 @@ export const CockpitDrawers: FC<CockpitDrawersProps> = ({
       <RadarDrawer
         isOpen={activeDrawer === "radar"}
         onClose={onClose}
-        suggestions={[]}
+        workspaceId={session.activeWorkspace?.id}
+        token={token}
+        threadId={selectedThread?.id}
+        onDraftApplied={onRadarDraftApplied}
       />
       <DossierDrawer
         isOpen={activeDrawer === "dossier"}
         onClose={onClose}
-        workspace={session.activeWorkspace}
+        thread={selectedThread}
+        workspaceId={session.activeWorkspace?.id}
+        token={token}
       />
       <CatalogDrawer
         isOpen={activeDrawer === "catalog"}

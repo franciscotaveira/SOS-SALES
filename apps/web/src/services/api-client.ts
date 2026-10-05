@@ -365,7 +365,7 @@ export interface IntegrationSuggestionSummary {
   draftMessage: string | null;
   priority: "low" | "normal" | "high" | "urgent";
   metadata: Record<string, unknown>;
-  status: "pending" | "accepted" | "dismissed" | "expired";
+  status: "pending" | "accepted" | "dismissed" | "expired" | "invalidated";
   stateVersion: number;
   decidedByUserId: string | null;
   decidedAt: string | null;
@@ -435,6 +435,13 @@ export interface ContactSummary {
   workspaceId: string;
   phoneE164: string;
   name: string | null;
+  optOut: boolean;
+  metadata: {
+    email?: string;
+    company?: string;
+    notes?: string;
+    tags?: string[];
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -444,8 +451,11 @@ export type JourneyStage = "lead" | "qualified" | "proposal" | "scheduled" | "wo
 export interface JourneySummary {
   id: string;
   contactId: string;
+  threadId?: string | null;
   title: string | null;
   stage: JourneyStage;
+  status?: string;
+  attributionSource?: string | null;
   estimatedValueCents: number | null;
   createdAt: string;
   updatedAt?: string;
@@ -1150,7 +1160,7 @@ export class ApiClient {
 
   async getContacts(
     workspaceId: string,
-    query?: { search?: string; limit?: number; offset?: number },
+    query?: { search?: string; limit?: number; offset?: number; status?: "active" | "inactive" | "all" },
     options?: RequestOptions
   ): Promise<{
     contacts: ContactSummary[];
@@ -1160,6 +1170,7 @@ export class ApiClient {
     if (query?.search) params.set("search", query.search);
     if (query?.limit) params.set("limit", String(query.limit));
     if (query?.offset) params.set("offset", String(query.offset));
+    if (query?.status) params.set("status", query.status);
     const qs = params.toString() ? `?${params.toString()}` : "";
 
     return this.request(`/v1/workspaces/${workspaceId}/contacts${qs}`, {
@@ -1185,7 +1196,12 @@ export class ApiClient {
   async updateContact(
     workspaceId: string,
     contactId: string,
-    payload: { phoneE164?: string; name?: string | null },
+    payload: {
+      phoneE164?: string;
+      name?: string | null;
+      optOut?: boolean;
+      metadata?: ContactSummary["metadata"];
+    },
     options?: RequestOptions
   ): Promise<{ contact: ContactSummary }> {
     return this.request(`/v1/workspaces/${workspaceId}/contacts/${contactId}`, {
@@ -1239,6 +1255,34 @@ export class ApiClient {
     });
   }
 
+  async updateJourneyStage(
+    workspaceId: string,
+    journeyId: string,
+    stage: Exclude<JourneyStage, "won" | "lost">,
+    options?: RequestOptions
+  ): Promise<{ journey: JourneySummary }> {
+    return this.request(`/v1/workspaces/${workspaceId}/journeys/${journeyId}/stage`, {
+      ...options,
+      workspaceId,
+      method: "PATCH",
+      body: { stage },
+    });
+  }
+
+  async recordJourneyOutcome(
+    workspaceId: string,
+    journeyId: string,
+    payload: { status: "won" | "lost"; valueCents: number; currency?: string; reason?: string },
+    options?: RequestOptions
+  ): Promise<unknown> {
+    return this.request(`/v1/workspaces/${workspaceId}/journeys/${journeyId}/outcomes`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
+  }
+
   async getTemplates(
     workspaceId: string,
     query?: { category?: string; status?: string },
@@ -1273,6 +1317,35 @@ export class ApiClient {
     options?: RequestOptions
   ): Promise<{ template: MessageTemplateSummary }> {
     return this.request(`/v1/workspaces/${workspaceId}/templates`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  async generateTemplate(
+    workspaceId: string,
+    payload: {
+      objective: string;
+      audience: string;
+      tone: "PROFESSIONAL" | "FRIENDLY" | "DIRECT";
+    },
+    options?: RequestOptions
+  ): Promise<{
+    generated: {
+      name: string;
+      category: "UTILITY" | "MARKETING";
+      headerText: string | null;
+      bodyText: string;
+      footerText: string | null;
+      buttonText: string | null;
+      variableLabels: string[];
+      explanation: string;
+    };
+    model: string;
+  }> {
+    return this.request(`/v1/workspaces/${workspaceId}/templates/generate`, {
       ...options,
       workspaceId,
       method: "POST",
@@ -1416,6 +1489,19 @@ export class ApiClient {
     );
   }
 
+  async scanRadar(
+    workspaceId: string,
+    payload: { minHoursSinceLastMessage?: number; limit?: number; threadId?: string } = {},
+    options?: RequestOptions
+  ): Promise<{ enabled: boolean; candidates: number; created: number }> {
+    return this.request(`/v1/workspaces/${workspaceId}/integrations/radar/scan`, {
+      ...options,
+      method: "POST",
+      workspaceId,
+      body: payload,
+    });
+  }
+
   async getIntegrationSuggestions(
     workspaceId: string,
     params?: { status?: string; threadId?: string; limit?: number; offset?: number },
@@ -1454,5 +1540,3 @@ export class ApiClient {
 }
 
 export const apiClient = new ApiClient();
-
-

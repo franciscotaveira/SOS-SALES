@@ -1,17 +1,17 @@
 import { useState, useEffect, type FC } from "react";
 import { PageHeader, useBreakpoint } from "@sos-sales/ui";
-import { Building2, Radio, QrCode, Coins, AlertTriangle } from "lucide-react";
+import { Building2, Radio, QrCode, AlertTriangle, Braces } from "lucide-react";
 import type { UseSessionReturn } from "../../hooks/useSession";
 import { apiClient, type ChannelSummary } from "../../services/api-client";
 import { GeneralSection } from "./GeneralSection";
 import { ChannelsSection } from "./ChannelsSection";
 import { PixSection } from "./PixSection";
-import { BillingSection } from "./BillingSection";
 import { DangerSection } from "./DangerSection";
+import { IntegrationsSection } from "./IntegrationsSection";
 import { ChannelWizardDialog } from "./ChannelWizardDialog";
 import { QrCodeDialog } from "./QrCodeDialog";
 
-type SettingsTab = "geral" | "canais" | "pix" | "creditos" | "perigo";
+type SettingsTab = "geral" | "canais" | "pix" | "integracoes" | "perigo";
 
 export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => {
   const { activeWorkspace, token } = session;
@@ -85,7 +85,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
     { id: "geral", label: "Geral & Tenant", icon: Building2 },
     { id: "canais", label: "Canais WhatsApp", icon: Radio },
     { id: "pix", label: "Cobrança Pix", icon: QrCode },
-    { id: "creditos", label: "Créditos & Saldo", icon: Coins },
+    { id: "integracoes", label: "API & Webhooks", icon: Braces },
     { id: "perigo", label: "Zona de Perigo", icon: AlertTriangle },
   ];
 
@@ -191,7 +191,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
               />
             )}
             {activeTab === "pix" && <PixSection session={session} />}
-            {activeTab === "creditos" && <BillingSection session={session} />}
+            {activeTab === "integracoes" && <IntegrationsSection session={session} />}
             {activeTab === "perigo" && <DangerSection session={session} />}
           </div>
         </div>

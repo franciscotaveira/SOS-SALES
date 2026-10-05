@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3400 --host",
-    "build": "tsc && vite build",
+    "build": "NODE_ENV=production tsc && NODE_ENV=production vite build --mode production && node ../../scripts/verify-production-bundle.mjs",
     "build:lab": "tsc && vite build --mode lab --outDir dist-lab",
     "preview": "vite preview --port 3400",
     "typecheck": "tsc --noEmit",

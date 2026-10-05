@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { Avatar, IconButton } from "@sos-sales/ui";
+import { Avatar, Button, IconButton } from "@sos-sales/ui";
 import { ArrowLeft, RefreshCw, Sparkles, FileText, Info } from "lucide-react";
 import type { CommercialThreadSummary } from "../../../services/api-client";
 import { formatPhone } from "../utils/formatPhone";
@@ -115,24 +115,34 @@ export const ConversationHeader: FC<ConversationHeaderProps> = ({
         )}
         {onOpenDossier && !isMobile && (
           <IconButton
-            aria-label="Abrir Dossiê"
+            aria-label="Abrir ficha do cliente"
             icon={<FileText size={16} />}
             size="sm"
             variant="ghost"
             onClick={onOpenDossier}
-            tooltip="Dossiê do Workspace"
+            tooltip="Ficha do Cliente"
           />
         )}
-        {onToggleContext && (
+        {onToggleContext && (isMobile ? (
           <IconButton
             aria-label={isContextOpen ? "Ocultar contexto do lead" : "Exibir contexto do lead"}
             icon={<Info size={16} />}
             size="sm"
             variant={isContextOpen ? "secondary" : "ghost"}
             onClick={onToggleContext}
-            tooltip="Contexto do Lead"
+            tooltip="Etapa, proposta, Pix e histórico do lead"
           />
-        )}
+        ) : (
+          <Button
+            size="sm"
+            variant={isContextOpen ? "secondary" : "primary"}
+            prefixIcon={<Info size={15} />}
+            onClick={onToggleContext}
+            title="Veja etapa da venda, propostas, cobranças, jornada e próxima ação"
+          >
+            {isContextOpen ? "Ocultar contexto" : "Contexto do lead"}
+          </Button>
+        ))}
       </div>
     </header>
   );

@@ -1,0 +1,84 @@
+networks:
+  sos-sales-network:
+    external: true
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: chat-sales-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT_API: 4400
+      API_HOST: 0.0.0.0
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      INGRESS_DATABASE_URL: ${INGRESS_DATABASE_URL:?INGRESS_DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      LOG_LEVEL: info
+      OTEL_SERVICE_NAME: chat-sales-api
+      AUTH_PROVIDER: ${AUTH_PROVIDER:?AUTH_PROVIDER is required}
+      AUTH_ISSUER: ${AUTH_ISSUER:?AUTH_ISSUER is required}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:?AUTH_AUDIENCE is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:?NVIDIA_API_KEY is required}
+      NVIDIA_TEMPLATE_MODEL: ${NVIDIA_TEMPLATE_MODEL:-nvidia/nemotron-3-super-120b-a12b}
+      APP_MASTER_KEY: ${APP_MASTER_KEY:?APP_MASTER_KEY is required}
+      MCT_CREDENTIALS_MASTER_KEY: ${APP_MASTER_KEY:?APP_MASTER_KEY is required}
+      ENABLE_LAB_SYNTHETIC: 'false'
+    expose:
+      - '4400'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:4400/health || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sos-sales-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: chat-sales-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      WORKER_DATABASE_URL: ${WORKER_DATABASE_URL:?WORKER_DATABASE_URL is required}
+      DATABASE_URL: ${WORKER_DATABASE_URL:?WORKER_DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      LOG_LEVEL: info
+      OTEL_SERVICE_NAME: chat-sales-worker
+      APP_MASTER_KEY: ${APP_MASTER_KEY:?APP_MASTER_KEY is required}
+      MASTER_ENCRYPTION_KEY: ${APP_MASTER_KEY:?APP_MASTER_KEY is required}
+      ENABLE_LAB_SYNTHETIC: 'false'
+      STRICT_TENANT_ISOLATION: 'true'
+      WAHA_BASE_URL: http://sos-sales-waha:3000
+      INTERNAL_SERVICE_ALLOWLIST: ${INTERNAL_SERVICE_ALLOWLIST:-sos-sales-waha,waha}
+      WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY is required}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+    healthcheck:
+      test: ['CMD-SHELL', 'test -f /tmp/worker-healthy || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sos-sales-network
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: chat-sales-web
+    restart: unless-stopped
+    expose:
+      - '80'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:80 || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sos-sales-network

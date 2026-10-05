@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, type FC } from "react";
 import { PageHeader, Button, LoadingState, EmptyState, Badge } from "@sos-sales/ui";
-import { Plus, TrendingUp, RefreshCw } from "lucide-react";
+import { Plus, TrendingUp, RefreshCw, GripVertical, Eye } from "lucide-react";
 import type { UseSessionReturn } from "../../hooks/useSession";
 import { apiClient, type ContactSummary, type JourneySummary } from "../../services/api-client";
 import { STAGES, formatCents } from "./stages";
 import { NewOpportunityDialog } from "./NewOpportunityDialog";
+import { OpportunityDetailDialog } from "./OpportunityDetailDialog";
 
 // API caps: contacts query max(100) (zod), journeys clamped to 100 in packages/database/src/commercial.ts
 const LIST_LIMIT = 100;
@@ -16,6 +17,9 @@ export const OpportunitiesPage: FC<{ session: UseSessionReturn }> = ({ session }
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedJourney, setSelectedJourney] = useState<JourneySummary | null>(null);
+  const [draggedJourneyId, setDraggedJourneyId] = useState<string | null>(null);
+  const [dropStage, setDropStage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!activeWorkspace || !token) return;
@@ -57,6 +61,23 @@ export const OpportunitiesPage: FC<{ session: UseSessionReturn }> = ({ session }
     [journeys]
   );
 
+  const moveJourney = async (journeyId: string, stage: JourneySummary["stage"]) => {
+    if (!activeWorkspace || !token || stage === "won" || stage === "lost") {
+      const journey = journeys.find((item) => item.id === journeyId);
+      if (journey) setSelectedJourney(journey);
+      return;
+    }
+    const previous = journeys;
+    setJourneys((items) => items.map((item) => item.id === journeyId ? { ...item, stage } : item));
+    setErrorMsg(null);
+    try {
+      await apiClient.updateJourneyStage(activeWorkspace.id, journeyId, stage, { token });
+    } catch (err: unknown) {
+      setJourneys(previous);
+      setErrorMsg((err as Error).message || "Não foi possível mover a oportunidade.");
+    }
+  };
+
   return (
     <div
       style={{
@@ -76,7 +97,7 @@ export const OpportunitiesPage: FC<{ session: UseSessionReturn }> = ({ session }
           actions={
             <div style={{ display: "flex", gap: "8px" }}>
               <Button size="sm" variant="secondary" prefixIcon={<RefreshCw size={14} />} onClick={load} disabled={isLoading}>
-                Atualizar
+                {isLoading ? "Atualizando..." : "Atualizar"}
               </Button>
               <Button size="sm" variant="primary" prefixIcon={<Plus size={14} />} onClick={() => setIsDialogOpen(true)}>
                 Nova Oportunidade
@@ -129,9 +150,18 @@ export const OpportunitiesPage: FC<{ session: UseSessionReturn }> = ({ session }
               <section
                 key={col.id}
                 aria-label={col.label}
+                onDragOver={(event) => { event.preventDefault(); setDropStage(col.id); }}
+                onDragLeave={() => setDropStage((current) => current === col.id ? null : current)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const journeyId = event.dataTransfer.getData("text/plain") || draggedJourneyId;
+                  setDropStage(null);
+                  setDraggedJourneyId(null);
+                  if (journeyId) void moveJourney(journeyId, col.id);
+                }}
                 style={{
                   backgroundColor: "var(--bg-surface)",
-                  border: "1px solid var(--border-default)",
+                  border: dropStage === col.id ? "2px solid var(--color-operational)" : "1px solid var(--border-default)",
                   borderRadius: "var(--radius-lg)",
                   boxShadow: "var(--shadow-sm)",
                   overflow: "hidden",
@@ -167,6 +197,13 @@ export const OpportunitiesPage: FC<{ session: UseSessionReturn }> = ({ session }
                     col.items.map((j) => (
                       <article
                         key={j.id}
+                        draggable={j.stage !== "won" && j.stage !== "lost"}
+                        onDragStart={(event) => { setDraggedJourneyId(j.id); event.dataTransfer.setData("text/plain", j.id); event.dataTransfer.effectAllowed = "move"; }}
+                        onDragEnd={() => { setDraggedJourneyId(null); setDropStage(null); }}
+                        onClick={() => setSelectedJourney(j)}
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedJourney(j); }}
                         style={{
                           backgroundColor: "var(--bg-canvas)",
                           border: "1px solid var(--border-subtle)",
@@ -175,11 +212,15 @@ export const OpportunitiesPage: FC<{ session: UseSessionReturn }> = ({ session }
                           display: "flex",
                           flexDirection: "column",
                           gap: "4px",
+                          cursor: "pointer",
+                          opacity: draggedJourneyId === j.id ? 0.55 : 1,
                         }}
                       >
-                        <span style={{ fontWeight: 500, fontSize: "var(--font-size-sm)", color: "var(--text-primary)" }}>
-                          {contactNames.get(j.contactId) ?? "Lead"}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <GripVertical size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                          <span style={{ fontWeight: 500, fontSize: "var(--font-size-sm)", color: "var(--text-primary)", flex: 1 }}>{contactNames.get(j.contactId) ?? "Lead"}</span>
+                          <Eye size={14} style={{ color: "var(--color-operational)", flexShrink: 0 }} />
+                        </div>
                         {j.title && <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>{j.title}</span>}
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
                           <span style={{ fontVariantNumeric: "tabular-nums" }}>
@@ -205,6 +246,17 @@ export const OpportunitiesPage: FC<{ session: UseSessionReturn }> = ({ session }
           workspaceId={activeWorkspace.id}
           token={token}
           contacts={contacts}
+        />
+      )}
+
+      {activeWorkspace && token && (
+        <OpportunityDetailDialog
+          journey={selectedJourney}
+          contact={contacts.find((item) => item.id === selectedJourney?.contactId)}
+          workspaceId={activeWorkspace.id}
+          token={token}
+          onClose={() => setSelectedJourney(null)}
+          onChanged={load}
         />
       )}
     </div>

@@ -86,7 +86,9 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
                 thread={conversation.selectedThread}
                 onBack={layout.handleBackToList}
                 isMobile={isMobile}
-                onRefresh={conversation.refreshMessages}
+                onRefresh={async () => {
+                  await Promise.all([conversation.refreshMessages(), inbox.refreshThreads()]);
+                }}
                 isRefreshing={conversation.isLoadingMessages}
                 onOpenRadar={() => setActiveDrawer("radar")}
                 onOpenDossier={() => setActiveDrawer("dossier")}
@@ -167,6 +169,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
           }
         }}
         onPixCreated={conversation.refreshMessages}
+        onRadarDraftApplied={(draft) => conversation.handleMessageInputChange(draft)}
       />
     </div>
   );

@@ -31,13 +31,12 @@ import {
 } from "lucide-react";
 import { LoginPage } from "./pages/LoginPage";
 
-export const isLabDistribution = (): boolean => {
-  return Boolean(
-    import.meta.env.DEV ||
-    import.meta.env.VITE_ENABLE_LAB_TOOLS === "true" ||
-    import.meta.env.MODE === "lab"
-  );
-};
+import { extractHashAccessToken } from "./services/supabase-auth";
+
+declare const __CHAT_SALES_LAB__: boolean;
+
+/** Compile-time build boundary: false removes laboratory branches from production. */
+export const LAB_DISTRIBUTION = __CHAT_SALES_LAB__;
 
 const getInitialRoute = (): { navId: string; isCatalog: boolean } => {
   if (typeof window === "undefined") return { navId: "cockpit", isCatalog: false };
@@ -69,39 +68,65 @@ const getInitialRoute = (): { navId: string; isCatalog: boolean } => {
 };
 
 export const App: FC = () => {
-  const isLab = isLabDistribution();
+  const isLab = LAB_DISTRIBUTION;
 
   // Token state: Checked in URL parameters, persistent localStorage, and dev sessionStorage
   const [token, setToken] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
 
     // 1. Direct URL token parameter bootstrap (?token=... or ?auth=...)
-    try {
-      const url = new URL(window.location.href);
-      const urlToken = url.searchParams.get("token") || url.searchParams.get("auth");
-      if (urlToken && urlToken.trim()) {
-        const cleanToken = urlToken.trim();
-        localStorage.setItem("sos_sales_auth_token", cleanToken);
-        url.searchParams.delete("token");
-        url.searchParams.delete("auth");
-        window.history.replaceState(
-          {},
-          document.title,
-          url.pathname + (url.search ? url.search : "") + url.hash
-        );
-        return cleanToken;
+    // STRICTLY RESTRICTED TO LAB DISTRIBUTION (Commercial build rejects query tokens)
+    if (isLab) {
+      try {
+        const url = new URL(window.location.href);
+        const urlToken = url.searchParams.get("token") || url.searchParams.get("auth");
+        if (urlToken && urlToken.trim()) {
+          const cleanToken = urlToken.trim();
+          localStorage.setItem("sos_sales_auth_token", cleanToken);
+          url.searchParams.delete("token");
+          url.searchParams.delete("auth");
+          window.history.replaceState(
+            {},
+            document.title,
+            url.pathname + (url.search ? url.search : "") + url.hash
+          );
+          return cleanToken;
+        }
+      } catch {
+        // Fallback if URL parsing fails
       }
-    } catch {
-      // Fallback if URL parsing fails
+    } else {
+      // In commercial mode, purge any query param token to avoid accidental exposure
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("token") || url.searchParams.has("auth")) {
+          url.searchParams.delete("token");
+          url.searchParams.delete("auth");
+          window.history.replaceState(
+            {},
+            document.title,
+            url.pathname + (url.search ? url.search : "") + url.hash
+          );
+        }
+      } catch {
+        // Ignore URL parsing errors
+      }
     }
 
-    // 2. Persistent localStorage for authenticated operators
+    // 2. Supabase Auth magic link redirect callback (#access_token=...)
+    const hashToken = extractHashAccessToken();
+    if (hashToken) {
+      localStorage.setItem("sos_sales_auth_token", hashToken);
+      return hashToken;
+    }
+
+    // 3. Persistent localStorage for authenticated operators
     const storedAuthToken = localStorage.getItem("sos_sales_auth_token");
     if (storedAuthToken && storedAuthToken.trim()) {
       return storedAuthToken.trim();
     }
 
-    // 3. Dev Lab fallback (only if already stored in session)
+    // 4. Dev Lab fallback (only if already stored in session in lab mode)
     if (isLab) {
       const stored = sessionStorage.getItem("sos_v3_lab_token");
       if (stored) return stored;
@@ -330,4 +355,3 @@ export const App: FC = () => {
     </ErrorBoundary>
   );
 };
-

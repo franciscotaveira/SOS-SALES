@@ -1,5 +1,7 @@
 # SOS Sales V3 — Sistema Canônico de Execução
 
+> A concepção atual do produto está em [`docs/product/README.md`](../product/README.md). Este diretório permanece como governança histórica e execução técnica.
+
 > Fonte de verdade para planejamento, execução, aceite e entrega da V3.  
 > Criado em 19 de setembro de 2026.  
 > Estado atual: `G-00` a `G-06`, `CH-00` a `CH-09` aceitos; `CH-10` em `READY`; sem autorização para produção.

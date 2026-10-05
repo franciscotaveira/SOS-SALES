@@ -37,6 +37,8 @@ export interface ContactRecord {
   workspace_id: string;
   phone_e164: string;
   name: string | null;
+  opt_out: boolean;
+  metadata: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
 }
@@ -124,7 +126,7 @@ export async function createOrGetContact(
      DO UPDATE SET 
        name = COALESCE(EXCLUDED.name, public.contacts.name),
        updated_at = now()
-     RETURNING id, workspace_id, phone_e164, name, created_at, updated_at;`,
+     RETURNING id, workspace_id, phone_e164, name, opt_out, metadata, created_at, updated_at;`,
     [params.workspaceId, params.phoneE164, params.name || null]
   );
   return res.rows[0]!;
@@ -135,6 +137,7 @@ export interface ListContactsParams {
   search?: string;
   limit?: number;
   offset?: number;
+  status?: "active" | "inactive" | "all";
 }
 
 /**
@@ -150,24 +153,26 @@ export async function listContacts(
   if (params.search && params.search.trim().length > 0) {
     const pattern = `%${params.search.trim().toLowerCase()}%`;
     const res = await client.query<ContactRecord>(
-      `SELECT id, workspace_id, phone_e164, name, created_at, updated_at
+      `SELECT id, workspace_id, phone_e164, name, opt_out, metadata, created_at, updated_at
        FROM public.contacts
        WHERE workspace_id = $1 
+         AND ($5 = 'all' OR ($5 = 'active' AND opt_out = false) OR ($5 = 'inactive' AND opt_out = true))
          AND (LOWER(COALESCE(name, '')) LIKE $2 OR phone_e164 LIKE $2)
        ORDER BY updated_at DESC
        LIMIT $3 OFFSET $4;`,
-      [params.workspaceId, pattern, limit, offset]
+      [params.workspaceId, pattern, limit, offset, params.status ?? "all"]
     );
     return res.rows;
   }
 
   const res = await client.query<ContactRecord>(
-    `SELECT id, workspace_id, phone_e164, name, created_at, updated_at
+    `SELECT id, workspace_id, phone_e164, name, opt_out, metadata, created_at, updated_at
      FROM public.contacts
      WHERE workspace_id = $1
+       AND ($4 = 'all' OR ($4 = 'active' AND opt_out = false) OR ($4 = 'inactive' AND opt_out = true))
      ORDER BY updated_at DESC
      LIMIT $2 OFFSET $3;`,
-    [params.workspaceId, limit, offset]
+    [params.workspaceId, limit, offset, params.status ?? "all"]
   );
   return res.rows;
 }
@@ -177,16 +182,26 @@ export async function listContacts(
  */
 export async function updateContact(
   client: Pool | PoolClient,
-  params: { workspaceId: string; contactId: string; name?: string | null; phoneE164?: string }
+  params: {
+    workspaceId: string;
+    contactId: string;
+    name?: string | null;
+    phoneE164?: string;
+    optOut?: boolean;
+    metadata?: Record<string, unknown>;
+  }
 ): Promise<ContactRecord | null> {
   const res = await client.query<ContactRecord>(
     `UPDATE public.contacts
      SET name = CASE WHEN $3::boolean THEN $4 ELSE name END,
          phone_e164 = COALESCE($5, phone_e164),
+         opt_out = CASE WHEN $6::boolean THEN $7 ELSE opt_out END,
+         metadata = CASE WHEN $8::boolean THEN metadata || $9::jsonb ELSE metadata END,
          updated_at = now()
      WHERE workspace_id = $1 AND id = $2
-     RETURNING id, workspace_id, phone_e164, name, created_at, updated_at;`,
-    [params.workspaceId, params.contactId, params.name !== undefined, params.name ?? null, params.phoneE164 ?? null]
+     RETURNING id, workspace_id, phone_e164, name, opt_out, metadata, created_at, updated_at;`,
+    [params.workspaceId, params.contactId, params.name !== undefined, params.name ?? null, params.phoneE164 ?? null,
+      params.optOut !== undefined, params.optOut ?? false, params.metadata !== undefined, JSON.stringify(params.metadata ?? {})]
   );
   return res.rows[0] ?? null;
 }

@@ -649,14 +649,14 @@ describe("Integration Suggestions Repository (F1.1-C Radar Hardening & Final Gov
   });
 
   describe("5. Defaults, Constraints & Bounded Cooldown", () => {
-    it("ensures newly created workspaces have radar_enabled = false by default", async () => {
+    it("ensures newly created workspaces have the governed radar enabled by default", async () => {
       const newWsRes = await ownerPool.query(`
         INSERT INTO workspaces (organization_id, name, slug)
-        VALUES ((SELECT id FROM organizations LIMIT 1), 'Default Disabled WS', $1)
+        VALUES ((SELECT id FROM organizations LIMIT 1), 'Default Enabled WS', $1)
         RETURNING radar_enabled;
       `, [`def-ws-${Date.now()}`]);
 
-      expect(newWsRes.rows[0].radar_enabled).toBe(false);
+      expect(newWsRes.rows[0].radar_enabled).toBe(true);
     });
 
     it("respects cooldown = 0 as zero seconds without fallback to 86400", async () => {
@@ -1054,4 +1054,3 @@ describe("Integration Suggestions Repository (F1.1-C Radar Hardening & Final Gov
     });
   });
 });
-

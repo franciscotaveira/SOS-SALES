@@ -79,7 +79,7 @@ export const useConversation = (
 
   // Load and poll messages
   const loadMessages = useCallback(
-    async (threadId: string) => {
+    async (threadId: string, reportError = false) => {
       if (!activeWorkspace?.id || !token) return;
 
       try {
@@ -91,8 +91,10 @@ export const useConversation = (
         if (activeThreadIdRef.current === threadId) {
           setMessages(res.messages);
         }
-      } catch {
-        // Polling non-fatal
+      } catch (err: unknown) {
+        if (reportError) {
+          setSendError((err as Error).message || "Falha ao atualizar a conversa");
+        }
       }
     },
     [activeWorkspace?.id, token]
@@ -157,6 +159,17 @@ export const useConversation = (
   };
 
   const windowInfo = computeWindowInfo();
+
+  const refreshMessages = useCallback(async () => {
+    if (!selectedThreadId) return;
+    setIsLoadingMessages(true);
+    setSendError(null);
+    try {
+      await loadMessages(selectedThreadId, true);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [selectedThreadId, loadMessages]);
 
   // Send message
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -254,6 +267,6 @@ export const useConversation = (
     sendError,
     windowInfo,
     handleUpdateStatus,
-    refreshMessages: () => selectedThreadId ? loadMessages(selectedThreadId) : Promise.resolve(),
+    refreshMessages,
   };
 };

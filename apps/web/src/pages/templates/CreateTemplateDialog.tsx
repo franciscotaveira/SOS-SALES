@@ -2,6 +2,7 @@ import { useState, type FC, type FormEvent } from "react";
 import { Button, Input, Dialog, SegmentedControl, useBreakpoint } from "@sos-sales/ui";
 import { apiClient } from "../../services/api-client";
 import { renderWhatsappMarkdown } from "../cockpit/utils/whatsappMarkdown";
+import { Sparkles } from "lucide-react";
 
 interface CreateTemplateDialogProps {
   isOpen: boolean;
@@ -30,6 +31,12 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
   const [formBody, setFormBody] = useState("");
   const [formFooter, setFormFooter] = useState("");
   const [formButton, setFormButton] = useState("");
+  const [aiObjective, setAiObjective] = useState("");
+  const [aiAudience, setAiAudience] = useState("Clientes e leads da empresa");
+  const [aiTone, setAiTone] = useState<"PROFESSIONAL" | "FRIENDLY" | "DIRECT">("FRIENDLY");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [variableLabels, setVariableLabels] = useState<string[]>([]);
 
   const resetForm = () => {
     setFormName("");
@@ -41,6 +48,39 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
     setFormButton("");
     setFormErrors({});
     setServerError(null);
+    setAiObjective("");
+    setAiAudience("Clientes e leads da empresa");
+    setAiTone("FRIENDLY");
+    setAiExplanation(null);
+    setVariableLabels([]);
+  };
+
+  const handleGenerateWithAi = async () => {
+    setServerError(null);
+    if (aiObjective.trim().length < 10) {
+      setServerError("Explique em uma frase o que a mensagem precisa conseguir.");
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const { generated } = await apiClient.generateTemplate(
+        workspaceId,
+        { objective: aiObjective.trim(), audience: aiAudience.trim(), tone: aiTone },
+        { token }
+      );
+      setFormName(generated.name);
+      setFormCategory(generated.category);
+      setFormHeader(generated.headerText || "");
+      setFormBody(generated.bodyText);
+      setFormFooter(generated.footerText || "");
+      setFormButton(generated.buttonText || "");
+      setVariableLabels(generated.variableLabels);
+      setAiExplanation(generated.explanation);
+    } catch (err: unknown) {
+      setServerError((err as Error).message || "Não foi possível gerar o modelo com IA.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -170,7 +210,7 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
       onClose={onClose}
       title="Cadastrar Modelo WABA"
       maxWidth="880px"
-      description="Defina os parâmetros do template conforme especificações da Meta Cloud API."
+      description="Conte o que deseja comunicar. A IA prepara o modelo e explica os campos para você revisar."
     >
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {serverError && (
@@ -188,6 +228,30 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
           </div>
         )}
 
+        <div style={{ padding: "14px", backgroundColor: "var(--color-operational-subtle)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-operational)", display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, color: "var(--text-primary)" }}>
+            <Sparkles size={18} /> Criar com ajuda da IA
+          </div>
+          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+            Explique o resultado desejado em linguagem simples. Você poderá revisar tudo antes de salvar e enviar à Meta.
+          </span>
+          <textarea rows={2} value={aiObjective} onChange={(e) => setAiObjective(e.target.value)} placeholder="Ex.: Quero lembrar clientes que abandonaram o orçamento e convidá-los a retomar a conversa." style={{ padding: "10px 12px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", font: "inherit", resize: "vertical" }} />
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "10px" }}>
+            <Input label="Para quem?" value={aiAudience} onChange={(e) => setAiAudience(e.target.value)} placeholder="Ex.: clientes com orçamento parado" />
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 500, color: "var(--text-secondary)" }}>Tom da mensagem</label>
+              <SegmentedControl value={aiTone} onChange={(value) => setAiTone(value as typeof aiTone)} options={[{ value: "FRIENDLY", label: "Próximo" }, { value: "PROFESSIONAL", label: "Profissional" }, { value: "DIRECT", label: "Direto" }]} />
+            </div>
+          </div>
+          <div><Button type="button" size="sm" variant="primary" prefixIcon={<Sparkles size={14} />} loading={isGenerating} onClick={handleGenerateWithAi}>Gerar sugestão</Button></div>
+          {aiExplanation && (
+            <div style={{ padding: "10px 12px", background: "var(--bg-surface)", borderRadius: "var(--radius-md)", fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+              <strong style={{ color: "var(--text-primary)" }}>Por que a IA sugeriu isso:</strong> {aiExplanation}
+              {variableLabels.length > 0 && <div style={{ marginTop: "6px" }}><strong>Variáveis:</strong> {variableLabels.map((label, index) => `{{${index + 1}}} = ${label}`).join(" · ")}</div>}
+            </div>
+          )}
+        </div>
+
         {/* Quick WABA Presets */}
         <div
           style={{
@@ -201,7 +265,7 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
           }}
         >
           <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-secondary)" }}>
-            ⚡ Modelos Facilitados por Função WABA:
+            Ou comece com um exemplo pronto:
           </span>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
             {WABA_PRESETS.map((preset) => (

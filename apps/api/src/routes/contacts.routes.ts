@@ -16,6 +16,7 @@ const listContactsQuerySchema = z.object({
   search: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+  status: z.enum(["active", "inactive", "all"]).default("all"),
 });
 
 const createContactBodySchema = z.object({
@@ -37,9 +38,17 @@ const updateContactBodySchema = z
       .regex(/^\+[1-9][0-9]{6,14}$/, "Must be a valid E.164 phone number")
       .optional(),
     name: z.string().trim().min(1).max(150).nullable().optional(),
+    optOut: z.boolean().optional(),
+    metadata: z.object({
+      email: z.string().email().max(254).or(z.literal("")).optional(),
+      company: z.string().trim().max(150).optional(),
+      notes: z.string().trim().max(2000).optional(),
+      tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+    }).strict().optional(),
   })
-  .refine((b) => b.phoneE164 !== undefined || b.name !== undefined, {
-    message: "At least one field (name, phoneE164) is required",
+  .strict()
+  .refine((b) => Object.keys(b).length > 0, {
+    message: "At least one field is required",
   });
 
 const pgErrorCode = (err: unknown): string | undefined =>
@@ -101,7 +110,7 @@ export const contactsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const { workspaceId } = parsedParams.data;
-      const { search, limit, offset } = parsedQuery.data;
+      const { search, limit, offset, status } = parsedQuery.data;
 
       const contacts = await withTenantTransaction(workspaceId, async (client) => {
         return listContacts(client, {
@@ -109,6 +118,7 @@ export const contactsRoutes: FastifyPluginAsync = async (app) => {
           search,
           limit,
           offset,
+          status,
         });
       });
 
@@ -118,6 +128,8 @@ export const contactsRoutes: FastifyPluginAsync = async (app) => {
           workspaceId: c.workspace_id,
           phoneE164: c.phone_e164,
           name: c.name,
+          optOut: c.opt_out,
+          metadata: c.metadata,
           createdAt: c.created_at.toISOString(),
           updatedAt: c.updated_at.toISOString(),
         })),
@@ -178,6 +190,8 @@ export const contactsRoutes: FastifyPluginAsync = async (app) => {
           workspaceId: contact.workspace_id,
           phoneE164: contact.phone_e164,
           name: contact.name,
+          optOut: contact.opt_out,
+          metadata: contact.metadata,
           createdAt: contact.created_at.toISOString(),
           updatedAt: contact.updated_at.toISOString(),
         },
@@ -223,6 +237,8 @@ export const contactsRoutes: FastifyPluginAsync = async (app) => {
             workspaceId: contact.workspace_id,
             phoneE164: contact.phone_e164,
             name: contact.name,
+            optOut: contact.opt_out,
+            metadata: contact.metadata,
             createdAt: contact.created_at.toISOString(),
             updatedAt: contact.updated_at.toISOString(),
           },

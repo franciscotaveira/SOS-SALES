@@ -1,6 +1,6 @@
-import { useState, type FC, type FormEvent } from "react";
+import { useEffect, useState, type FC, type FormEvent } from "react";
 import { Button, Input, Dialog, SegmentedControl, useBreakpoint } from "@sos-sales/ui";
-import { apiClient } from "../../services/api-client";
+import { apiClient, type ProductRecord } from "../../services/api-client";
 
 interface CreateProductDialogProps {
   isOpen: boolean;
@@ -8,6 +8,7 @@ interface CreateProductDialogProps {
   workspaceId: string;
   token: string;
   onCreated: () => void;
+  product?: ProductRecord | null;
 }
 
 export const CreateProductDialog: FC<CreateProductDialogProps> = ({
@@ -16,6 +17,7 @@ export const CreateProductDialog: FC<CreateProductDialogProps> = ({
   workspaceId,
   token,
   onCreated,
+  product,
 }) => {
   const { isMobile } = useBreakpoint();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,6 +31,24 @@ export const CreateProductDialog: FC<CreateProductDialogProps> = ({
   const [category, setCategory] = useState("Geral");
   const [imageUrl, setImageUrl] = useState("https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80");
   const [status, setStatus] = useState<"ACTIVE" | "INACTIVE" | "OUT_OF_STOCK">("ACTIVE");
+  const isEditing = Boolean(product);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (product) {
+      setRetailerId(product.retailerId);
+      setTitle(product.title);
+      setDescription(product.description);
+      setPriceReal((product.priceCents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      setCategory(product.category);
+      setImageUrl(product.imageUrl);
+      setStatus(product.status);
+      setFormErrors({});
+      setServerError(null);
+    } else {
+      resetForm();
+    }
+  }, [isOpen, product]);
 
   const parsePriceToCents = (val: string): number => {
     const clean = val.replace(/\D/g, "");
@@ -135,8 +155,8 @@ export const CreateProductDialog: FC<CreateProductDialogProps> = ({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title="Cadastrar Novo Produto"
-      description="Cadastre itens para geração de propostas comerciais e links Pix no Cockpit."
+      title={isEditing ? "Editar Produto" : "Cadastrar Novo Produto"}
+      description={isEditing ? "Atualize preço, categoria, imagem e disponibilidade do item." : "Cadastre itens para geração de propostas comerciais e links Pix no Cockpit."}
     >
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {serverError && (
@@ -160,8 +180,9 @@ export const CreateProductDialog: FC<CreateProductDialogProps> = ({
             placeholder="ex: MENSAL-VIP"
             value={retailerId}
             onChange={(e) => setRetailerId(e.target.value.toUpperCase())}
+            disabled={isEditing}
             error={formErrors.retailerId}
-            helperText="Alfanumérico com hífen"
+            helperText={isEditing ? "O SKU não pode ser alterado após o cadastro" : "Alfanumérico com hífen"}
           />
 
           <Input
@@ -244,7 +265,7 @@ export const CreateProductDialog: FC<CreateProductDialogProps> = ({
             Cancelar
           </Button>
           <Button size="sm" variant="primary" type="submit" loading={isSubmitting}>
-            Salvar Produto
+            {isEditing ? "Salvar Alterações" : "Salvar Produto"}
           </Button>
         </div>
       </form>

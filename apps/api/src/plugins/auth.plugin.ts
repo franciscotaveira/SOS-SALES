@@ -271,9 +271,14 @@ const authPluginCallback: FastifyPluginAsync<AuthPluginOptions> = async (app, op
       request.workspaceId = membership.workspace_id;
       request.activeRole = membership.role as Role;
     } else {
-      // If no explicit X-Workspace-Id header, default to token's workspace or first membership
+      // If no explicit X-Workspace-Id header, default to token's workspace or deterministic first membership
       const defaultMembership =
-        memberships.find((m) => m.workspace_id === verifiedUser.workspaceId) || memberships[0];
+        memberships.find((m) => m.workspace_id === verifiedUser.workspaceId) ||
+        [...memberships].sort(
+          (a, b) =>
+            a.workspace_name.localeCompare(b.workspace_name) ||
+            a.workspace_id.localeCompare(b.workspace_id)
+        )[0];
 
       if (defaultMembership) {
         request.workspaceId = defaultMembership.workspace_id;
