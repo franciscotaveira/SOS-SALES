@@ -50,14 +50,16 @@ async function phoneJid(value) {
   const raw = jid(value);
   if (!raw.endsWith("@lid")) return raw;
   if (!lidCache.has(raw)) {
-    const result = await waha(`/api/${encodeURIComponent(session)}/lids/${encodeURIComponent(raw)}`);
-    const resolved = jid(result.pn);
-    if (!resolved || resolved.endsWith("@lid")) {
-      throw new Error("WAHA returned an unresolved LID");
-    }
-    lidCache.set(raw, resolved);
+    lidCache.set(raw, (async () => {
+      const result = await waha(`/api/${encodeURIComponent(session)}/lids/${encodeURIComponent(raw)}`);
+      const resolved = jid(result.pn);
+      if (!resolved || resolved.endsWith("@lid")) {
+        throw new Error("WAHA returned an unresolved LID");
+      }
+      return resolved;
+    })());
   }
-  return lidCache.get(raw);
+  return await lidCache.get(raw);
 }
 
 async function discoverWebhookUrl() {
@@ -94,7 +96,7 @@ let accepted = 0;
 let failed = 0;
 const replayPayloads = [];
 
-for (const chat of selected) {
+async function collectChat(chat) {
   const chatId = jid(chat.id);
   const messages = await waha(
     `/api/${encodeURIComponent(session)}/chats/${encodeURIComponent(chatId)}/messages?limit=${Math.max(1, messageLimit)}`
@@ -122,6 +124,16 @@ for (const chat of selected) {
     }
   }
 }
+
+let chatCursor = 0;
+await Promise.all(
+  Array.from({ length: Math.min(concurrency, selected.length) }, async () => {
+    while (chatCursor < selected.length) {
+      const chat = selected[chatCursor++];
+      await collectChat(chat);
+    }
+  })
+);
 
 async function replay(payload) {
   try {
