@@ -1,9 +1,9 @@
 import { useState, useEffect, type FC } from "react";
 import { PageHeader, useBreakpoint } from "@sos-sales/ui";
-import { Building2, Radio, QrCode, AlertTriangle, Braces } from "lucide-react";
+import { Radio, QrCode, AlertTriangle, Braces } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { UseSessionReturn } from "../../hooks/useSession";
 import { apiClient, type ChannelSummary } from "../../services/api-client";
-import { GeneralSection } from "./GeneralSection";
 import { ChannelsSection } from "./ChannelsSection";
 import { PixSection } from "./PixSection";
 import { DangerSection } from "./DangerSection";
@@ -11,12 +11,12 @@ import { IntegrationsSection } from "./IntegrationsSection";
 import { ChannelWizardDialog } from "./ChannelWizardDialog";
 import { QrCodeDialog } from "./QrCodeDialog";
 
-type SettingsTab = "geral" | "canais" | "pix" | "integracoes" | "perigo";
+type SettingsTab = "canais" | "pix" | "integracoes" | "perigo";
 
 export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => {
   const { activeWorkspace, token } = session;
   const { isMobile } = useBreakpoint();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("geral");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("canais");
 
   // Channels state
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
@@ -81,8 +81,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
     }
   };
 
-  const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Building2 }> = [
-    { id: "geral", label: "Geral & Tenant", icon: Building2 },
+  const tabs: Array<{ id: SettingsTab; label: string; icon: LucideIcon }> = [
     { id: "canais", label: "Canais WhatsApp", icon: Radio },
     { id: "pix", label: "Cobrança Pix", icon: QrCode },
     { id: "integracoes", label: "API & Webhooks", icon: Braces },
@@ -104,7 +103,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
       <div style={{ maxWidth: "1080px", width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
         <PageHeader
           title="Configurações"
-          description="Gestão de conexões, cobrança Pix oficial e parâmetros operacionais do workspace."
+          description="Gerencie os canais do WhatsApp, cobranças e integrações da empresa."
         />
 
         {/* Layout: 200px Left Nav + 720px Right Content */}
@@ -179,7 +178,6 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
 
           {/* Max 720px Right Content Area */}
           <div style={{ flex: 1, maxWidth: "720px", width: "100%", display: "flex", flexDirection: "column", gap: "20px" }}>
-            {activeTab === "geral" && <GeneralSection session={session} />}
             {activeTab === "canais" && (
               <ChannelsSection
                 channels={channels}
