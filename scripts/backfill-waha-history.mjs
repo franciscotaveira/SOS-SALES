@@ -29,7 +29,10 @@ const headers = { "X-Api-Key": apiKey };
 const cutoff = Math.floor(Date.now() / 1000) - Math.max(1, days) * 86400;
 
 async function waha(path) {
-  const response = await fetch(`${baseUrl}${path}`, { headers });
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers,
+    signal: AbortSignal.timeout(20000),
+  });
   if (!response.ok) throw new Error(`WAHA HTTP ${response.status} for ${path.split("?")[0]}`);
   return response.json();
 }
@@ -88,13 +91,27 @@ const selected = chats.filter((chat) => {
   const chatId = jid(chat.id);
   const timestamp = Number(chat.conversationTimestamp || 0);
   return isDirectChat(chatId) && timestamp >= cutoff;
-});
+}).sort((a, b) => Number(b.conversationTimestamp || 0) - Number(a.conversationTimestamp || 0));
 
 let scanned = 0;
 let eligible = 0;
 let accepted = 0;
 let failed = 0;
-const replayPayloads = [];
+
+async function replay(payload) {
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ event: "message", session, payload }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (response.ok || response.status === 202 || response.status === 409) accepted += 1;
+    else failed += 1;
+  } catch {
+    failed += 1;
+  }
+}
 
 async function collectChat(chat) {
   const chatId = jid(chat.id);
@@ -118,7 +135,7 @@ async function collectChat(chat) {
         ...(mediaUrl(message) ? { mediaUrl: mediaUrl(message) } : {}),
       };
       eligible += 1;
-      if (!dryRun) replayPayloads.push(payload);
+      if (!dryRun) await replay(payload);
     } catch {
       failed += 1;
     }
@@ -130,37 +147,14 @@ await Promise.all(
   Array.from({ length: Math.min(concurrency, selected.length) }, async () => {
     while (chatCursor < selected.length) {
       const chat = selected[chatCursor++];
-      await collectChat(chat);
+      try {
+        await collectChat(chat);
+      } catch {
+        failed += 1;
+      }
     }
   })
 );
-
-async function replay(payload) {
-  try {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event: "message", session, payload }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (response.ok || response.status === 202 || response.status === 409) accepted += 1;
-    else failed += 1;
-  } catch {
-    failed += 1;
-  }
-}
-
-if (!dryRun) {
-  let cursor = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, replayPayloads.length) }, async () => {
-      while (cursor < replayPayloads.length) {
-        const payload = replayPayloads[cursor++];
-        await replay(payload);
-      }
-    })
-  );
-}
 
 console.log(JSON.stringify({ dryRun, days, chats: selected.length, scanned, eligible, accepted, failed, concurrency }));
 if (failed > 0) process.exitCode = 1;
