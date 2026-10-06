@@ -79,14 +79,21 @@ async function resolveWahaLid(jid: string, session: string): Promise<string> {
   }
 }
 
-async function enrichWahaPayload(rawPayload: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function enrichWahaPayload(
+  rawPayload: Record<string, unknown>,
+  channelPhoneE164?: string | null
+): Promise<Record<string, unknown>> {
   if (rawPayload.event !== "message") return rawPayload;
   const payload = rawPayload.payload;
   if (!payload || typeof payload !== "object") return rawPayload;
   const source = payload as Record<string, unknown>;
   const session = String(source.session ?? rawPayload.session ?? process.env.WAHA_DEFAULT_SESSION ?? "default");
-  const from = coerceWahaJid(source.from);
-  const to = coerceWahaJid(source.to);
+  const fromMe = Boolean(source.fromMe);
+  const channelJid = channelPhoneE164
+    ? `${channelPhoneE164.replace(/\D/g, "")}@c.us`
+    : "";
+  const from = coerceWahaJid(source.from) || (fromMe ? channelJid : "");
+  const to = coerceWahaJid(source.to) || (!fromMe ? channelJid : "");
 
   return {
     ...rawPayload,
@@ -258,8 +265,12 @@ export class InboxProcessor {
         item.workspace_id,
         async (client) => {
           // Look up channel instance details inside tenant scope with RLS active
-          const channelRes = await client.query(
-            `SELECT provider, is_active FROM public.channel_instances WHERE id = $1 AND workspace_id = $2 LIMIT 1;`,
+          const channelRes = await client.query<{
+            provider: string;
+            is_active: boolean;
+            phone_number_e164: string | null;
+          }>(
+            `SELECT provider, is_active, phone_number_e164 FROM public.channel_instances WHERE id = $1 AND workspace_id = $2 LIMIT 1;`,
             [item.channel_instance_id, item.workspace_id]
           );
 
@@ -269,7 +280,8 @@ export class InboxProcessor {
             );
           }
 
-          const provider = channelRes.rows[0].provider;
+          const channel = channelRes.rows[0]!;
+          const provider = channel.provider;
 
           // Normalize inbound events based on provider (FAIL-CLOSED on unknown provider)
           let events: NormalizedInboundEvent[] = [];
@@ -283,7 +295,7 @@ export class InboxProcessor {
           if (provider === "meta_waba") {
             events = WabaWebhookNormalizer.normalize(rawPayload, context);
           } else if (provider === "waha") {
-            rawPayload = await enrichWahaPayload(rawPayload);
+            rawPayload = await enrichWahaPayload(rawPayload, channel.phone_number_e164);
             events = WahaWebhookNormalizer.normalize(rawPayload, context);
           } else if (provider === "evolution") {
             events = EvolutionWebhookNormalizer.normalize(rawPayload, context);

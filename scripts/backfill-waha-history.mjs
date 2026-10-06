@@ -66,9 +66,6 @@ async function phoneJid(value) {
 }
 
 async function discoverWebhook() {
-  if (process.env.CHAT_SALES_WEBHOOK_URL) {
-    return { url: process.env.CHAT_SALES_WEBHOOK_URL, headers: {} };
-  }
   const config = await waha(`/api/sessions/${encodeURIComponent(session)}`);
   function find(value) {
     if (!value || typeof value !== "object") return undefined;
@@ -87,9 +84,13 @@ async function discoverWebhook() {
     }
     return undefined;
   }
-  const webhook = find(config);
+  const webhook = process.env.CHAT_SALES_WEBHOOK_URL
+    ? { url: process.env.CHAT_SALES_WEBHOOK_URL, headers: {} }
+    : find(config);
   if (!webhook) throw new Error("Chat Sales webhook was not found in the WAHA session configuration");
-  return webhook;
+  const channelJid = jid(config.me?.jid) || jid(config.me?.id);
+  if (!channelJid) throw new Error("Connected WAHA phone JID was not found in session configuration");
+  return { ...webhook, channelJid };
 }
 
 function isDirectChat(chatId) {
@@ -138,8 +139,8 @@ async function collectChat(chat) {
   for (const message of messages) {
     scanned += 1;
     const timestamp = Number(message.timestamp || 0);
-    const from = jid(message.from);
-    const to = jid(message.to);
+    const from = jid(message.from) || (message.fromMe ? webhook.channelJid : "");
+    const to = jid(message.to) || (!message.fromMe ? webhook.channelJid : "");
     if (timestamp < cutoff || !message.id || !isDirectChat(message.fromMe ? to : from)) continue;
 
     try {
