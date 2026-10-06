@@ -16,6 +16,7 @@ const days = Number(process.env.BACKFILL_DAYS || 14);
 const chatLimit = Number(process.env.BACKFILL_CHAT_LIMIT || 250);
 const messageLimit = Number(process.env.BACKFILL_MESSAGES_PER_CHAT || 500);
 const dryRun = process.env.BACKFILL_DRY_RUN === "true";
+const concurrency = Math.max(1, Math.min(20, Number(process.env.BACKFILL_CONCURRENCY || 8)));
 
 if (!baseUrl || !apiKey || !session) {
   throw new Error("WAHA_BASE_URL, WAHA_API_KEY and WAHA_SESSION are required");
@@ -91,6 +92,7 @@ let scanned = 0;
 let eligible = 0;
 let accepted = 0;
 let failed = 0;
+const replayPayloads = [];
 
 for (const chat of selected) {
   const chatId = jid(chat.id);
@@ -114,20 +116,39 @@ for (const chat of selected) {
         ...(mediaUrl(message) ? { mediaUrl: mediaUrl(message) } : {}),
       };
       eligible += 1;
-      if (dryRun) continue;
-
-      const response = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ event: "message", session, payload }),
-      });
-      if (response.ok || response.status === 202 || response.status === 409) accepted += 1;
-      else failed += 1;
+      if (!dryRun) replayPayloads.push(payload);
     } catch {
       failed += 1;
     }
   }
 }
 
-console.log(JSON.stringify({ dryRun, days, chats: selected.length, scanned, eligible, accepted, failed }));
+async function replay(payload) {
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ event: "message", session, payload }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (response.ok || response.status === 202 || response.status === 409) accepted += 1;
+    else failed += 1;
+  } catch {
+    failed += 1;
+  }
+}
+
+if (!dryRun) {
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, replayPayloads.length) }, async () => {
+      while (cursor < replayPayloads.length) {
+        const payload = replayPayloads[cursor++];
+        await replay(payload);
+      }
+    })
+  );
+}
+
+console.log(JSON.stringify({ dryRun, days, chats: selected.length, scanned, eligible, accepted, failed, concurrency }));
 if (failed > 0) process.exitCode = 1;
