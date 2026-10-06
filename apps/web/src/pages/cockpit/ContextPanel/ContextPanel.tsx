@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { IconButton } from "@sos-sales/ui";
+import { Button, IconButton } from "@sos-sales/ui";
 import {
   X,
   User,
@@ -8,6 +8,7 @@ import {
   GitCommit,
   StickyNote,
   Award,
+  Edit3,
 } from "lucide-react";
 import type {
   CommercialThreadSummary,
@@ -27,6 +28,7 @@ interface ContextPanelProps {
   // Journey & lead
   journeyStage?: string | null;
   estimatedValueCents?: number | null;
+  onEditLead?: () => void;
   // Proposals (F3)
   proposals?: CommercialProposalSummary[];
   onCreateProposal?: () => void;
@@ -58,6 +60,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
   onClose,
   journeyStage,
   estimatedValueCents,
+  onEditLead,
   proposals = [],
   onCreateProposal,
   onUpdateProposalStatus,
@@ -154,22 +157,16 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
+              justifyContent: "space-between",
               borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
-            <User size={14} style={{ color: "var(--color-action)" }} />
-            <span
-              style={{
-                fontSize: "var(--font-size-xs, 0.75rem)",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                color: "var(--text-secondary)",
-              }}
-            >
-              Lead & Origem
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <User size={14} style={{ color: "var(--color-action)" }} />
+              <span style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-secondary)" }}>Lead & Origem</span>
+            </div>
+            {onEditLead && <Button size="xs" variant="secondary" prefixIcon={<Edit3 size={12}/>} onClick={onEditLead}>Editar ficha</Button>}
           </div>
           <LeadSummary
             thread={thread}

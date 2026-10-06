@@ -128,6 +128,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
         <ContextPanel
           thread={conversation.selectedThread}
           onClose={layout.toggleRight}
+          onEditLead={() => setActiveDrawer("dossier")}
           proposals={proposals}
           onCreateProposal={() => setActiveDrawer("proposal")}
           onUpdateProposalStatus={handleUpdateProposalStatus}
@@ -146,6 +147,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
           <ContextPanel
             thread={conversation.selectedThread}
             onClose={() => layout.setIsContextDrawerOpen(false)}
+            onEditLead={() => setActiveDrawer("dossier")}
             proposals={proposals}
             onCreateProposal={() => setActiveDrawer("proposal")}
             onUpdateProposalStatus={handleUpdateProposalStatus}
