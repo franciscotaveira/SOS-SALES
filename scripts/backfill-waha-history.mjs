@@ -65,15 +65,31 @@ async function phoneJid(value) {
   return await lidCache.get(raw);
 }
 
-async function discoverWebhookUrl() {
-  if (process.env.CHAT_SALES_WEBHOOK_URL) return process.env.CHAT_SALES_WEBHOOK_URL;
+async function discoverWebhook() {
+  if (process.env.CHAT_SALES_WEBHOOK_URL) {
+    return { url: process.env.CHAT_SALES_WEBHOOK_URL, headers: {} };
+  }
   const config = await waha(`/api/sessions/${encodeURIComponent(session)}`);
-  const candidates = JSON.stringify(config).match(/https?:\\?\/\\?\/[^"\\]+/g) || [];
-  const raw = candidates
-    .map((value) => value.replaceAll("\\/", "/"))
-    .find((value) => value.includes("/v1/webhooks/whatsapp/"));
-  if (!raw) throw new Error("Chat Sales webhook was not found in the WAHA session configuration");
-  return raw;
+  function find(value) {
+    if (!value || typeof value !== "object") return undefined;
+    if (typeof value.url === "string" && value.url.includes("/v1/webhooks/whatsapp/")) {
+      const customHeaders = Array.isArray(value.customHeaders) ? value.customHeaders : [];
+      const resolvedHeaders = Object.fromEntries(
+        customHeaders
+          .filter((item) => item && typeof item.name === "string" && typeof item.value === "string")
+          .map((item) => [item.name, item.value])
+      );
+      return { url: value.url, headers: resolvedHeaders };
+    }
+    for (const nested of Object.values(value)) {
+      const found = find(nested);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  const webhook = find(config);
+  if (!webhook) throw new Error("Chat Sales webhook was not found in the WAHA session configuration");
+  return webhook;
 }
 
 function isDirectChat(chatId) {
@@ -85,7 +101,7 @@ function mediaUrl(message) {
   return typeof candidate === "string" && /^https?:\/\//.test(candidate) ? candidate : undefined;
 }
 
-const webhookUrl = await discoverWebhookUrl();
+const webhook = await discoverWebhook();
 const chats = await waha(`/api/${encodeURIComponent(session)}/chats?limit=${Math.max(1, chatLimit)}`);
 const selected = chats.filter((chat) => {
   const chatId = jid(chat.id);
@@ -100,9 +116,9 @@ let failed = 0;
 
 async function replay(payload) {
   try {
-    const response = await fetch(webhookUrl, {
+    const response = await fetch(webhook.url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...webhook.headers },
       body: JSON.stringify({ event: "message", session, payload }),
       signal: AbortSignal.timeout(15000),
     });
