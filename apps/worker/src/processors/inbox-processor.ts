@@ -38,6 +38,67 @@ export interface InboxProcessorOptions {
   readonly keyring?: Keyring;
 }
 
+function coerceWahaJid(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  if (typeof record._serialized === "string") return record._serialized;
+  if (typeof record.id === "string") return record.id;
+  if (typeof record.user === "string" && typeof record.server === "string") {
+    return `${record.user}@${record.server}`;
+  }
+  return "";
+}
+
+async function resolveWahaLid(jid: string, session: string): Promise<string> {
+  if (!jid.endsWith("@lid")) return jid;
+  const baseUrl = process.env.WAHA_BASE_URL?.replace(/\/$/, "");
+  const apiKey = process.env.WAHA_API_KEY;
+  if (!baseUrl || !apiKey) {
+    throw new Error("WAHA_LID_RESOLUTION_ERROR: WAHA_BASE_URL and WAHA_API_KEY are required");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(
+      `${baseUrl}/api/${encodeURIComponent(session)}/lids/${encodeURIComponent(jid)}`,
+      { headers: { "X-Api-Key": apiKey }, signal: controller.signal }
+    );
+    if (!response.ok) {
+      throw new Error(`WAHA_LID_RESOLUTION_ERROR: WAHA returned HTTP ${response.status}`);
+    }
+    const data = (await response.json()) as { pn?: string };
+    const resolved = coerceWahaJid(data.pn);
+    if (!resolved || resolved.endsWith("@lid")) {
+      throw new Error("WAHA_LID_RESOLUTION_ERROR: WAHA did not return a phone JID");
+    }
+    return resolved;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function enrichWahaPayload(rawPayload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (rawPayload.event !== "message") return rawPayload;
+  const payload = rawPayload.payload;
+  if (!payload || typeof payload !== "object") return rawPayload;
+  const source = payload as Record<string, unknown>;
+  const session = String(source.session ?? rawPayload.session ?? process.env.WAHA_DEFAULT_SESSION ?? "default");
+  const from = coerceWahaJid(source.from);
+  const to = coerceWahaJid(source.to);
+
+  return {
+    ...rawPayload,
+    payload: {
+      ...source,
+      from: await resolveWahaLid(from, session),
+      to: await resolveWahaLid(to, session),
+      session,
+    },
+  };
+}
+
 export class InboxProcessor {
   private readonly keyringOrKey: string | Keyring;
 
@@ -188,7 +249,7 @@ export class InboxProcessor {
         this.keyringOrKey,
         { aad, keyVersion: item.key_version }
       );
-      const rawPayload = JSON.parse(rawPayloadStr) as Record<string, unknown>;
+      let rawPayload = JSON.parse(rawPayloadStr) as Record<string, unknown>;
 
       let eventCount = 0;
 
@@ -222,6 +283,7 @@ export class InboxProcessor {
           if (provider === "meta_waba") {
             events = WabaWebhookNormalizer.normalize(rawPayload, context);
           } else if (provider === "waha") {
+            rawPayload = await enrichWahaPayload(rawPayload);
             events = WahaWebhookNormalizer.normalize(rawPayload, context);
           } else if (provider === "evolution") {
             events = EvolutionWebhookNormalizer.normalize(rawPayload, context);
@@ -239,15 +301,21 @@ export class InboxProcessor {
           for (const normEvent of events) {
             if (normEvent.kind === "message") {
               const event = normEvent.event;
+              const direction = event.metadata?.direction === "outbound" ? "outbound" : "inbound";
+              const contactPhoneE164 = direction === "outbound"
+                ? event.recipientPhoneE164
+                : event.senderPhoneE164;
               // Upsert contact
-              const contactName = (event.metadata?.contactName as string) || null;
+              const contactName = direction === "inbound"
+                ? ((event.metadata?.contactName as string) || (event.metadata?.senderName as string) || null)
+                : null;
               const contactRes = await client.query<{ id: string }>(
                 `INSERT INTO public.contacts (workspace_id, phone_e164, name)
                  VALUES ($1, $2, $3)
                  ON CONFLICT (workspace_id, phone_e164)
                  DO UPDATE SET name = COALESCE(EXCLUDED.name, contacts.name), updated_at = clock_timestamp()
                  RETURNING id;`,
-                [item.workspace_id, event.senderPhoneE164, contactName]
+                [item.workspace_id, contactPhoneE164, contactName]
               );
               const contactRow = contactRes.rows[0];
               if (!contactRow) {
@@ -258,11 +326,13 @@ export class InboxProcessor {
               // Upsert commercial thread
               const threadRes = await client.query<{ id: string }>(
                 `INSERT INTO public.commercial_threads (workspace_id, channel_instance_id, contact_id, status, last_message_at)
-                 VALUES ($1, $2, $3, 'active', clock_timestamp())
+                 VALUES ($1, $2, $3, 'active', $4::timestamptz)
                  ON CONFLICT (workspace_id, channel_instance_id, contact_id)
-                 DO UPDATE SET last_message_at = clock_timestamp(), updated_at = clock_timestamp()
+                 DO UPDATE SET
+                   last_message_at = GREATEST(commercial_threads.last_message_at, EXCLUDED.last_message_at),
+                   updated_at = clock_timestamp()
                  RETURNING id;`,
-                [item.workspace_id, item.channel_instance_id, contactId]
+                [item.workspace_id, item.channel_instance_id, contactId, event.timestamp]
               );
               const threadRow = threadRes.rows[0];
               if (!threadRow) {
@@ -312,11 +382,11 @@ export class InboxProcessor {
                 `INSERT INTO public.messages (
                    workspace_id, channel_instance_id, thread_id, provider, direction,
                    sender_e164, recipient_e164, content_type, body, media_url,
-                   provider_message_id, delivery_status, status_rank
+                   metadata, provider_message_id, delivery_status, status_rank, created_at, updated_at
                  ) VALUES (
-                   $1, $2, $3, $4, 'inbound',
-                   $5, $6, $7, $8, $9,
-                   $10, 'delivered', 20
+                   $1, $2, $3, $4, $5,
+                   $6, $7, $8, $9, $10,
+                   $11::jsonb, $12, $13, $14, $15::timestamptz, $15::timestamptz
                  )
                  ON CONFLICT (channel_instance_id, provider_message_id) DO NOTHING
                  RETURNING id;`,
@@ -325,12 +395,17 @@ export class InboxProcessor {
                   item.channel_instance_id,
                   threadId,
                   provider,
+                  direction,
                   event.senderPhoneE164,
                   event.recipientPhoneE164,
                   event.contentType,
                   event.body || null,
                   event.mediaUrl || null,
+                  JSON.stringify(event.metadata ?? {}),
                   event.externalMessageId,
+                  direction === "outbound" ? "sent" : "delivered",
+                  direction === "outbound" ? 10 : 20,
+                  event.timestamp,
                 ]
               );
 

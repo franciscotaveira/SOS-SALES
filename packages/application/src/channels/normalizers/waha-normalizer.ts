@@ -183,6 +183,7 @@ export class WahaWebhookNormalizer {
         return [];
       }
 
+      const fromMe = Boolean(payload.fromMe);
       const senderPhoneE164 = jidToE164(rawFrom);
       const recipientPhoneE164 = jidToE164(rawTo);
       if (!isValidPhoneE164(senderPhoneE164) || !isValidPhoneE164(recipientPhoneE164)) {
@@ -203,6 +204,11 @@ export class WahaWebhookNormalizer {
         contentType = mediaUrl ? detectMediaType(mediaUrl) : "image";
       }
 
+      const rawData = payload._data as Record<string, unknown> | undefined;
+      const contactName = !fromMe && typeof rawData?.notifyName === "string"
+        ? rawData.notifyName.trim()
+        : undefined;
+
       const event = InboundMessageEventSchema.parse({
         channelInstanceId: context.channelInstanceId,
         workspaceId: context.workspaceId,
@@ -216,7 +222,10 @@ export class WahaWebhookNormalizer {
         timestamp,
         rawPayloadHash,
         metadata: {
-          wahaSession: payload.session,
+          direction: fromMe ? "outbound" : "inbound",
+          fromMe,
+          wahaSession: payload.session ?? rawPayload.session,
+          ...(contactName ? { contactName } : {}),
         },
       });
 

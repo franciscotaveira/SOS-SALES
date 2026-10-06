@@ -21,6 +21,21 @@ export const WAHA_INBOUND_TEXT_FIXTURE = {
   },
 };
 
+export const WAHA_OUTBOUND_TEXT_FIXTURE = {
+  event: "message",
+  session: "default",
+  payload: {
+    id: "true_5511988887777@c.us_3EB0C2719B54",
+    timestamp: 1726700001,
+    from: "5511999998888@c.us",
+    fromMe: true,
+    to: "5511988887777@c.us",
+    body: "Olá! Como posso ajudar?",
+    hasMedia: false,
+    ack: 1,
+  },
+};
+
 export const WAHA_INBOUND_IMAGE_FIXTURE = {
   event: "message",
   session: "default",
@@ -172,4 +187,3 @@ export const WAHA_SESSION_AUTH_FAILURE_FIXTURE = {
     timestamp: 1726700240,
   },
 };
-

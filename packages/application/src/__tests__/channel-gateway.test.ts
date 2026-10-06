@@ -23,6 +23,7 @@ import {
   WABA_INBOUND_INTERACTIVE_BUTTON_FIXTURE,
   WABA_INBOUND_INTERACTIVE_LIST_FIXTURE,
   WAHA_INBOUND_TEXT_FIXTURE,
+  WAHA_OUTBOUND_TEXT_FIXTURE,
   WAHA_INBOUND_IMAGE_FIXTURE,
   WAHA_ACK_DELIVERED_FIXTURE,
   WAHA_ACK_READ_FIXTURE,
@@ -561,6 +562,23 @@ describe("Channel Gateway & Normalizers Unit Tests", () => {
           "Olá, gostaria de saber mais sobre o plano comercial."
         );
         expect(result.event.rawPayloadHash).toBe(testRawPayloadHash);
+      }
+    });
+
+    it("should preserve outbound direction for messages sent from the connected number", () => {
+      const results = WahaWebhookNormalizer.normalize(
+        WAHA_OUTBOUND_TEXT_FIXTURE,
+        context
+      );
+
+      expect(results).toHaveLength(1);
+      const result = results[0];
+      expect(result?.kind).toBe("message");
+      if (result?.kind === "message") {
+        expect(result.event.senderPhoneE164).toBe("+5511999998888");
+        expect(result.event.recipientPhoneE164).toBe("+5511988887777");
+        expect(result.event.metadata?.direction).toBe("outbound");
+        expect(result.event.metadata?.fromMe).toBe(true);
       }
     });
 
