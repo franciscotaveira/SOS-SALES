@@ -31,6 +31,8 @@ const channelCredentialsSchema = z.object({
   appSecret: z.string().optional(),
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
+  session: z.string().optional(),
+  instanceName: z.string().optional(),
 });
 
 const createChannelBodySchema = z.object({
@@ -442,11 +444,12 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
               ? {
                   api_key: credentials.apiKey,
                   base_url: credentials.baseUrl,
-                  session: "default",
+                  session: credentials.session?.trim() || "default",
                 }
               : {
                   api_key: credentials.apiKey,
                   base_url: credentials.baseUrl,
+                  instance_name: credentials.instanceName?.trim() || "default",
                 };
 
           const envKeyring = parseKeyringFromEnv();
