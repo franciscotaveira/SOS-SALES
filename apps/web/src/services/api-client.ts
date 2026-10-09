@@ -141,6 +141,9 @@ export interface CommercialThreadSummary {
     status: string;
     assigneeUserId: string | null;
   } | null;
+  fepExpiresAt?: string | null;
+  attributionSource?: string | null;
+  journeyStage?: string | null;
   createdAt: string;
   updatedAt: string;
 }

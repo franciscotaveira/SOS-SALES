@@ -13,6 +13,7 @@ import {
   validateEvolutionBaseUrl,
   safeFetchWithSsrfGuard,
 } from "@sos-sales/application";
+import { META_GRAPH_API_VERSION } from "@sos-sales/contracts";
 
 const workspaceParamsSchema = z.object({
   workspaceId: z.string().uuid(),
@@ -22,8 +23,6 @@ const channelParamsSchema = z.object({
   workspaceId: z.string().uuid(),
   channelId: z.string().uuid(),
 });
-
-
 
 const channelCredentialsSchema = z.object({
   accessToken: z.string().optional(),
@@ -43,6 +42,9 @@ const createChannelBodySchema = z.object({
     .optional(),
   endpointToken: z.string().min(16).optional(),
   credentials: channelCredentialsSchema.optional(),
+  waacId: z.string().optional(),
+  pmaId: z.string().optional(),
+  businessPortfolioId: z.string().optional(),
 });
 
 const updateChannelStatusBodySchema = z.object({
@@ -165,7 +167,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         }
 
         try {
-          const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(
+          const url = `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${encodeURIComponent(
             credentials.phoneNumberId
           )}?fields=verified_name,code_verification_status,display_phone_number,quality_rating`;
           const resp = await safeFetchWithSsrfGuard(
@@ -638,7 +640,105 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  // 4b. Update Channel Lifecycle Status (State Machine)
+  // 4b. Delete or Soft-Archive Channel Instance safely
+  app.delete(
+    "/v1/workspaces/:workspaceId/channels/:channelId",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("workspace:manage"),
+      ],
+    },
+    async (request, reply) => {
+      const parsedParams = channelParamsSchema.safeParse(request.params);
+      if (!parsedParams.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Invalid workspaceId or channelId parameter",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { workspaceId, channelId } = parsedParams.data;
+
+      const result = await withTenantTransaction(workspaceId, async (client) => {
+        const chanRes = await client.query<{ id: string; display_name: string; credential_id: string | null }>(
+          `SELECT id, display_name, credential_id FROM public.channel_instances WHERE id = $1 AND workspace_id = $2;`,
+          [channelId, workspaceId]
+        );
+        const channel = chanRes.rows[0];
+        if (!channel) return null;
+
+        const msgRes = await client.query<{ count: string }>(
+          `SELECT count(*)::text as count FROM public.messages WHERE channel_instance_id = $1 AND workspace_id = $2;`,
+          [channelId, workspaceId]
+        );
+        const messageCount = Number.parseInt(msgRes.rows[0]?.count || "0", 10);
+
+        if (messageCount > 0) {
+          // Soft-archive to preserve financial and conversational integrity
+          await client.query(
+            `UPDATE public.channel_instances
+             SET status = 'revoked', is_active = false, updated_at = NOW()
+             WHERE id = $1 AND workspace_id = $2;`,
+            [channelId, workspaceId]
+          );
+          if (channel.credential_id) {
+            await client.query(
+              `UPDATE public.provider_credentials
+               SET status = 'REVOKED', updated_at = NOW()
+               WHERE id = $1 AND workspace_id = $2;`,
+              [channel.credential_id, workspaceId]
+            );
+          }
+          return { mode: "archived", displayName: channel.display_name, messageCount };
+        } else {
+          // Safe physical delete when 0 messages
+          await client.query(
+            `DELETE FROM public.commercial_threads WHERE channel_instance_id = $1 AND workspace_id = $2;`,
+            [channelId, workspaceId]
+          );
+          await client.query(
+            `DELETE FROM public.channel_instances WHERE id = $1 AND workspace_id = $2;`,
+            [channelId, workspaceId]
+          );
+          if (channel.credential_id) {
+            await client.query(
+              `DELETE FROM public.provider_credentials WHERE id = $1 AND workspace_id = $2;`,
+              [channel.credential_id, workspaceId]
+            );
+          }
+          return { mode: "deleted", displayName: channel.display_name, messageCount: 0 };
+        }
+      });
+
+      if (!result) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: `Channel ${channelId} not found in workspace`,
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      return reply.status(200).send({
+        success: true,
+        mode: result.mode,
+        message:
+          result.mode === "deleted"
+            ? `Canal '${result.displayName}' excluído definitivamente.`
+            : `Canal '${result.displayName}' arquivado com sucesso (${result.messageCount} mensagens preservadas no histórico).`,
+      });
+    }
+  );
+
+  // 4c. Update Channel Lifecycle Status (State Machine)
   app.patch(
     "/v1/workspaces/:workspaceId/channels/:channelId/status",
     {
@@ -870,8 +970,12 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
             handshakeDetail = "Synthetic Meta WABA verified";
           } else {
             const resp = await safeFetchWithSsrfGuard(
-              `https://graph.facebook.com/v21.0/${phoneNumberId}?fields=display_phone_number,name_status,quality_rating&access_token=${encodeURIComponent(accessToken)}`,
-              {},
+              `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${phoneNumberId}?fields=display_phone_number,name_status,quality_rating`,
+              {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              },
               { timeoutMs: 8000, allowLocalTest: false, allowedProtocols: ["https:"] }
             );
             if (resp.ok) {

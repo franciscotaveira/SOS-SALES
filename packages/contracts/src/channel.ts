@@ -272,3 +272,10 @@ export const MessageSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 export type Message = z.infer<typeof MessageSchema>;
+
+/**
+ * Meta Graph API Governance Constants (October 2026 Platform Standard)
+ */
+export const META_GRAPH_API_VERSION = "v26.0";
+export const META_GRAPH_API_ALLOWED_VERSIONS = ["v25.0", "v26.0"] as const;
+export type MetaGraphApiVersion = (typeof META_GRAPH_API_ALLOWED_VERSIONS)[number];

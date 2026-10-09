@@ -111,6 +111,9 @@ export const threadsRoutes: FastifyPluginAsync = async (app) => {
                 assigneeUserId: t.next_action_assignee_id,
               }
             : null,
+          fepExpiresAt: t.fep_expires_at ? t.fep_expires_at.toISOString() : null,
+          attributionSource: t.attribution_source ?? null,
+          journeyStage: t.journey_stage ?? null,
           createdAt: t.created_at,
           updatedAt: t.updated_at,
         })),

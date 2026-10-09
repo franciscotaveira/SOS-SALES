@@ -317,23 +317,42 @@ export class InboxProcessor {
               const contactPhoneE164 = direction === "outbound"
                 ? event.recipientPhoneE164
                 : event.senderPhoneE164;
-              // Upsert contact
+              // Upsert contact (BSUID / Username / Phone E.164)
               const contactName = direction === "inbound"
                 ? ((event.metadata?.contactName as string) || (event.metadata?.senderName as string) || null)
                 : null;
-              const contactRes = await client.query<{ id: string }>(
-                `INSERT INTO public.contacts (workspace_id, phone_e164, name)
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT (workspace_id, phone_e164)
-                 DO UPDATE SET name = COALESCE(EXCLUDED.name, contacts.name), updated_at = clock_timestamp()
-                 RETURNING id;`,
-                [item.workspace_id, contactPhoneE164, contactName]
-              );
-              const contactRow = contactRes.rows[0];
-              if (!contactRow) {
-                throw new Error("Failed to retrieve upserted contact id");
+              const bsuid = (event.metadata?.bsuid as string) || (event.metadata?.userId as string) || null;
+              const username = (event.metadata?.username as string) || null;
+
+              let contactId: string;
+              if (bsuid) {
+                const bsuidRes = await client.query<{ id: string }>(
+                  `INSERT INTO public.contacts (workspace_id, phone_e164, name, bsuid, username)
+                   VALUES ($1, $2, $3, $4, $5)
+                   ON CONFLICT (workspace_id, bsuid) WHERE bsuid IS NOT NULL
+                   DO UPDATE SET 
+                     name = COALESCE(EXCLUDED.name, contacts.name),
+                     phone_e164 = COALESCE(EXCLUDED.phone_e164, contacts.phone_e164),
+                     username = COALESCE(EXCLUDED.username, contacts.username),
+                     updated_at = clock_timestamp()
+                   RETURNING id;`,
+                  [item.workspace_id, contactPhoneE164, contactName, bsuid, username]
+                );
+                contactId = bsuidRes.rows[0]!.id;
+              } else {
+                const contactRes = await client.query<{ id: string }>(
+                  `INSERT INTO public.contacts (workspace_id, phone_e164, name, username)
+                   VALUES ($1, $2, $3, $4)
+                   ON CONFLICT (workspace_id, phone_e164)
+                   DO UPDATE SET 
+                     name = COALESCE(EXCLUDED.name, contacts.name),
+                     username = COALESCE(EXCLUDED.username, contacts.username),
+                     updated_at = clock_timestamp()
+                   RETURNING id;`,
+                  [item.workspace_id, contactPhoneE164, contactName, username]
+                );
+                contactId = contactRes.rows[0]!.id;
               }
-              const contactId = contactRow.id;
 
               // Upsert commercial thread
               const threadRes = await client.query<{ id: string }>(
@@ -379,6 +398,7 @@ export class InboxProcessor {
                      SET stage = $1,
                          ctwa_clid = COALESCE($2, ctwa_clid),
                          attribution_source = CASE WHEN $2 IS NOT NULL THEN 'ctwa_meta' ELSE attribution_source END,
+                         fep_expires_at = CASE WHEN $2 IS NOT NULL THEN COALESCE(fep_expires_at, clock_timestamp() + INTERVAL '7 days') ELSE fep_expires_at END,
                          updated_at = clock_timestamp()
                      WHERE workspace_id = $3 AND id = $4;`,
                     [nextStage, shouldSetCtwa ? inboundCtwaClid : null, item.workspace_id, journey.id]
@@ -387,9 +407,9 @@ export class InboxProcessor {
               } else if (inboundCtwaClid || direction === "inbound") {
                 await client.query(
                   `INSERT INTO public.commercial_journeys (
-                     workspace_id, contact_id, thread_id, title, stage, status, attribution_source, ctwa_clid
+                     workspace_id, contact_id, thread_id, title, stage, status, attribution_source, ctwa_clid, fep_expires_at
                    ) VALUES (
-                     $1, $2, $3, $4, 'lead', 'open', $5, $6
+                     $1, $2, $3, $4, 'lead', 'open', $5, $6, $7
                    );`,
                   [
                     item.workspace_id,
@@ -398,6 +418,7 @@ export class InboxProcessor {
                     inboundCtwaClid ? "Oportunidade Comercial (CTWA)" : "Oportunidade WhatsApp",
                     inboundCtwaClid ? "ctwa_meta" : "organic_whatsapp",
                     inboundCtwaClid || null,
+                    inboundCtwaClid ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null,
                   ]
                 );
               }

@@ -343,6 +343,9 @@ export interface CommercialThreadWithContactRecord extends CommercialThreadRecor
   next_action_due_at?: Date | null;
   next_action_status?: string | null;
   next_action_assignee_id?: string | null;
+  fep_expires_at?: Date | null;
+  attribution_source?: string | null;
+  journey_stage?: string | null;
 }
 
 export interface ListCommercialThreadsParams {
@@ -383,7 +386,10 @@ export async function listCommercialThreads(
        nact.title AS next_action_title,
        nact.due_at AS next_action_due_at,
        nact.status AS next_action_status,
-       nact.assignee_user_id AS next_action_assignee_id
+       nact.assignee_user_id AS next_action_assignee_id,
+       j.fep_expires_at,
+       j.attribution_source,
+       j.journey_stage
      FROM public.commercial_threads t
      INNER JOIN public.contacts c 
        ON c.workspace_id = t.workspace_id AND c.id = t.contact_id
@@ -402,6 +408,13 @@ export async function listCommercialThreads(
        WHERE ca.workspace_id = t.workspace_id AND ca.thread_id = t.id AND ca.status = 'open'
        LIMIT 1
      ) nact ON true
+     LEFT JOIN LATERAL (
+       SELECT cj.fep_expires_at, cj.attribution_source, cj.stage as journey_stage
+       FROM public.commercial_journeys cj
+       WHERE cj.workspace_id = t.workspace_id AND cj.thread_id = t.id
+       ORDER BY cj.created_at DESC
+       LIMIT 1
+     ) j ON true
      WHERE t.workspace_id = $1
        AND ($2::text IS NULL OR t.status = $2)
        AND (

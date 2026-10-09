@@ -34,6 +34,13 @@ export const ConversationHeader: FC<ConversationHeaderProps> = ({
   const formattedPhone = formatPhone(thread.contactPhone);
   const origin = thread.channelProvider ? ` · ${thread.channelProvider}` : "";
 
+  // Meta 2026 CTWA 7-Day (168h) Free Messaging Window Calculation
+  const fepRemainingHours = thread.fepExpiresAt
+    ? Math.max(0, Math.round((new Date(thread.fepExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60)))
+    : null;
+  const isFepActive = fepRemainingHours !== null && fepRemainingHours > 0;
+  const fepRemainingDays = fepRemainingHours !== null ? Math.ceil(fepRemainingHours / 24) : null;
+
   return (
     <header
       style={{
@@ -67,15 +74,66 @@ export const ConversationHeader: FC<ConversationHeaderProps> = ({
         <div style={{ minWidth: 0 }}>
           <div
             style={{
-              fontSize: "var(--font-size-sm, 0.875rem)",
-              fontWeight: 500,
-              color: "var(--text-primary)",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
               overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
             }}
           >
-            {displayName}
+            <span
+              style={{
+                fontSize: "var(--font-size-sm, 0.875rem)",
+                fontWeight: 600,
+                color: "var(--text-primary)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {displayName}
+            </span>
+
+            {isFepActive && (
+              <span
+                title="Janela Gratuita de Mensagens Meta (CTWA 7 dias): Conversas livres de cobrança de tarifas Meta por 168 horas."
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  padding: "1px 6px",
+                  borderRadius: "10px",
+                  backgroundColor: "rgba(16, 185, 129, 0.12)",
+                  color: "#10b981",
+                  fontSize: "10.5px",
+                  fontWeight: 600,
+                  border: "1px solid rgba(16, 185, 129, 0.25)",
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ width: "5px", height: "5px", borderRadius: "50%", backgroundColor: "#10b981" }} />
+                CTWA Grátis · {fepRemainingDays === 1 ? "1 dia" : `${fepRemainingDays}d`}
+              </span>
+            )}
+
+            {thread.journeyStage && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "1px 6px",
+                  borderRadius: "10px",
+                  backgroundColor: "var(--bg-canvas)",
+                  color: "var(--text-secondary)",
+                  fontSize: "10.5px",
+                  fontWeight: 500,
+                  border: "1px solid var(--border-default)",
+                  flexShrink: 0,
+                  textTransform: "uppercase",
+                }}
+              >
+                {thread.journeyStage}
+              </span>
+            )}
           </div>
           <div
             style={{
