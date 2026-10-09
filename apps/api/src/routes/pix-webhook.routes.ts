@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { withTenantTransaction, confirmPixChargeBankWebhook } from "@sos-sales/database";
+import {
+  withTenantTransaction,
+  confirmPixChargeBankWebhook,
+  createCommercialJourney,
+  recordCommercialOutcome,
+} from "@sos-sales/database";
 
 const SIGNATURE_WINDOW_MS = 5 * 60 * 1000;
 const MAX_BODY_BYTES = 64 * 1024;
@@ -123,14 +128,54 @@ export const pixWebhookRoutes: FastifyPluginAsync<PixWebhookRoutesOptions> = asy
     }
 
     try {
-      const { charge, alreadySettled } = await withTenantTransaction(workspaceId, (client) =>
-        confirmPixChargeBankWebhook(client, {
+      const { charge, alreadySettled } = await withTenantTransaction(workspaceId, async (client) => {
+        const res = await confirmPixChargeBankWebhook(client, {
           workspaceId,
           chargeId: event.chargeId,
           paidAmountCents: event.amountCents,
           providerEventId: event.eventId,
-        })
-      );
+        });
+
+        if (!res.alreadySettled) {
+          const ownerRes = await client.query<{ user_id: string }>(
+            `SELECT user_id FROM public.workspace_memberships WHERE workspace_id = $1 AND role = 'owner' LIMIT 1;`,
+            [workspaceId]
+          );
+          const actorUserId = ownerRes.rows[0]?.user_id || "00000000-0000-0000-0000-000000000000";
+
+          let journeyId: string | undefined;
+          const jRes = await client.query<{ id: string }>(
+            `SELECT id FROM public.commercial_journeys
+             WHERE workspace_id = $1 AND (thread_id = $2 OR contact_id = $3) AND status = 'open'
+             ORDER BY created_at DESC LIMIT 1 FOR UPDATE;`,
+            [workspaceId, res.charge.thread_id, res.charge.contact_id]
+          );
+          if (jRes.rows[0]) {
+            journeyId = jRes.rows[0].id;
+          } else {
+            const created = await createCommercialJourney(client, workspaceId, {
+              contactId: res.charge.contact_id,
+              threadId: res.charge.thread_id,
+              title: res.charge.title || "Venda Concluída (Webhook Pix)",
+              stage: "proposal",
+              attributionSource: "organic_whatsapp",
+              estimatedValueCents: res.charge.amount_cents,
+            });
+            journeyId = created.id;
+          }
+
+          await recordCommercialOutcome(client, workspaceId, {
+            journeyId,
+            status: "won",
+            valueCents: res.charge.amount_cents,
+            currency: res.charge.currency || "BRL",
+            reason: `Liquidação Pix automática via webhook bancário (${event.eventId})`,
+            registeredByUserId: actorUserId,
+          });
+        }
+
+        return res;
+      });
       return reply.status(200).send({
         received: true,
         status: alreadySettled ? "already_settled" : "settled",

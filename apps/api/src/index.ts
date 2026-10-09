@@ -27,6 +27,7 @@ import { integrationRoutes } from "./routes/integration.routes";
 import { outboundWebhooksRoutes } from "./routes/outbound-webhooks.routes";
 import { commercialActionsRoutes } from "./routes/commercial-actions.routes";
 import { commercialProposalsRoutes } from "./routes/commercial-proposals.routes";
+import { aiAgentRoutes } from "./routes/ai-agent.routes";
 import type { ISigningSecretResolver, ITransactionalOutboundProducerService } from "@sos-sales/application";
 
 
@@ -213,6 +214,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(outboundWebhooksRoutes);
   await app.register(commercialActionsRoutes);
   await app.register(commercialProposalsRoutes);
+  await app.register(aiAgentRoutes);
   await app.register(outboundMessagesRoutes, {
     producerService: options.outboundProducerService,
     rateLimiter: effectiveRateLimiter,

@@ -352,41 +352,54 @@ export class InboxProcessor {
               }
               const threadId = threadRow.id;
 
-              // Correlate CTWA attribution (referral.ctwa_clid) to commercial journey under tenant scope
+              // Correlate CTWA attribution (referral.ctwa_clid) and evolve commercial journey under tenant scope
               const inboundCtwaClid =
                 typeof event.metadata?.ctwaClid === "string" && event.metadata.ctwaClid.trim().length > 0
                   ? event.metadata.ctwaClid.trim()
                   : undefined;
 
-              if (inboundCtwaClid) {
-                const existingJourneyRes = await client.query<{ id: string; ctwa_clid: string | null }>(
-                  `SELECT id, ctwa_clid FROM public.commercial_journeys
-                   WHERE workspace_id = $1 AND thread_id = $2
-                   ORDER BY created_at DESC
-                   LIMIT 1;`,
-                  [item.workspace_id, threadId]
-                );
+              const existingJourneyRes = await client.query<{ id: string; stage: string; ctwa_clid: string | null }>(
+                `SELECT id, stage, ctwa_clid FROM public.commercial_journeys
+                 WHERE workspace_id = $1 AND thread_id = $2
+                 ORDER BY created_at DESC
+                 LIMIT 1;`,
+                [item.workspace_id, threadId]
+              );
 
-                const journey = existingJourneyRes.rows[0];
-                if (journey) {
-                  if (!journey.ctwa_clid) {
-                    await client.query(
-                      `UPDATE public.commercial_journeys
-                       SET ctwa_clid = $1, attribution_source = 'ctwa_meta', updated_at = clock_timestamp()
-                       WHERE workspace_id = $2 AND id = $3;`,
-                      [inboundCtwaClid, item.workspace_id, journey.id]
-                    );
-                  }
-                } else {
+              const journey = existingJourneyRes.rows[0];
+              if (journey) {
+                // If lead sends message while in 'lead' stage, advance to 'qualified'
+                const shouldAdvance = direction === "inbound" && journey.stage === "lead";
+                const nextStage = shouldAdvance ? "qualified" : journey.stage;
+                const shouldSetCtwa = inboundCtwaClid && !journey.ctwa_clid;
+
+                if (shouldAdvance || shouldSetCtwa) {
                   await client.query(
-                    `INSERT INTO public.commercial_journeys (
-                       workspace_id, contact_id, thread_id, title, stage, status, attribution_source, ctwa_clid
-                     ) VALUES (
-                       $1, $2, $3, 'Oportunidade Comercial (CTWA)', 'lead', 'open', 'ctwa_meta', $4
-                     );`,
-                    [item.workspace_id, contactId, threadId, inboundCtwaClid]
+                    `UPDATE public.commercial_journeys
+                     SET stage = $1,
+                         ctwa_clid = COALESCE($2, ctwa_clid),
+                         attribution_source = CASE WHEN $2 IS NOT NULL THEN 'ctwa_meta' ELSE attribution_source END,
+                         updated_at = clock_timestamp()
+                     WHERE workspace_id = $3 AND id = $4;`,
+                    [nextStage, shouldSetCtwa ? inboundCtwaClid : null, item.workspace_id, journey.id]
                   );
                 }
+              } else if (inboundCtwaClid || direction === "inbound") {
+                await client.query(
+                  `INSERT INTO public.commercial_journeys (
+                     workspace_id, contact_id, thread_id, title, stage, status, attribution_source, ctwa_clid
+                   ) VALUES (
+                     $1, $2, $3, $4, 'lead', 'open', $5, $6
+                   );`,
+                  [
+                    item.workspace_id,
+                    contactId,
+                    threadId,
+                    inboundCtwaClid ? "Oportunidade Comercial (CTWA)" : "Oportunidade WhatsApp",
+                    inboundCtwaClid ? "ctwa_meta" : "organic_whatsapp",
+                    inboundCtwaClid || null,
+                  ]
+                );
               }
 
               // Insert message idempotently

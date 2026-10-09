@@ -1,5 +1,6 @@
-import { useEffect, useState, type FC, type FormEvent } from "react";
+import { useEffect, useState, useRef, type FC, type FormEvent, type ChangeEvent } from "react";
 import { Button, Input, Dialog, SegmentedControl, useBreakpoint } from "@sos-sales/ui";
+import { Upload } from "lucide-react";
 import { apiClient, type ProductRecord } from "../../services/api-client";
 
 interface CreateProductDialogProps {
@@ -21,6 +22,8 @@ export const CreateProductDialog: FC<CreateProductDialogProps> = ({
 }) => {
   const { isMobile } = useBreakpoint();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -63,6 +66,22 @@ export const CreateProductDialog: FC<CreateProductDialogProps> = ({
       maximumFractionDigits: 2,
     });
     setPriceReal(formatted);
+  };
+
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingImage(true);
+    setServerError(null);
+    try {
+      const res = await apiClient.uploadMedia(workspaceId, file, { token });
+      setImageUrl(res.mediaUrl);
+    } catch (err: unknown) {
+      setServerError(err instanceof Error ? err.message : "Falha ao enviar imagem do computador.");
+    } finally {
+      setIsUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const resetForm = () => {
@@ -252,13 +271,67 @@ export const CreateProductDialog: FC<CreateProductDialogProps> = ({
           </div>
         </div>
 
-        <Input
-          label="URL da Imagem do Produto"
-          placeholder="https://..."
-          value={imageUrl}
-          onChange={(e) => setImageUrl(e.target.value)}
-          error={formErrors.imageUrl}
-        />
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 500, color: "var(--text-secondary)" }}>
+            Imagem do Produto
+          </label>
+          <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+            {imageUrl && (
+              <img
+                src={imageUrl}
+                alt="Preview"
+                style={{
+                  width: "56px",
+                  height: "56px",
+                  borderRadius: "var(--radius-md, 8px)",
+                  objectFit: "cover",
+                  border: "1px solid var(--border-default)",
+                  backgroundColor: "var(--bg-canvas)",
+                  flexShrink: 0,
+                }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.opacity = "0.3";
+                }}
+              />
+            )}
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <div style={{ flex: 1 }}>
+                  <Input
+                    placeholder="https://... ou faça upload do computador"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    error={formErrors.imageUrl}
+                  />
+                </div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  style={{ display: "none" }}
+                  onChange={handleFileChange}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  prefixIcon={<Upload size={14} />}
+                  onClick={() => fileInputRef.current?.click()}
+                  loading={isUploadingImage}
+                  disabled={isUploadingImage}
+                  style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                >
+                  {isUploadingImage ? "Enviando..." : "Upload do PC"}
+                </Button>
+              </div>
+            </div>
+          </div>
+          {formErrors.imageUrl && (
+            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-danger)" }}>
+              {formErrors.imageUrl}
+            </span>
+          )}
+        </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" }}>
           <Button size="sm" variant="secondary" onClick={onClose} disabled={isSubmitting}>

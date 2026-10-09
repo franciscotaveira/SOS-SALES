@@ -233,6 +233,18 @@ export async function createPixCharge(
   );
 
   const row = result.rows[0];
+
+  // Automatically advance commercial journey to proposal stage
+  await client.query(
+    `UPDATE public.commercial_journeys
+     SET stage = 'proposal',
+         estimated_value_cents = GREATEST(estimated_value_cents, $1),
+         updated_at = clock_timestamp()
+     WHERE workspace_id = $2 AND (thread_id = $3 OR contact_id = $4)
+       AND stage IN ('lead', 'qualified') AND status = 'open';`,
+    [params.amountCents, params.workspaceId, params.threadId, params.contactId]
+  );
+
   return {
     ...row,
     amount_cents: Number(row.amount_cents),

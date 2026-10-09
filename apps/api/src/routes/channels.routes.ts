@@ -94,7 +94,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         }>(
           `SELECT id, workspace_id, provider, display_name, phone_number_e164, status, is_active, created_at, updated_at
            FROM public.channel_instances
-           WHERE workspace_id = $1
+           WHERE workspace_id = $1 AND status != 'revoked' AND is_active = true
            ORDER BY created_at ASC;`,
           [workspaceId]
         );

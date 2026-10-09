@@ -196,12 +196,26 @@ export class WahaWebhookNormalizer {
       const body: string | undefined = payload.body
         ? String(payload.body)
         : undefined;
+      const mediaObj = (payload.media && typeof payload.media === "object") ? (payload.media as Record<string, unknown>) : null;
       const mediaUrl: string | undefined = payload.mediaUrl
         ? String(payload.mediaUrl)
+        : mediaObj?.url
+        ? String(mediaObj.url)
         : undefined;
 
-      if (payload.hasMedia) {
-        contentType = mediaUrl ? detectMediaType(mediaUrl) : "image";
+      if (payload.hasMedia || mediaUrl) {
+        const mime = String(mediaObj?.mimetype || mediaObj?.mimeType || "").toLowerCase();
+        if (mime.startsWith("audio/")) {
+          contentType = "audio";
+        } else if (mime.startsWith("video/")) {
+          contentType = "video";
+        } else if (mime.startsWith("image/")) {
+          contentType = "image";
+        } else if (mime.includes("pdf") || mime.includes("document") || mime.includes("msword")) {
+          contentType = "document";
+        } else {
+          contentType = mediaUrl ? detectMediaType(mediaUrl) : "image";
+        }
       }
 
       const rawData = payload._data as Record<string, unknown> | undefined;

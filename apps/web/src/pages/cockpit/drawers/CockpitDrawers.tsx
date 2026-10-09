@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import type { UseSessionReturn } from "../../../hooks/useSession";
-import type { CommercialThreadSummary } from "../../../services/api-client";
+import type { CommercialThreadSummary, ProductRecord } from "../../../services/api-client";
 import { TemplateDrawer } from "./TemplateDrawer";
 import { ProposalDrawer } from "./ProposalDrawer";
 import { PixDrawer } from "./PixDrawer";
@@ -20,6 +20,8 @@ interface CockpitDrawersProps {
   onProposalCreated?: () => void;
   onPixCreated?: () => void;
   onRadarDraftApplied?: (draft: string) => void;
+  onSendProduct?: (product: ProductRecord) => void;
+  onSendProducts?: (products: ProductRecord[]) => void;
 }
 
 export const CockpitDrawers: FC<CockpitDrawersProps> = ({
@@ -31,6 +33,8 @@ export const CockpitDrawers: FC<CockpitDrawersProps> = ({
   onProposalCreated,
   onPixCreated,
   onRadarDraftApplied,
+  onSendProduct,
+  onSendProducts,
 }) => {
   const token = session.token ?? undefined;
 
@@ -81,6 +85,8 @@ export const CockpitDrawers: FC<CockpitDrawersProps> = ({
         thread={selectedThread}
         workspaceId={session.activeWorkspace?.id}
         token={token}
+        onSendProduct={onSendProduct}
+        onSendProducts={onSendProducts}
       />
       <FlowDrawer
         isOpen={activeDrawer === "flow"}

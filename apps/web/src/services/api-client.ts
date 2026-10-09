@@ -1597,6 +1597,47 @@ export class ApiClient {
       }
     );
   }
+
+  async getAiAgentConfig(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; config: AiAgentConfig }> {
+    return this.request<{ success: boolean; config: AiAgentConfig }>(
+      `/v1/workspaces/${workspaceId}/ai-agent`,
+      { ...options, workspaceId }
+    );
+  }
+
+  async updateAiAgentConfig(
+    workspaceId: string,
+    payload: Partial<AiAgentConfig>,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; config: AiAgentConfig }> {
+    return this.request<{ success: boolean; config: AiAgentConfig }>(
+      `/v1/workspaces/${workspaceId}/ai-agent`,
+      {
+        ...options,
+        method: "PUT",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
+}
+
+export interface AiAgentConfig {
+  enabled: boolean;
+  name: string;
+  systemPrompt: string;
+  personality: "cordial_comercial" | "direto_objetivo" | "especialista_consultivo" | "empatico_acolhedor";
+  skills: {
+    qualify_lead?: boolean;
+    catalog_offers?: boolean;
+    pix_charges?: boolean;
+    appointments?: boolean;
+    capi_tracking?: boolean;
+    [key: string]: boolean | undefined;
+  };
 }
 
 export interface OutboundWebhookSubscription {

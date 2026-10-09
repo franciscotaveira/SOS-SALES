@@ -69,7 +69,13 @@ BEGIN
      AND pc.workspace_id = ci.workspace_id
     WHERE ci.is_active = true
       AND ci.provider = 'meta_waba'
-      AND pc.account_id = trim(p_phone_id)
+      AND (
+        pc.account_id = trim(p_phone_id)
+        OR ci.phone_number_e164 = trim(p_phone_id)
+        OR ci.phone_number_e164 = '+' || trim(p_phone_id)
+        OR replace(ci.phone_number_e164, '+', '') = trim(p_phone_id)
+      )
+    ORDER BY (pc.account_id = trim(p_phone_id)) DESC
     LIMIT 1;
 END;
 $$;

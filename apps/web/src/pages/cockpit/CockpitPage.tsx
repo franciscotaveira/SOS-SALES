@@ -2,7 +2,7 @@ import { type FC, useState, useEffect } from "react";
 import { Drawer, EmptyState, useBreakpoint } from "@sos-sales/ui";
 import { MessageSquare } from "lucide-react";
 import { useSession, type UseSessionReturn } from "../../hooks/useSession";
-import { apiClient, type CommercialProposalSummary } from "../../services/api-client";
+import { apiClient, type CommercialProposalSummary, type ProductRecord } from "../../services/api-client";
 import { useInbox } from "./hooks/useInbox";
 import { useConversation } from "./hooks/useConversation";
 import { useCockpitLayout } from "./hooks/useCockpitLayout";
@@ -53,6 +53,65 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
     } catch (err: unknown) {
       const msg = (err as Error).message || "";
       setProposalError(msg.includes("409") ? "A proposta foi alterada por outra pessoa — recarregue a página." : msg || "Falha ao atualizar proposta.");
+    }
+  };
+
+  const handleSendProduct = async (product: ProductRecord) => {
+    if (!conversation.selectedThread || !session.activeWorkspace?.id || !session.token) return;
+    const formattedPrice = (product.priceCents / 100).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: product.currency || "BRL",
+    });
+
+    const body = `🛍️ *${product.title}*\n\n${product.description ? `${product.description}\n\n` : ""}💰 *Valor:* ${product.priceFormatted || formattedPrice}\n\n_Deseja agendar ou adquirir este item? Basta responder aqui!_`;
+
+    try {
+      await apiClient.sendOutboundMessage(
+        session.activeWorkspace.id,
+        conversation.selectedThread.channelInstanceId,
+        {
+          recipientPhoneE164: conversation.selectedThread.contactPhone,
+          contentType: product.imageUrl ? "image" : "text",
+          body,
+          mediaUrl: product.imageUrl || undefined,
+        },
+        { token: session.token }
+      );
+      await conversation.refreshMessages();
+      setActiveDrawer(null);
+    } catch (err: unknown) {
+      alert((err as Error).message || "Falha ao enviar produto.");
+    }
+  };
+
+  const handleSendProducts = async (selectedProducts: ProductRecord[]) => {
+    if (!conversation.selectedThread || !session.activeWorkspace?.id || !session.token || selectedProducts.length === 0) return;
+
+    const lines = selectedProducts.map((p, idx) => {
+      const formattedPrice = (p.priceCents / 100).toLocaleString("pt-BR", {
+        style: "currency",
+        currency: p.currency || "BRL",
+      });
+      return `*${idx + 1}. ${p.title}* — ${p.priceFormatted || formattedPrice}${p.description ? `\n   _${p.description}_` : ""}`;
+    });
+
+    const body = `✨ *Catálogo de Destaques Selecionados:*\n\n${lines.join("\n\n")}\n\n_Qual das opções você gostaria de agendar ou adquirir?_`;
+
+    try {
+      await apiClient.sendOutboundMessage(
+        session.activeWorkspace.id,
+        conversation.selectedThread.channelInstanceId,
+        {
+          recipientPhoneE164: conversation.selectedThread.contactPhone,
+          contentType: "text",
+          body,
+        },
+        { token: session.token }
+      );
+      await conversation.refreshMessages();
+      setActiveDrawer(null);
+    } catch (err: unknown) {
+      alert((err as Error).message || "Falha ao enviar carrossel de produtos.");
     }
   };
 
@@ -172,6 +231,8 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
         }}
         onPixCreated={conversation.refreshMessages}
         onRadarDraftApplied={(draft) => conversation.handleMessageInputChange(draft)}
+        onSendProduct={handleSendProduct}
+        onSendProducts={handleSendProducts}
       />
     </div>
   );
