@@ -3,7 +3,7 @@
 
 ALTER TABLE public.workspaces
   ADD COLUMN IF NOT EXISTS ai_provider text NOT NULL DEFAULT 'nvidia' CHECK (ai_provider IN ('nvidia', 'openrouter')),
-  ADD COLUMN IF NOT EXISTS ai_model text NOT NULL DEFAULT 'meta/llama-3.3-70b-instruct',
+  ADD COLUMN IF NOT EXISTS ai_model text NOT NULL DEFAULT 'nvidia/nemotron-3-super-120b-a12b',
   ADD COLUMN IF NOT EXISTS ai_api_key text;
 
 ALTER TABLE public.commercial_threads

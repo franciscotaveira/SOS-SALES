@@ -52,7 +52,7 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
 
   // Multi-Provider & Model State
   const [provider, setProvider] = useState<"nvidia" | "openrouter">("nvidia");
-  const [model, setModel] = useState("meta/llama-3.3-70b-instruct");
+  const [model, setModel] = useState("nvidia/nemotron-3-super-120b-a12b");
   const [apiKey, setApiKey] = useState("");
   const [hasCustomApiKey, setHasCustomApiKey] = useState(false);
 
@@ -105,7 +105,7 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
             res.config.model ||
               (res.config.provider === "openrouter"
                 ? "anthropic/claude-3.5-sonnet"
-                : "meta/llama-3.3-70b-instruct")
+                : "nvidia/nemotron-3-super-120b-a12b")
           );
           setHasCustomApiKey(Boolean(res.config.hasCustomApiKey));
           setApiKey("");
@@ -178,7 +178,7 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
   const handleSelectProvider = (newProvider: "nvidia" | "openrouter") => {
     setProvider(newProvider);
     if (newProvider === "nvidia") {
-      setModel("meta/llama-3.3-70b-instruct");
+      setModel("nvidia/nemotron-3-super-120b-a12b");
     } else {
       setModel("anthropic/claude-3.5-sonnet");
     }
@@ -465,9 +465,9 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "8px" }}>
             {(provider === "nvidia"
               ? [
-                  { id: "meta/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct", badge: "Recomendado" },
+                  { id: "nvidia/nemotron-3-super-120b-a12b", label: "Nemotron 3 Super 120B", badge: "Padrão & Raciocínio" },
+                  { id: "nvidia/nemotron-3.5-lightning-30b-a3b", label: "Nemotron 3.5 Lightning 30B", badge: "Ultrarrápido" },
                   { id: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B Instruct", badge: "Factual" },
-                  { id: "meta/llama-3.1-8b-instruct", label: "Llama 3.1 8B Instruct", badge: "Ultraleve" },
                 ]
               : [
                   { id: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet", badge: "Alta Precisão" },

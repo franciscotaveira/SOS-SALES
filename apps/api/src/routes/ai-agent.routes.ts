@@ -5,6 +5,7 @@ import {
   SovereignLlmClient,
   buildGroundedSystemPrompt,
   parseAiResponse,
+  DEFAULT_MODELS,
   type GroundedAiConfig,
   type GroundedProduct,
   type AiProvider,
@@ -133,8 +134,12 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
             config.ai_system_prompt ||
             "Você é a assistente de vendas da empresa. Atenda os clientes com atenção e simpatia.",
           personality: config.ai_personality || "cordial_comercial",
-          provider: config.ai_provider || "nvidia",
-          model: config.ai_model || "meta/llama-3.3-70b-instruct",
+          provider: (config.ai_provider as AiProvider) || "nvidia",
+          model:
+            config.ai_model ||
+            (config.ai_provider === "openrouter"
+              ? DEFAULT_MODELS.openrouter
+              : process.env.NVIDIA_TEMPLATE_MODEL || process.env.NVIDIA_MODEL || DEFAULT_MODELS.nvidia),
           hasCustomApiKey: Boolean(config.ai_api_key),
           skills: config.ai_skills || {
             qualify_lead: true,
@@ -405,7 +410,11 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
       messagesForModel.push({ role: "user", content: message });
 
       const llmClient = new SovereignLlmClient();
-      const model = ws.ai_model || (provider === "nvidia" ? "meta/llama-3.3-70b-instruct" : "anthropic/claude-3.5-sonnet");
+      const model =
+        ws.ai_model ||
+        (provider === "nvidia"
+          ? process.env.NVIDIA_TEMPLATE_MODEL || process.env.NVIDIA_MODEL || DEFAULT_MODELS.nvidia
+          : DEFAULT_MODELS.openrouter);
 
       const startTime = Date.now();
       const completion = await llmClient.complete(messagesForModel, {

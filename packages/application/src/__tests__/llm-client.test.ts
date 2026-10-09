@@ -52,7 +52,7 @@ describe("SovereignLlmClient", () => {
     expect(options.headers["Authorization"]).toBe("Bearer nvapi-test-key");
     expect(result.content).toBe("Olá! Posso te ajudar com o catálogo?");
     expect(result.provider).toBe("nvidia");
-    expect(result.model).toBe("meta/llama-3.3-70b-instruct");
+    expect(result.model).toBe("nvidia/nemotron-3-super-120b-a12b");
   });
 
   it("routes to OpenRouter with proper headers when provider is openrouter", async () => {

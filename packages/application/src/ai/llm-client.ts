@@ -31,7 +31,7 @@ export interface LlmCompletionResult {
 }
 
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
-  nvidia: "meta/llama-3.3-70b-instruct",
+  nvidia: "nvidia/nemotron-3-super-120b-a12b",
   openrouter: "anthropic/claude-3.5-sonnet",
 };
 
@@ -72,7 +72,7 @@ export class SovereignLlmClient {
     const model =
       options.model ||
       (provider === "nvidia"
-        ? process.env.NVIDIA_MODEL || DEFAULT_MODELS.nvidia
+        ? process.env.NVIDIA_TEMPLATE_MODEL || process.env.NVIDIA_MODEL || DEFAULT_MODELS.nvidia
         : process.env.OPENROUTER_MODEL || DEFAULT_MODELS.openrouter);
 
     const temperature = options.temperature !== undefined ? options.temperature : 0.1;
@@ -117,6 +117,7 @@ export class SovereignLlmClient {
         choices?: Array<{
           message?: {
             content?: string;
+            reasoning_content?: string;
           };
         }>;
         model?: string;
@@ -128,7 +129,10 @@ export class SovereignLlmClient {
       };
 
       const choice = data.choices?.[0];
-      const content = choice?.message?.content?.trim() || "";
+      const content =
+        choice?.message?.content?.trim() ||
+        choice?.message?.reasoning_content?.trim() ||
+        "";
 
       return {
         content,

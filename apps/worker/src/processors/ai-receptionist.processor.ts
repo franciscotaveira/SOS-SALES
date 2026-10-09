@@ -7,6 +7,7 @@ import {
   buildGroundedSystemPrompt,
   parseAiResponse,
   SovereignLlmClient,
+  DEFAULT_MODELS,
   type AiProvider,
   type GroundedAiConfig,
   type GroundedProduct,
@@ -252,7 +253,11 @@ export class AiReceptionistProcessor {
             ? Number(ws.ai_temperature)
             : 0.1;
 
-        const model = ws.ai_model || (provider === "nvidia" ? "meta/llama-3.3-70b-instruct" : "anthropic/claude-3.5-sonnet");
+        const model =
+          ws.ai_model ||
+          (provider === "nvidia"
+            ? process.env.NVIDIA_TEMPLATE_MODEL || process.env.NVIDIA_MODEL || DEFAULT_MODELS.nvidia
+            : DEFAULT_MODELS.openrouter);
 
         logger.info(
           {
