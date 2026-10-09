@@ -6,7 +6,8 @@ import {
 import {
   buildGroundedSystemPrompt,
   parseAiResponse,
-  OpenRouterClient,
+  SovereignLlmClient,
+  type AiProvider,
   type GroundedAiConfig,
   type GroundedProduct,
   type GroundedBusinessRules,
@@ -31,13 +32,15 @@ export interface AiReceptionistResult {
   replyText?: string;
   needsHandoff?: boolean;
   handoffReason?: string;
+  provider?: string;
+  model?: string;
 }
 
 export class AiReceptionistProcessor {
-  private readonly openRouterClient: OpenRouterClient;
+  private readonly llmClient: SovereignLlmClient;
 
-  constructor(openRouterClient?: OpenRouterClient) {
-    this.openRouterClient = openRouterClient || new OpenRouterClient();
+  constructor(llmClient?: SovereignLlmClient) {
+    this.llmClient = llmClient || new SovereignLlmClient();
   }
 
   async processInboundMessage(
@@ -73,6 +76,9 @@ export class AiReceptionistProcessor {
           ai_faq: GroundedFaqItem[] | null;
           ai_strict_mode: boolean | null;
           ai_temperature: number | string | null;
+          ai_provider: string | null;
+          ai_model: string | null;
+          ai_api_key: string | null;
         }>(
           `SELECT
              ai_receptionist_enabled,
@@ -83,7 +89,10 @@ export class AiReceptionistProcessor {
              ai_business_rules,
              ai_faq,
              ai_strict_mode,
-             ai_temperature
+             ai_temperature,
+             ai_provider,
+             ai_model,
+             ai_api_key
            FROM public.workspaces
            WHERE id = $1;`,
           [workspaceId]
@@ -118,14 +127,20 @@ export class AiReceptionistProcessor {
           return { handled: false, reason: "thread_closed" };
         }
 
-        // 3. Verify OpenRouter API key availability
-        const openRouterApiKey = process.env.OPENROUTER_API_KEY;
-        if (!openRouterApiKey || !openRouterApiKey.trim()) {
+        // 3. Resolve active provider and credentials (Nvidia NIM or OpenRouter)
+        const provider: AiProvider = (ws.ai_provider as AiProvider) || "nvidia";
+        const apiKey =
+          ws.ai_api_key?.trim() ||
+          (provider === "nvidia"
+            ? process.env.NVIDIA_API_KEY || process.env.NVAPI_KEY
+            : process.env.OPENROUTER_API_KEY);
+
+        if (!apiKey || !apiKey.trim()) {
           logger.warn(
-            { workspaceId, threadId },
-            "AI Receptionist skipped: OPENROUTER_API_KEY is not configured in worker environment"
+            { workspaceId, threadId, provider },
+            `AI Receptionist skipped: API key for provider '${provider}' is not configured`
           );
-          return { handled: false, reason: "missing_openrouter_api_key" };
+          return { handled: false, reason: `missing_${provider}_api_key` };
         }
 
         // 4. Fetch channel instance details
@@ -145,7 +160,20 @@ export class AiReceptionistProcessor {
           return { handled: false, reason: "channel_not_active" };
         }
 
-        // 5. Fetch grounded active catalog products (Truth in Data)
+        // 5. Fetch CTWA Ad Hook context (Meta Click to WhatsApp Ads)
+        const journeyRes = await client.query<{
+          ad_headline: string | null;
+          ad_body: string | null;
+        }>(
+          `SELECT ad_headline, ad_body FROM public.commercial_journeys
+           WHERE workspace_id = $1 AND thread_id = $2 AND (ad_headline IS NOT NULL OR ad_body IS NOT NULL)
+           ORDER BY created_at DESC
+           LIMIT 1;`,
+          [workspaceId, threadId]
+        );
+        const adJourney = journeyRes.rows[0];
+
+        // 6. Fetch grounded active catalog products (Truth in Data)
         const productsRes = await client.query<{
           id: string;
           title: string;
@@ -171,7 +199,7 @@ export class AiReceptionistProcessor {
           badge: r.badge,
         }));
 
-        // 6. Fetch recent conversation history
+        // 7. Fetch recent conversation history
         const historyRes = await client.query<{
           direction: string;
           body: string | null;
@@ -187,7 +215,7 @@ export class AiReceptionistProcessor {
         // Reverse to chronological order
         const recentMessages = historyRes.rows.reverse();
 
-        // 7. Build grounded prompt with 4 layers & Ignorance Protocol
+        // 8. Build grounded prompt with 4 layers, CTWA ad hook & Ignorance Protocol
         const personality = (ws.ai_personality || "cordial_comercial") as GroundedAiConfig["personality"];
         const aiConfig: GroundedAiConfig = {
           name: ws.ai_agent_name || "Assistente Virtual",
@@ -196,6 +224,12 @@ export class AiReceptionistProcessor {
           strictMode: ws.ai_strict_mode ?? true,
           businessRules: ws.ai_business_rules || {},
           faq: Array.isArray(ws.ai_faq) ? ws.ai_faq : [],
+          adHook: adJourney
+            ? {
+                headline: adJourney.ad_headline,
+                body: adJourney.ad_body,
+              }
+            : undefined,
         };
 
         const systemPrompt = buildGroundedSystemPrompt(aiConfig, products);
@@ -212,25 +246,33 @@ export class AiReceptionistProcessor {
           });
         }
 
-        // 8. Call OpenRouter LLM
-        const temperature = ws.ai_temperature !== undefined && ws.ai_temperature !== null
-          ? Number(ws.ai_temperature)
-          : 0.1;
+        // 9. Call Sovereign LLM Client (Nvidia NIM or OpenRouter)
+        const temperature =
+          ws.ai_temperature !== undefined && ws.ai_temperature !== null
+            ? Number(ws.ai_temperature)
+            : 0.1;
+
+        const model = ws.ai_model || (provider === "nvidia" ? "meta/llama-3.3-70b-instruct" : "anthropic/claude-3.5-sonnet");
 
         logger.info(
           {
             workspaceId,
             threadId,
             agentName: aiConfig.name,
+            provider,
+            model,
             strictMode: aiConfig.strictMode,
+            hasAdHook: Boolean(aiConfig.adHook),
             temperature,
             productCount: products.length,
           },
-          "Invoking AI Receptionist completion"
+          "Invoking Sovereign LLM Receptionist completion"
         );
 
-        const completion = await this.openRouterClient.complete(messagesForModel, {
-          apiKey: openRouterApiKey,
+        const completion = await this.llmClient.complete(messagesForModel, {
+          provider,
+          apiKey,
+          model,
           temperature,
         });
 
@@ -239,16 +281,18 @@ export class AiReceptionistProcessor {
           return { handled: false, reason: "empty_llm_response" };
         }
 
-        // 9. Parse response for human handoff
+        // 10. Parse response for human handoff
         const parsed = parseAiResponse(rawReply);
 
         if (parsed.needsHandoff) {
           await client.query(
             `UPDATE public.commercial_threads
              SET status = 'waiting_human',
+                 handoff_reason = $1,
+                 handoff_at = clock_timestamp(),
                  updated_at = clock_timestamp()
-             WHERE workspace_id = $1 AND id = $2;`,
-            [workspaceId, threadId]
+             WHERE workspace_id = $2 AND id = $3;`,
+            [parsed.handoffReason || "Dúvida fora do catálogo/FAQ", workspaceId, threadId]
           );
 
           logger.info(
@@ -257,11 +301,11 @@ export class AiReceptionistProcessor {
               threadId,
               handoffReason: parsed.handoffReason,
             },
-            "AI Receptionist triggered handoff to human attendant"
+            "AI Receptionist triggered handoff with executive briefing"
           );
         }
 
-        // 10. Enqueue outbound message and command if there is reply text
+        // 11. Enqueue outbound message and outbox command if there is reply text
         if (parsed.cleanReplyText && parsed.cleanReplyText.trim()) {
           const idempotencyKey = `ai-reply-${inboundMessageId}`;
           const payloadFingerprint = crypto
@@ -301,6 +345,7 @@ export class AiReceptionistProcessor {
               JSON.stringify({
                 source: "ai_receptionist",
                 agentName: aiConfig.name,
+                provider: completion.provider,
                 model: completion.model,
                 needsHandoff: parsed.needsHandoff,
                 handoffReason: parsed.handoffReason || null,
@@ -343,6 +388,8 @@ export class AiReceptionistProcessor {
               outboundMessageId,
               idempotencyKey,
               needsHandoff: parsed.needsHandoff,
+              provider: completion.provider,
+              model: completion.model,
             },
             "AI Receptionist reply successfully enqueued to outbox"
           );
@@ -353,6 +400,8 @@ export class AiReceptionistProcessor {
           replyText: parsed.cleanReplyText,
           needsHandoff: parsed.needsHandoff,
           handoffReason: parsed.handoffReason,
+          provider: completion.provider,
+          model: completion.model,
         };
       },
       pool

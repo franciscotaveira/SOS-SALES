@@ -93,6 +93,8 @@ export const threadsRoutes: FastifyPluginAsync = async (app) => {
           contactPhone: t.contact_phone,
           contactName: t.contact_name,
           status: t.status,
+          handoffReason: t.handoff_reason ?? null,
+          handoffAt: t.handoff_at ? t.handoff_at.toISOString() : null,
           lastMessageAt: t.last_message_at,
           lastMessage: t.last_message_body
             ? {

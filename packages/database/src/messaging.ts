@@ -49,6 +49,8 @@ export interface CommercialThreadRecord {
   channel_instance_id: string;
   contact_id: string;
   status: CommercialThreadStatus;
+  handoff_reason?: string | null;
+  handoff_at?: Date | null;
   last_message_at: Date;
   created_at: Date;
   updated_at: Date;
@@ -371,6 +373,8 @@ export async function listCommercialThreads(
        t.channel_instance_id,
        t.contact_id,
        t.status,
+       t.handoff_reason,
+       t.handoff_at,
        t.last_message_at,
        t.created_at,
        t.updated_at,

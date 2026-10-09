@@ -387,6 +387,10 @@ export class InboxProcessor {
                   ? event.metadata.ctwaClid.trim()
                   : undefined;
 
+              const referral = event.metadata?.referral as Record<string, unknown> | undefined;
+              const adHeadline = typeof referral?.headline === "string" ? referral.headline.trim() : null;
+              const adBody = typeof referral?.body === "string" ? referral.body.trim() : null;
+
               const existingJourneyRes = await client.query<{ id: string; stage: string; ctwa_clid: string | null }>(
                 `SELECT id, stage, ctwa_clid FROM public.commercial_journeys
                  WHERE workspace_id = $1 AND thread_id = $2
@@ -402,24 +406,26 @@ export class InboxProcessor {
                 const nextStage = shouldAdvance ? "qualified" : journey.stage;
                 const shouldSetCtwa = inboundCtwaClid && !journey.ctwa_clid;
 
-                if (shouldAdvance || shouldSetCtwa) {
+                if (shouldAdvance || shouldSetCtwa || adHeadline || adBody) {
                   await client.query(
                     `UPDATE public.commercial_journeys
                      SET stage = $1,
                          ctwa_clid = COALESCE($2, ctwa_clid),
                          attribution_source = CASE WHEN $2 IS NOT NULL THEN 'ctwa_meta' ELSE attribution_source END,
                          fep_expires_at = CASE WHEN $2 IS NOT NULL THEN COALESCE(fep_expires_at, clock_timestamp() + INTERVAL '7 days') ELSE fep_expires_at END,
+                         ad_headline = COALESCE($5, ad_headline),
+                         ad_body = COALESCE($6, ad_body),
                          updated_at = clock_timestamp()
                      WHERE workspace_id = $3 AND id = $4;`,
-                    [nextStage, shouldSetCtwa ? inboundCtwaClid : null, item.workspace_id, journey.id]
+                    [nextStage, shouldSetCtwa ? inboundCtwaClid : null, item.workspace_id, journey.id, adHeadline, adBody]
                   );
                 }
               } else if (inboundCtwaClid || direction === "inbound") {
                 await client.query(
                   `INSERT INTO public.commercial_journeys (
-                     workspace_id, contact_id, thread_id, title, stage, status, attribution_source, ctwa_clid, fep_expires_at
+                     workspace_id, contact_id, thread_id, title, stage, status, attribution_source, ctwa_clid, fep_expires_at, ad_headline, ad_body
                    ) VALUES (
-                     $1, $2, $3, $4, 'lead', 'open', $5, $6, $7
+                     $1, $2, $3, $4, 'lead', 'open', $5, $6, $7, $8, $9
                    );`,
                   [
                     item.workspace_id,
@@ -429,6 +435,8 @@ export class InboxProcessor {
                     inboundCtwaClid ? "ctwa_meta" : "organic_whatsapp",
                     inboundCtwaClid || null,
                     inboundCtwaClid ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null,
+                    adHeadline,
+                    adBody,
                   ]
                 );
               }

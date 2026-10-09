@@ -28,3 +28,4 @@ export * from "./channels/errors/outbound-producer.errors";
 export * from "./channels/services/transactional-outbound-producer.service";
 export * from "./ai/ai-grounding-prompt.builder";
 export * from "./ai/openrouter-client";
+export * from "./ai/llm-client";

@@ -18,12 +18,18 @@ import {
   MapPin,
   CreditCard,
   AlertTriangle,
+  Cpu,
+  Play,
+  Key,
+  Terminal,
+  Loader2,
 } from "lucide-react";
 import {
   apiClient,
   type AiAgentConfig,
   type AiBusinessRules,
   type AiFaqItem,
+  type AiSimulationResult,
 } from "../../services/api-client";
 
 interface AiAgentSectionProps {
@@ -43,6 +49,18 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
   const [systemPrompt, setSystemPrompt] = useState("");
   const [strictMode, setStrictMode] = useState(true);
   const [temperature, setTemperature] = useState(0.1);
+
+  // Multi-Provider & Model State
+  const [provider, setProvider] = useState<"nvidia" | "openrouter">("nvidia");
+  const [model, setModel] = useState("meta/llama-3.3-70b-instruct");
+  const [apiKey, setApiKey] = useState("");
+  const [hasCustomApiKey, setHasCustomApiKey] = useState(false);
+
+  // Simulation Playground State
+  const [simInput, setSimInput] = useState("");
+  const [simLoading, setSimLoading] = useState(false);
+  const [simResult, setSimResult] = useState<AiSimulationResult | null>(null);
+  const [simError, setSimError] = useState<string | null>(null);
 
   const [businessRules, setBusinessRules] = useState<AiBusinessRules>({
     openingHours: "",
@@ -82,6 +100,15 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
           setSystemPrompt(res.config.systemPrompt || "");
           setStrictMode(res.config.strictMode ?? true);
           setTemperature(res.config.temperature !== undefined ? Number(res.config.temperature) : 0.1);
+          setProvider(res.config.provider || "nvidia");
+          setModel(
+            res.config.model ||
+              (res.config.provider === "openrouter"
+                ? "anthropic/claude-3.5-sonnet"
+                : "meta/llama-3.3-70b-instruct")
+          );
+          setHasCustomApiKey(Boolean(res.config.hasCustomApiKey));
+          setApiKey("");
           setBusinessRules({
             openingHours: res.config.businessRules?.openingHours || "",
             address: res.config.businessRules?.address || "",
@@ -148,6 +175,39 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
     setFaq((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleSelectProvider = (newProvider: "nvidia" | "openrouter") => {
+    setProvider(newProvider);
+    if (newProvider === "nvidia") {
+      setModel("meta/llama-3.3-70b-instruct");
+    } else {
+      setModel("anthropic/claude-3.5-sonnet");
+    }
+  };
+
+  const handleSimulate = async (customMessage?: string) => {
+    const textToSimulate = (customMessage !== undefined ? customMessage : simInput).trim();
+    if (!workspaceId || !token || !textToSimulate) return;
+    setSimLoading(true);
+    setSimError(null);
+    try {
+      const res = await apiClient.simulateAiAgent(
+        workspaceId,
+        {
+          message: textToSimulate,
+        },
+        { token }
+      );
+      setSimResult(res);
+      if (customMessage !== undefined) {
+        setSimInput(customMessage);
+      }
+    } catch (err: unknown) {
+      setSimError((err as Error).message || "Falha ao simular atendimento.");
+    } finally {
+      setSimLoading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!workspaceId || !token) return;
     setSaving(true);
@@ -162,6 +222,9 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
           name: name.trim(),
           personality,
           systemPrompt: systemPrompt.trim(),
+          provider,
+          model,
+          apiKey: apiKey.trim() ? apiKey.trim() : undefined,
           skills,
           businessRules,
           faq: faq.filter((item) => item.question.trim() || item.answer.trim()),
@@ -170,6 +233,10 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
         },
         { token }
       );
+      if (apiKey.trim()) {
+        setHasCustomApiKey(true);
+        setApiKey("");
+      }
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: unknown) {
@@ -272,6 +339,211 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
           <CheckCircle2 size={16} /> Configurações e base de conhecimento da IA salvas com sucesso!
         </div>
       )}
+
+      {/* AI ENGINE & PROVIDER SELECTION */}
+      <div
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          border: "1px solid var(--border-default)",
+          borderRadius: "var(--radius-lg, 12px)",
+          padding: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <div
+            style={{
+              width: "40px",
+              height: "40px",
+              borderRadius: "8px",
+              backgroundColor: "var(--color-primary-subtle, rgba(16, 185, 129, 0.1))",
+              color: "var(--color-primary, #10b981)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Cpu size={22} />
+          </div>
+          <div>
+            <h4 style={{ margin: 0, fontSize: "var(--font-size-sm, 0.875rem)", fontWeight: 600 }}>
+              Motor de Inteligência Artificial & Provedor LLM
+            </h4>
+            <p style={{ margin: "2px 0 0 0", fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)" }}>
+              Escolha entre a infraestrutura corporativa de inferência acelerada da <strong>NVIDIA NIM</strong> (padrão soberano) ou o catálogo multi-modelos da <strong>OpenRouter</strong>.
+            </p>
+          </div>
+        </div>
+
+        {/* Provider Selector Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
+          {/* Option 1: Nvidia NIM */}
+          <div
+            onClick={() => handleSelectProvider("nvidia")}
+            style={{
+              padding: "16px",
+              borderRadius: "var(--radius-md, 8px)",
+              border: provider === "nvidia" ? "2px solid var(--color-primary, #10b981)" : "1px solid var(--border-default)",
+              backgroundColor: provider === "nvidia" ? "var(--color-primary-subtle, rgba(16, 185, 129, 0.08))" : "var(--bg-canvas)",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Zap size={18} color="var(--color-primary, #10b981)" />
+                <strong style={{ fontSize: "var(--font-size-sm, 0.875rem)" }}>NVIDIA NIM</strong>
+              </div>
+              <span
+                style={{
+                  fontSize: "0.65rem",
+                  padding: "2px 8px",
+                  borderRadius: "999px",
+                  backgroundColor: "var(--color-primary-subtle, rgba(16, 185, 129, 0.2))",
+                  color: "var(--color-primary, #10b981)",
+                  fontWeight: 700,
+                }}
+              >
+                Padrão Ativo
+              </span>
+            </div>
+            <p style={{ margin: 0, fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)", lineHeight: 1.4 }}>
+              Inferência ultra-rápida em GPUs corporativas NVIDIA. Otimizada para respostas em milissegundos com baixo custo operacional.
+            </p>
+          </div>
+
+          {/* Option 2: OpenRouter */}
+          <div
+            onClick={() => handleSelectProvider("openrouter")}
+            style={{
+              padding: "16px",
+              borderRadius: "var(--radius-md, 8px)",
+              border: provider === "openrouter" ? "2px solid var(--color-primary, #10b981)" : "1px solid var(--border-default)",
+              backgroundColor: provider === "openrouter" ? "var(--color-primary-subtle, rgba(16, 185, 129, 0.08))" : "var(--bg-canvas)",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Cpu size={18} color="var(--color-action, #3b82f6)" />
+                <strong style={{ fontSize: "var(--font-size-sm, 0.875rem)" }}>OpenRouter</strong>
+              </div>
+              <span
+                style={{
+                  fontSize: "0.65rem",
+                  padding: "2px 8px",
+                  borderRadius: "999px",
+                  backgroundColor: "var(--color-action-subtle, rgba(59, 130, 246, 0.15))",
+                  color: "var(--color-action, #3b82f6)",
+                  fontWeight: 700,
+                }}
+              >
+                Multi-Modelos
+              </span>
+            </div>
+            <p style={{ margin: 0, fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)", lineHeight: 1.4 }}>
+              Amplo catálogo de modelos incluindo Claude 3.5 Sonnet, Gemini 2.5 Flash e DeepSeek. Requer chave própria da OpenRouter.
+            </p>
+          </div>
+        </div>
+
+        {/* Model Selection */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
+          <label style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, color: "var(--text-primary)" }}>
+            Modelo Neuronal Selecionado ({provider === "nvidia" ? "NVIDIA NIM" : "OpenRouter"}):
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "8px" }}>
+            {(provider === "nvidia"
+              ? [
+                  { id: "meta/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct", badge: "Recomendado" },
+                  { id: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B Instruct", badge: "Factual" },
+                  { id: "meta/llama-3.1-8b-instruct", label: "Llama 3.1 8B Instruct", badge: "Ultraleve" },
+                ]
+              : [
+                  { id: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet", badge: "Alta Precisão" },
+                  { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", badge: "Ultra Rápido" },
+                  { id: "deepseek/deepseek-chat", label: "DeepSeek V3 / R1", badge: "Custo-Benefício" },
+                  { id: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B", badge: "Open Source" },
+                ]
+            ).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setModel(m.id)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: "6px",
+                  border: model === m.id ? "1.5px solid var(--color-primary, #10b981)" : "1px solid var(--border-default)",
+                  backgroundColor: model === m.id ? "var(--color-primary-subtle, rgba(16, 185, 129, 0.1))" : "var(--bg-canvas)",
+                  color: model === m.id ? "var(--color-primary, #10b981)" : "var(--text-primary)",
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  textAlign: "left",
+                  fontSize: "var(--font-size-xs, 0.75rem)",
+                  fontWeight: model === m.id ? 600 : 400,
+                }}
+              >
+                <span>{m.label}</span>
+                <span
+                  style={{
+                    fontSize: "0.65rem",
+                    padding: "1px 6px",
+                    borderRadius: "4px",
+                    backgroundColor: model === m.id ? "var(--color-primary, #10b981)" : "var(--border-default)",
+                    color: model === m.id ? "#ffffff" : "var(--text-secondary)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {m.badge}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* API Key Input */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <label style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Key size={14} /> Chave de API ({provider === "nvidia" ? "NVIDIA NIM" : "OpenRouter"}):
+            </label>
+            {hasCustomApiKey && (
+              <span style={{ fontSize: "0.7rem", color: "var(--color-primary, #10b981)", fontWeight: 600 }}>
+                ✓ Chave personalizada ativa no workspace
+              </span>
+            )}
+          </div>
+          <Input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={
+              hasCustomApiKey
+                ? "•••••••••••••••• (Substituir chave salva)"
+                : provider === "nvidia"
+                ? "Opcional: usando chave padrão do servidor (NVIDIA_API_KEY)"
+                : "Insira sua chave sk-or-v1-... da OpenRouter"
+            }
+          />
+          <p style={{ margin: 0, fontSize: "var(--font-size-xs, 0.7rem)", color: "var(--text-secondary)" }}>
+            {provider === "nvidia"
+              ? "Deixe em branco para usar o endpoint corporativo nativo do SOS Sales, ou informe sua chave própria para bilhetagem direta."
+              : "Obtenha sua chave em openrouter.ai/keys. A chave é encriptada e isolada por tenant no banco de dados."}
+          </p>
+        </div>
+      </div>
 
       {/* ANTI-HALLUCINATION & ASSURANCE SECTION */}
       <div
@@ -957,6 +1229,304 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
             <input type="checkbox" checked={skills.capi_tracking} readOnly style={{ pointerEvents: "none", accentColor: "var(--color-primary, #10b981)" }} />
           </div>
         </div>
+      </div>
+
+      {/* DRY-RUN SIMULATOR PLAYGROUND */}
+      <div
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          border: "1.5px solid var(--border-default)",
+          borderRadius: "var(--radius-lg, 12px)",
+          padding: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "8px",
+                backgroundColor: "var(--color-primary-subtle, rgba(16, 185, 129, 0.1))",
+                color: "var(--color-primary, #10b981)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Terminal size={22} />
+            </div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <h4 style={{ margin: 0, fontSize: "var(--font-size-sm, 0.875rem)", fontWeight: 600 }}>
+                  Simulador de Atendimento (Playground Dry-Run)
+                </h4>
+                <span
+                  style={{
+                    fontSize: "0.65rem",
+                    padding: "2px 8px",
+                    borderRadius: "999px",
+                    backgroundColor: "var(--color-action-subtle, rgba(59, 130, 246, 0.15))",
+                    color: "var(--color-action, #3b82f6)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Teste em Tempo Real
+                </span>
+              </div>
+              <p style={{ margin: "2px 0 0 0", fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)" }}>
+                Envie perguntas de teste para validar como a IA responde usando os produtos e regras reais salvas, conferindo latência e acionamento de transbordo.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Question Chips */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <span style={{ fontSize: "var(--font-size-xs, 0.7rem)", color: "var(--text-secondary)", fontWeight: 600 }}>
+            Testes Rápidos Sugeridos:
+          </span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            {[
+              { label: "💰 Consulta de Valores", text: "Olá! Quais são os produtos e valores disponíveis?" },
+              { label: "⏰ Horário & Regras", text: "Qual o horário de atendimento e formas de pagamento?" },
+              { label: "🛡️ Teste de Ignorância", text: "Vocês aceitam permuta por um carro ou fazem fiado?" },
+            ].map((chip, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleSimulate(chip.text)}
+                disabled={simLoading}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "999px",
+                  border: "1px solid var(--border-default)",
+                  backgroundColor: "var(--bg-canvas)",
+                  color: "var(--text-primary)",
+                  cursor: simLoading ? "not-allowed" : "pointer",
+                  fontSize: "var(--font-size-xs, 0.75rem)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <span>{chip.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Input and Trigger */}
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <input
+            type="text"
+            value={simInput}
+            onChange={(e) => setSimInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !simLoading && simInput.trim()) {
+                e.preventDefault();
+                handleSimulate();
+              }
+            }}
+            placeholder="Digite a mensagem simulada do cliente..."
+            style={{
+              flex: 1,
+              padding: "10px 14px",
+              borderRadius: "var(--radius-md, 8px)",
+              border: "1px solid var(--border-default)",
+              backgroundColor: "var(--bg-canvas)",
+              color: "var(--text-primary)",
+              fontSize: "var(--font-size-sm, 0.875rem)",
+              outline: "none",
+            }}
+          />
+          <Button
+            size="md"
+            variant="secondary"
+            onClick={() => handleSimulate()}
+            disabled={simLoading || !simInput.trim()}
+            prefixIcon={simLoading ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+          >
+            {simLoading ? "Executando..." : "Testar Resposta"}
+          </Button>
+        </div>
+
+        {simError && (
+          <div
+            style={{
+              padding: "10px 14px",
+              backgroundColor: "var(--color-danger-subtle, rgba(239, 68, 68, 0.1))",
+              color: "var(--color-danger, #ef4444)",
+              borderRadius: "var(--radius-md, 8px)",
+              fontSize: "var(--font-size-xs, 0.75rem)",
+            }}
+          >
+            {simError}
+          </div>
+        )}
+
+        {/* Result Preview Box */}
+        {simResult && (
+          <div
+            style={{
+              marginTop: "8px",
+              padding: "16px",
+              borderRadius: "var(--radius-md, 8px)",
+              backgroundColor: "var(--bg-canvas)",
+              border: "1px solid var(--border-default)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px",
+            }}
+          >
+            {/* Telemetry Bar */}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                alignItems: "center",
+                paddingBottom: "10px",
+                borderBottom: "1px solid var(--border-default)",
+                fontSize: "var(--font-size-xs, 0.75rem)",
+              }}
+            >
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-default)",
+                  fontWeight: 600,
+                }}
+              >
+                ⚡ Latência: <strong>{simResult.latencyMs}ms</strong>
+              </span>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-default)",
+                }}
+              >
+                🧠 Motor: <strong>{simResult.provider}</strong> ({simResult.model})
+              </span>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-default)",
+                }}
+              >
+                📦 Produtos Grounding: <strong>{simResult.matchedCatalogCount} itens</strong>
+              </span>
+              <span
+                style={{
+                  marginLeft: "auto",
+                  padding: "3px 10px",
+                  borderRadius: "999px",
+                  fontWeight: 700,
+                  fontSize: "0.7rem",
+                  backgroundColor: simResult.needsHandoff
+                    ? "var(--color-danger-subtle, rgba(239, 68, 68, 0.15))"
+                    : "var(--color-success-subtle, rgba(16, 185, 129, 0.15))",
+                  color: simResult.needsHandoff ? "var(--color-danger, #ef4444)" : "var(--color-success, #10b981)",
+                }}
+              >
+                {simResult.needsHandoff ? "⚠️ Transbordo Acionado" : "✅ Factual Aprovado"}
+              </span>
+            </div>
+
+            {/* Chat Simulation Preview */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {/* User Bubble */}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <div
+                  style={{
+                    maxWidth: "80%",
+                    padding: "10px 14px",
+                    borderRadius: "12px 12px 2px 12px",
+                    backgroundColor: "var(--color-primary-subtle, rgba(16, 185, 129, 0.2))",
+                    color: "var(--text-primary)",
+                    fontSize: "var(--font-size-xs, 0.8rem)",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <div style={{ fontSize: "0.65rem", fontWeight: 700, opacity: 0.7, marginBottom: "2px" }}>
+                    CLIENTE (SIMULADO)
+                  </div>
+                  {simInput}
+                </div>
+              </div>
+
+              {/* AI Bubble */}
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                <div
+                  style={{
+                    maxWidth: "85%",
+                    padding: "12px 16px",
+                    borderRadius: "12px 12px 12px 2px",
+                    backgroundColor: "var(--bg-surface)",
+                    border: "1px solid var(--border-default)",
+                    color: "var(--text-primary)",
+                    fontSize: "var(--font-size-xs, 0.8rem)",
+                    lineHeight: 1.5,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                    <Bot size={14} color="var(--color-primary, #10b981)" />
+                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--color-primary, #10b981)" }}>
+                      {name || "Assistente Virtual"}
+                    </span>
+                  </div>
+                  {simResult.replyText}
+                </div>
+              </div>
+            </div>
+
+            {/* Handoff Notice if triggered */}
+            {simResult.needsHandoff && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: "6px",
+                  backgroundColor: "rgba(245, 158, 11, 0.1)",
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                  fontSize: "var(--font-size-xs, 0.75rem)",
+                  color: "var(--text-primary)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700, color: "#d97706" }}>
+                  <AlertTriangle size={15} /> Protocolo de Ignorância Ativado (Transbordo Humano Seguro)
+                </div>
+                <span>
+                  A IA se recusou a inventar dados e solicitou intervenção humana. Motivo registrado:
+                </span>
+                <code
+                  style={{
+                    backgroundColor: "var(--bg-surface)",
+                    padding: "4px 8px",
+                    borderRadius: "4px",
+                    fontSize: "0.7rem",
+                    border: "1px solid var(--border-default)",
+                  }}
+                >
+                  {simResult.handoffReason || "Dúvida não encontrada na base factual de catálogo e regras"}
+                </code>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Save button bar */}

@@ -105,6 +105,21 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
     );
   }, [message.body]);
 
+  const isAiGenerated = useMemo(() => {
+    const meta = message.metadata as Record<string, unknown> | undefined;
+    return Boolean(isOutbound && (meta?.source === "ai_receptionist" || meta?.agentName));
+  }, [isOutbound, message.metadata]);
+
+  const aiAgentName = useMemo(() => {
+    const meta = message.metadata as Record<string, unknown> | undefined;
+    return (meta?.agentName as string) || "IA Atendente";
+  }, [message.metadata]);
+
+  const aiNeedsHandoff = useMemo(() => {
+    const meta = message.metadata as Record<string, unknown> | undefined;
+    return Boolean(meta?.needsHandoff);
+  }, [message.metadata]);
+
   const renderStatus = () => {
     if (!isOutbound) return null;
     switch (message.deliveryStatus) {
@@ -274,6 +289,48 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
           position: "relative",
         }}
       >
+        {isAiGenerated && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              marginBottom: "6px",
+              fontSize: "10px",
+              fontWeight: 700,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "2px 6px",
+                borderRadius: "4px",
+                backgroundColor: "rgba(16, 185, 129, 0.15)",
+                color: "var(--color-primary, #10b981)",
+              }}
+            >
+              🤖 {aiAgentName} (IA)
+            </span>
+            {aiNeedsHandoff && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "3px",
+                  padding: "2px 6px",
+                  borderRadius: "4px",
+                  backgroundColor: "rgba(245, 158, 11, 0.15)",
+                  color: "#d97706",
+                }}
+              >
+                ⚠️ Transbordo
+              </span>
+            )}
+          </div>
+        )}
+
         {renderMediaContent()}
 
         {(!isPlaceholderBody || !resolvedMedia.url) && (

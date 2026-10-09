@@ -128,6 +128,8 @@ export interface CommercialThreadSummary {
   contactPhone: string;
   contactName: string | null;
   status: "active" | "waiting_client" | "waiting_human" | "closed";
+  handoffReason?: string | null;
+  handoffAt?: string | null;
   lastMessageAt: string;
   lastMessage: {
     body: string;
@@ -1645,6 +1647,25 @@ export class ApiClient {
       }
     );
   }
+
+  async simulateAiAgent(
+    workspaceId: string,
+    payload: {
+      message: string;
+      history?: Array<{ role: "user" | "assistant"; content: string }>;
+    },
+    options?: RequestOptions
+  ): Promise<AiSimulationResult> {
+    return this.request<AiSimulationResult>(
+      `/v1/workspaces/${workspaceId}/ai-agent/simulate`,
+      {
+        ...options,
+        method: "POST",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
 }
 
 export interface AiFaqItem {
@@ -1667,6 +1688,10 @@ export interface AiAgentConfig {
   name: string;
   systemPrompt: string;
   personality: "cordial_comercial" | "direto_objetivo" | "especialista_consultivo" | "empatico_acolhedor";
+  provider?: "nvidia" | "openrouter";
+  model?: string;
+  apiKey?: string;
+  hasCustomApiKey?: boolean;
   skills: {
     qualify_lead?: boolean;
     catalog_offers?: boolean;
@@ -1679,6 +1704,18 @@ export interface AiAgentConfig {
   faq?: AiFaqItem[];
   strictMode?: boolean;
   temperature?: number;
+}
+
+export interface AiSimulationResult {
+  success: boolean;
+  replyText: string;
+  needsHandoff: boolean;
+  handoffReason: string | null;
+  matchedCatalogCount: number;
+  strictMode: boolean;
+  provider: "nvidia" | "openrouter";
+  model: string;
+  latencyMs: number;
 }
 
 export interface OutboundWebhookSubscription {

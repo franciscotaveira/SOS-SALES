@@ -74,4 +74,23 @@ describe("AI Grounding Prompt Builder & Handoff Parser", () => {
       "Vou confirmar essa condição especial com a nossa gerência e já te retorno!"
     );
   });
+
+  it("injects CTWA ad hook layer when lead originates from Meta Ads", () => {
+    const config: GroundedAiConfig = {
+      name: "Sofia",
+      personality: "cordial_comercial",
+      strictMode: true,
+      adHook: {
+        headline: "50% OFF na Primeira Sessão de Laser",
+        body: "Garanta seu voucher exclusivo de boas-vindas clicando aqui.",
+      },
+    };
+
+    const prompt = buildGroundedSystemPrompt(config, []);
+
+    expect(prompt).toContain("<origem_do_lead_anuncio_meta>");
+    expect(prompt).toContain("50% OFF na Primeira Sessão de Laser");
+    expect(prompt).toContain("Garanta seu voucher exclusivo de boas-vindas");
+    expect(prompt).toContain("INSTRUÇÃO DE GANCHO: Na sua saudação ou resposta inicial");
+  });
 });

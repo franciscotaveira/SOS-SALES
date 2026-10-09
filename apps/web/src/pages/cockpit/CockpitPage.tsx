@@ -220,6 +220,10 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
                 onOpenDossier={() => setActiveDrawer("dossier")}
                 onToggleContext={() => isMobile || isTablet ? layout.setIsContextDrawerOpen(!layout.isContextDrawerOpen) : layout.toggleRight()}
                 isContextOpen={!layout.isRightCollapsed || layout.isContextDrawerOpen}
+                onAssumeAttendance={async () => {
+                  await conversation.handleUpdateStatus("active");
+                  await inbox.refreshThreads();
+                }}
               />
               <MessageList messages={conversation.messages} isLoading={conversation.isLoadingMessages} />
               <Composer

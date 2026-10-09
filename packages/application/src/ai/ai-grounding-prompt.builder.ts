@@ -29,6 +29,11 @@ export interface GroundedFaqItem {
   answer: string;
 }
 
+export interface GroundedAdHook {
+  headline?: string | null;
+  body?: string | null;
+}
+
 export interface GroundedAiConfig {
   name: string;
   personality: "cordial_comercial" | "direto_objetivo" | "especialista_consultivo" | "empatico_acolhedor";
@@ -36,6 +41,7 @@ export interface GroundedAiConfig {
   strictMode: boolean;
   businessRules?: GroundedBusinessRules;
   faq?: GroundedFaqItem[];
+  adHook?: GroundedAdHook;
 }
 
 export interface ChatMessageContext {
@@ -75,6 +81,18 @@ export function buildGroundedSystemPrompt(
   }
 
   const customPrompt = config.systemPrompt?.trim() || "";
+
+  // Layer 0: Ad Hook Memory (Meta CTWA)
+  let adHookSection = "";
+  if (config.adHook && (config.adHook.headline || config.adHook.body)) {
+    adHookSection = `
+<origem_do_lead_anuncio_meta>
+O cliente iniciou o contato clicando em um anúncio patrocinado da Meta (Instagram/Facebook):
+${config.adHook.headline ? `- Título do Anúncio/Oferta: "${config.adHook.headline}"` : ""}
+${config.adHook.body ? `- Texto do Anúncio: "${config.adHook.body}"` : ""}
+INSTRUÇÃO DE GANCHO: Na sua saudação ou resposta inicial, faça referência direta a essa oferta/serviço do anúncio, demonstrando que você sabe exatamente o que atraiu o cliente!
+</origem_do_lead_anuncio_meta>`;
+  }
 
   // Layer 2: Business Rules (Factual Knowledge)
   const rules = config.businessRules || {};
@@ -150,6 +168,7 @@ ${archetypeInstruction}
 ${customPrompt ? `Instruções adicionais da empresa:\n${customPrompt}\n` : ""}
 
 BASES DE VERDADE HOMOLOGADAS:
+${adHookSection}
 ${catalogSection}
 ${businessRulesSection}
 ${faqSection}
