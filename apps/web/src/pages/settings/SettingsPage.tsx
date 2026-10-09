@@ -23,6 +23,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Dialogs
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -38,7 +39,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
     if (!activeWorkspace || !token) return;
     setIsLoadingChannels(true);
     try {
-      const res = await apiClient.getChannels(activeWorkspace.id, { token });
+      const res = await apiClient.getChannels(activeWorkspace.id, { token, includeInactive: true });
       setChannels(res.channels || []);
     } catch {
       // Non-fatal
@@ -79,6 +80,23 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
       // Non-fatal
     } finally {
       setRevokingId(null);
+    }
+  };
+
+  const handleDelete = async (channelId: string, channelName: string) => {
+    if (!activeWorkspace || !token) return;
+    const confirmed = window.confirm(`Deseja excluir ou arquivar o canal "${channelName}"?`);
+    if (!confirmed) return;
+
+    setDeletingId(channelId);
+    try {
+      const res = await apiClient.deleteChannel(activeWorkspace.id, channelId, { token });
+      await loadChannels();
+      alert(res.message);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Erro ao excluir canal.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -188,6 +206,8 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
                 onOpenQr={handleOpenQr}
                 onRevoke={handleRevoke}
                 revokingId={revokingId}
+                onDelete={handleDelete}
+                deletingId={deletingId}
               />
             )}
             {activeTab === "ia" && <AiAgentSection workspaceId={activeWorkspace?.id} token={token ?? undefined} />}

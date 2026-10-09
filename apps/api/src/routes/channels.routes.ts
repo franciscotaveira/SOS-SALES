@@ -56,6 +56,13 @@ const testConnectionBodySchema = z.object({
   credentials: channelCredentialsSchema,
 });
 
+const listChannelsQuerySchema = z.object({
+  includeInactive: z
+    .string()
+    .optional()
+    .transform((val) => val === "true" || val === "1"),
+});
+
 export const channelsRoutes: FastifyPluginAsync = async (app) => {
   // 1. List Channels for Workspace
   app.get(
@@ -81,6 +88,8 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const { workspaceId } = parsedParams.data;
+      const parsedQuery = listChannelsQuerySchema.safeParse(request.query);
+      const includeInactive = parsedQuery.success ? Boolean(parsedQuery.data.includeInactive) : false;
 
       const channels = await withTenantTransaction(workspaceId, async (client) => {
         const res = await client.query<{
@@ -96,9 +105,10 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         }>(
           `SELECT id, workspace_id, provider, display_name, phone_number_e164, status, is_active, created_at, updated_at
            FROM public.channel_instances
-           WHERE workspace_id = $1 AND status != 'revoked' AND is_active = true
+           WHERE workspace_id = $1
+             AND ($2::boolean = true OR (status != 'revoked' AND is_active = true))
            ORDER BY created_at ASC;`,
-          [workspaceId]
+          [workspaceId, includeInactive]
         );
         return res.rows;
       });
@@ -584,12 +594,20 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         }
 
         if (channel.credential_id) {
-          await client.query(
-            `UPDATE public.provider_credentials
-             SET status = 'REVOKED', updated_at = NOW()
-             WHERE id = $1 AND workspace_id = $2;`,
-            [channel.credential_id, workspaceId]
+          const otherActiveRes = await client.query<{ count: string }>(
+            `SELECT count(*)::text as count FROM public.channel_instances
+             WHERE credential_id = $1 AND id != $2 AND workspace_id = $3 AND is_active = true;`,
+            [channel.credential_id, channelId, workspaceId]
           );
+          const hasOtherActive = Number.parseInt(otherActiveRes.rows[0]?.count || "0", 10) > 0;
+          if (!hasOtherActive) {
+            await client.query(
+              `UPDATE public.provider_credentials
+               SET status = 'REVOKED', updated_at = NOW()
+               WHERE id = $1 AND workspace_id = $2;`,
+              [channel.credential_id, workspaceId]
+            );
+          }
         }
 
         try {
@@ -688,16 +706,36 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
             [channelId, workspaceId]
           );
           if (channel.credential_id) {
-            await client.query(
-              `UPDATE public.provider_credentials
-               SET status = 'REVOKED', updated_at = NOW()
-               WHERE id = $1 AND workspace_id = $2;`,
-              [channel.credential_id, workspaceId]
+            const otherActiveRes = await client.query<{ count: string }>(
+              `SELECT count(*)::text as count FROM public.channel_instances
+               WHERE credential_id = $1 AND id != $2 AND workspace_id = $3 AND is_active = true;`,
+              [channel.credential_id, channelId, workspaceId]
             );
+            const hasOtherActive = Number.parseInt(otherActiveRes.rows[0]?.count || "0", 10) > 0;
+            if (!hasOtherActive) {
+              await client.query(
+                `UPDATE public.provider_credentials
+                 SET status = 'REVOKED', updated_at = NOW()
+                 WHERE id = $1 AND workspace_id = $2;`,
+                [channel.credential_id, workspaceId]
+              );
+            }
           }
           return { mode: "archived", displayName: channel.display_name, messageCount };
         } else {
           // Safe physical delete when 0 messages
+          await client.query(
+            `DELETE FROM public.channel_webhook_inbox WHERE channel_instance_id = $1 AND workspace_id = $2;`,
+            [channelId, workspaceId]
+          );
+          await client.query(
+            `DELETE FROM public.outbound_commands WHERE channel_instance_id = $1 AND workspace_id = $2;`,
+            [channelId, workspaceId]
+          );
+          await client.query(
+            `DELETE FROM public.provider_delivery_events WHERE channel_instance_id = $1 AND workspace_id = $2;`,
+            [channelId, workspaceId]
+          );
           await client.query(
             `DELETE FROM public.commercial_threads WHERE channel_instance_id = $1 AND workspace_id = $2;`,
             [channelId, workspaceId]
@@ -707,10 +745,18 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
             [channelId, workspaceId]
           );
           if (channel.credential_id) {
-            await client.query(
-              `DELETE FROM public.provider_credentials WHERE id = $1 AND workspace_id = $2;`,
-              [channel.credential_id, workspaceId]
+            const otherChannelsRes = await client.query<{ count: string }>(
+              `SELECT count(*)::text as count FROM public.channel_instances
+               WHERE credential_id = $1 AND id != $2 AND workspace_id = $3;`,
+              [channel.credential_id, channelId, workspaceId]
             );
+            const hasOtherReferences = Number.parseInt(otherChannelsRes.rows[0]?.count || "0", 10) > 0;
+            if (!hasOtherReferences) {
+              await client.query(
+                `DELETE FROM public.provider_credentials WHERE id = $1 AND workspace_id = $2;`,
+                [channel.credential_id, workspaceId]
+              );
+            }
           }
           return { mode: "deleted", displayName: channel.display_name, messageCount: 0 };
         }

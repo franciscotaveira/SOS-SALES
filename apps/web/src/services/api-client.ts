@@ -677,10 +677,11 @@ export class ApiClient {
 
   async getChannels(
     workspaceId: string,
-    options?: RequestOptions
+    options?: RequestOptions & { includeInactive?: boolean }
   ): Promise<{ channels: ChannelSummary[]; total: number }> {
+    const qs = options?.includeInactive ? "?includeInactive=true" : "";
     return this.request<{ channels: ChannelSummary[]; total: number }>(
-      `/v1/workspaces/${workspaceId}/channels`,
+      `/v1/workspaces/${workspaceId}/channels${qs}`,
       { ...options, workspaceId }
     );
   }
@@ -1115,6 +1116,21 @@ export class ApiClient {
         ...options,
         workspaceId,
         method: "POST",
+      }
+    );
+  }
+
+  async deleteChannel(
+    workspaceId: string,
+    channelId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; mode: "deleted" | "archived"; message: string }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/channels/${channelId}`,
+      {
+        ...options,
+        workspaceId,
+        method: "DELETE",
       }
     );
   }

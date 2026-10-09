@@ -10,6 +10,8 @@ interface ChannelsSectionProps {
   onOpenQr: (channelId: string, channelName: string) => void;
   onRevoke: (channelId: string, channelName: string) => void;
   revokingId: string | null;
+  onDelete?: (channelId: string, channelName: string) => void;
+  deletingId?: string | null;
 }
 
 export const ChannelsSection: FC<ChannelsSectionProps> = ({
@@ -19,6 +21,8 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
   onOpenQr,
   onRevoke,
   revokingId,
+  onDelete,
+  deletingId,
 }) => {
   const getStatusBadge = (status?: string) => {
     switch (status) {
@@ -83,6 +87,7 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
           {channels.map((ch) => {
             const isWaha = ch.provider === "waha";
             const isRevoking = revokingId === ch.id;
+            const isDeleting = deletingId === ch.id;
 
             return (
               <div
@@ -127,7 +132,7 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  {isWaha && (
+                  {isWaha && ch.status !== "revoked" && (
                     <Button
                       size="xs"
                       variant="secondary"
@@ -137,14 +142,24 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
                       QR Code
                     </Button>
                   )}
+                  {ch.status === "connected" && (
+                    <Button
+                      size="xs"
+                      variant="secondary"
+                      onClick={() => onRevoke(ch.id, ch.displayName || ch.phoneNumberE164 || "Linha WhatsApp")}
+                      disabled={isRevoking || isDeleting}
+                    >
+                      {isRevoking ? "Revogando..." : "Desconectar"}
+                    </Button>
+                  )}
                   <Button
                     size="xs"
                     variant="danger"
                     prefixIcon={<Trash2 size={13} />}
-                    onClick={() => onRevoke(ch.id, ch.displayName || ch.phoneNumberE164 || "Linha WhatsApp")}
-                    disabled={isRevoking}
+                    onClick={() => onDelete?.(ch.id, ch.displayName || ch.phoneNumberE164 || "Linha WhatsApp")}
+                    disabled={isRevoking || isDeleting}
                   >
-                    {isRevoking ? "Revogando..." : "Revogar"}
+                    {isDeleting ? "Excluindo..." : ch.status === "revoked" ? "Excluir" : "Excluir / Arquivar"}
                   </Button>
                 </div>
               </div>
