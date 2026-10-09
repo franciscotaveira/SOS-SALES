@@ -24,6 +24,7 @@ import { pixWebhookRoutes } from "./routes/pix-webhook.routes";
 import { mediaUploadRoutes } from "./routes/media-upload.routes";
 import type { MediaStorage } from "./services/media-storage";
 import { integrationRoutes } from "./routes/integration.routes";
+import { outboundWebhooksRoutes } from "./routes/outbound-webhooks.routes";
 import { commercialActionsRoutes } from "./routes/commercial-actions.routes";
 import { commercialProposalsRoutes } from "./routes/commercial-proposals.routes";
 import type { ISigningSecretResolver, ITransactionalOutboundProducerService } from "@sos-sales/application";
@@ -209,6 +210,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(pixWebhookRoutes);
   await app.register(mediaUploadRoutes, { storage: options.mediaStorage });
   await app.register(integrationRoutes);
+  await app.register(outboundWebhooksRoutes);
   await app.register(commercialActionsRoutes);
   await app.register(commercialProposalsRoutes);
   await app.register(outboundMessagesRoutes, {

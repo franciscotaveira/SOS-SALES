@@ -1537,6 +1537,88 @@ export class ApiClient {
       }
     );
   }
+
+  async listWebhooks(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ webhooks: OutboundWebhookSubscription[] }> {
+    return this.request<{ webhooks: OutboundWebhookSubscription[] }>(
+      `/v1/workspaces/${workspaceId}/webhooks`,
+      {
+        ...options,
+        method: "GET",
+        workspaceId,
+      }
+    );
+  }
+
+  async createWebhook(
+    workspaceId: string,
+    payload: { url: string; description?: string; events?: string[]; secret?: string },
+    options?: RequestOptions
+  ): Promise<{ webhook: OutboundWebhookSubscription }> {
+    return this.request<{ webhook: OutboundWebhookSubscription }>(
+      `/v1/workspaces/${workspaceId}/webhooks`,
+      {
+        ...options,
+        method: "POST",
+        workspaceId,
+        body: payload,
+      }
+    );
+  }
+
+  async testWebhook(
+    workspaceId: string,
+    webhookId: string,
+    options?: RequestOptions
+  ): Promise<WebhookTestResult> {
+    return this.request<WebhookTestResult>(
+      `/v1/workspaces/${workspaceId}/webhooks/${webhookId}/test`,
+      {
+        ...options,
+        method: "POST",
+        workspaceId,
+      }
+    );
+  }
+
+  async deleteWebhook(
+    workspaceId: string,
+    webhookId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(
+      `/v1/workspaces/${workspaceId}/webhooks/${webhookId}`,
+      {
+        ...options,
+        method: "DELETE",
+        workspaceId,
+      }
+    );
+  }
+}
+
+export interface OutboundWebhookSubscription {
+  id: string;
+  workspace_id: string;
+  url: string;
+  secret: string;
+  description: string | null;
+  events: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookTestResult {
+  success: boolean;
+  status: "delivered" | "failed";
+  statusCode: number | null;
+  durationMs: number;
+  responseBody: string | null;
+  errorMessage: string | null;
 }
 
 export const apiClient = new ApiClient();
+

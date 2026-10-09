@@ -6,8 +6,18 @@ const updateWorkspaceSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   defaultPixKey: z.string().min(3).max(100).optional().nullable(),
   defaultPixKeyType: z.enum(["cpf", "cnpj", "email", "phone", "random"]).optional().nullable(),
-  defaultPixMerchantName: z.string().min(2).max(25).optional().nullable(),
-  defaultPixMerchantCity: z.string().min(2).max(15).optional().nullable(),
+  defaultPixMerchantName: z
+    .string()
+    .transform((val) => (val ? val.trim().slice(0, 25) : val))
+    .pipe(z.string().min(2).max(25))
+    .optional()
+    .nullable(),
+  defaultPixMerchantCity: z
+    .string()
+    .transform((val) => (val ? val.trim().slice(0, 15) : val))
+    .pipe(z.string().min(2).max(15))
+    .optional()
+    .nullable(),
 });
 
 export const workspaceRoutes: FastifyPluginAsync = async (app) => {

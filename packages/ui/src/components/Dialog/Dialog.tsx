@@ -13,21 +13,32 @@ export const Dialog: FC<DialogProps> = ({
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+  const hasInitiallyFocusedRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   const idPrefix = useId();
   const titleId = `${idPrefix}-title`;
   const descId = `${idPrefix}-desc`;
 
   // Focus trap & Escape listener
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      hasInitiallyFocusedRef.current = false;
+      return;
+    }
 
-    // Store active element to restore focus on close
-    previouslyFocusedElementRef.current = document.activeElement as HTMLElement;
+    // Store active element to restore focus on close (only once upon open)
+    if (!hasInitiallyFocusedRef.current) {
+      previouslyFocusedElementRef.current = document.activeElement as HTMLElement;
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -58,28 +69,36 @@ export const Dialog: FC<DialogProps> = ({
 
     document.addEventListener("keydown", handleKeyDown);
 
-    // Initial focus on dialog container or first button
-    const timer = setTimeout(() => {
-      if (dialogRef.current) {
-        const firstFocusable = dialogRef.current.querySelector<HTMLElement>(
-          'button, input, [tabindex]:not([tabindex="-1"])'
-        );
-        if (firstFocusable) {
-          firstFocusable.focus();
-        } else {
-          dialogRef.current.focus();
+    // Initial focus on dialog container or first focusable ONLY ONCE on opening
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (!hasInitiallyFocusedRef.current) {
+      hasInitiallyFocusedRef.current = true;
+      timer = setTimeout(() => {
+        if (dialogRef.current) {
+          // If user or browser already focused something inside the dialog, do not steal it
+          if (dialogRef.current.contains(document.activeElement)) {
+            return;
+          }
+          const firstFocusable = dialogRef.current.querySelector<HTMLElement>(
+            'input, select, textarea, button, [tabindex]:not([tabindex="-1"])'
+          );
+          if (firstFocusable) {
+            firstFocusable.focus();
+          } else {
+            dialogRef.current.focus();
+          }
         }
-      }
-    }, 50);
+      }, 50);
+    }
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      clearTimeout(timer);
-      if (previouslyFocusedElementRef.current) {
+      if (timer) clearTimeout(timer);
+      if (!isOpen && previouslyFocusedElementRef.current) {
         previouslyFocusedElementRef.current.focus();
       }
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

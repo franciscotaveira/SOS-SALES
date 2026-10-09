@@ -27,6 +27,7 @@ services:
       APP_MASTER_KEY: ${APP_MASTER_KEY:?APP_MASTER_KEY is required}
       MCT_CREDENTIALS_MASTER_KEY: ${APP_MASTER_KEY:?APP_MASTER_KEY is required}
       ENABLE_LAB_SYNTHETIC: 'false'
+      INTERNAL_SERVICE_ALLOWLIST: ${INTERNAL_SERVICE_ALLOWLIST:-sos-sales-waha,waha,chat-sales-waha,sos-v3-waha,evolution,sos-sales-evolution}
     expose:
       - '4400'
     healthcheck:
