@@ -22,7 +22,9 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
     const meta = message.metadata as Record<string, unknown> | undefined;
     if (meta) {
       if (!url) {
-        if (typeof meta.media_payload === "string") {
+        if (meta.mediaId && message.channelInstanceId) {
+          url = `/v1/workspaces/${(meta.workspaceId as string) || ""}/media/proxy?mediaId=${encodeURIComponent(String(meta.mediaId))}&channelInstanceId=${message.channelInstanceId}`;
+        } else if (typeof meta.media_payload === "string") {
           try {
             const parsed = JSON.parse(meta.media_payload);
             url = parsed.url || "";
@@ -49,6 +51,14 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
 
     if (url && url.startsWith("/")) {
       url = `${window.location.origin}${url}`;
+    }
+
+    // Attach auth token if accessing media proxy so browser audio/img tags don't 401
+    if (url && url.includes("/media/proxy") && !url.includes("token=")) {
+      const storedToken = localStorage.getItem("sos_sales_auth_token");
+      if (storedToken) {
+        url = `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(storedToken)}`;
+      }
     }
 
     // Determine media type

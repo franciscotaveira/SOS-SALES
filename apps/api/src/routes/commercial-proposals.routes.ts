@@ -8,6 +8,7 @@ import {
   updateCommercialProposalStatus,
   createProposalWithPixCharge,
   createPixCharge,
+  recordCommercialOutcome,
   type CommercialProposalRecord,
   type PixChargeRecord,
   type CommercialProposalStatus,
@@ -325,12 +326,42 @@ export const commercialProposalsRoutes: FastifyPluginAsync = async (app) => {
 
       try {
         const updated = await withTenantTransaction(workspaceId, async (client) => {
-          return updateCommercialProposalStatus(client, workspaceId, proposalId, {
+          const proposal = await updateCommercialProposalStatus(client, workspaceId, proposalId, {
             status: data.status as CommercialProposalStatus,
             expectedVersion: data.expectedVersion,
             userId: request.user.id,
             reason: data.reason,
           });
+
+          if (data.status === "accepted" && proposal.journeyId) {
+            try {
+              await recordCommercialOutcome(client, workspaceId, {
+                journeyId: proposal.journeyId,
+                status: "won",
+                valueCents: proposal.totalAmountCents,
+                currency: proposal.currency,
+                registeredByUserId: request.user.id,
+                reason: data.reason || "Proposta aceita no cockpit",
+              });
+            } catch (outcomeErr) {
+              request.log.warn({ err: outcomeErr }, "Could not record won outcome for accepted proposal");
+            }
+          } else if (data.status === "rejected" && proposal.journeyId) {
+            try {
+              await recordCommercialOutcome(client, workspaceId, {
+                journeyId: proposal.journeyId,
+                status: "lost",
+                valueCents: proposal.totalAmountCents,
+                currency: proposal.currency,
+                registeredByUserId: request.user.id,
+                reason: data.reason || "Proposta rejeitada",
+              });
+            } catch (outcomeErr) {
+              request.log.warn({ err: outcomeErr }, "Could not record lost outcome for rejected proposal");
+            }
+          }
+
+          return proposal;
         });
 
         return reply.status(200).send(formatProposalResponse(updated));

@@ -4,13 +4,13 @@
  * Tests inject an in-memory fake (Zero-Network).
  */
 export interface StoredMedia {
-  /** Time-limited URL the messaging provider (Meta/WAHA) can download from. */
+  /** Time-limited URL or permanent public URL the messaging provider (Meta/WAHA) can download from. */
   readonly signedUrl: string;
-  readonly expiresInSeconds: number;
+  readonly expiresInSeconds?: number;
 }
 
 export interface MediaStorage {
-  put(input: { key: string; bytes: Buffer; contentType: string }): Promise<StoredMedia>;
+  put(input: { key: string; bytes: Buffer; contentType: string; isPublic?: boolean }): Promise<StoredMedia>;
 }
 
 export interface SupabaseMediaStorageConfig {
@@ -24,7 +24,7 @@ export interface SupabaseMediaStorageConfig {
 export class SupabaseMediaStorage implements MediaStorage {
   constructor(private readonly config: SupabaseMediaStorageConfig) {}
 
-  async put(input: { key: string; bytes: Buffer; contentType: string }): Promise<StoredMedia> {
+  async put(input: { key: string; bytes: Buffer; contentType: string; isPublic?: boolean }): Promise<StoredMedia> {
     const { supabaseUrl, serviceKey, bucket, signedUrlTtlSeconds } = this.config;
     const doFetch = this.config.fetchImpl ?? fetch;
     const base = supabaseUrl.replace(/\/+$/, "");
@@ -33,11 +33,15 @@ export class SupabaseMediaStorage implements MediaStorage {
 
     const upload = await doFetch(`${base}/storage/v1/object/${bucket}/${objectPath}`, {
       method: "POST",
-      headers: { ...headers, "Content-Type": input.contentType, "x-upsert": "false" },
+      headers: { ...headers, "Content-Type": input.contentType, "x-upsert": "true" },
       body: new Uint8Array(input.bytes),
     });
     if (!upload.ok) {
       throw new Error(`MEDIA_STORAGE_UPLOAD_FAILED: status ${upload.status}`);
+    }
+
+    if (input.isPublic) {
+      return { signedUrl: `${base}/storage/v1/object/public/${bucket}/${objectPath}` };
     }
 
     const sign = await doFetch(`${base}/storage/v1/object/sign/${bucket}/${objectPath}`, {

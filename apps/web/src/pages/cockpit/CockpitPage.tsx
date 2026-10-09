@@ -63,20 +63,47 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
       currency: product.currency || "BRL",
     });
 
-    const body = `🛍️ *${product.title}*\n\n${product.description ? `${product.description}\n\n` : ""}💰 *Valor:* ${product.priceFormatted || formattedPrice}\n\n_Deseja agendar ou adquirir este item? Basta responder aqui!_`;
+    const isWaba = conversation.selectedThread.channelProvider === "meta_waba";
 
     try {
-      await apiClient.sendOutboundMessage(
-        session.activeWorkspace.id,
-        conversation.selectedThread.channelInstanceId,
-        {
-          recipientPhoneE164: conversation.selectedThread.contactPhone,
-          contentType: product.imageUrl ? "image" : "text",
-          body,
-          mediaUrl: product.imageUrl || undefined,
-        },
-        { token: session.token }
-      );
+      if (isWaba && product.catalogId && product.retailerId) {
+        await apiClient.sendOutboundMessage(
+          session.activeWorkspace.id,
+          conversation.selectedThread.channelInstanceId,
+          {
+            recipientPhoneE164: conversation.selectedThread.contactPhone,
+            contentType: "interactive",
+            body: `🛍️ *${product.title}*\n${product.description ? `\n${product.description}\n` : ""}\n💰 *Valor:* ${product.priceFormatted || formattedPrice}`,
+            interactive: {
+              type: "product",
+              body: {
+                text: `🛍️ *${product.title}*\n${product.description ? `\n${product.description}\n` : ""}\n💰 *Valor:* ${product.priceFormatted || formattedPrice}\n\n_Toque abaixo para ver no catálogo e finalizar pedido:_`,
+              },
+              footer: {
+                text: "SOS Sales",
+              },
+              action: {
+                catalog_id: product.catalogId,
+                product_retailer_id: product.retailerId,
+              },
+            },
+          },
+          { token: session.token }
+        );
+      } else {
+        const body = `🛍️ *${product.title}*\n\n${product.description ? `${product.description}\n\n` : ""}💰 *Valor:* ${product.priceFormatted || formattedPrice}\n\n_Deseja agendar ou adquirir este item? Basta responder aqui!_`;
+        await apiClient.sendOutboundMessage(
+          session.activeWorkspace.id,
+          conversation.selectedThread.channelInstanceId,
+          {
+            recipientPhoneE164: conversation.selectedThread.contactPhone,
+            contentType: product.imageUrl ? "image" : "text",
+            body,
+            mediaUrl: product.imageUrl || undefined,
+          },
+          { token: session.token }
+        );
+      }
       await conversation.refreshMessages();
       setActiveDrawer(null);
     } catch (err: unknown) {
@@ -87,27 +114,67 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
   const handleSendProducts = async (selectedProducts: ProductRecord[]) => {
     if (!conversation.selectedThread || !session.activeWorkspace?.id || !session.token || selectedProducts.length === 0) return;
 
-    const lines = selectedProducts.map((p, idx) => {
-      const formattedPrice = (p.priceCents / 100).toLocaleString("pt-BR", {
-        style: "currency",
-        currency: p.currency || "BRL",
-      });
-      return `*${idx + 1}. ${p.title}* — ${p.priceFormatted || formattedPrice}${p.description ? `\n   _${p.description}_` : ""}`;
-    });
-
-    const body = `✨ *Catálogo de Destaques Selecionados:*\n\n${lines.join("\n\n")}\n\n_Qual das opções você gostaria de agendar ou adquirir?_`;
+    const isWaba = conversation.selectedThread.channelProvider === "meta_waba";
+    const catalogId = selectedProducts[0]?.catalogId;
 
     try {
-      await apiClient.sendOutboundMessage(
-        session.activeWorkspace.id,
-        conversation.selectedThread.channelInstanceId,
-        {
-          recipientPhoneE164: conversation.selectedThread.contactPhone,
-          contentType: "text",
-          body,
-        },
-        { token: session.token }
-      );
+      if (isWaba && catalogId && selectedProducts.every((p) => p.retailerId)) {
+        await apiClient.sendOutboundMessage(
+          session.activeWorkspace.id,
+          conversation.selectedThread.channelInstanceId,
+          {
+            recipientPhoneE164: conversation.selectedThread.contactPhone,
+            contentType: "interactive",
+            body: `✨ *Catálogo de Destaques Selecionados* (${selectedProducts.length} itens)`,
+            interactive: {
+              type: "product_list",
+              header: {
+                type: "text",
+                text: "Ofertas Selecionadas",
+              },
+              body: {
+                text: "Separamos essas opções especialmente para você. Toque no botão abaixo para explorar o catálogo e escolher:",
+              },
+              footer: {
+                text: "SOS Sales • Atendimento Comercial",
+              },
+              action: {
+                catalog_id: catalogId,
+                sections: [
+                  {
+                    title: "Destaques Disponíveis",
+                    product_items: selectedProducts.map((p) => ({
+                      product_retailer_id: p.retailerId,
+                    })),
+                  },
+                ],
+              },
+            },
+          },
+          { token: session.token }
+        );
+      } else {
+        const lines = selectedProducts.map((p, idx) => {
+          const formattedPrice = (p.priceCents / 100).toLocaleString("pt-BR", {
+            style: "currency",
+            currency: p.currency || "BRL",
+          });
+          return `*${idx + 1}. ${p.title}* — ${p.priceFormatted || formattedPrice}${p.description ? `\n   _${p.description}_` : ""}`;
+        });
+
+        const body = `✨ *Catálogo de Destaques Selecionados:*\n\n${lines.join("\n\n")}\n\n_Qual das opções você gostaria de agendar ou adquirir?_`;
+
+        await apiClient.sendOutboundMessage(
+          session.activeWorkspace.id,
+          conversation.selectedThread.channelInstanceId,
+          {
+            recipientPhoneE164: conversation.selectedThread.contactPhone,
+            contentType: "text",
+            body,
+          },
+          { token: session.token }
+        );
+      }
       await conversation.refreshMessages();
       setActiveDrawer(null);
     } catch (err: unknown) {

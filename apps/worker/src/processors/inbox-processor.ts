@@ -446,7 +446,10 @@ export class InboxProcessor {
                   event.recipientPhoneE164,
                   event.contentType,
                   event.body || null,
-                  event.mediaUrl || null,
+                  event.mediaUrl ||
+                    (event.metadata?.mediaId
+                      ? `/v1/workspaces/${item.workspace_id}/media/proxy?mediaId=${encodeURIComponent(String(event.metadata.mediaId))}&channelInstanceId=${item.channel_instance_id}`
+                      : null),
                   JSON.stringify(event.metadata ?? {}),
                   event.externalMessageId,
                   direction === "outbound" ? "sent" : "delivered",

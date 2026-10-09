@@ -102,6 +102,7 @@ export interface RequestOptions {
   token?: string | null;
   workspaceId?: string | null;
   correlationId?: string;
+  isPublic?: boolean;
 }
 
 export interface ChannelSummary {
@@ -890,11 +891,13 @@ export class ApiClient {
     file: File,
     options?: RequestOptions
   ): Promise<UploadMediaResponse> {
-    const url = `${this.baseUrl}/v1/workspaces/${workspaceId}/media`;
+    const query = options?.isPublic ? "?public=true" : "";
+    const url = `${this.baseUrl}/v1/workspaces/${workspaceId}/media${query}`;
     const headers: Record<string, string> = {
       "Content-Type": file.type,
       "x-file-name": file.name,
       "x-correlation-id": this.getCorrelationId(options?.correlationId),
+      ...(options?.isPublic ? { "x-public": "true" } : {}),
     };
     if (options?.token) {
       headers["Authorization"] = `Bearer ${options.token}`;

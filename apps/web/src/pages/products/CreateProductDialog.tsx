@@ -74,7 +74,7 @@ export const CreateProductDialog: FC<CreateProductDialogProps> = ({
     setIsUploadingImage(true);
     setServerError(null);
     try {
-      const res = await apiClient.uploadMedia(workspaceId, file, { token });
+      const res = await apiClient.uploadMedia(workspaceId, file, { token, isPublic: true });
       setImageUrl(res.mediaUrl);
     } catch (err: unknown) {
       setServerError(err instanceof Error ? err.message : "Falha ao enviar imagem do computador.");

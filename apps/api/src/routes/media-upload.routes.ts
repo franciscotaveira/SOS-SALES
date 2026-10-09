@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { META_GRAPH_API_VERSION } from "@sos-sales/contracts";
+import { DatabaseSigningSecretResolver } from "@sos-sales/database";
 import { createMediaStorageFromEnv, type MediaStorage } from "../services/media-storage";
 
 type Category = "image" | "audio" | "video" | "document";
@@ -63,13 +65,169 @@ export function sanitizeFileName(raw: unknown): string {
 }
 
 /**
- * POST /v1/workspaces/:workspaceId/media
- * Raw binary body, Content-Type = file MIME, optional `x-file-name`. Returns a signed `mediaUrl`
- * accepted by PublicOutboundRequestSchema. Order: auth -> MIME (415) -> size (413) -> magic bytes (422).
+ * Media routes:
+ * 1. GET /v1/workspaces/:workspaceId/media/proxy - Proxies protected Meta media (audios, photos, docs)
+ * 2. POST /v1/workspaces/:workspaceId/media - Binary file upload with optional public persistence
  */
 export const mediaUploadRoutes: FastifyPluginAsync<MediaUploadRoutesOptions> = async (app, options) => {
   const storage = options.storage === undefined ? createMediaStorageFromEnv() : options.storage;
 
+  // 1. GET /v1/workspaces/:workspaceId/media/proxy
+  app.get(
+    "/v1/workspaces/:workspaceId/media/proxy",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+      ],
+    },
+    async (request, reply) => {
+      const parsedParams = paramsSchema.safeParse(request.params);
+      if (!parsedParams.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Invalid workspaceId parameter",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const querySchema = z.object({
+        mediaId: z.string().min(1),
+        channelInstanceId: z.string().uuid().optional(),
+        token: z.string().optional(),
+      });
+
+      const parsedQuery = querySchema.safeParse(request.query);
+      if (!parsedQuery.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Query parameter mediaId is required",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { workspaceId } = parsedParams.data;
+      const { mediaId, channelInstanceId } = parsedQuery.data;
+
+      // Resolve channel instance
+      let targetChannelId = channelInstanceId;
+      if (!targetChannelId) {
+        const chRes = await app.pgPool.query<{ id: string }>(
+          `SELECT id FROM public.channel_instances 
+           WHERE workspace_id = $1 AND provider = 'meta_waba' AND is_active = true 
+           ORDER BY created_at DESC LIMIT 1;`,
+          [workspaceId]
+        );
+        targetChannelId = chRes.rows[0]?.id;
+      }
+
+      if (!targetChannelId) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: "No active WABA channel instance found to resolve media",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const resolver = new DatabaseSigningSecretResolver({
+        pool: app.pgPool,
+        masterKeyHex: process.env.MCT_CREDENTIALS_MASTER_KEY || process.env.APP_MASTER_KEY,
+      });
+
+      try {
+        const streamResult = await resolver.useWabaOutboundCredentials(
+          targetChannelId,
+          workspaceId,
+          async ({ accessToken }) => {
+            // 1. Fetch media metadata from Meta Graph API
+            const metaResp = await fetch(
+              `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${encodeURIComponent(mediaId)}`,
+              {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              }
+            );
+
+            if (!metaResp.ok) {
+              const errBody = await metaResp.text();
+              request.log.error({ mediaId, status: metaResp.status, errBody }, "Failed to fetch media metadata from Meta");
+              return { status: metaResp.status, error: "Meta media resolution failed", contentType: "text/plain", buffer: null };
+            }
+
+            const metaData = (await metaResp.json()) as { url?: string; mime_type?: string; file_size?: number };
+            if (!metaData.url) {
+              return { status: 404, error: "Meta media download URL not found", contentType: "text/plain", buffer: null };
+            }
+
+            // 2. Fetch media binary from Meta CDN
+            const binaryResp = await fetch(metaData.url, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+
+            if (!binaryResp.ok) {
+              return { status: binaryResp.status, error: "Failed to download media from Meta CDN", contentType: "text/plain", buffer: null };
+            }
+
+            const contentType = metaData.mime_type || binaryResp.headers.get("content-type") || "application/octet-stream";
+            const buffer = Buffer.from(await binaryResp.arrayBuffer());
+            return {
+              status: 200,
+              contentType,
+              buffer,
+            };
+          }
+        );
+
+        if (!streamResult) {
+          return reply.status(404).send({
+            type: "https://sos-sales.mct.br/errors/not-found",
+            title: "Not Found",
+            status: 404,
+            detail: "Channel credentials could not be decrypted or found",
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
+
+        if (streamResult.status !== 200 || !streamResult.buffer) {
+          return reply.status(streamResult.status || 502).send({
+            type: "https://sos-sales.mct.br/errors/bad-gateway",
+            title: "Bad Gateway",
+            status: streamResult.status || 502,
+            detail: streamResult.error || "Failed to stream media from Meta",
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
+
+        return reply
+          .header("Content-Type", streamResult.contentType)
+          .header("Cache-Control", "public, max-age=86400, immutable")
+          .header("Content-Length", streamResult.buffer.length)
+          .send(streamResult.buffer);
+      } catch (err: unknown) {
+        request.log.error({ err, correlationId: request.id }, "Media proxy stream error");
+        return reply.status(502).send({
+          type: "https://sos-sales.mct.br/errors/bad-gateway",
+          title: "Bad Gateway",
+          status: 502,
+          detail: "Failed to proxy media from Meta Cloud API",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+    }
+  );
+
+  // 2. POST /v1/workspaces/:workspaceId/media
   app.addContentTypeParser(
     Object.keys(MEDIA_RULES),
     { parseAs: "buffer", bodyLimit: ABSOLUTE_MAX_BYTES },
@@ -123,9 +281,13 @@ export const mediaUploadRoutes: FastifyPluginAsync<MediaUploadRoutesOptions> = a
         return problem(422, "unprocessable-entity", "Unprocessable Entity", "File content does not match declared type");
       }
 
+      const isPublic =
+        (request.query as Record<string, string> | undefined)?.public === "true" ||
+        request.headers["x-public"] === "true";
+
       const key = `${parsedParams.data.workspaceId}/${crypto.randomUUID()}.${rule.ext}`;
       try {
-        const stored = await storage.put({ key, bytes, contentType: mime });
+        const stored = await storage.put({ key, bytes, contentType: mime, isPublic });
         return reply.status(201).send({
           mediaUrl: stored.signedUrl,
           expiresInSeconds: stored.expiresInSeconds,
