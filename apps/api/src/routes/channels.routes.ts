@@ -1043,8 +1043,9 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
             handshakeDetail = "Synthetic WAHA session verified";
           } else {
             const targetBaseUrl = validateWahaBaseUrl(baseUrl, allowLocal);
+            const sessionName = credentials.session ? String(credentials.session).trim() : "default";
             const resp = await safeFetchWithSsrfGuard(
-              `${targetBaseUrl}/api/sessions/default`,
+              `${targetBaseUrl}/api/sessions/${encodeURIComponent(sessionName)}`,
               { headers: apiKey ? { "X-Api-Key": apiKey } : {} },
               { timeoutMs: 8000, allowLocalTest: allowLocal, allowedProtocols: ["http:", "https:"] }
             );
@@ -1115,7 +1116,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           is_active: boolean;
         }>(
           `UPDATE public.channel_instances
-           SET status = $1, updated_at = NOW()
+           SET status = $1, is_active = ($1 = 'connected'), updated_at = NOW()
            WHERE id = $2 AND workspace_id = $3
            RETURNING id, provider, display_name, status, is_active;`,
           [newStatus, channelId, workspaceId]
