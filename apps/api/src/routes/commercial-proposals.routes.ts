@@ -333,12 +333,12 @@ export const commercialProposalsRoutes: FastifyPluginAsync = async (app) => {
             reason: data.reason,
           });
 
-          if (data.status === "accepted" && proposal.journeyId) {
+          if (data.status === "accepted" && proposal.journey_id) {
             try {
               await recordCommercialOutcome(client, workspaceId, {
-                journeyId: proposal.journeyId,
+                journeyId: proposal.journey_id,
                 status: "won",
-                valueCents: proposal.totalAmountCents,
+                valueCents: proposal.total_cents,
                 currency: proposal.currency,
                 registeredByUserId: request.user.id,
                 reason: data.reason || "Proposta aceita no cockpit",
@@ -346,12 +346,12 @@ export const commercialProposalsRoutes: FastifyPluginAsync = async (app) => {
             } catch (outcomeErr) {
               request.log.warn({ err: outcomeErr }, "Could not record won outcome for accepted proposal");
             }
-          } else if (data.status === "rejected" && proposal.journeyId) {
+          } else if (data.status === "rejected" && proposal.journey_id) {
             try {
               await recordCommercialOutcome(client, workspaceId, {
-                journeyId: proposal.journeyId,
+                journeyId: proposal.journey_id,
                 status: "lost",
-                valueCents: proposal.totalAmountCents,
+                valueCents: proposal.total_cents,
                 currency: proposal.currency,
                 registeredByUserId: request.user.id,
                 reason: data.reason || "Proposta rejeitada",

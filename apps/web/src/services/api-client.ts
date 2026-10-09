@@ -1647,6 +1647,21 @@ export class ApiClient {
   }
 }
 
+export interface AiFaqItem {
+  id?: string;
+  question: string;
+  answer: string;
+}
+
+export interface AiBusinessRules {
+  openingHours?: string;
+  address?: string;
+  cancellationPolicy?: string;
+  paymentMethods?: string;
+  generalRules?: string;
+  [key: string]: string | undefined;
+}
+
 export interface AiAgentConfig {
   enabled: boolean;
   name: string;
@@ -1660,6 +1675,10 @@ export interface AiAgentConfig {
     capi_tracking?: boolean;
     [key: string]: boolean | undefined;
   };
+  businessRules?: AiBusinessRules;
+  faq?: AiFaqItem[];
+  strictMode?: boolean;
+  temperature?: number;
 }
 
 export interface OutboundWebhookSubscription {

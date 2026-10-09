@@ -1,0 +1,361 @@
+import crypto from "node:crypto";
+import type { Pool } from "pg";
+import {
+  withWorkerTransaction,
+} from "@sos-sales/database";
+import {
+  buildGroundedSystemPrompt,
+  parseAiResponse,
+  OpenRouterClient,
+  type GroundedAiConfig,
+  type GroundedProduct,
+  type GroundedBusinessRules,
+  type GroundedFaqItem,
+} from "@sos-sales/application";
+import { logger } from "@sos-sales/observability";
+
+export interface AiReceptionistInboundEvent {
+  workspaceId: string;
+  channelInstanceId: string;
+  contactId: string;
+  threadId: string;
+  inboundMessageId: string;
+  inboundBody: string;
+  senderPhoneE164: string;
+  recipientPhoneE164: string;
+}
+
+export interface AiReceptionistResult {
+  handled: boolean;
+  reason?: string;
+  replyText?: string;
+  needsHandoff?: boolean;
+  handoffReason?: string;
+}
+
+export class AiReceptionistProcessor {
+  private readonly openRouterClient: OpenRouterClient;
+
+  constructor(openRouterClient?: OpenRouterClient) {
+    this.openRouterClient = openRouterClient || new OpenRouterClient();
+  }
+
+  async processInboundMessage(
+    pool: Pool,
+    event: AiReceptionistInboundEvent,
+    _workerId?: string
+  ): Promise<AiReceptionistResult> {
+    const {
+      workspaceId,
+      channelInstanceId,
+      threadId,
+      inboundMessageId,
+      inboundBody,
+      senderPhoneE164,
+      recipientPhoneE164,
+    } = event;
+
+    if (!inboundBody || !inboundBody.trim()) {
+      return { handled: false, reason: "empty_inbound_body" };
+    }
+
+    return await withWorkerTransaction(
+      workspaceId,
+      async (client) => {
+        // 1. Fetch workspace AI configuration
+        const wsRes = await client.query<{
+          ai_receptionist_enabled: boolean | null;
+          ai_agent_name: string | null;
+          ai_system_prompt: string | null;
+          ai_personality: string | null;
+          ai_skills: Record<string, boolean> | null;
+          ai_business_rules: GroundedBusinessRules | null;
+          ai_faq: GroundedFaqItem[] | null;
+          ai_strict_mode: boolean | null;
+          ai_temperature: number | string | null;
+        }>(
+          `SELECT
+             ai_receptionist_enabled,
+             ai_agent_name,
+             ai_system_prompt,
+             ai_personality,
+             ai_skills,
+             ai_business_rules,
+             ai_faq,
+             ai_strict_mode,
+             ai_temperature
+           FROM public.workspaces
+           WHERE id = $1;`,
+          [workspaceId]
+        );
+
+        const ws = wsRes.rows[0];
+        if (!ws || ws.ai_receptionist_enabled === false) {
+          return { handled: false, reason: "ai_receptionist_disabled" };
+        }
+
+        // 2. Check thread status (if already waiting_human or closed, do not intervene)
+        const threadRes = await client.query<{ status: string }>(
+          `SELECT status FROM public.commercial_threads
+           WHERE workspace_id = $1 AND id = $2;`,
+          [workspaceId, threadId]
+        );
+
+        const currentStatus = threadRes.rows[0]?.status;
+        if (currentStatus === "waiting_human") {
+          logger.info(
+            { workspaceId, threadId },
+            "AI Receptionist skipped: thread is waiting_human"
+          );
+          return { handled: false, reason: "thread_waiting_human" };
+        }
+
+        if (currentStatus === "closed") {
+          logger.info(
+            { workspaceId, threadId },
+            "AI Receptionist skipped: thread is closed"
+          );
+          return { handled: false, reason: "thread_closed" };
+        }
+
+        // 3. Verify OpenRouter API key availability
+        const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+        if (!openRouterApiKey || !openRouterApiKey.trim()) {
+          logger.warn(
+            { workspaceId, threadId },
+            "AI Receptionist skipped: OPENROUTER_API_KEY is not configured in worker environment"
+          );
+          return { handled: false, reason: "missing_openrouter_api_key" };
+        }
+
+        // 4. Fetch channel instance details
+        const channelRes = await client.query<{
+          provider: string;
+          phone_number_e164: string | null;
+          is_active: boolean;
+        }>(
+          `SELECT provider, phone_number_e164, is_active
+           FROM public.channel_instances
+           WHERE workspace_id = $1 AND id = $2;`,
+          [workspaceId, channelInstanceId]
+        );
+
+        const channel = channelRes.rows[0];
+        if (!channel || !channel.is_active) {
+          return { handled: false, reason: "channel_not_active" };
+        }
+
+        // 5. Fetch grounded active catalog products (Truth in Data)
+        const productsRes = await client.query<{
+          id: string;
+          title: string;
+          description: string | null;
+          price_cents: number;
+          category: string | null;
+          badge: string | null;
+        }>(
+          `SELECT id, title, description, price_cents, category, badge
+           FROM public.products
+           WHERE workspace_id = $1 AND status = 'ACTIVE'
+           ORDER BY is_featured DESC, title ASC
+           LIMIT 50;`,
+          [workspaceId]
+        );
+
+        const products: GroundedProduct[] = productsRes.rows.map((r) => ({
+          id: r.id,
+          title: r.title,
+          description: r.description,
+          priceCents: r.price_cents,
+          category: r.category,
+          badge: r.badge,
+        }));
+
+        // 6. Fetch recent conversation history
+        const historyRes = await client.query<{
+          direction: string;
+          body: string | null;
+        }>(
+          `SELECT direction, body
+           FROM public.messages
+           WHERE workspace_id = $1 AND thread_id = $2 AND body IS NOT NULL
+           ORDER BY created_at DESC
+           LIMIT 10;`,
+          [workspaceId, threadId]
+        );
+
+        // Reverse to chronological order
+        const recentMessages = historyRes.rows.reverse();
+
+        // 7. Build grounded prompt with 4 layers & Ignorance Protocol
+        const personality = (ws.ai_personality || "cordial_comercial") as GroundedAiConfig["personality"];
+        const aiConfig: GroundedAiConfig = {
+          name: ws.ai_agent_name || "Assistente Virtual",
+          personality,
+          systemPrompt: ws.ai_system_prompt || "",
+          strictMode: ws.ai_strict_mode ?? true,
+          businessRules: ws.ai_business_rules || {},
+          faq: Array.isArray(ws.ai_faq) ? ws.ai_faq : [],
+        };
+
+        const systemPrompt = buildGroundedSystemPrompt(aiConfig, products);
+
+        const messagesForModel: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+          { role: "system", content: systemPrompt },
+        ];
+
+        for (const msg of recentMessages) {
+          if (!msg.body) continue;
+          messagesForModel.push({
+            role: msg.direction === "inbound" ? "user" : "assistant",
+            content: msg.body,
+          });
+        }
+
+        // 8. Call OpenRouter LLM
+        const temperature = ws.ai_temperature !== undefined && ws.ai_temperature !== null
+          ? Number(ws.ai_temperature)
+          : 0.1;
+
+        logger.info(
+          {
+            workspaceId,
+            threadId,
+            agentName: aiConfig.name,
+            strictMode: aiConfig.strictMode,
+            temperature,
+            productCount: products.length,
+          },
+          "Invoking AI Receptionist completion"
+        );
+
+        const completion = await this.openRouterClient.complete(messagesForModel, {
+          apiKey: openRouterApiKey,
+          temperature,
+        });
+
+        const rawReply = completion.content;
+        if (!rawReply || !rawReply.trim()) {
+          return { handled: false, reason: "empty_llm_response" };
+        }
+
+        // 9. Parse response for human handoff
+        const parsed = parseAiResponse(rawReply);
+
+        if (parsed.needsHandoff) {
+          await client.query(
+            `UPDATE public.commercial_threads
+             SET status = 'waiting_human',
+                 updated_at = clock_timestamp()
+             WHERE workspace_id = $1 AND id = $2;`,
+            [workspaceId, threadId]
+          );
+
+          logger.info(
+            {
+              workspaceId,
+              threadId,
+              handoffReason: parsed.handoffReason,
+            },
+            "AI Receptionist triggered handoff to human attendant"
+          );
+        }
+
+        // 10. Enqueue outbound message and command if there is reply text
+        if (parsed.cleanReplyText && parsed.cleanReplyText.trim()) {
+          const idempotencyKey = `ai-reply-${inboundMessageId}`;
+          const payloadFingerprint = crypto
+            .createHash("sha256")
+            .update(
+              JSON.stringify({
+                workspaceId,
+                channelInstanceId,
+                threadId,
+                recipientPhoneE164: senderPhoneE164,
+                body: parsed.cleanReplyText.trim(),
+                idempotencyKey,
+              })
+            )
+            .digest("hex");
+
+          // Insert outbound message
+          const msgRes = await client.query<{ id: string }>(
+            `INSERT INTO public.messages (
+               workspace_id, channel_instance_id, thread_id, provider, direction,
+               sender_e164, recipient_e164, content_type, body,
+               metadata, delivery_status, status_rank
+             ) VALUES (
+               $1, $2, $3, $4, 'outbound',
+               $5, $6, 'text', $7,
+               $8::jsonb, 'queued', 0
+             )
+             RETURNING id;`,
+            [
+              workspaceId,
+              channelInstanceId,
+              threadId,
+              channel.provider,
+              channel.phone_number_e164 || recipientPhoneE164,
+              senderPhoneE164,
+              parsed.cleanReplyText.trim(),
+              JSON.stringify({
+                source: "ai_receptionist",
+                agentName: aiConfig.name,
+                model: completion.model,
+                needsHandoff: parsed.needsHandoff,
+                handoffReason: parsed.handoffReason || null,
+              }),
+            ]
+          );
+
+          const outboundMessageId = msgRes.rows[0]!.id;
+
+          // Insert outbound outbox command
+          await client.query(
+            `INSERT INTO public.outbound_commands (
+               workspace_id, channel_instance_id, thread_id, message_id,
+               recipient_e164, body,
+               idempotency_key, payload_fingerprint,
+               status, retry_count, max_retries, next_attempt_at
+             ) VALUES (
+               $1, $2, $3, $4,
+               $5, $6,
+               $7, $8,
+               'pending', 0, 3, clock_timestamp()
+             )
+             ON CONFLICT (workspace_id, idempotency_key) DO NOTHING;`,
+            [
+              workspaceId,
+              channelInstanceId,
+              threadId,
+              outboundMessageId,
+              senderPhoneE164,
+              parsed.cleanReplyText.trim(),
+              idempotencyKey,
+              payloadFingerprint,
+            ]
+          );
+
+          logger.info(
+            {
+              workspaceId,
+              threadId,
+              outboundMessageId,
+              idempotencyKey,
+              needsHandoff: parsed.needsHandoff,
+            },
+            "AI Receptionist reply successfully enqueued to outbox"
+          );
+        }
+
+        return {
+          handled: true,
+          replyText: parsed.cleanReplyText,
+          needsHandoff: parsed.needsHandoff,
+          handoffReason: parsed.handoffReason,
+        };
+      },
+      pool
+    );
+  }
+}

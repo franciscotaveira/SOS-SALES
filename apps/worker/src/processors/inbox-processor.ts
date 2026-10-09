@@ -17,6 +17,10 @@ import {
   QueueRetryPolicy,
 } from "@sos-sales/application";
 import { logger } from "@sos-sales/observability";
+import {
+  AiReceptionistProcessor,
+  type AiReceptionistInboundEvent,
+} from "./ai-receptionist.processor";
 
 export interface ClaimedInboxItem {
   id: string;
@@ -36,6 +40,7 @@ export interface ClaimedInboxItem {
 export interface InboxProcessorOptions {
   readonly masterKeyHex?: string;
   readonly keyring?: Keyring;
+  readonly aiReceptionistProcessor?: AiReceptionistProcessor;
 }
 
 function coerceWahaJid(value: unknown): string {
@@ -108,8 +113,12 @@ async function enrichWahaPayload(
 
 export class InboxProcessor {
   private readonly keyringOrKey: string | Keyring;
+  private readonly aiReceptionistProcessor: AiReceptionistProcessor;
 
   constructor(options: InboxProcessorOptions = {}) {
+    this.aiReceptionistProcessor =
+      options.aiReceptionistProcessor || new AiReceptionistProcessor();
+
     if (options.keyring && Object.keys(options.keyring).length > 0) {
       this.keyringOrKey = options.keyring;
     } else {
@@ -259,6 +268,7 @@ export class InboxProcessor {
       let rawPayload = JSON.parse(rawPayloadStr) as Record<string, unknown>;
 
       let eventCount = 0;
+      const pendingAiEvents: AiReceptionistInboundEvent[] = [];
 
       // 2. Ingest normalized events within tenant transaction under sos_worker_user
       await withWorkerTransaction(
@@ -460,6 +470,19 @@ export class InboxProcessor {
 
               const insertedMsgId = msgInsertRes.rows[0]?.id;
 
+              if (direction === "inbound" && insertedMsgId && event.body?.trim()) {
+                pendingAiEvents.push({
+                  workspaceId: item.workspace_id,
+                  channelInstanceId: item.channel_instance_id,
+                  contactId,
+                  threadId,
+                  inboundMessageId: insertedMsgId,
+                  inboundBody: event.body.trim(),
+                  senderPhoneE164: event.senderPhoneE164,
+                  recipientPhoneE164: event.recipientPhoneE164,
+                });
+              }
+
               // Reconcile if a delivery status event arrived BEFORE this message
               if (insertedMsgId) {
                 const priorDeliveryRes = await client.query<{ status: MessageDeliveryStatus }>(
@@ -645,6 +668,18 @@ export class InboxProcessor {
         },
         pool
       );
+
+      // 3. Autonomously execute AI Receptionist for incoming customer messages
+      for (const aiEvent of pendingAiEvents) {
+        try {
+          await this.aiReceptionistProcessor.processInboundMessage(pool, aiEvent, workerId);
+        } catch (aiErr: unknown) {
+          logger.error(
+            { aiErr, aiEvent, workerId },
+            "Error executing autonomous AI Receptionist on inbound message"
+          );
+        }
+      }
 
       return { success: true, eventCount };
     } catch (err: unknown) {

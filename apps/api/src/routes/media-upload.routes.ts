@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { META_GRAPH_API_VERSION } from "@sos-sales/contracts";
-import { DatabaseSigningSecretResolver } from "@sos-sales/database";
+import { DatabaseSigningSecretResolver, getDatabasePool } from "@sos-sales/database";
 import { createMediaStorageFromEnv, type MediaStorage } from "../services/media-storage";
 
 type Category = "image" | "audio" | "video" | "document";
@@ -115,10 +115,12 @@ export const mediaUploadRoutes: FastifyPluginAsync<MediaUploadRoutesOptions> = a
       const { workspaceId } = parsedParams.data;
       const { mediaId, channelInstanceId } = parsedQuery.data;
 
+      const pool = getDatabasePool();
+
       // Resolve channel instance
       let targetChannelId = channelInstanceId;
       if (!targetChannelId) {
-        const chRes = await app.pgPool.query<{ id: string }>(
+        const chRes = await pool.query<{ id: string }>(
           `SELECT id FROM public.channel_instances 
            WHERE workspace_id = $1 AND provider = 'meta_waba' AND is_active = true 
            ORDER BY created_at DESC LIMIT 1;`,
@@ -139,7 +141,7 @@ export const mediaUploadRoutes: FastifyPluginAsync<MediaUploadRoutesOptions> = a
       }
 
       const resolver = new DatabaseSigningSecretResolver({
-        pool: app.pgPool,
+        pool,
         masterKeyHex: process.env.MCT_CREDENTIALS_MASTER_KEY || process.env.APP_MASTER_KEY,
       });
 

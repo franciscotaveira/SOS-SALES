@@ -23,6 +23,27 @@ const updateAiAgentBodySchema = z.object({
     })
     .passthrough()
     .optional(),
+  businessRules: z
+    .object({
+      openingHours: z.string().max(1000).optional(),
+      address: z.string().max(1000).optional(),
+      cancellationPolicy: z.string().max(1000).optional(),
+      paymentMethods: z.string().max(1000).optional(),
+      generalRules: z.string().max(2000).optional(),
+    })
+    .passthrough()
+    .optional(),
+  faq: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        question: z.string().min(1).max(500),
+        answer: z.string().min(1).max(2000),
+      })
+    )
+    .optional(),
+  strictMode: z.boolean().optional(),
+  temperature: z.number().min(0).max(1).optional(),
 });
 
 export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
@@ -54,7 +75,11 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
              ai_agent_name,
              ai_system_prompt,
              ai_personality,
-             ai_skills
+             ai_skills,
+             ai_business_rules,
+             ai_faq,
+             ai_strict_mode,
+             ai_temperature
            FROM public.workspaces
            WHERE id = $1`,
           [workspaceId]
@@ -89,6 +114,16 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
             appointments: true,
             capi_tracking: true,
           },
+          businessRules: config.ai_business_rules || {
+            openingHours: "",
+            address: "",
+            cancellationPolicy: "",
+            paymentMethods: "",
+            generalRules: "",
+          },
+          faq: Array.isArray(config.ai_faq) ? config.ai_faq : [],
+          strictMode: config.ai_strict_mode ?? true,
+          temperature: Number(config.ai_temperature ?? 0.1),
         },
       });
     }
@@ -137,6 +172,10 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
              ai_system_prompt = COALESCE($4, ai_system_prompt),
              ai_personality = COALESCE($5, ai_personality),
              ai_skills = CASE WHEN $6::jsonb IS NOT NULL THEN $6::jsonb ELSE ai_skills END,
+             ai_business_rules = CASE WHEN $7::jsonb IS NOT NULL THEN $7::jsonb ELSE ai_business_rules END,
+             ai_faq = CASE WHEN $8::jsonb IS NOT NULL THEN $8::jsonb ELSE ai_faq END,
+             ai_strict_mode = COALESCE($9, ai_strict_mode),
+             ai_temperature = COALESCE($10, ai_temperature),
              updated_at = clock_timestamp()
            WHERE id = $1
            RETURNING
@@ -144,7 +183,11 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
              ai_agent_name,
              ai_system_prompt,
              ai_personality,
-             ai_skills;`,
+             ai_skills,
+             ai_business_rules,
+             ai_faq,
+             ai_strict_mode,
+             ai_temperature;`,
           [
             workspaceId,
             data.enabled !== undefined ? data.enabled : null,
@@ -152,6 +195,10 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
             data.systemPrompt?.trim() || null,
             data.personality || null,
             data.skills ? JSON.stringify(data.skills) : null,
+            data.businessRules ? JSON.stringify(data.businessRules) : null,
+            data.faq ? JSON.stringify(data.faq) : null,
+            data.strictMode !== undefined ? data.strictMode : null,
+            data.temperature !== undefined ? data.temperature : null,
           ]
         );
         return res.rows[0];
@@ -176,6 +223,10 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
           systemPrompt: updated.ai_system_prompt,
           personality: updated.ai_personality,
           skills: updated.ai_skills,
+          businessRules: updated.ai_business_rules,
+          faq: updated.ai_faq,
+          strictMode: updated.ai_strict_mode,
+          temperature: Number(updated.ai_temperature),
         },
       });
     }
