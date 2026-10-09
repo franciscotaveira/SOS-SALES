@@ -177,3 +177,38 @@ A infraestrutura de automações externas da MCT LTDA está centralizada em um d
 - **Resgate e Sanitização de Quarentena:** 18 workflows que continham credenciais esquecidas de terceiros (tokens Apify, GitLab, Perplexity, Google API e chaves privadas RSA do Meta WhatsApp Flows) foram 100% desinfetados, validados e salvos como JSONs prontos para teste na subpasta `01 - Selecionados para revisao/11 - Resgatados da Quarentena/`.
 - **Fronteira Arquitetural (P0):** Workflows n8n operam como laboratório de apoio, scrapers auxiliares e esteiras de prototipagem rápida. Toda lógica comercial transacional de alta confiabilidade, mensageria CTWA, ingestão de webhooks e outbox assíncrono pertencem estritamente a este monorepo SOS Sales.
 
+---
+
+## 7. Motor de Inteligência Artificial Soberano (Multi-Provider & Anti-Alucinação)
+
+### 7.1 Arquitetura Dual-Engine (`SovereignLlmClient`)
+- **Provedor Padrão:** **NVIDIA NIM** via `https://integrate.api.nvidia.com/v1/chat/completions`.
+  - Modelo Soberano Ativo: `nvidia/nemotron-3-super-120b-a12b` (substituição formal do `meta/llama-3.3-70b-instruct` descontinuado pela Nvidia em 26/08/2026).
+  - Modelos Alternativos Homologados: `nvidia/nemotron-3.5-lightning-30b-a3b` (ultrarrápido), `nvidia/llama-3.1-nemotron-70b-instruct` (factual).
+- **Provedor Alternativo:** **OpenRouter** via `https://openrouter.ai/api/v1/chat/completions`.
+  - Modelos Homologados: `anthropic/claude-3.5-sonnet` (alta precisão), `google/gemini-2.5-flash`, `deepseek/deepseek-chat`.
+  - Cabeçalhos de rastreabilidade obrigatórios: `HTTP-Referer: https://crm.iaparavendas.tech` e `X-Title: Chat Sales V3 Commercial Receptionist`.
+- **Governança de Credenciais por Workspace:**
+  - Colunas `ai_provider`, `ai_model`, `ai_api_key` em `public.workspaces`.
+  - Resolução hierárquica fail-closed: Chave customizada do tenant -> Chave de ambiente do servidor (`NVIDIA_API_KEY` / `OPENROUTER_API_KEY`).
+
+### 7.2 Camadas de Grounding Factual e Protocolo de Ignorância (Truth in Data)
+- O prompt do agente é gerado deterministicamente pelo `buildGroundedSystemPrompt` em 4 camadas imutáveis:
+  1. `<identidade_e_escopo>`: Nome, personalidade comercial e tom.
+  2. `<catalogo_oficial_de_produtos>`: Injeção direta de registros `public.products` (título, descrição, preço em centavos, categoria, badge).
+  3. `<regras_operacionais_e_faq>`: Horários, endereço, formas de pagamento, regras gerais e perguntas frequentes cadastradas no workspace.
+  4. `<protocolo_de_ignorancia_e_transbordo>`: Proibição estrita de suposições ou dados não ancorados. Se a informação solicitada pelo cliente não estiver no contexto, a IA emite a tag canônica `[TRANSBORDO_HUMANO: motivo estruturado]`.
+- O parser `parseAiResponse` extrai o texto limpo para o cliente e detecta automaticamente a intenção de transbordo, gravando `handoff_reason` e `handoff_at` na thread.
+
+### 7.3 Memória do Anúncio Meta (CTWA Hook Memory)
+- Eventos de entrada oriundos de Meta Ads (Click-to-WhatsApp) têm seus dados de anúncio (`headline`, `body`) extraídos em `inbox-processor` e persistidos em `commercial_journeys.ad_headline` e `ad_body`.
+- A camada `<origem_do_lead_anuncio_meta>` injeta o gancho original no contexto do agente, permitindo que a IA receba o lead alinhada com a oferta de anúncio específica que gerou o clique.
+
+### 7.4 Briefing no Cockpit e Simulador Dry-Run
+- **Cockpit Visual:**
+  - Mensagens da IA sinalizadas com badge `🤖 {agentName} (IA)`.
+  - Status `waiting_human` exibe card de briefing executivo com o motivo exato registrado pelo modelo e botão `[Assumir Conversa]`.
+- **Simulador Interativo:**
+  - Endpoint seguro `POST /v1/workspaces/:workspaceId/ai-agent/simulate`.
+  - Playground no frontend (`Configurações > IA`) com métricas ao vivo: latência em ms, produtos catalogados, validação de transbordo e visualização do balão de chat.
+
