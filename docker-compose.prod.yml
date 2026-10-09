@@ -26,6 +26,8 @@ services:
       NVIDIA_TEMPLATE_MODEL: ${NVIDIA_TEMPLATE_MODEL:-nvidia/nemotron-3-super-120b-a12b}
       APP_MASTER_KEY: ${APP_MASTER_KEY:?APP_MASTER_KEY is required}
       MCT_CREDENTIALS_MASTER_KEY: ${APP_MASTER_KEY:?APP_MASTER_KEY is required}
+      WAHA_BASE_URL: ${WAHA_BASE_URL:-http://sos-sales-waha:3000}
+      WAHA_API_KEY: ${WAHA_API_KEY:-mct_sos_waha_master_2026}
       ENABLE_LAB_SYNTHETIC: 'false'
       INTERNAL_SERVICE_ALLOWLIST: ${INTERNAL_SERVICE_ALLOWLIST:-sos-sales-waha,waha,chat-sales-waha,sos-v3-waha,evolution,sos-sales-evolution}
     expose:

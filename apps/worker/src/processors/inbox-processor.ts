@@ -441,6 +441,20 @@ export class InboxProcessor {
                 );
               }
 
+              // Resolve mediaUrl: if pointing to WAHA internal file storage, rewrite to authenticated API proxy
+              let resolvedMediaUrl: string | null = null;
+              if (event.mediaUrl) {
+                const wahaFilesMatch = event.mediaUrl.match(/\/api\/files\/[a-zA-Z0-9_\-./]+/);
+                if (wahaFilesMatch) {
+                  const wahaPath = wahaFilesMatch[0];
+                  resolvedMediaUrl = `/v1/workspaces/${item.workspace_id}/media/proxy?wahaPath=${encodeURIComponent(wahaPath)}&channelInstanceId=${item.channel_instance_id}`;
+                } else {
+                  resolvedMediaUrl = event.mediaUrl;
+                }
+              } else if (event.metadata?.mediaId) {
+                resolvedMediaUrl = `/v1/workspaces/${item.workspace_id}/media/proxy?mediaId=${encodeURIComponent(String(event.metadata.mediaId))}&channelInstanceId=${item.channel_instance_id}`;
+              }
+
               // Insert message idempotently
               const msgInsertRes = await client.query<{ id: string }>(
                 `INSERT INTO public.messages (
@@ -464,10 +478,7 @@ export class InboxProcessor {
                   event.recipientPhoneE164,
                   event.contentType,
                   event.body || null,
-                  event.mediaUrl ||
-                    (event.metadata?.mediaId
-                      ? `/v1/workspaces/${item.workspace_id}/media/proxy?mediaId=${encodeURIComponent(String(event.metadata.mediaId))}&channelInstanceId=${item.channel_instance_id}`
-                      : null),
+                  resolvedMediaUrl,
                   JSON.stringify(event.metadata ?? {}),
                   event.externalMessageId,
                   direction === "outbound" ? "sent" : "delivered",

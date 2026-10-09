@@ -700,6 +700,52 @@ describe("Channel Gateway & Normalizers Unit Tests", () => {
       }
     });
 
+    it("should normalize message.any and resolve WhatsApp LID identities", () => {
+      const wahaLidPayload = {
+        event: "message.any",
+        session: "plx-documentos",
+        me: {
+          id: "554988447562@c.us",
+          pushName: "Francisco Taveira",
+        },
+        payload: {
+          id: "false_271635491872968@lid_3A1F702AACB734EFC33A",
+          timestamp: 1791555952,
+          from: "271635491872968@lid",
+          fromMe: false,
+          to: null,
+          hasMedia: true,
+          media: {
+            url: "http://waha:3000/api/files/plx-documentos/3A1F702AACB734EFC33A.oga",
+            mimetype: "audio/ogg; codecs=opus",
+          },
+          _data: {
+            Info: {
+              SenderAlt: "554991810054@s.whatsapp.net",
+              MediaType: "ptt",
+            },
+            Message: {
+              audioMessage: {
+                mimetype: "audio/ogg; codecs=opus",
+                seconds: 6,
+              },
+            },
+          },
+        },
+      };
+
+      const results = WahaWebhookNormalizer.normalize(wahaLidPayload, context);
+      expect(results).toHaveLength(1);
+      const res = results[0];
+      expect(res?.kind).toBe("message");
+      if (res?.kind === "message") {
+        expect(res.event.contentType).toBe("audio");
+        expect(res.event.senderPhoneE164).toBe("+554991810054");
+        expect(res.event.recipientPhoneE164).toBe("+554988447562");
+        expect(res.event.mediaUrl).toBe("http://waha:3000/api/files/plx-documentos/3A1F702AACB734EFC33A.oga");
+      }
+    });
+
     it("should normalize negative ack as failed delivery status", () => {
       const results = WahaWebhookNormalizer.normalize(
         WAHA_ACK_FAILED_FIXTURE,

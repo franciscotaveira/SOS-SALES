@@ -363,9 +363,14 @@ export function detectMediaType(pathnameOrUrl: string): ValidatedMediaType {
   if (
     lower.endsWith(".mp3") ||
     lower.endsWith(".ogg") ||
+    lower.endsWith(".oga") ||
     lower.endsWith(".m4a") ||
     lower.endsWith(".aac") ||
-    lower.endsWith(".opus")
+    lower.endsWith(".opus") ||
+    lower.endsWith(".wav") ||
+    lower.endsWith(".weba") ||
+    lower.endsWith(".flac") ||
+    lower.endsWith(".amr")
   ) {
     return "audio";
   }
@@ -373,16 +378,25 @@ export function detectMediaType(pathnameOrUrl: string): ValidatedMediaType {
     lower.endsWith(".mp4") ||
     lower.endsWith(".3gp") ||
     lower.endsWith(".mov") ||
-    lower.endsWith(".webm")
+    lower.endsWith(".qt") ||
+    lower.endsWith(".webm") ||
+    lower.endsWith(".mkv") ||
+    lower.endsWith(".avi") ||
+    lower.endsWith(".m4v")
   ) {
     return "video";
   }
   if (
     lower.endsWith(".pdf") ||
     lower.endsWith(".docx") ||
+    lower.endsWith(".doc") ||
     lower.endsWith(".xlsx") ||
+    lower.endsWith(".xls") ||
+    lower.endsWith(".pptx") ||
+    lower.endsWith(".ppt") ||
     lower.endsWith(".txt") ||
-    lower.endsWith(".csv")
+    lower.endsWith(".csv") ||
+    lower.endsWith(".zip")
   ) {
     return "document";
   }

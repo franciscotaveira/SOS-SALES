@@ -94,11 +94,17 @@ export const mediaUploadRoutes: FastifyPluginAsync<MediaUploadRoutesOptions> = a
         });
       }
 
-      const querySchema = z.object({
-        mediaId: z.string().min(1),
-        channelInstanceId: z.string().uuid().optional(),
-        token: z.string().optional(),
-      });
+      const querySchema = z
+        .object({
+          mediaId: z.string().min(1).optional(),
+          wahaPath: z.string().min(1).optional(),
+          url: z.string().min(1).optional(),
+          channelInstanceId: z.string().uuid().optional(),
+          token: z.string().optional(),
+        })
+        .refine((d) => Boolean(d.mediaId || d.wahaPath || d.url), {
+          message: "Either mediaId, wahaPath, or url query parameter is required",
+        });
 
       const parsedQuery = querySchema.safeParse(request.query);
       if (!parsedQuery.success) {
@@ -106,14 +112,114 @@ export const mediaUploadRoutes: FastifyPluginAsync<MediaUploadRoutesOptions> = a
           type: "https://sos-sales.mct.br/errors/bad-request",
           title: "Bad Request",
           status: 400,
-          detail: "Query parameter mediaId is required",
+          detail: "Query parameter mediaId, wahaPath, or url is required",
           instance: request.url,
           correlationId: request.id,
         });
       }
 
       const { workspaceId } = parsedParams.data;
-      const { mediaId, channelInstanceId } = parsedQuery.data;
+      const { mediaId, wahaPath, url, channelInstanceId } = parsedQuery.data;
+
+      // 1A. Handle WAHA media requests
+      const isWaha = Boolean(
+        wahaPath ||
+        (url && (url.includes("/api/files/") || url.includes("waha"))) ||
+        (mediaId && (mediaId.includes("/api/files/") || mediaId.startsWith("waha:")))
+      );
+
+      if (isWaha) {
+        let cleanPath = wahaPath || "";
+        if (!cleanPath && url) {
+          const match = url.match(/\/api\/files\/[a-zA-Z0-9_\-./]+/);
+          if (match) cleanPath = match[0];
+        }
+        if (!cleanPath && mediaId) {
+          const match = mediaId.match(/\/api\/files\/[a-zA-Z0-9_\-./]+/);
+          if (match) cleanPath = match[0];
+          else if (mediaId.startsWith("waha:")) cleanPath = `/api/files/${mediaId.slice(5)}`;
+        }
+
+        if (!cleanPath || !cleanPath.startsWith("/api/files/") || cleanPath.includes("..")) {
+          return reply.status(400).send({
+            type: "https://sos-sales.mct.br/errors/bad-request",
+            title: "Bad Request",
+            status: 400,
+            detail: "Invalid or unauthorized WAHA media path",
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
+
+        const wahaBaseUrl = (
+          process.env.WAHA_BASE_URL ||
+          "http://sos-sales-waha:3000"
+        ).replace(/\/$/, "");
+        const wahaApiKey = process.env.WAHA_API_KEY || "mct_sos_waha_master_2026";
+
+        const targetUrl = `${wahaBaseUrl}${cleanPath}`;
+        const forwardHeaders: Record<string, string> = {
+          "x-api-key": wahaApiKey,
+        };
+        const rangeHeader = request.headers["range"];
+        if (typeof rangeHeader === "string") {
+          forwardHeaders["range"] = rangeHeader;
+        }
+
+        try {
+          const wahaResp = await fetch(targetUrl, {
+            headers: forwardHeaders,
+          });
+
+          if (!wahaResp.ok) {
+            request.log.warn({ targetUrl, status: wahaResp.status }, "WAHA media fetch failed");
+            return reply.status(wahaResp.status || 502).send({
+              type: "https://sos-sales.mct.br/errors/bad-gateway",
+              title: "Bad Gateway",
+              status: wahaResp.status || 502,
+              detail: "Failed to fetch media from WAHA engine",
+              instance: request.url,
+              correlationId: request.id,
+            });
+          }
+
+          const contentType = wahaResp.headers.get("content-type") || "application/octet-stream";
+          const contentLength = wahaResp.headers.get("content-length");
+          const contentRange = wahaResp.headers.get("content-range");
+          const acceptRanges = wahaResp.headers.get("accept-ranges") || "bytes";
+
+          reply.header("Content-Type", contentType);
+          reply.header("Accept-Ranges", acceptRanges);
+          reply.header("Cache-Control", "public, max-age=86400, immutable");
+          if (contentLength) reply.header("Content-Length", contentLength);
+          if (contentRange) reply.header("Content-Range", contentRange);
+
+          const buffer = Buffer.from(await wahaResp.arrayBuffer());
+          return reply.status(wahaResp.status).send(buffer);
+        } catch (err) {
+          request.log.error({ err, targetUrl, correlationId: request.id }, "WAHA media proxy connection error");
+          return reply.status(502).send({
+            type: "https://sos-sales.mct.br/errors/bad-gateway",
+            title: "Bad Gateway",
+            status: 502,
+            detail: "Could not connect to WAHA media service",
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
+      }
+
+      // 1B. Handle Meta WABA media requests
+      if (!mediaId) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Query parameter mediaId is required for Meta WABA media",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
 
       const pool = getDatabasePool();
 

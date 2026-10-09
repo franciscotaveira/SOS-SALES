@@ -49,6 +49,15 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
       }
     }
 
+    // Rewrite internal WAHA container URLs (e.g. from historical data) to authenticated API proxy
+    if (url && (url.includes("waha:3000") || url.includes(":3006") || (url.includes("/api/files/") && !url.includes("/media/proxy")))) {
+      const match = url.match(/\/api\/files\/[a-zA-Z0-9_\-./]+/);
+      if (match) {
+        const wsId = (meta?.workspaceId as string) || message.workspaceId || "";
+        url = `/v1/workspaces/${wsId}/media/proxy?wahaPath=${encodeURIComponent(match[0])}&channelInstanceId=${message.channelInstanceId || ""}`;
+      }
+    }
+
     if (url && url.startsWith("/")) {
       url = `${window.location.origin}${url}`;
     }
@@ -70,18 +79,31 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
         ? message.contentType
         : "text";
 
-    if (mime.startsWith("audio/") || url.match(/\.(ogg|mp3|m4a|wav|aac)($|\?)/i)) {
+    if (
+      mime.startsWith("audio/") ||
+      url.match(/\.(ogg|oga|mp3|m4a|wav|aac|opus|flac|weba)($|\?)/i) ||
+      message.contentType === "audio"
+    ) {
       type = "audio";
-    } else if (mime.startsWith("video/") || url.match(/\.(mp4|webm|mov|3gp)($|\?)/i)) {
+    } else if (
+      mime.startsWith("video/") ||
+      url.match(/\.(mp4|webm|mov|qt|3gp|mkv|avi)($|\?)/i) ||
+      message.contentType === "video"
+    ) {
       type = "video";
-    } else if (mime.startsWith("image/") || url.match(/\.(jpeg|jpg|png|webp|gif)($|\?)/i)) {
+    } else if (
+      mime.startsWith("image/") ||
+      url.match(/\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i) ||
+      message.contentType === "image"
+    ) {
       type = "image";
     } else if (
       mime.includes("pdf") ||
       mime.includes("document") ||
       mime.includes("sheet") ||
       mime.includes("msword") ||
-      url.match(/\.(pdf|docx?|xlsx?|txt|zip)($|\?)/i)
+      url.match(/\.(pdf|docx?|xlsx?|txt|zip)($|\?)/i) ||
+      message.contentType === "document"
     ) {
       type = "document";
     } else if (url && type === "text") {
