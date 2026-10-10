@@ -68,6 +68,7 @@ const simulateBodySchema = z.object({
       })
     )
     .optional(),
+  draftConfig: updateAiAgentBodySchema.optional(),
 });
 
 export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
@@ -125,6 +126,15 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
+      const rawRules = (config.ai_business_rules || {}) as Record<string, string | undefined>;
+      const normalizedRules = {
+        openingHours: rawRules.openingHours || rawRules.opening_hours || "",
+        address: rawRules.address || "",
+        cancellationPolicy: rawRules.cancellationPolicy || rawRules.cancellation_policy || "",
+        paymentMethods: rawRules.paymentMethods || rawRules.payment_methods || "",
+        generalRules: rawRules.generalRules || rawRules.general_rules || "",
+      };
+
       return reply.status(200).send({
         success: true,
         config: {
@@ -148,13 +158,7 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
             appointments: true,
             capi_tracking: true,
           },
-          businessRules: config.ai_business_rules || {
-            openingHours: "",
-            address: "",
-            cancellationPolicy: "",
-            paymentMethods: "",
-            generalRules: "",
-          },
+          businessRules: normalizedRules,
           faq: Array.isArray(config.ai_faq) ? config.ai_faq : [],
           strictMode: config.ai_strict_mode ?? true,
           temperature: Number(config.ai_temperature ?? 0.1),
@@ -235,7 +239,20 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
             data.systemPrompt?.trim() || null,
             data.personality || null,
             data.skills ? JSON.stringify(data.skills) : null,
-            data.businessRules ? JSON.stringify(data.businessRules) : null,
+            data.businessRules
+              ? JSON.stringify({
+                  openingHours: data.businessRules.openingHours?.trim() || "",
+                  address: data.businessRules.address?.trim() || "",
+                  cancellationPolicy: data.businessRules.cancellationPolicy?.trim() || "",
+                  paymentMethods: data.businessRules.paymentMethods?.trim() || "",
+                  generalRules: data.businessRules.generalRules?.trim() || "",
+                  // Backwards-compatibility
+                  opening_hours: data.businessRules.openingHours?.trim() || "",
+                  cancellation_policy: data.businessRules.cancellationPolicy?.trim() || "",
+                  payment_methods: data.businessRules.paymentMethods?.trim() || "",
+                  general_rules: data.businessRules.generalRules?.trim() || "",
+                })
+              : null,
             data.faq ? JSON.stringify(data.faq) : null,
             data.strictMode !== undefined ? data.strictMode : null,
             data.temperature !== undefined ? data.temperature : null,
@@ -258,6 +275,15 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
+      const rawUpdatedRules = (updated.ai_business_rules || {}) as Record<string, string | undefined>;
+      const normalizedUpdatedRules = {
+        openingHours: rawUpdatedRules.openingHours || rawUpdatedRules.opening_hours || "",
+        address: rawUpdatedRules.address || "",
+        cancellationPolicy: rawUpdatedRules.cancellationPolicy || rawUpdatedRules.cancellation_policy || "",
+        paymentMethods: rawUpdatedRules.paymentMethods || rawUpdatedRules.payment_methods || "",
+        generalRules: rawUpdatedRules.generalRules || rawUpdatedRules.general_rules || "",
+      };
+
       return reply.status(200).send({
         success: true,
         config: {
@@ -269,7 +295,7 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
           model: updated.ai_model,
           hasCustomApiKey: Boolean(updated.ai_api_key),
           skills: updated.ai_skills,
-          businessRules: updated.ai_business_rules,
+          businessRules: normalizedUpdatedRules,
           faq: updated.ai_faq,
           strictMode: updated.ai_strict_mode,
           temperature: Number(updated.ai_temperature),
@@ -310,7 +336,7 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const { workspaceId } = parsedParams.data;
-      const { message, history } = parsedBody.data;
+      const { message, history, draftConfig } = parsedBody.data;
 
       const { ws, products } = await withTenantTransaction(workspaceId, async (client) => {
         const wsRes = await client.query(
@@ -360,8 +386,9 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      const provider: AiProvider = (ws.ai_provider as AiProvider) || "nvidia";
+      const provider: AiProvider = (draftConfig?.provider || ws.ai_provider as AiProvider) || "nvidia";
       const apiKey =
+        draftConfig?.apiKey?.trim() ||
         ws.ai_api_key?.trim() ||
         (provider === "nvidia"
           ? process.env.NVIDIA_API_KEY || process.env.NVAPI_KEY
@@ -387,14 +414,26 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
         badge: p.badge,
       }));
 
+      const rawBusinessRules = draftConfig?.businessRules || ws.ai_business_rules || {};
       const aiConfig: GroundedAiConfig = {
-        name: ws.ai_agent_name || "Assistente Virtual",
-        personality: ws.ai_personality || "cordial_comercial",
-        systemPrompt: ws.ai_system_prompt || "",
-        strictMode: ws.ai_strict_mode ?? true,
-        businessRules: ws.ai_business_rules || {},
-        faq: Array.isArray(ws.ai_faq) ? ws.ai_faq : [],
+        name: draftConfig?.name || ws.ai_agent_name || "Assistente Virtual",
+        personality: draftConfig?.personality || ws.ai_personality || "cordial_comercial",
+        systemPrompt: (draftConfig?.systemPrompt !== undefined ? draftConfig.systemPrompt : ws.ai_system_prompt) || "",
+        strictMode: draftConfig?.strictMode !== undefined ? draftConfig.strictMode : (ws.ai_strict_mode ?? true),
+        businessRules: rawBusinessRules,
+        faq: Array.isArray(draftConfig?.faq) ? draftConfig.faq : (Array.isArray(ws.ai_faq) ? ws.ai_faq : []),
       };
+
+      const rulesRecord = (aiConfig.businessRules || {}) as Record<string, string | undefined>;
+      const activeRulesCount = [
+        rulesRecord.openingHours || rulesRecord.opening_hours,
+        rulesRecord.address,
+        rulesRecord.paymentMethods || rulesRecord.payment_methods,
+        rulesRecord.cancellationPolicy || rulesRecord.cancellation_policy,
+        rulesRecord.generalRules || rulesRecord.general_rules,
+      ].filter((v) => Boolean(v && v.trim())).length;
+
+      const activeFaqCount = (aiConfig.faq || []).filter((f) => Boolean(f.question?.trim() && f.answer?.trim())).length;
 
       const systemPrompt = buildGroundedSystemPrompt(aiConfig, groundedProducts);
       const messagesForModel: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
@@ -411,6 +450,7 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
 
       const llmClient = new SovereignLlmClient();
       const model =
+        draftConfig?.model ||
         ws.ai_model ||
         (provider === "nvidia"
           ? process.env.NVIDIA_TEMPLATE_MODEL || process.env.NVIDIA_MODEL || DEFAULT_MODELS.nvidia
@@ -421,7 +461,7 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
         provider,
         apiKey,
         model,
-        temperature: Number(ws.ai_temperature ?? 0.1),
+        temperature: Number(draftConfig?.temperature ?? ws.ai_temperature ?? 0.1),
       });
       const latencyMs = Date.now() - startTime;
 
@@ -433,6 +473,9 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
         needsHandoff: parsed.needsHandoff,
         handoffReason: parsed.handoffReason || null,
         matchedCatalogCount: groundedProducts.length,
+        groundedRulesCount: activeRulesCount,
+        groundedFaqCount: activeFaqCount,
+        isCustomPromptUsed: Boolean(aiConfig.systemPrompt && aiConfig.systemPrompt.trim()),
         strictMode: aiConfig.strictMode,
         provider: completion.provider,
         model: completion.model,

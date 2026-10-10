@@ -112,6 +112,8 @@ export interface ChannelSummary {
   displayName: string;
   phoneNumberE164: string | null;
   isActive: boolean;
+  metaBillingConfigured?: boolean;
+  metaBillingAccountId?: string | null;
   status?: "connected" | "revoked" | "configuring" | "unconfigured" | "error";
   environment?: "production_certified" | "lab_local";
   createdAt: string;
@@ -1146,6 +1148,8 @@ export class ApiClient {
     status: string;
     qr?: string;
     qrDataUri?: string;
+    alreadyConnected?: boolean;
+    me?: { id?: string; pushName?: string } | null;
     isSimulated?: boolean;
     message?: string;
     error?: string;
@@ -1156,6 +1160,23 @@ export class ApiClient {
         ...options,
         workspaceId,
         method: "GET",
+      }
+    );
+  }
+
+  async updateChannelBilling(
+    workspaceId: string,
+    channelId: string,
+    payload: { metaBillingConfigured: boolean; metaBillingAccountId?: string | null },
+    options?: RequestOptions
+  ): Promise<{ success: boolean; channel: Partial<ChannelSummary> }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/channels/${channelId}/billing`,
+      {
+        ...options,
+        workspaceId,
+        method: "PATCH",
+        body: payload,
       }
     );
   }
@@ -1653,6 +1674,7 @@ export class ApiClient {
     payload: {
       message: string;
       history?: Array<{ role: "user" | "assistant"; content: string }>;
+      draftConfig?: Partial<AiAgentConfig>;
     },
     options?: RequestOptions
   ): Promise<AiSimulationResult> {
@@ -1665,6 +1687,53 @@ export class ApiClient {
         workspaceId,
       }
     );
+  }
+
+  async getBroadcastPreflight(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{
+    success: boolean;
+    channels: Array<ChannelSummary & { isBlockedForBroadcast: boolean }>;
+    templates: MessageTemplateSummary[];
+    totalActiveContacts: number;
+    billingNotice: { policy: string; description: string };
+  }> {
+    return this.request(`/v1/workspaces/${workspaceId}/broadcasts/preflight`, {
+      ...options,
+      workspaceId,
+      method: "GET",
+    });
+  }
+
+  async createBroadcast(
+    workspaceId: string,
+    payload: {
+      channelInstanceId: string;
+      templateId: string;
+      audience: {
+        type: "ALL_CONTACTS" | "BY_STAGE" | "MANUAL";
+        stage?: string;
+        customPhoneNumbers?: string[];
+      };
+      variables?: Record<string, string>;
+    },
+    options?: RequestOptions
+  ): Promise<{
+    success: boolean;
+    batchId: string;
+    enqueuedCount: number;
+    totalTargeted: number;
+    template: { name: string; category: string };
+    channel: { id: string; displayName: string; provider: string };
+    billingSummary: { policy: string; estimatedUnitCost: string; message: string };
+  }> {
+    return this.request(`/v1/workspaces/${workspaceId}/broadcasts`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
   }
 }
 
@@ -1712,6 +1781,9 @@ export interface AiSimulationResult {
   needsHandoff: boolean;
   handoffReason: string | null;
   matchedCatalogCount: number;
+  groundedRulesCount?: number;
+  groundedFaqCount?: number;
+  isCustomPromptUsed?: boolean;
   strictMode: boolean;
   provider: "nvidia" | "openrouter";
   model: string;

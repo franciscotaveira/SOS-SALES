@@ -32,6 +32,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
     channelName: string;
     qrDataUri?: string;
     isLoading: boolean;
+    alreadyConnected?: boolean;
     error?: string;
   } | null>(null);
 
@@ -58,7 +59,12 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
     try {
       const res = await apiClient.getChannelQrCode(activeWorkspace.id, channelId, { token });
       if (res.success) {
-        setQrModal({ channelId, channelName, qrDataUri: res.qrDataUri, isLoading: false });
+        if (res.alreadyConnected) {
+          setQrModal({ channelId, channelName, isLoading: false, alreadyConnected: true });
+          await loadChannels();
+        } else {
+          setQrModal({ channelId, channelName, qrDataUri: res.qrDataUri, isLoading: false });
+        }
       } else {
         setQrModal({ channelId, channelName, isLoading: false, error: res.error || "QR Code indisponível." });
       }
@@ -97,6 +103,28 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
       alert(err instanceof Error ? err.message : "Erro ao excluir canal.");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleToggleBilling = async (channelId: string, currentConfigured: boolean) => {
+    if (!activeWorkspace || !token) return;
+    const targetState = !currentConfigured;
+    const message = targetState
+      ? "Confirmação de Faturamento Direto na Meta:\n\nSua empresa confirma que possui um Cartão de Crédito ou linha de crédito ativa configurada diretamente no Gerenciador de Negócios da Meta (Meta Business Manager) vinculada a este número?\n\nO SOS Sales NÃO cobra nem intermedeia tarifas de mensagens da Meta — todos os envios são faturados diretamente pela Meta no seu cartão."
+      : "Deseja desativar a confirmação de faturamento Meta para este canal? Disparos em massa ficarão bloqueados até que o cartão seja reconfirmado.";
+
+    if (!window.confirm(message)) return;
+
+    try {
+      await apiClient.updateChannelBilling(
+        activeWorkspace.id,
+        channelId,
+        { metaBillingConfigured: targetState },
+        { token }
+      );
+      await loadChannels();
+    } catch (err: unknown) {
+      alert((err as Error).message || "Falha ao atualizar faturamento do canal.");
     }
   };
 
@@ -208,6 +236,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
                 revokingId={revokingId}
                 onDelete={handleDelete}
                 deletingId={deletingId}
+                onToggleBilling={handleToggleBilling}
               />
             )}
             {activeTab === "ia" && <AiAgentSection workspaceId={activeWorkspace?.id} token={token ?? undefined} />}
@@ -234,6 +263,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
         channelName={qrModal?.channelName || ""}
         qrDataUri={qrModal?.qrDataUri}
         isLoading={Boolean(qrModal?.isLoading)}
+        alreadyConnected={qrModal?.alreadyConnected}
         error={qrModal?.error}
       />
     </div>

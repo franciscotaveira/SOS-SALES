@@ -7,11 +7,12 @@ import {
   LoadingState,
   SegmentedControl,
 } from "@sos-sales/ui";
-import { Plus, FileText, Search } from "lucide-react";
+import { Plus, FileText, Search, Send } from "lucide-react";
 import { apiClient, type MessageTemplateSummary } from "../../services/api-client";
 import type { UseSessionReturn } from "../../hooks/useSession";
 import { CreateTemplateDialog } from "./CreateTemplateDialog";
 import { TemplateDetailDialog } from "./TemplateDetailDialog";
+import { BroadcastTemplateDialog } from "./BroadcastTemplateDialog";
 import { TemplatesTable } from "./TemplatesTable";
 
 interface TemplatesPageProps {
@@ -29,6 +30,8 @@ export const TemplatesPage: FC<TemplatesPageProps> = ({ session }) => {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<MessageTemplateSummary | null>(null);
+  const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
+  const [broadcastTemplate, setBroadcastTemplate] = useState<MessageTemplateSummary | null>(null);
 
   const fetchTemplates = useCallback(async () => {
     if (!workspaceId || !token) return;
@@ -84,14 +87,27 @@ export const TemplatesPage: FC<TemplatesPageProps> = ({ session }) => {
           title="Modelos WABA"
           description="Templates oficiais pré-aprovados pela Meta para disparo ativo e reabertura de janelas 24h."
           actions={
-            <Button
-              size="sm"
-              variant="primary"
-              prefixIcon={<Plus size={14} />}
-              onClick={() => setIsCreateOpen(true)}
-            >
-              Novo Modelo
-            </Button>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <Button
+                size="sm"
+                variant="secondary"
+                prefixIcon={<Send size={14} />}
+                onClick={() => {
+                  setBroadcastTemplate(null);
+                  setIsBroadcastOpen(true);
+                }}
+              >
+                Disparo em Massa
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                prefixIcon={<Plus size={14} />}
+                onClick={() => setIsCreateOpen(true)}
+              >
+                Novo Modelo
+              </Button>
+            </div>
           }
         />
 
@@ -127,20 +143,26 @@ export const TemplatesPage: FC<TemplatesPageProps> = ({ session }) => {
             title="Nenhum modelo cadastrado"
             description="Cadastre seu primeiro modelo WABA acima para disparar mensagens fora da janela de 24h Meta."
             action={
-              <Button
-                variant="primary"
-                size="sm"
-                prefixIcon={<Plus size={14} />}
-                onClick={() => setIsCreateOpen(true)}
-              >
-                Cadastrar Modelo
-              </Button>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  prefixIcon={<Plus size={14} />}
+                  onClick={() => setIsCreateOpen(true)}
+                >
+                  Cadastrar Modelo
+                </Button>
+              </div>
             }
           />
         ) : (
           <TemplatesTable
             templates={filteredTemplates}
             onSelectPreview={(t) => setPreviewTemplate(t)}
+            onSelectBroadcast={(t) => {
+              setBroadcastTemplate(t);
+              setIsBroadcastOpen(true);
+            }}
           />
         )}
       </div>
@@ -152,6 +174,20 @@ export const TemplatesPage: FC<TemplatesPageProps> = ({ session }) => {
           workspaceId={workspaceId}
           token={token}
           onCreated={fetchTemplates}
+        />
+      )}
+
+      {workspaceId && token && (
+        <BroadcastTemplateDialog
+          isOpen={isBroadcastOpen}
+          onClose={() => {
+            setIsBroadcastOpen(false);
+            setBroadcastTemplate(null);
+          }}
+          workspaceId={workspaceId}
+          token={token}
+          initialTemplate={broadcastTemplate}
+          onBroadcastSuccess={fetchTemplates}
         />
       )}
 

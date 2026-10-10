@@ -194,6 +194,19 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
         workspaceId,
         {
           message: textToSimulate,
+          draftConfig: {
+            name: name.trim(),
+            personality,
+            systemPrompt: systemPrompt.trim(),
+            strictMode,
+            temperature,
+            provider,
+            model,
+            apiKey: apiKey.trim() || undefined,
+            skills,
+            businessRules,
+            faq: faq.filter((item) => item.question.trim() || item.answer.trim()),
+          },
         },
         { token }
       );
@@ -1426,6 +1439,40 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
               >
                 📦 Produtos Grounding: <strong>{simResult.matchedCatalogCount} itens</strong>
               </span>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-default)",
+                }}
+              >
+                📋 Regras de Negócio: <strong>{simResult.groundedRulesCount ?? 0} ativas</strong>
+              </span>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-default)",
+                }}
+              >
+                ❓ FAQ: <strong>{simResult.groundedFaqCount ?? 0} respostas</strong>
+              </span>
+              {simResult.isCustomPromptUsed && (
+                <span
+                  style={{
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                    backgroundColor: "rgba(139, 92, 246, 0.1)",
+                    color: "#8b5cf6",
+                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                    fontWeight: 600,
+                  }}
+                >
+                  ✨ Prompt Personalizado Ativo
+                </span>
+              )}
               <span
                 style={{
                   marginLeft: "auto",

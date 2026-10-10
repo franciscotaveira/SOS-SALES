@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { Badge, Button, EmptyState } from "@sos-sales/ui";
-import { Radio, Plus, QrCode, Trash2, Smartphone } from "lucide-react";
+import { Radio, Plus, QrCode, Trash2, Smartphone, CreditCard, ShieldCheck, ShieldAlert } from "lucide-react";
 import type { ChannelSummary } from "../../services/api-client";
 
 interface ChannelsSectionProps {
@@ -12,6 +12,7 @@ interface ChannelsSectionProps {
   revokingId: string | null;
   onDelete?: (channelId: string, channelName: string) => void;
   deletingId?: string | null;
+  onToggleBilling?: (channelId: string, currentConfigured: boolean) => void;
 }
 
 export const ChannelsSection: FC<ChannelsSectionProps> = ({
@@ -23,6 +24,7 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
   revokingId,
   onDelete,
   deletingId,
+  onToggleBilling,
 }) => {
   const getStatusBadge = (status?: string) => {
     switch (status) {
@@ -125,13 +127,35 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
                       </span>
                       {getStatusBadge(ch.status)}
                     </div>
-                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", marginTop: "2px" }}>
-                      {ch.provider.toUpperCase()} {ch.phoneNumberE164 ? `· ${ch.phoneNumberE164}` : ""}
+                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", marginTop: "3px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                      <span>{ch.provider.toUpperCase()} {ch.phoneNumberE164 ? `· ${ch.phoneNumberE164}` : ""}</span>
+                      {ch.provider === "meta_waba" && (
+                        ch.metaBillingConfigured ? (
+                          <span style={{ fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", backgroundColor: "rgba(16, 185, 129, 0.15)", color: "#10b981", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                            <ShieldCheck size={11} /> Cartão Meta Ativo (Disparos Liberados)
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#ef4444", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                            <ShieldAlert size={11} /> Sem Cartão Meta (Disparo Travado)
+                          </span>
+                        )
+                      )}
                     </div>
                   </div>
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  {ch.provider === "meta_waba" && onToggleBilling && (
+                    <Button
+                      size="xs"
+                      variant={ch.metaBillingConfigured ? "secondary" : "primary"}
+                      prefixIcon={<CreditCard size={12} />}
+                      onClick={() => onToggleBilling(ch.id, Boolean(ch.metaBillingConfigured))}
+                      title="O SOS Sales não cobra mensagens: tarifação ocorre direto no seu cartão na Meta"
+                    >
+                      {ch.metaBillingConfigured ? "Cartão Meta OK" : "Ativar Cartão Meta"}
+                    </Button>
+                  )}
                   {isWaha && ch.status !== "revoked" && (
                     <Button
                       size="xs"

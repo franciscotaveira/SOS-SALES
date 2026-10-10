@@ -102,10 +102,12 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           phone_number_e164: string | null;
           status: string;
           is_active: boolean;
+          meta_billing_configured: boolean;
+          meta_billing_account_id: string | null;
           created_at: string;
           updated_at: string;
         }>(
-          `SELECT id, workspace_id, provider, display_name, phone_number_e164, status, is_active, created_at, updated_at
+          `SELECT id, workspace_id, provider, display_name, phone_number_e164, status, is_active, meta_billing_configured, meta_billing_account_id, created_at, updated_at
            FROM public.channel_instances
            WHERE workspace_id = $1
              AND ($2::boolean = true OR (status != 'revoked' AND is_active = true))
@@ -124,6 +126,8 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           phoneNumberE164: c.phone_number_e164,
           isActive: c.is_active,
           status: c.status,
+          metaBillingConfigured: Boolean(c.meta_billing_configured),
+          metaBillingAccountId: c.meta_billing_account_id || null,
           environment: c.provider === "meta_waba" ? "production_certified" : "lab_local",
           createdAt: c.created_at,
           updatedAt: c.updated_at,
@@ -874,6 +878,91 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
+  // 4d. Update Channel Meta Direct Billing Guardrail
+  app.patch(
+    "/v1/workspaces/:workspaceId/channels/:channelId/billing",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("workspace:manage"),
+      ],
+    },
+    async (request, reply) => {
+      const parsedParams = channelParamsSchema.safeParse(request.params);
+      if (!parsedParams.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Invalid workspaceId or channelId parameter",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const bodySchema = z.object({
+        metaBillingConfigured: z.boolean(),
+        metaBillingAccountId: z.string().max(100).optional().nullable(),
+      });
+      const parsedBody = bodySchema.safeParse(request.body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: parsedBody.error.issues.map((i) => i.message).join(", "),
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { workspaceId, channelId } = parsedParams.data;
+      const { metaBillingConfigured, metaBillingAccountId } = parsedBody.data;
+
+      const updated = await withTenantTransaction(workspaceId, async (client) => {
+        const res = await client.query<{
+          id: string;
+          provider: string;
+          display_name: string;
+          meta_billing_configured: boolean;
+          meta_billing_account_id: string | null;
+        }>(
+          `UPDATE public.channel_instances
+           SET meta_billing_configured = $1,
+               meta_billing_account_id = $2,
+               updated_at = NOW()
+           WHERE id = $3 AND workspace_id = $4
+           RETURNING id, provider, display_name, meta_billing_configured, meta_billing_account_id;`,
+          [metaBillingConfigured, metaBillingAccountId || null, channelId, workspaceId]
+        );
+        return res.rows[0] || null;
+      });
+
+      if (!updated) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: "Channel instance not found",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      return reply.status(200).send({
+        success: true,
+        channel: {
+          id: updated.id,
+          provider: updated.provider,
+          displayName: updated.display_name,
+          metaBillingConfigured: updated.meta_billing_configured,
+          metaBillingAccountId: updated.meta_billing_account_id,
+        },
+      });
+    }
+  );
+
   // 4c. Verify Session with Provider Adapter and Transition to Connected/Pairing/Error
   app.post(
     "/v1/workspaces/:workspaceId/channels/:channelId/verify-session",
@@ -1358,24 +1447,118 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         process.env.ENABLE_LAB_SYNTHETIC === "true" ||
         process.env.ALLOW_LOCAL_NETWORK_CHANNELS === "true";
 
+      const authHeaders: Record<string, string> = creds.api_key ? { "X-Api-Key": creds.api_key } : {};
+
+      // 1. First probe session status from WAHA to check if already authenticated
+      let effectiveSession = sessionName;
+      let isAlreadyWorking = false;
+      let sessionMe: { id?: string; pushName?: string } | null = null;
+
       try {
-        const resp = await safeFetchWithSsrfGuard(
-          `${validatedBaseUrl}/api/sessions/${sessionName}/auth/qr`,
-          {
-            headers: creds.api_key ? { "X-Api-Key": creds.api_key } : {},
-          },
-          {
-            timeoutMs: 8000,
-            allowLocalTest: allowLocal,
-            allowedProtocols: ["http:", "https:"],
+        const sessionsListResp = await safeFetchWithSsrfGuard(
+          `${validatedBaseUrl}/api/sessions`,
+          { headers: authHeaders },
+          { timeoutMs: 4000, allowLocalTest: allowLocal, allowedProtocols: ["http:", "https:"] }
+        );
+        if (sessionsListResp.ok) {
+          const sessions = (await sessionsListResp.json()) as Array<{
+            name: string;
+            status: string;
+            me?: { id?: string; pushName?: string };
+          }>;
+          const cleanPhone = channelRow.phone_number_e164?.replace(/\D/g, "") || "";
+          const matchedSession =
+            sessions.find((s) => s.name === sessionName) ||
+            (cleanPhone ? sessions.find((s) => s.me?.id?.includes(cleanPhone)) : null) ||
+            (sessions.length === 1 && sessions[0].status === "WORKING" ? sessions[0] : null);
+
+          if (matchedSession) {
+            effectiveSession = matchedSession.name;
+            if (matchedSession.status === "WORKING") {
+              isAlreadyWorking = true;
+              sessionMe = matchedSession.me || null;
+            }
           }
+        }
+      } catch {
+        // Fallback to QR attempt
+      }
+
+      if (isAlreadyWorking) {
+        await withTenantTransaction(workspaceId, async (client) => {
+          await client.query(
+            `UPDATE public.channel_instances
+             SET status = 'connected', is_active = true, updated_at = clock_timestamp()
+             WHERE id = $1 AND workspace_id = $2;`,
+            [channelInstanceId, workspaceId]
+          );
+        });
+
+        return reply.status(200).send({
+          success: true,
+          status: "CONNECTED",
+          alreadyConnected: true,
+          message: "Canal já está autenticado e operacional no WhatsApp.",
+          me: sessionMe,
+          isSimulated: false,
+        });
+      }
+
+      // If session does not exist, try to start it
+      try {
+        await safeFetchWithSsrfGuard(
+          `${validatedBaseUrl}/api/sessions/start`,
+          {
+            method: "POST",
+            headers: { ...authHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({ name: effectiveSession }),
+          },
+          { timeoutMs: 4000, allowLocalTest: allowLocal, allowedProtocols: ["http:", "https:"] }
+        );
+      } catch {
+        // non-fatal
+      }
+
+      try {
+        // 2. Try modern WAHA route /api/:session/auth/qr first, then fallback to /api/sessions/:session/auth/qr
+        let resp = await safeFetchWithSsrfGuard(
+          `${validatedBaseUrl}/api/${effectiveSession}/auth/qr`,
+          { headers: authHeaders },
+          { timeoutMs: 8000, allowLocalTest: allowLocal, allowedProtocols: ["http:", "https:"] }
         );
 
+        if (resp.status === 404) {
+          resp = await safeFetchWithSsrfGuard(
+            `${validatedBaseUrl}/api/sessions/${effectiveSession}/auth/qr`,
+            { headers: authHeaders },
+            { timeoutMs: 8000, allowLocalTest: allowLocal, allowedProtocols: ["http:", "https:"] }
+          );
+        }
+
         if (!resp.ok) {
+          const errBody = await resp.text().catch(() => "");
+          if (errBody.includes("WORKING")) {
+            await withTenantTransaction(workspaceId, async (client) => {
+              await client.query(
+                `UPDATE public.channel_instances
+                 SET status = 'connected', is_active = true, updated_at = clock_timestamp()
+                 WHERE id = $1 AND workspace_id = $2;`,
+                [channelInstanceId, workspaceId]
+              );
+            });
+            return reply.status(200).send({
+              success: true,
+              status: "CONNECTED",
+              alreadyConnected: true,
+              message: "Canal já está autenticado e operacional.",
+              isSimulated: false,
+            });
+          }
+
           return reply.status(200).send({
             success: false,
             status: "UNAVAILABLE",
-            error: `WAHA retornou HTTP ${resp.status}. O canal pode já estar conectado ou aguardando inicialização da sessão.`,
+            error: `WAHA retornou HTTP ${resp.status}. O canal pode já estar conectado ou inicializando a sessão.`,
             isSimulated: false,
           });
         }

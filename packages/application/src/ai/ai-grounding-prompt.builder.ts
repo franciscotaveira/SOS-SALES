@@ -95,22 +95,28 @@ INSTRUÇÃO DE GANCHO: Na sua saudação ou resposta inicial, faça referência 
   }
 
   // Layer 2: Business Rules (Factual Knowledge)
-  const rules = config.businessRules || {};
+  const rules = (config.businessRules || {}) as Record<string, string | undefined>;
+  const openingHours = (rules.openingHours || rules.opening_hours)?.trim() || "";
+  const address = rules.address?.trim() || "";
+  const paymentMethods = (rules.paymentMethods || rules.payment_methods)?.trim() || "";
+  const cancellationPolicy = (rules.cancellationPolicy || rules.cancellation_policy)?.trim() || "";
+  const generalRules = (rules.generalRules || rules.general_rules)?.trim() || "";
+
   let businessRulesSection = "";
   if (
-    rules.openingHours ||
-    rules.address ||
-    rules.paymentMethods ||
-    rules.cancellationPolicy ||
-    rules.generalRules
+    openingHours ||
+    address ||
+    paymentMethods ||
+    cancellationPolicy ||
+    generalRules
   ) {
     businessRulesSection = `
 <business_rules>
-${rules.openingHours ? `- Horário de Funcionamento: ${rules.openingHours}` : ""}
-${rules.address ? `- Endereço / Localização: ${rules.address}` : ""}
-${rules.paymentMethods ? `- Formas de Pagamento: ${rules.paymentMethods}` : ""}
-${rules.cancellationPolicy ? `- Cancelamento & Atrasos: ${rules.cancellationPolicy}` : ""}
-${rules.generalRules ? `- Regras Adicionais: ${rules.generalRules}` : ""}
+${openingHours ? `- Horário de Funcionamento: ${openingHours}` : ""}
+${address ? `- Endereço / Localização: ${address}` : ""}
+${paymentMethods ? `- Formas de Pagamento: ${paymentMethods}` : ""}
+${cancellationPolicy ? `- Cancelamento & Atrasos: ${cancellationPolicy}` : ""}
+${generalRules ? `- Regras Adicionais: ${generalRules}` : ""}
 </business_rules>`;
   }
 
