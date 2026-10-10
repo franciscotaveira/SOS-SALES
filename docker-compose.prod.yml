@@ -39,6 +39,11 @@ services:
       retries: 5
     networks:
       - sos-sales-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
 
   worker:
     build:
@@ -69,6 +74,11 @@ services:
       retries: 5
     networks:
       - sos-sales-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
 
   web:
     build:
@@ -85,3 +95,8 @@ services:
       retries: 5
     networks:
       - sos-sales-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
