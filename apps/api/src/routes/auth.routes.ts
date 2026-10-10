@@ -5,6 +5,7 @@ import type { Role } from "@sos-sales/contracts";
 import { getDatabasePool, getUserWorkspaces } from "@sos-sales/database";
 import { verifyPassword } from "@sos-sales/auth";
 import { logger } from "@sos-sales/observability";
+import { SecurityShield } from "../services/security-shield";
 
 const sessionRequestSchema = z.object({
   email: z.string().email(),
@@ -28,11 +29,18 @@ const LAB_TOKEN_TTL_SECONDS = 900;
 /** Standard token TTL for sovereign local auth sessions (7 days) */
 const SESSION_TOKEN_TTL_SECONDS = 7 * 86400;
 
-export const authRoutes: FastifyPluginAsync = async (app) => {
+export interface AuthRoutesOptions {
+  securityShield?: SecurityShield;
+}
+
+export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (app, opts) => {
+  const shield = opts.securityShield ?? new SecurityShield();
+
   /**
    * POST /v1/auth/login
    * Sovereign Native Login Endpoint (Email + Password) - MCT OS v2.0
-   * Authenticates internal operators and administrators with scrypt password verification.
+   * Authenticates internal operators and administrators with scrypt password verification
+   * and enterprise brute-force / timing-attack protections.
    */
   app.post("/v1/auth/login", async (request, reply) => {
     const parseResult = loginRequestSchema.safeParse(request.body);
@@ -49,8 +57,28 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const { email, password, workspaceId: requestedWorkspaceId } = parseResult.data;
     const normalizedEmail = email.trim().toLowerCase();
+    const clientIp = request.ip || "127.0.0.1";
 
-    const sendGenericUnauthorized = () => {
+    // 1. Anti-Brute-Force & Credential Stuffing Pre-Flight Check
+    const rateCheck = await shield.checkLoginRateLimit(clientIp, normalizedEmail);
+    if (!rateCheck.allowed) {
+      if (rateCheck.retryAfterSeconds) {
+        reply.header("Retry-After", rateCheck.retryAfterSeconds);
+      }
+      return reply.status(rateCheck.statusCode ?? 429).send({
+        type: "https://sos-sales.mct.br/errors/rate-limit-exceeded",
+        title: "Too Many Requests",
+        status: rateCheck.statusCode ?? 429,
+        detail: rateCheck.reason ?? "Muitas tentativas de login",
+        instance: request.url,
+        correlationId: request.id,
+      });
+    }
+
+    const sendGenericUnauthorized = async () => {
+      // Record failed attempt for brute-force mitigation
+      await shield.recordLoginFailure(clientIp, normalizedEmail);
+
       logger.warn(
         { correlationId: request.id, email: normalizedEmail },
         "Login rejected: invalid credentials"
@@ -67,7 +95,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const pool = getDatabasePool();
 
-    // 1. Discover user by email
+    // 2. Discover user by email
     const userRes = await pool.query<{
       id: string;
       email: string;
@@ -80,15 +108,23 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const user = userRes.rows[0];
     if (!user) {
-      return sendGenericUnauthorized();
+      // Timing-attack mitigation: perform dummy scrypt verification so non-existent users take identical CPU time
+      verifyPassword(
+        password,
+        "scrypt:00000000000000000000000000000000:0000000000000000000000000000000000000000000000000000000000000000"
+      );
+      return await sendGenericUnauthorized();
     }
 
-    // 2. Verify password hash using scrypt timing-safe comparison
+    // 3. Verify password hash using scrypt timing-safe comparison
     if (!user.password_hash || !verifyPassword(password, user.password_hash)) {
-      return sendGenericUnauthorized();
+      return await sendGenericUnauthorized();
     }
 
-    // 3. Discover user memberships via SECURITY DEFINER function
+    // Login succeeded! Reset failed attempts for this email
+    await shield.resetLoginSuccess(normalizedEmail);
+
+    // 4. Discover user memberships via SECURITY DEFINER function
     const memberships = await getUserWorkspaces(user.id);
 
     if (memberships.length === 0) {

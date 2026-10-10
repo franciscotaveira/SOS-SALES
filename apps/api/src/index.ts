@@ -66,6 +66,7 @@ import {
   BoundedTwoTierRateLimiter,
   type IRateLimiter,
 } from "./services/redis-rate-limiter";
+import { SecurityShield } from "./services/security-shield";
 
 export interface BuildAppOptions {
   providerType?: "local-jwt" | "supabase-jwks";
@@ -89,6 +90,12 @@ export interface BuildAppOptions {
   outboundProducerService?: ITransactionalOutboundProducerService;
   /** Outbound media storage (null = explicitly unconfigured). Defaults to Supabase Storage from env. */
   mediaStorage?: MediaStorage | null;
+  securityShield?: SecurityShield;
+  globalRateLimitPerMinute?: number;
+  loginIpLimitPerMinute?: number;
+  loginEmailFailureLimit?: number;
+  loginEmailLockoutSeconds?: number;
+  jailDurationSeconds?: number;
 }
 
 export function sanitizeUrl(rawUrl: string | undefined): string {
@@ -138,6 +145,94 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       "Idempotency-Key",
       "x-correlation-id",
     ],
+  });
+
+  // Initialize Security Shield (Anti-Scanner, IP Jail, Brute Force & Global Rate Limit)
+  let effectiveSecurityShield = options.securityShield;
+  if (!effectiveSecurityShield) {
+    const redis =
+      process.env.NODE_ENV === "test" && !process.env.ENABLE_TEST_REDIS_RATE_LIMIT
+        ? null
+        : getRedisClient();
+
+    effectiveSecurityShield = new SecurityShield({
+      redisClient: redis,
+      globalLimitPerMinute:
+        options.globalRateLimitPerMinute ?? (process.env.NODE_ENV === "test" ? 1000 : 120),
+      loginIpLimitPerMinute: options.loginIpLimitPerMinute ?? 10,
+      loginEmailFailureLimit: options.loginEmailFailureLimit ?? 5,
+      loginEmailLockoutSeconds: options.loginEmailLockoutSeconds ?? 300,
+      jailDurationSeconds: options.jailDurationSeconds ?? 900,
+    });
+  }
+
+  // Ingress Hook: OWASP Headers + Scanner Detection + IP Jail + Global Rate Limiting
+  app.addHook("onRequest", async (request, reply) => {
+    // A. Standard OWASP Defensive Headers
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("X-XSS-Protection", "1; mode=block");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+
+    const clientIp = request.ip || "127.0.0.1";
+
+    // B. Check if Client IP is Jailed
+    const jailCheck = await effectiveSecurityShield.checkIpJail(clientIp);
+    if (jailCheck.jailed) {
+      if (jailCheck.retryAfterSeconds) {
+        reply.header("Retry-After", jailCheck.retryAfterSeconds);
+      }
+      return reply.status(403).send({
+        type: "https://sos-sales.mct.br/errors/forbidden",
+        title: "Acesso Bloqueado",
+        status: 403,
+        detail: "Endereço IP temporariamente bloqueado por atividade suspeita.",
+        instance: sanitizeUrl(request.url),
+        correlationId: request.id,
+      });
+    }
+
+    // C. Malicious Scanner Probe & Offensive Tooling Detection
+    const userAgent = request.headers["user-agent"];
+    const scanCheck = effectiveSecurityShield.isScannerProbe(request.url, userAgent);
+    if (scanCheck.isMalicious) {
+      await effectiveSecurityShield.jailIp(clientIp, scanCheck.reason ?? "Malicious probe detected");
+      return reply.status(403).send({
+        type: "https://sos-sales.mct.br/errors/forbidden",
+        title: "Forbidden",
+        status: 403,
+        detail: "Acesso negado: Requisição maliciosa ou sonda de vulnerabilidade detectada.",
+        instance: sanitizeUrl(request.url),
+        correlationId: request.id,
+      });
+    }
+
+    // D. Global Per-IP Rate Limiting for all API routes (skip health checks and root info)
+    if (request.url.startsWith("/v1/")) {
+      const globalCheck = await effectiveSecurityShield.checkGlobalRateLimit(clientIp);
+      if (globalCheck.limit !== undefined) {
+        reply.header("X-RateLimit-Limit", globalCheck.limit);
+      }
+      if (globalCheck.remaining !== undefined) {
+        reply.header("X-RateLimit-Remaining", globalCheck.remaining);
+      }
+
+      if (!globalCheck.allowed) {
+        if (globalCheck.retryAfterSeconds) {
+          reply.header("Retry-After", globalCheck.retryAfterSeconds);
+        }
+        return reply.status(429).send({
+          type: "https://sos-sales.mct.br/errors/rate-limit-exceeded",
+          title: "Too Many Requests",
+          status: 429,
+          detail: globalCheck.reason ?? "Limite global de requisições excedido. Aguarde antes de tentar novamente.",
+          instance: sanitizeUrl(request.url),
+          correlationId: request.id,
+        });
+      }
+    }
   });
 
   // RFC 9457 Problem Details standard error handler
@@ -198,7 +293,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   // Register Domain Routes
-  await app.register(authRoutes);
+  await app.register(authRoutes, { securityShield: effectiveSecurityShield });
   await app.register(meRoutes);
   await app.register(workspaceRoutes);
   await app.register(channelsRoutes);
