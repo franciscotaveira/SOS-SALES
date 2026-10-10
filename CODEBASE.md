@@ -212,3 +212,26 @@ A infraestrutura de automações externas da MCT LTDA está centralizada em um d
   - Endpoint seguro `POST /v1/workspaces/:workspaceId/ai-agent/simulate`.
   - Playground no frontend (`Configurações > IA`) com métricas ao vivo: latência em ms, produtos catalogados, validação de transbordo e visualização do balão de chat.
 
+---
+
+## 8. PIPELINE SOBERANO DE MÍDIA MULTIMODAL (ÁUDIO, VÍDEO, FOTOS E DOCUMENTOS)
+
+### 8.1 Ingestão e Normalização Agnóstica de Provedores
+- **Normalização WAHA (`WahaWebhookNormalizer`):**
+  - Processa tanto eventos `message` quanto `message.any`.
+  - Resolução de identidades WhatsApp LID (`@lid`) mapeando `_data.Info.SenderAlt` para o telefone real E.164.
+  - Inbound seguro: quando `payload.to` for nulo, resolve deterministicamente via `rawPayload.me.id` ou `me.jid`.
+  - Detecção estrita de `contentType`: áudios de voz PTT (`.oga`, `.opus`, `audio/ogg`), vídeos QuickTime/MP4 (`.qt`, `.mp4`), documentos (`.pdf`, `.docx`) e imagens (`.jpeg`, `.png`, `.webp`).
+
+### 8.2 Proxy de Streaming Seguro e Isolamento de Rede (`/media/proxy`)
+- **Arquitetura de Isolamento:** Os contêineres de engine (WAHA na porta 3000 interna) rodam isolados na rede Docker fechada e exigem chaves mestras (`x-api-key`). O navegador do cliente não tem acesso direto a essas portas internas nem pode injetar cabeçalhos em tags HTML `<audio>`, `<img>` ou `<video>`.
+- **Rota Unificada:** `GET /v1/workspaces/:workspaceId/media/proxy`
+  - Suporta `wahaPath` (para arquivos internos do WAHA) e `mediaId` (para Meta Graph API).
+  - Autenticação via header `Authorization: Bearer` ou query parameter `?token=` (validada pelo `auth.plugin.ts`).
+  - Suporte a cabeçalhos `Range: bytes` para busca/seek instantâneo de áudio e vídeo nos players nativos.
+  - Forwarding fiel de `Content-Type`, `Content-Length`, `Content-Range` e cache imutável `Cache-Control: public, max-age=86400, immutable`.
+- **Cockpit (`MessageBubble.tsx`):**
+  - Reescreve dinamicamente URLs legadas internas (`waha:3000/api/files/...`) para a rota autenticada `/media/proxy`.
+  - Renderização nativa: Player de áudio HTML5 com microfone e controle de reprodução, player de vídeo com controles e aspect ratio contido, card de documento com botão de download seguro e visualizador de imagem responsivo.
+
+
