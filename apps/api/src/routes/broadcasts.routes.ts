@@ -100,11 +100,11 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
           [workspaceId]
         );
 
-        // Contacts count
+        // Contacts count (active, non-opt-out contacts with valid phone)
         const contactsCountRes = await client.query<{ count: string }>(
           `SELECT count(*)::text as count
            FROM public.contacts
-           WHERE workspace_id = $1 AND status = 'active';`,
+           WHERE workspace_id = $1 AND opt_out = false AND phone_e164 IS NOT NULL;`,
           [workspaceId]
         );
 
@@ -242,8 +242,8 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
             }>(
               `SELECT DISTINCT c.phone_e164, c.name, c.id as contact_id
                FROM public.contacts c
-               INNER JOIN public.commercial_threads ct ON ct.contact_id = c.id AND ct.workspace_id = c.workspace_id
-               WHERE c.workspace_id = $1 AND c.status = 'active' AND ct.status = $2;`,
+               INNER JOIN public.commercial_journeys cj ON cj.contact_id = c.id AND cj.workspace_id = c.workspace_id
+               WHERE c.workspace_id = $1 AND c.opt_out = false AND c.phone_e164 IS NOT NULL AND LOWER(cj.stage) = LOWER($2);`,
               [workspaceId, audience.stage]
             );
             targetNumbers = stageRes.rows;
@@ -254,9 +254,9 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
               name: string | null;
               id: string;
             }>(
-              `SELECT phone_e164, name, id as contact_id
-               FROM public.contacts
-               WHERE workspace_id = $1 AND status = 'active'
+              `SELECT c.phone_e164, c.name, c.id as contact_id
+               FROM public.contacts c
+               WHERE c.workspace_id = $1 AND c.opt_out = false AND c.phone_e164 IS NOT NULL
                LIMIT 500;`,
               [workspaceId]
             );
