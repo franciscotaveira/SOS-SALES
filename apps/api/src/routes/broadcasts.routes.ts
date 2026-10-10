@@ -429,8 +429,9 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
             category: string;
             body_text: string;
             status: string;
+            language: string;
           }>(
-            `SELECT id, name, category, body_text, status
+            `SELECT id, name, category, body_text, status, language
              FROM public.message_templates
              WHERE id = $1 AND workspace_id = $2;`,
             [templateId, workspaceId]
@@ -446,8 +447,9 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
               category: string;
               body_text: string;
               status: string;
+              language: string;
             }>(
-              `SELECT id, name, category, body_text, status
+              `SELECT id, name, category, body_text, status, language
                FROM public.message_templates
                WHERE id = $1 AND workspace_id = $2;`,
               [variantBTemplateId, workspaceId]
@@ -649,12 +651,28 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
           userAgent: request.headers["user-agent"],
         };
 
+        const isMetaWaba = channel.provider === "meta_waba";
+        const bodyParameters = Object.entries(currentVariables).map(([_, val]) => ({
+          type: "text",
+          text: String(val),
+        }));
+
         try {
           const produceResult = await producerService.produce(
             {
               recipientPhoneE164: rec.phone_e164,
-              contentType: "text",
+              contentType: isMetaWaba ? "template" : "text",
               body: renderedBody,
+              template: isMetaWaba
+                ? {
+                    name: currentTemplate.name,
+                    language: currentTemplate.language || "pt_BR",
+                    components:
+                      bodyParameters.length > 0
+                        ? [{ type: "body" as const, parameters: bodyParameters }]
+                        : [],
+                  }
+                : undefined,
               idempotencyKey,
             },
             context

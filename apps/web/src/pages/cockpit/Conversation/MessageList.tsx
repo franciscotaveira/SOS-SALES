@@ -14,7 +14,7 @@ export const MessageList: FC<MessageListProps> = ({ messages, isLoading }) => {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  }, [messages.length, messages[messages.length - 1]?.id]);
 
   if (isLoading && messages.length === 0) {
     return (

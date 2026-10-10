@@ -53,6 +53,31 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
     loadChannels();
   }, [activeWorkspace?.id, token]);
 
+  // Auto-poll QR status while dialog is open and not yet connected
+  useEffect(() => {
+    if (!qrModal || qrModal.alreadyConnected || !activeWorkspace?.id || !token) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiClient.getChannelQrCode(activeWorkspace.id, qrModal.channelId, { token });
+        if (res.success) {
+          if (res.alreadyConnected) {
+            setQrModal((prev) =>
+              prev ? { ...prev, isLoading: false, alreadyConnected: true, qrDataUri: undefined } : null
+            );
+            loadChannels();
+          } else if (res.qrDataUri && res.qrDataUri !== qrModal.qrDataUri) {
+            setQrModal((prev) => (prev ? { ...prev, qrDataUri: res.qrDataUri, isLoading: false } : null));
+          }
+        }
+      } catch {
+        // Silently continue polling
+      }
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, [qrModal?.channelId, qrModal?.alreadyConnected, qrModal?.qrDataUri, activeWorkspace?.id, token]);
+
   const handleOpenQr = async (channelId: string, channelName: string) => {
     if (!activeWorkspace || !token) return;
     setQrModal({ channelId, channelName, isLoading: true });

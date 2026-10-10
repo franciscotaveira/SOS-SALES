@@ -47,7 +47,7 @@ describe("SovereignLlmClient", () => {
     );
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, options] = fetchSpy.mock.calls[0];
+    const [url, options] = fetchSpy.mock.calls[0] as [string, any];
     expect(url).toBe("https://integrate.api.nvidia.com/v1/chat/completions");
     expect(options.headers["Authorization"]).toBe("Bearer nvapi-test-key");
     expect(result.content).toBe("Olá! Posso te ajudar com o catálogo?");
@@ -84,7 +84,7 @@ describe("SovereignLlmClient", () => {
     );
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, options] = fetchSpy.mock.calls[0];
+    const [url, options] = fetchSpy.mock.calls[0] as [string, any];
     expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
     expect(options.headers["Authorization"]).toBe("Bearer sk-or-custom-key");
     expect(options.headers["HTTP-Referer"]).toBe("https://crm.iaparavendas.tech");
