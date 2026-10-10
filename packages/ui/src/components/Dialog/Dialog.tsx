@@ -14,6 +14,7 @@ export const Dialog: FC<DialogProps> = ({
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
   const hasInitiallyFocusedRef = useRef(false);
+  const wasOpenRef = useRef(false);
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -22,6 +23,26 @@ export const Dialog: FC<DialogProps> = ({
   const idPrefix = useId();
   const titleId = `${idPrefix}-title`;
   const descId = `${idPrefix}-desc`;
+
+  // Focus restoration when dialog transitions from open -> closed
+  useEffect(() => {
+    if (isOpen) {
+      wasOpenRef.current = true;
+    } else if (wasOpenRef.current) {
+      wasOpenRef.current = false;
+      hasInitiallyFocusedRef.current = false;
+      previouslyFocusedElementRef.current?.focus();
+    }
+  }, [isOpen]);
+
+  // Clean-up on unmount if dialog was open
+  useEffect(() => {
+    return () => {
+      if (wasOpenRef.current) {
+        previouslyFocusedElementRef.current?.focus();
+      }
+    };
+  }, []);
 
   // Focus trap & Escape listener
   useEffect(() => {
@@ -51,7 +72,7 @@ export const Dialog: FC<DialogProps> = ({
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];
 
-        const isReverseTab = e.shiftKey || (e.ctrlKey && !e.altKey && !e.metaKey);
+        const isReverseTab = e.shiftKey;
 
         if (isReverseTab) {
           if (document.activeElement === firstElement && lastElement) {
@@ -94,9 +115,6 @@ export const Dialog: FC<DialogProps> = ({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       if (timer) clearTimeout(timer);
-      if (!isOpen && previouslyFocusedElementRef.current) {
-        previouslyFocusedElementRef.current.focus();
-      }
     };
   }, [isOpen]);
 
