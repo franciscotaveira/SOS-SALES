@@ -49,6 +49,23 @@
 - O n8n é utilizado unicamente como acervo de pesquisa, scrapers e testes exploratórios de laboratório.
 - Toda lógica core de produto, despacho de mensageria, transações financeiras e controle de filas reside exclusivamente no monorepo SOS Sales.
 
+### 2.5 Autenticação Soberana & Gestão Multi-Tenant de Equipe (MCT OS v2.0)
+- **Criptografia Nativa com Scrypt:** Senhas armazenadas com salt de 16 bytes e validação `timingSafeEqual`. Zero dependências cloud para autenticação.
+- **Isolamento de Membros:** Gestão de equipe no Cockpit Comercial (`Configurações > Equipe & Acessos`). Operadores vinculados unicamente à sua respectiva empresa sob RLS.
+- **Troca de Contexto:** `POST /v1/auth/switch-workspace` permite alternância imediata de empresas permitidas com novo JWT sem reautenticação.
+
+### 2.6 Perímetro Defensivo & WAF (SecurityShield)
+- **Detecção de Scanners:** Interceptação imediata de ferramentas ofensivas (`sqlmap`, `nikto`, `masscan`) e sondagens de arquivos sensíveis (`/.env`, `/wp-admin`, `../`).
+- **IP Auto-Jail:** Bloqueio de 15 minutos em chave volátil no Redis (`sos:shield:jail:<ip>`) com `HTTP 403` e `Retry-After: 900`.
+- **Anti-Brute Force:** Limite de 10 tentativas de login/min por IP e bloqueio temporário de 5 minutos da conta após 5 erros consecutivos de senha.
+- **Timing Attack Mitigation:** Cálculo de scrypt dummy em e-mails não existentes para igualar a latência de processamento (~60ms).
+- **Rate Limit Global:** Cota de 120 req/min por IP com cabeçalhos RFC 6585.
+
+### 2.7 Governança Operacional SaaS & Disaster Recovery
+- **Backup Diário Encriptado (AES-256):** Execução automática às 03:00 AM via crontab com verificação de integridade do stream e retenção de 7 dias em `/opt/sos-sales/backups/daily/`.
+- **Watchdog de Auto-Cura:** Sentinela no crontab a cada 5 minutos monitorando `https://crm.iaparavendas.tech/ready`, reiniciando automaticamente a API em caso de 3 falhas consecutivas e alertando caso o disco ultrapasse 85%.
+- **Log Caps:** Limite rígido de logs no Docker Compose fixado em 20 MB por arquivo e máximo de 3 arquivos por container.
+
 ---
 
 ## 3. Diretrizes de Segurança e Isolamento
@@ -56,3 +73,4 @@
 - **PostgreSQL RLS:** `FORCE ROW LEVEL SECURITY` em todas as tabelas comerciais. Nenhuma query executa sem o tenant contextual (`SET LOCAL app.current_tenant_id`).
 - **Autenticação Segura:** Sessões de usuário autenticadas por JWT HS256 criptograficamente seguro via `JwtIdentityProvider`.
 - **Mascaramento de PII:** Ausência de telefone e segredos em texto puro em logs de aplicação e despacho.
+- **Firewall UFW Ativo:** Apenas portas 22 (SSH restrito a chaves), 80 (HTTP) e 443 (HTTPS) expostas. Portas de banco e Redis estritamente confinadas à rede interna Docker.
