@@ -1,6 +1,6 @@
-import type { FC } from "react";
+import { useState, type FC } from "react";
 import { Badge, Button, EmptyState } from "@sos-sales/ui";
-import { Radio, Plus, QrCode, Trash2, Smartphone, CreditCard, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Radio, Plus, QrCode, Trash2, Smartphone, CreditCard, ShieldCheck, ShieldAlert, Link2, Check } from "lucide-react";
 import type { ChannelSummary } from "../../services/api-client";
 
 interface ChannelsSectionProps {
@@ -26,6 +26,15 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
   deletingId,
   onToggleBilling,
 }) => {
+  const [copiedChannelId, setCopiedChannelId] = useState<string | null>(null);
+
+  const handleCopyWaMe = (phone: string, channelId: string) => {
+    const cleanPhone = phone.replace(/\D/g, "");
+    const url = `https://wa.me/${cleanPhone}`;
+    navigator.clipboard.writeText(url);
+    setCopiedChannelId(channelId);
+    setTimeout(() => setCopiedChannelId(null), 2500);
+  };
   const getStatusBadge = (status?: string) => {
     switch (status) {
       case "connected":
@@ -145,6 +154,17 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  {ch.phoneNumberE164 && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      prefixIcon={copiedChannelId === ch.id ? <Check size={12} color="#10b981" /> : <Link2 size={12} />}
+                      onClick={() => handleCopyWaMe(ch.phoneNumberE164!, ch.id)}
+                      title={`Copiar link direto https://wa.me/${ch.phoneNumberE164.replace(/\D/g, "")}`}
+                    >
+                      {copiedChannelId === ch.id ? "Copiado!" : "wa.me"}
+                    </Button>
+                  )}
                   {ch.provider === "meta_waba" && onToggleBilling && (
                     <Button
                       size="xs"
