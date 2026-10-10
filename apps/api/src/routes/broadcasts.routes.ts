@@ -127,7 +127,15 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
           metaBillingAccountId: ch.meta_billing_account_id,
           isBlockedForBroadcast: ch.provider === "meta_waba" && !ch.meta_billing_configured,
         })),
-        templates: preflightData.templates,
+        templates: preflightData.templates.map((t) => ({
+          id: t.id,
+          name: t.name,
+          category: t.category,
+          headerText: t.header_text || undefined,
+          bodyText: t.body_text || "",
+          variables: t.variables || [],
+          status: t.status,
+        })),
         totalActiveContacts: preflightData.totalActiveContacts,
         billingNotice: {
           policy: "DIRECT_TO_META_CUSTOMER_ACCOUNT",

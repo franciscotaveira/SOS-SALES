@@ -23,7 +23,7 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
     if (meta) {
       if (!url) {
         if (meta.mediaId && message.channelInstanceId) {
-          url = `/v1/workspaces/${(meta.workspaceId as string) || ""}/media/proxy?mediaId=${encodeURIComponent(String(meta.mediaId))}&channelInstanceId=${message.channelInstanceId}`;
+          url = `/v1/workspaces/${(meta.workspaceId as string) || message.workspaceId || ""}/media/proxy?mediaId=${encodeURIComponent(String(meta.mediaId))}&channelInstanceId=${message.channelInstanceId}`;
         } else if (typeof meta.media_payload === "string") {
           try {
             const parsed = JSON.parse(meta.media_payload);
@@ -34,6 +34,10 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
           const mp = meta.media_payload as Record<string, string>;
           url = mp.url || "";
           mime = mp.mimetype || "";
+        } else if (typeof (meta as any).media === "object" && (meta as any).media !== null) {
+          const m = (meta as any).media;
+          url = m.url || "";
+          mime = m.mimetype || "";
         } else if (typeof meta.mediaUrl === "string") {
           url = meta.mediaUrl;
         } else if (typeof meta.url === "string") {
@@ -50,7 +54,7 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
     }
 
     // Rewrite internal WAHA container URLs (e.g. from historical data) to authenticated API proxy
-    if (url && (url.includes("waha:3000") || url.includes(":3006") || (url.includes("/api/files/") && !url.includes("/media/proxy")))) {
+    if (url && (url.includes("waha:3000") || url.includes(":3006") || url.includes("/channels/waha/media-proxy") || (url.includes("/api/files/") && !url.includes("/media/proxy")))) {
       const match = url.match(/\/api\/files\/[a-zA-Z0-9_\-./]+/);
       if (match) {
         const wsId = (meta?.workspaceId as string) || message.workspaceId || "";
@@ -64,7 +68,10 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
 
     // Attach auth token if accessing media proxy so browser audio/img tags don't 401
     if (url && url.includes("/media/proxy") && !url.includes("token=")) {
-      const storedToken = localStorage.getItem("sos_sales_auth_token");
+      const storedToken =
+        localStorage.getItem("sos_sales_auth_token") ||
+        sessionStorage.getItem("sos_v3_lab_token") ||
+        sessionStorage.getItem("sos_sales_auth_token");
       if (storedToken) {
         url = `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(storedToken)}`;
       }
@@ -112,6 +119,13 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
 
     return { url, type, filename, mime };
   }, [message.mediaUrl, message.contentType, message.metadata]);
+
+  // Check if message body is a filename for an attachment
+  const isAttachmentFilename = useMemo(() => {
+    if (!message.body) return false;
+    const trimmed = message.body.trim();
+    return /\.(png|jpe?g|webp|gif|pdf|docx?|xlsx?|mp3|ogg|oga|mp4|wav)$/i.test(trimmed);
+  }, [message.body]);
 
   // Strip placeholder text when media is present
   const isPlaceholderBody = useMemo(() => {
@@ -355,7 +369,28 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
 
         {renderMediaContent()}
 
-        {(!isPlaceholderBody || !resolvedMedia.url) && (
+        {isAttachmentFilename && !resolvedMedia.url && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "6px 10px",
+              marginBottom: "4px",
+              backgroundColor: "rgba(0, 0, 0, 0.04)",
+              borderRadius: "8px",
+              border: "1px solid var(--border-default)",
+            }}
+          >
+            <FileText size={16} style={{ color: "var(--color-action)" }} />
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600 }}>{message.body}</span>
+              <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>Anexo registrado no histórico</span>
+            </div>
+          </div>
+        )}
+
+        {(!isPlaceholderBody || !resolvedMedia.url) && !isAttachmentFilename && (
           <div
             style={{
               fontSize: "var(--font-size-base, 1rem)",

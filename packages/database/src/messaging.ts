@@ -317,13 +317,28 @@ export async function listThreadMessages(
   client: Pool | PoolClient,
   params: ListThreadMessagesParams
 ): Promise<MessageRecord[]> {
-  const order = params.ascending ? "ASC" : "DESC";
   const limit = params.limit ?? 50;
+
+  if (params.ascending) {
+    // When ascending is requested (typical chat viewport view), fetch the latest `limit` messages
+    // and sort them chronologically (oldest at top, newest at bottom).
+    const res = await client.query<MessageRecord>(
+      `SELECT * FROM (
+         SELECT * FROM public.messages
+         WHERE workspace_id = $1 AND thread_id = $2
+         ORDER BY created_at DESC
+         LIMIT $3
+       ) sub
+       ORDER BY created_at ASC;`,
+      [params.workspaceId, params.threadId, limit]
+    );
+    return res.rows;
+  }
 
   const res = await client.query<MessageRecord>(
     `SELECT * FROM public.messages
      WHERE workspace_id = $1 AND thread_id = $2
-     ORDER BY created_at ${order}
+     ORDER BY created_at DESC
      LIMIT $3;`,
     [params.workspaceId, params.threadId, limit]
   );

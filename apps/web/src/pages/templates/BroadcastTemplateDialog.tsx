@@ -146,33 +146,38 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
   );
 
   // Extract variables for Template A
-  const templateVarKeys = useMemo(() => {
+  const templateVarKeys = useMemo<string[]>(() => {
     if (!selectedTemplate) return [];
     if (selectedTemplate.variables && selectedTemplate.variables.length > 0) {
       return selectedTemplate.variables;
     }
-    const matches = selectedTemplate.bodyText.match(/\{\{(\d+)\}\}/g);
+    const rawBody = selectedTemplate.bodyText || (selectedTemplate as any)?.body_text || "";
+    if (!rawBody) return [];
+    const matches = rawBody.match(/\{\{(\d+)\}\}/g);
     if (!matches) return [];
-    const keys = Array.from(new Set(matches.map((m) => m.replace(/[{}]/g, ""))));
+    const keys = Array.from<string>(new Set(matches.map((m: string) => m.replace(/[{}]/g, ""))));
     return keys.sort((a, b) => Number(a) - Number(b));
   }, [selectedTemplate]);
 
   // Extract variables for Template B
-  const templateVarKeysB = useMemo(() => {
+  const templateVarKeysB = useMemo<string[]>(() => {
     if (!selectedTemplateB) return [];
     if (selectedTemplateB.variables && selectedTemplateB.variables.length > 0) {
       return selectedTemplateB.variables;
     }
-    const matches = selectedTemplateB.bodyText.match(/\{\{(\d+)\}\}/g);
+    const rawBody = selectedTemplateB.bodyText || (selectedTemplateB as any)?.body_text || "";
+    if (!rawBody) return [];
+    const matches = rawBody.match(/\{\{(\d+)\}\}/g);
     if (!matches) return [];
-    const keys = Array.from(new Set(matches.map((m) => m.replace(/[{}]/g, ""))));
+    const keys = Array.from<string>(new Set(matches.map((m: string) => m.replace(/[{}]/g, ""))));
     return keys.sort((a, b) => Number(a) - Number(b));
   }, [selectedTemplateB]);
 
   // Preview body A
   const previewBody = useMemo(() => {
     if (!selectedTemplate) return "";
-    let body = selectedTemplate.bodyText;
+    let body = selectedTemplate.bodyText || (selectedTemplate as any)?.body_text || "";
+    if (!body) return "";
     for (const key of templateVarKeys) {
       const val = variables[key] || `{{${key}}}`;
       body = body.split(`{{${key}}}`).join(val);
@@ -183,7 +188,8 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
   // Preview body B
   const previewBodyB = useMemo(() => {
     if (!selectedTemplateB) return "";
-    let body = selectedTemplateB.bodyText;
+    let body = selectedTemplateB.bodyText || (selectedTemplateB as any)?.body_text || "";
+    if (!body) return "";
     for (const key of templateVarKeysB) {
       const val = variablesB[key] || `{{${key}}}`;
       body = body.split(`{{${key}}}`).join(val);
