@@ -14,6 +14,7 @@ import { CreateTemplateDialog } from "./CreateTemplateDialog";
 import { TemplateDetailDialog } from "./TemplateDetailDialog";
 import { BroadcastTemplateDialog } from "./BroadcastTemplateDialog";
 import { TemplatesTable } from "./TemplatesTable";
+import { CampaignsList } from "./CampaignsList";
 
 interface TemplatesPageProps {
   session: UseSessionReturn;
@@ -23,6 +24,7 @@ export const TemplatesPage: FC<TemplatesPageProps> = ({ session }) => {
   const workspaceId = session.activeWorkspace?.id;
   const token = session.token;
 
+  const [activeTab, setActiveTab] = useState<"TEMPLATES" | "CAMPAIGNS">("TEMPLATES");
   const [templates, setTemplates] = useState<MessageTemplateSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -84,13 +86,17 @@ export const TemplatesPage: FC<TemplatesPageProps> = ({ session }) => {
         }}
       >
         <PageHeader
-          title="Modelos WABA"
-          description="Templates oficiais pré-aprovados pela Meta para disparo ativo e reabertura de janelas 24h."
+          title={activeTab === "TEMPLATES" ? "Modelos WABA" : "Campanhas & Testes A/B"}
+          description={
+            activeTab === "TEMPLATES"
+              ? "Templates oficiais pré-aprovados pela Meta para disparo ativo e reabertura de janelas 24h."
+              : "Rastreamento estilo e-mail marketing: entrega, taxas de leitura, respostas e cliques em botões CTA."
+          }
           actions={
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <Button
                 size="sm"
-                variant="secondary"
+                variant={activeTab === "CAMPAIGNS" ? "primary" : "secondary"}
                 prefixIcon={<Send size={14} />}
                 onClick={() => {
                   setBroadcastTemplate(null);
@@ -99,71 +105,100 @@ export const TemplatesPage: FC<TemplatesPageProps> = ({ session }) => {
               >
                 Disparo em Massa
               </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                prefixIcon={<Plus size={14} />}
-                onClick={() => setIsCreateOpen(true)}
-              >
-                Novo Modelo
-              </Button>
+              {activeTab === "TEMPLATES" && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  prefixIcon={<Plus size={14} />}
+                  onClick={() => setIsCreateOpen(true)}
+                >
+                  Novo Modelo
+                </Button>
+              )}
             </div>
           }
         />
 
-        {/* Filters Bar */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ maxWidth: "340px", width: "100%" }}>
-            <Input
-              placeholder="Buscar por nome ou conteúdo..."
-              prefixIcon={<Search size={16} />}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+        {/* Tab Switch: Modelos vs Campanhas */}
+        <div style={{ display: "flex", justifyContent: "flex-start" }}>
           <SegmentedControl
-            value={categoryFilter}
-            onChange={setCategoryFilter}
+            value={activeTab}
+            onChange={(val) => setActiveTab(val as typeof activeTab)}
             options={[
-              { value: "ALL", label: `Todos (${templates.length})` },
-              { value: "UTILITY", label: "Utilidade" },
-              { value: "MARKETING", label: "Marketing" },
+              { value: "TEMPLATES", label: `Modelos Homologados (${templates.length})` },
+              { value: "CAMPAIGNS", label: "Campanhas & Testes A/B" },
             ]}
           />
         </div>
 
-        {/* Content Section */}
-        {isLoading && templates.length === 0 ? (
-          <div style={{ padding: "32px 0" }}>
-            <LoadingState variant="skeleton" lines={4} text="Carregando modelos homologados..." />
-          </div>
-        ) : filteredTemplates.length === 0 ? (
-          <EmptyState
-            icon={<FileText size={48} />}
-            title="Nenhum modelo cadastrado"
-            description="Cadastre seu primeiro modelo WABA acima para disparar mensagens fora da janela de 24h Meta."
-            action={
-              <div style={{ display: "flex", gap: "8px" }}>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  prefixIcon={<Plus size={14} />}
-                  onClick={() => setIsCreateOpen(true)}
-                >
-                  Cadastrar Modelo
-                </Button>
+        {activeTab === "TEMPLATES" ? (
+          <>
+            {/* Filters Bar */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ maxWidth: "340px", width: "100%" }}>
+                <Input
+                  placeholder="Buscar por nome ou conteúdo..."
+                  prefixIcon={<Search size={16} />}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </div>
-            }
-          />
+              <SegmentedControl
+                value={categoryFilter}
+                onChange={setCategoryFilter}
+                options={[
+                  { value: "ALL", label: `Todos (${templates.length})` },
+                  { value: "UTILITY", label: "Utilidade" },
+                  { value: "MARKETING", label: "Marketing" },
+                ]}
+              />
+            </div>
+
+            {/* Content Section */}
+            {isLoading && templates.length === 0 ? (
+              <div style={{ padding: "32px 0" }}>
+                <LoadingState variant="skeleton" lines={4} text="Carregando modelos homologados..." />
+              </div>
+            ) : filteredTemplates.length === 0 ? (
+              <EmptyState
+                icon={<FileText size={48} />}
+                title="Nenhum modelo cadastrado"
+                description="Cadastre seu primeiro modelo WABA acima para disparar mensagens fora da janela de 24h Meta."
+                action={
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      prefixIcon={<Plus size={14} />}
+                      onClick={() => setIsCreateOpen(true)}
+                    >
+                      Cadastrar Modelo
+                    </Button>
+                  </div>
+                }
+              />
+            ) : (
+              <TemplatesTable
+                templates={filteredTemplates}
+                onSelectPreview={(t) => setPreviewTemplate(t)}
+                onSelectBroadcast={(t) => {
+                  setBroadcastTemplate(t);
+                  setIsBroadcastOpen(true);
+                }}
+              />
+            )}
+          </>
         ) : (
-          <TemplatesTable
-            templates={filteredTemplates}
-            onSelectPreview={(t) => setPreviewTemplate(t)}
-            onSelectBroadcast={(t) => {
-              setBroadcastTemplate(t);
-              setIsBroadcastOpen(true);
-            }}
-          />
+          workspaceId && token && (
+            <CampaignsList
+              workspaceId={workspaceId}
+              token={token}
+              onOpenNewBroadcast={() => {
+                setBroadcastTemplate(null);
+                setIsBroadcastOpen(true);
+              }}
+            />
+          )
         )}
       </div>
 
@@ -187,7 +222,10 @@ export const TemplatesPage: FC<TemplatesPageProps> = ({ session }) => {
           workspaceId={workspaceId}
           token={token}
           initialTemplate={broadcastTemplate}
-          onBroadcastSuccess={fetchTemplates}
+          onBroadcastSuccess={() => {
+            fetchTemplates();
+            setActiveTab("CAMPAIGNS");
+          }}
         />
       )}
 

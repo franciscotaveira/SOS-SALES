@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import type { Pool } from "pg";
 import { AiReceptionistProcessor } from "../processors/ai-receptionist.processor";
 import { OpenRouterClient } from "@sos-sales/application";
@@ -9,7 +9,7 @@ describe("AiReceptionistProcessor", () => {
 
   beforeEach(() => {
     mockOpenRouterClient = new OpenRouterClient();
-    processor = new AiReceptionistProcessor(mockOpenRouterClient);
+    processor = new AiReceptionistProcessor(mockOpenRouterClient as any);
     process.env.OPENROUTER_API_KEY = "test-api-key";
   });
 

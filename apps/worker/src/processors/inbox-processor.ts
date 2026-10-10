@@ -489,6 +489,69 @@ export class InboxProcessor {
 
               const insertedMsgId = msgInsertRes.rows[0]?.id;
 
+              // Reconcile Broadcast Campaigns & A/B Tracking on Inbound Reply or Button Click
+              if (direction === "inbound") {
+                const isInteractiveClick =
+                  event.contentType === "interactive" ||
+                  event.metadata?.interactiveType === "button_reply" ||
+                  event.metadata?.interactiveType === "list_reply";
+                const clickedButtonLabel = isInteractiveClick
+                  ? (event.body || (event.metadata?.buttonId as string) || "Botão Clicado")
+                  : null;
+
+                const recentBroadcastRes = await client.query<{ id: string; campaign_id: string; replied_at: Date | null; clicked_at: Date | null }>(
+                  `SELECT id, campaign_id, replied_at, clicked_at
+                   FROM public.broadcast_recipients
+                   WHERE workspace_id = $1 AND (contact_id = $2 OR phone_e164 = $3)
+                     AND created_at >= clock_timestamp() - INTERVAL '48 hours'
+                   ORDER BY created_at DESC
+                   LIMIT 1;`,
+                  [item.workspace_id, contactId, event.senderPhoneE164]
+                );
+
+                if (recentBroadcastRes.rows.length > 0) {
+                  const recip = recentBroadcastRes.rows[0]!;
+                  if (isInteractiveClick) {
+                    if (!recip.clicked_at) {
+                      await client.query(
+                        `UPDATE public.broadcast_recipients
+                         SET clicked_at = clock_timestamp(),
+                             clicked_button = $1,
+                             replied_at = COALESCE(replied_at, clock_timestamp()),
+                             status = 'clicked'
+                         WHERE id = $2;`,
+                        [clickedButtonLabel, recip.id]
+                      );
+                      await client.query(
+                        `UPDATE public.broadcast_campaigns
+                         SET clicked_count = clicked_count + 1,
+                             replied_count = CASE WHEN $2::timestamptz IS NULL THEN replied_count + 1 ELSE replied_count END,
+                             updated_at = clock_timestamp()
+                         WHERE id = $1 AND workspace_id = $3;`,
+                        [recip.campaign_id, recip.replied_at, item.workspace_id]
+                      );
+                    }
+                  } else {
+                    if (!recip.replied_at) {
+                      await client.query(
+                        `UPDATE public.broadcast_recipients
+                         SET replied_at = clock_timestamp(),
+                             status = CASE WHEN status IN ('sent', 'delivered', 'read') THEN 'replied' ELSE status END
+                         WHERE id = $1;`,
+                        [recip.id]
+                      );
+                      await client.query(
+                        `UPDATE public.broadcast_campaigns
+                         SET replied_count = replied_count + 1,
+                             updated_at = clock_timestamp()
+                         WHERE id = $1 AND workspace_id = $2;`,
+                        [recip.campaign_id, item.workspace_id]
+                      );
+                    }
+                  }
+                }
+              }
+
               if (direction === "inbound" && insertedMsgId && event.body?.trim()) {
                 pendingAiEvents.push({
                   workspaceId: item.workspace_id,
@@ -606,6 +669,69 @@ export class InboxProcessor {
                          error_message = COALESCE($1, 'RECONCILED_FAILED: Delivery failure confirmed by provider webhook')
                      WHERE message_id = $2 AND workspace_id = $3 AND status = 'reconciliation_required';`,
                     [event.errorMessage || event.errorCode, messageId, item.workspace_id]
+                  );
+                }
+              }
+
+              // Reconcile Broadcast Campaigns & A/B Tracking on Delivery/Read/Failed
+              if (newStatus === "delivered") {
+                const delRecipRes = await client.query<{ campaign_id: string }>(
+                  `UPDATE public.broadcast_recipients
+                   SET delivered_at = COALESCE(delivered_at, clock_timestamp()),
+                       status = CASE WHEN status = 'sent' THEN 'delivered' ELSE status END
+                   WHERE workspace_id = $1
+                     AND (external_message_id = $2 OR (phone_e164 = $3 AND created_at >= clock_timestamp() - INTERVAL '7 days'))
+                     AND delivered_at IS NULL
+                   RETURNING campaign_id;`,
+                  [item.workspace_id, event.externalMessageId, event.recipientPhoneE164]
+                );
+                for (const row of delRecipRes.rows) {
+                  await client.query(
+                    `UPDATE public.broadcast_campaigns
+                     SET delivered_count = delivered_count + 1, updated_at = clock_timestamp()
+                     WHERE id = $1 AND workspace_id = $2;`,
+                    [row.campaign_id, item.workspace_id]
+                  );
+                }
+              } else if (newStatus === "read") {
+                const readRecipRes = await client.query<{ campaign_id: string; was_delivered: boolean }>(
+                  `UPDATE public.broadcast_recipients
+                   SET read_at = COALESCE(read_at, clock_timestamp()),
+                       delivered_at = COALESCE(delivered_at, clock_timestamp()),
+                       status = CASE WHEN status IN ('sent', 'delivered') THEN 'read' ELSE status END
+                   WHERE workspace_id = $1
+                     AND (external_message_id = $2 OR (phone_e164 = $3 AND created_at >= clock_timestamp() - INTERVAL '7 days'))
+                     AND read_at IS NULL
+                   RETURNING campaign_id, (delivered_at IS NOT NULL) AS was_delivered;`,
+                  [item.workspace_id, event.externalMessageId, event.recipientPhoneE164]
+                );
+                for (const row of readRecipRes.rows) {
+                  await client.query(
+                    `UPDATE public.broadcast_campaigns
+                     SET read_count = read_count + 1,
+                         delivered_count = CASE WHEN $3 THEN delivered_count ELSE delivered_count + 1 END,
+                         updated_at = clock_timestamp()
+                     WHERE id = $1 AND workspace_id = $2;`,
+                    [row.campaign_id, item.workspace_id, row.was_delivered]
+                  );
+                }
+              } else if (newStatus === "failed") {
+                const failRecipRes = await client.query<{ campaign_id: string }>(
+                  `UPDATE public.broadcast_recipients
+                   SET status = 'failed',
+                       error_message = COALESCE($4, error_message)
+                   WHERE workspace_id = $1
+                     AND (external_message_id = $2 OR (phone_e164 = $3 AND created_at >= clock_timestamp() - INTERVAL '7 days'))
+                     AND status = 'sent'
+                   RETURNING campaign_id;`,
+                  [item.workspace_id, event.externalMessageId, event.recipientPhoneE164, event.errorMessage || event.errorCode || "Delivery failed"]
+                );
+                for (const row of failRecipRes.rows) {
+                  await client.query(
+                    `UPDATE public.broadcast_campaigns
+                     SET failed_count = failed_count + 1, updated_at = clock_timestamp()
+                     WHERE id = $1 AND workspace_id = $2;`,
+                    [row.campaign_id, item.workspace_id]
                   );
                 }
               }

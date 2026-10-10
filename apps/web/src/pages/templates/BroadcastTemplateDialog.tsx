@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   AlertTriangle,
   CheckCircle2,
+  Layers,
+  Sparkles,
 } from "lucide-react";
 import {
   apiClient,
@@ -47,12 +49,17 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
   const [templates, setTemplates] = useState<MessageTemplateSummary[]>([]);
   const [totalActiveContacts, setTotalActiveContacts] = useState(0);
 
+  // Campaign Configuration
+  const [campaignName, setCampaignName] = useState("");
   const [selectedChannelId, setSelectedChannelId] = useState("");
+  const [isAbTest, setIsAbTest] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedTemplateBId, setSelectedTemplateBId] = useState("");
   const [audienceType, setAudienceType] = useState<"ALL_CONTACTS" | "BY_STAGE" | "MANUAL">("ALL_CONTACTS");
   const [stage, setStage] = useState("LEAD");
   const [manualPhones, setManualPhones] = useState("");
   const [variables, setVariables] = useState<Record<string, string>>({});
+  const [variablesB, setVariablesB] = useState<Record<string, string>>({});
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -61,6 +68,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     enqueuedCount: number;
     totalTargeted: number;
     templateName: string;
+    isAbTest: boolean;
   } | null>(null);
 
   // Load preflight data on open
@@ -90,11 +98,18 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
           setSelectedChannelId(readyChannel.id);
         }
 
-        // Pre-select template
+        // Pre-select template A
         if (initialTemplate) {
           setSelectedTemplateId(initialTemplate.id);
         } else if (res.templates && res.templates.length > 0 && res.templates[0]) {
           setSelectedTemplateId(res.templates[0].id);
+        }
+
+        // Pre-select template B (prioritize a second template if available)
+        if (res.templates && res.templates.length > 1 && res.templates[1]) {
+          setSelectedTemplateBId(res.templates[1].id);
+        } else if (res.templates && res.templates.length > 0 && res.templates[0]) {
+          setSelectedTemplateBId(res.templates[0].id);
         }
       })
       .catch((err: unknown) => {
@@ -118,13 +133,19 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     [channels, selectedChannelId]
   );
 
-  // Selected Template Object
+  // Selected Template A Object
   const selectedTemplate = useMemo(
     () => templates.find((t) => t.id === selectedTemplateId) || initialTemplate,
     [templates, selectedTemplateId, initialTemplate]
   );
 
-  // Extract variables from body text (e.g. {{1}}, {{2}})
+  // Selected Template B Object
+  const selectedTemplateB = useMemo(
+    () => templates.find((t) => t.id === selectedTemplateBId),
+    [templates, selectedTemplateBId]
+  );
+
+  // Extract variables for Template A
   const templateVarKeys = useMemo(() => {
     if (!selectedTemplate) return [];
     if (selectedTemplate.variables && selectedTemplate.variables.length > 0) {
@@ -136,7 +157,19 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     return keys.sort((a, b) => Number(a) - Number(b));
   }, [selectedTemplate]);
 
-  // Preview body with populated variables
+  // Extract variables for Template B
+  const templateVarKeysB = useMemo(() => {
+    if (!selectedTemplateB) return [];
+    if (selectedTemplateB.variables && selectedTemplateB.variables.length > 0) {
+      return selectedTemplateB.variables;
+    }
+    const matches = selectedTemplateB.bodyText.match(/\{\{(\d+)\}\}/g);
+    if (!matches) return [];
+    const keys = Array.from(new Set(matches.map((m) => m.replace(/[{}]/g, ""))));
+    return keys.sort((a, b) => Number(a) - Number(b));
+  }, [selectedTemplateB]);
+
+  // Preview body A
   const previewBody = useMemo(() => {
     if (!selectedTemplate) return "";
     let body = selectedTemplate.bodyText;
@@ -146,6 +179,17 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     }
     return body;
   }, [selectedTemplate, templateVarKeys, variables]);
+
+  // Preview body B
+  const previewBodyB = useMemo(() => {
+    if (!selectedTemplateB) return "";
+    let body = selectedTemplateB.bodyText;
+    for (const key of templateVarKeysB) {
+      const val = variablesB[key] || `{{${key}}}`;
+      body = body.split(`{{${key}}}`).join(val);
+    }
+    return body;
+  }, [selectedTemplateB, templateVarKeysB, variablesB]);
 
   // Mandatory Billing Gate Check
   const isMetaWaba = selectedChannel?.provider === "meta_waba";
@@ -159,7 +203,8 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     Boolean(selectedChannelId) &&
     isChannelConnected &&
     !isBillingBlocked &&
-    Boolean(selectedTemplateId);
+    Boolean(selectedTemplateId) &&
+    (!isAbTest || Boolean(selectedTemplateBId));
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -192,14 +237,18 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
       const res = await apiClient.createBroadcast(
         workspaceId,
         {
+          name: campaignName.trim() || undefined,
           channelInstanceId: selectedChannel.id,
           templateId: selectedTemplate.id,
+          isAbTest,
+          variantBTemplateId: isAbTest && selectedTemplateB ? selectedTemplateB.id : undefined,
           audience: {
             type: audienceType,
             stage: audienceType === "BY_STAGE" ? stage : undefined,
             customPhoneNumbers,
           },
           variables,
+          variantBVariables: isAbTest ? variablesB : undefined,
         },
         { token }
       );
@@ -209,6 +258,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
         enqueuedCount: res.enqueuedCount,
         totalTargeted: res.totalTargeted,
         templateName: res.template.name,
+        isAbTest,
       });
 
       onBroadcastSuccess?.();
@@ -225,9 +275,9 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title="Disparo em Massa de Modelo WABA"
-      maxWidth="760px"
-      description="Envie mensagens ativas oficiais aprovadas pela Meta para abrir janelas comerciais com seus contatos."
+      title={isAbTest ? "Disparo com Teste A/B (Divisão 50/50)" : "Disparo em Massa de Modelo WABA"}
+      maxWidth="840px"
+      description="Envie mensagens ativas aprovadas pela Meta com rastreamento completo de entrega, leitura, resposta e cliques."
     >
       {isLoadingPreflight ? (
         <div style={{ padding: "32px 0" }}>
@@ -254,8 +304,13 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                 Campanha Enfileirada com Sucesso!
               </h3>
               <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
-                {successInfo.enqueuedCount} mensagens foram geradas no Outbox e serão enviadas pelo Worker via{" "}
+                {successInfo.enqueuedCount} mensagens foram geradas e enviadas ao Outbox via{" "}
                 <strong>{selectedChannel?.displayName}</strong>.
+                {successInfo.isAbTest && (
+                  <span style={{ display: "block", marginTop: "4px", color: "var(--color-operational)", fontWeight: 600 }}>
+                    ⚡ Teste A/B ativo: O público foi dividido 50% para a Variante A e 50% para a Variante B.
+                  </span>
+                )}
               </p>
             </div>
             <div
@@ -288,7 +343,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
             <Button variant="primary" size="sm" onClick={onClose}>
-              Concluir
+              Ver Métricas da Campanha
             </Button>
           </div>
         </div>
@@ -300,7 +355,31 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
             </Alert>
           )}
 
-          {/* 1. Seleção de Canal & Trava de Faturamento Meta */}
+          {/* 1. Nome da Campanha & Modo A/B */}
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr", gap: "12px", alignItems: "end" }}>
+            <Input
+              label="Nome da Campanha (Opcional)"
+              placeholder="Ex: Oferta Relâmpago - Leads Qualificados"
+              value={campaignName}
+              onChange={(e) => setCampaignName(e.target.value)}
+            />
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
+                Tipo de Disparo
+              </label>
+              <SegmentedControl
+                value={isAbTest ? "AB_TEST" : "SINGLE"}
+                onChange={(val) => setIsAbTest(val === "AB_TEST")}
+                options={[
+                  { value: "SINGLE", label: "Disparo Único" },
+                  { value: "AB_TEST", label: "Teste A/B (50/50)" },
+                ]}
+              />
+            </div>
+          </div>
+
+          {/* 2. Seleção de Canal & Trava de Faturamento Meta */}
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
               Canal de Envio (Linha WhatsApp)
@@ -405,12 +484,10 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                   </span>
                   <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", lineHeight: 1.5 }}>
                     O <strong>SOS Sales não cobra nem intermedeia tarifas</strong> de mensagens da Meta.
-                    Para realizar disparos em massa ativos neste canal oficial, você deve ter uma forma de pagamento
-                    (cartão de crédito) cadastrada diretamente no seu <strong>Gerenciador de Negócios da Meta (Business Manager)</strong>.
+                    Para realizar disparos ativos neste canal oficial, você deve ter um cartão de crédito cadastrado diretamente no seu <strong>Gerenciador de Negócios da Meta (Business Manager)</strong>.
                   </span>
                   <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                    Cadastre o cartão na Meta e em seguida vá em <strong>Configurações &gt; Canais WhatsApp</strong> e clique em{" "}
-                    <strong>&ldquo;Ativar Cartão Meta&rdquo;</strong> para liberar as campanhas ativas.
+                    Cadastre o cartão na Meta e vá em <strong>Configurações &gt; Canais WhatsApp</strong> para confirmar a vinculação.
                   </span>
                 </div>
               </div>
@@ -431,8 +508,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
               >
                 <ShieldCheck size={18} color="#10b981" style={{ flexShrink: 0 }} />
                 <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                  <strong>Faturamento Direto Meta Ativo:</strong> Tarifas cobradas diretamente no seu cartão na Meta
-                  (aprox. R$ 0,04 utilidade / R$ 0,40 marketing por conversa). O SOS Sales não cobra intermediários.
+                  <strong>Faturamento Direto Meta Ativo:</strong> Tarifas cobradas diretamente no seu cartão cadastrado no Business Manager. O SOS Sales não cobra intermediários.
                 </span>
               </div>
             )}
@@ -452,40 +528,10 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
               >
                 <AlertTriangle size={16} color="var(--color-warning)" style={{ flexShrink: 0 }} />
                 <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
-                  Canal de conexão via QR Code (WAHA). Não há tarifação por mensagem da Meta, porém disparos rápidos
-                  em massa podem acarretar restrições pelo WhatsApp. Envie com intervalos moderados.
+                  Canal via QR Code (WAHA). Sem custo por mensagem, porém sujeito a limites e moderação do WhatsApp.
                 </span>
               </div>
             )}
-          </div>
-
-          {/* 2. Seleção de Modelo */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
-              Modelo Aprovado (Template WABA)
-            </label>
-            <select
-              value={selectedTemplateId}
-              onChange={(e) => setSelectedTemplateId(e.target.value)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: "var(--radius-md)",
-                border: "1px solid var(--border-default)",
-                backgroundColor: "var(--bg-surface)",
-                fontSize: "var(--font-size-sm)",
-                color: "var(--text-primary)",
-              }}
-            >
-              {templates.length === 0 ? (
-                <option value="">Nenhum modelo cadastrado</option>
-              ) : (
-                templates.map((tpl) => (
-                  <option key={tpl.id} value={tpl.id}>
-                    {tpl.name} ({tpl.category}) {tpl.metaTemplateId ? "— Meta Aprovado" : "— Local"}
-                  </option>
-                ))
-              )}
-            </select>
           </div>
 
           {/* 3. Seleção de Público-Alvo */}
@@ -517,6 +563,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                     border: "1px solid var(--border-default)",
                     backgroundColor: "var(--bg-surface)",
                     fontSize: "var(--font-size-sm)",
+                    color: "var(--text-primary)",
                   }}
                 >
                   <option value="LEAD">Leads em Prospecção (LEAD)</option>
@@ -552,72 +599,272 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
             )}
           </div>
 
-          {/* 4. Preenchimento de Variáveis do Modelo */}
-          {templateVarKeys.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-                padding: "12px",
-                backgroundColor: "var(--bg-canvas)",
-                borderRadius: "var(--radius-md)",
-                border: "1px solid var(--border-default)",
-              }}
-            >
-              <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
-                Variáveis Dinâmicas do Modelo:
-              </span>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "8px" }}>
-                {templateVarKeys.map((k) => (
-                  <Input
-                    key={k}
-                    label={`Variável {{${k}}}`}
-                    placeholder={`Conteúdo para {{${k}}} (ex: Nome / Desconto)`}
-                    value={variables[k] || ""}
-                    onChange={(e) => setVariables({ ...variables, [k]: e.target.value })}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 5. Prévia do Modelo WhatsApp */}
-          {selectedTemplate && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
-                Prévia da Mensagem (WhatsApp)
-              </span>
-              <div
-                style={{
-                  backgroundColor: "var(--bg-canvas)",
-                  padding: "12px",
-                  borderRadius: "var(--radius-md)",
-                  border: "1px solid var(--border-default)",
-                }}
-              >
-                <div
+          {/* 4. Modelos e Variáveis: Modo Simples vs Modo Teste A/B */}
+          {!isAbTest ? (
+            /* Modo Disparo Simples */
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
+                  Modelo Aprovado (Template WABA)
+                </label>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
                   style={{
-                    backgroundColor: "var(--bg-surface)",
-                    padding: "10px 14px",
+                    padding: "8px 12px",
                     borderRadius: "var(--radius-md)",
-                    boxShadow: "var(--shadow-sm)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "6px",
+                    border: "1px solid var(--border-default)",
+                    backgroundColor: "var(--bg-surface)",
+                    fontSize: "var(--font-size-sm)",
+                    color: "var(--text-primary)",
                   }}
                 >
-                  {selectedTemplate.headerText && (
-                    <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--text-primary)" }}>
-                      {selectedTemplate.headerText}
+                  {templates.length === 0 ? (
+                    <option value="">Nenhum modelo cadastrado</option>
+                  ) : (
+                    templates.map((tpl) => (
+                      <option key={tpl.id} value={tpl.id}>
+                        {tpl.name} ({tpl.category}) {tpl.metaTemplateId ? "— Meta Aprovado" : "— Local"}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              {templateVarKeys.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                    padding: "12px",
+                    backgroundColor: "var(--bg-canvas)",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--border-default)",
+                  }}
+                >
+                  <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
+                    Variáveis Dinâmicas do Modelo:
+                  </span>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "8px" }}>
+                    {templateVarKeys.map((k) => (
+                      <Input
+                        key={k}
+                        label={`Variável {{${k}}}`}
+                        placeholder={`Conteúdo para {{${k}}} (ex: Nome / Desconto)`}
+                        value={variables[k] || ""}
+                        onChange={(e) => setVariables({ ...variables, [k]: e.target.value })}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedTemplate && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
+                    Prévia da Mensagem (WhatsApp)
+                  </span>
+                  <div
+                    style={{
+                      backgroundColor: "var(--bg-canvas)",
+                      padding: "12px",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px solid var(--border-default)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        backgroundColor: "var(--bg-surface)",
+                        padding: "10px 14px",
+                        borderRadius: "var(--radius-md)",
+                        boxShadow: "var(--shadow-sm)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "6px",
+                      }}
+                    >
+                      {selectedTemplate.headerText && (
+                        <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--text-primary)" }}>
+                          {selectedTemplate.headerText}
+                        </div>
+                      )}
+                      <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>
+                        {renderWhatsappMarkdown(previewBody)}
+                      </div>
+                      {selectedTemplate.footerText && (
+                        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                          {selectedTemplate.footerText}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Modo Teste A/B 50/50 */
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div
+                style={{
+                  padding: "10px 14px",
+                  backgroundColor: "rgba(139, 92, 246, 0.08)",
+                  border: "1px solid rgba(139, 92, 246, 0.3)",
+                  borderRadius: "var(--radius-md)",
+                  display: "flex",
+                  gap: "10px",
+                  alignItems: "center",
+                }}
+              >
+                <Sparkles size={18} color="#8b5cf6" style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                  <strong>Divisão 50/50 Automatizada:</strong> O sistema dividirá seu público igualmente. Você poderá comparar lado a lado a taxa de abertura, respostas e cliques no painel da campanha.
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "16px" }}>
+                {/* Coluna Variante A */}
+                <div
+                  style={{
+                    padding: "14px",
+                    border: "1px solid var(--border-default)",
+                    borderRadius: "var(--radius-lg)",
+                    backgroundColor: "var(--bg-canvas)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Badge variant="action">Variante A (50%)</Badge>
+                    <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Contatos ímpares</span>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 600 }}>Modelo A</label>
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => setSelectedTemplateId(e.target.value)}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--border-default)",
+                        backgroundColor: "var(--bg-surface)",
+                        fontSize: "var(--font-size-sm)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      {templates.map((tpl) => (
+                        <option key={tpl.id} value={tpl.id}>
+                          {tpl.name} ({tpl.category})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {templateVarKeys.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600 }}>Variáveis A:</span>
+                      {templateVarKeys.map((k) => (
+                        <Input
+                          key={k}
+                          label={`{{${k}}}`}
+                          placeholder={`Conteúdo {{${k}}}`}
+                          value={variables[k] || ""}
+                          onChange={(e) => setVariables({ ...variables, [k]: e.target.value })}
+                        />
+                      ))}
                     </div>
                   )}
-                  <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>
-                    {renderWhatsappMarkdown(previewBody)}
+
+                  {selectedTemplate && (
+                    <div
+                      style={{
+                        backgroundColor: "var(--bg-surface)",
+                        padding: "10px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--border-subtle)",
+                        fontSize: "var(--font-size-xs)",
+                        color: "var(--text-secondary)",
+                        whiteSpace: "pre-wrap",
+                        maxHeight: "180px",
+                        overflowY: "auto",
+                      }}
+                    >
+                      {renderWhatsappMarkdown(previewBody)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Coluna Variante B */}
+                <div
+                  style={{
+                    padding: "14px",
+                    border: "1px solid var(--border-default)",
+                    borderRadius: "var(--radius-lg)",
+                    backgroundColor: "var(--bg-canvas)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Badge variant="warning">Variante B (50%)</Badge>
+                    <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Contatos pares</span>
                   </div>
-                  {selectedTemplate.footerText && (
-                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-                      {selectedTemplate.footerText}
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 600 }}>Modelo B</label>
+                    <select
+                      value={selectedTemplateBId}
+                      onChange={(e) => setSelectedTemplateBId(e.target.value)}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--border-default)",
+                        backgroundColor: "var(--bg-surface)",
+                        fontSize: "var(--font-size-sm)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      {templates.map((tpl) => (
+                        <option key={tpl.id} value={tpl.id}>
+                          {tpl.name} ({tpl.category})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {templateVarKeysB.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600 }}>Variáveis B:</span>
+                      {templateVarKeysB.map((k) => (
+                        <Input
+                          key={k}
+                          label={`{{${k}}}`}
+                          placeholder={`Conteúdo {{${k}}}`}
+                          value={variablesB[k] || ""}
+                          onChange={(e) => setVariablesB({ ...variablesB, [k]: e.target.value })}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedTemplateB && (
+                    <div
+                      style={{
+                        backgroundColor: "var(--bg-surface)",
+                        padding: "10px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--border-subtle)",
+                        fontSize: "var(--font-size-xs)",
+                        color: "var(--text-secondary)",
+                        whiteSpace: "pre-wrap",
+                        maxHeight: "180px",
+                        overflowY: "auto",
+                      }}
+                    >
+                      {renderWhatsappMarkdown(previewBodyB)}
                     </div>
                   )}
                 </div>
@@ -646,16 +893,22 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
               size="sm"
               loading={isSubmitting}
               disabled={!canSubmit}
-              prefixIcon={<Send size={14} />}
+              prefixIcon={isAbTest ? <Layers size={14} /> : <Send size={14} />}
               title={
                 isBillingBlocked
                   ? "Disparo travado: Cadastre o cartão no Meta Business Manager e confirme nas configurações de canais"
                   : !isChannelConnected
                   ? "Canal selecionado está desconectado"
+                  : isAbTest
+                  ? "Iniciar Teste A/B 50/50"
                   : "Iniciar disparo ativo"
               }
             >
-              {isBillingBlocked ? "Disparo Travado (Sem Cartão Meta)" : "Iniciar Disparo em Massa"}
+              {isBillingBlocked
+                ? "Disparo Travado (Sem Cartão Meta)"
+                : isAbTest
+                ? "Iniciar Teste A/B (50/50)"
+                : "Iniciar Disparo em Massa"}
             </Button>
           </div>
         </form>

@@ -1266,8 +1266,9 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           is_active: boolean;
           status: string;
           credential_id: string | null;
+          phone_number_e164: string | null;
         }>(
-          `SELECT id, provider, display_name, is_active, status, credential_id
+          `SELECT id, provider, display_name, is_active, status, credential_id, phone_number_e164
            FROM public.channel_instances
            WHERE id = $1 AND workspace_id = $2;`,
           [channelId, workspaceId]
@@ -1466,11 +1467,11 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
             status: string;
             me?: { id?: string; pushName?: string };
           }>;
-          const cleanPhone = channelRow.phone_number_e164?.replace(/\D/g, "") || "";
+          const cleanPhone = channel.phone_number_e164?.replace(/\D/g, "") || "";
           const matchedSession =
             sessions.find((s) => s.name === sessionName) ||
             (cleanPhone ? sessions.find((s) => s.me?.id?.includes(cleanPhone)) : null) ||
-            (sessions.length === 1 && sessions[0].status === "WORKING" ? sessions[0] : null);
+            (sessions.length === 1 && sessions[0]?.status === "WORKING" ? sessions[0] : null);
 
           if (matchedSession) {
             effectiveSession = matchedSession.name;
@@ -1490,7 +1491,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
             `UPDATE public.channel_instances
              SET status = 'connected', is_active = true, updated_at = clock_timestamp()
              WHERE id = $1 AND workspace_id = $2;`,
-            [channelInstanceId, workspaceId]
+            [channel.id, workspaceId]
           );
         });
 
@@ -1543,7 +1544,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
                 `UPDATE public.channel_instances
                  SET status = 'connected', is_active = true, updated_at = clock_timestamp()
                  WHERE id = $1 AND workspace_id = $2;`,
-                [channelInstanceId, workspaceId]
+                [channel.id, workspaceId]
               );
             });
             return reply.status(200).send({

@@ -1706,22 +1706,41 @@ export class ApiClient {
     });
   }
 
+  async getBroadcastCampaigns(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{
+    success: boolean;
+    campaigns: BroadcastCampaignSummary[];
+  }> {
+    return this.request(`/v1/workspaces/${workspaceId}/broadcasts/campaigns`, {
+      ...options,
+      workspaceId,
+      method: "GET",
+    });
+  }
+
   async createBroadcast(
     workspaceId: string,
     payload: {
+      name?: string;
       channelInstanceId: string;
       templateId: string;
+      isAbTest?: boolean;
+      variantBTemplateId?: string;
       audience: {
         type: "ALL_CONTACTS" | "BY_STAGE" | "MANUAL";
         stage?: string;
         customPhoneNumbers?: string[];
       };
       variables?: Record<string, string>;
+      variantBVariables?: Record<string, string>;
     },
     options?: RequestOptions
   ): Promise<{
     success: boolean;
     batchId: string;
+    campaignId?: string;
     enqueuedCount: number;
     totalTargeted: number;
     template: { name: string; category: string };
@@ -1735,6 +1754,58 @@ export class ApiClient {
       body: payload,
     });
   }
+}
+
+export interface BroadcastCampaignMetrics {
+  sent: number;
+  delivered: number;
+  read: number;
+  replied: number;
+  clicked: number;
+  deliveryRate: number; // %
+  openRate: number; // %
+  replyRate: number; // %
+  ctr: number; // %
+}
+
+export interface BroadcastAbVariantStats {
+  templateName: string;
+  category: string;
+  sent: number;
+  delivered: number;
+  read: number;
+  replied: number;
+  openRate: number;
+  replyRate: number;
+}
+
+export interface BroadcastAbReport {
+  winner: "A" | "B" | "TIED";
+  variantA: BroadcastAbVariantStats;
+  variantB: BroadcastAbVariantStats;
+}
+
+export interface BroadcastCampaignSummary {
+  id: string;
+  name: string;
+  status: string;
+  channel: {
+    id: string;
+    name: string;
+    provider: string;
+  };
+  isAbTest: boolean;
+  template: {
+    id: string;
+    name: string;
+    category: string;
+  };
+  audienceType: string;
+  audienceStage?: string | null;
+  totalTargeted: number;
+  metrics: BroadcastCampaignMetrics;
+  abReport?: BroadcastAbReport | null;
+  createdAt: string;
 }
 
 export interface AiFaqItem {
