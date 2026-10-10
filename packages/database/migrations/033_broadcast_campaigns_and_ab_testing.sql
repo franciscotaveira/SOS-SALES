@@ -108,3 +108,6 @@ CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_phone
 CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_ext_msg
     ON public.broadcast_recipients(workspace_id, external_message_id)
     WHERE external_message_id IS NOT NULL;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.broadcast_campaigns TO sos_app_user, sos_worker_user, sos_migration_owner;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.broadcast_recipients TO sos_app_user, sos_worker_user, sos_migration_owner;

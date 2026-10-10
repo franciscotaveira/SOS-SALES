@@ -722,6 +722,7 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
 
       return reply.status(200).send({
         success: true,
+        batchId: campaign.id,
         campaignId: campaign.id,
         campaignName,
         enqueuedCount,
