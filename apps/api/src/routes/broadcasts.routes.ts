@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { withTenantTransaction } from "@sos-sales/database";
+import { withTenantTransaction, createOrGetContact } from "@sos-sales/database";
 import {
   TransactionalOutboundProducerService,
   type ITransactionalOutboundProducerService,
@@ -18,9 +18,19 @@ const createBroadcastBodySchema = z.object({
   isAbTest: z.boolean().optional().default(false),
   variantBTemplateId: z.string().uuid().optional(),
   audience: z.object({
-    type: z.enum(["ALL_CONTACTS", "BY_STAGE", "MANUAL"]),
+    type: z.enum(["ALL_CONTACTS", "BY_STAGE", "MANUAL", "IMPORT_LIST", "SMART_FILTER"]),
     stage: z.string().max(50).optional(),
-    customPhoneNumbers: z.array(z.string().regex(/^\+[1-9][0-9]{8,14}$/)).max(500).optional(),
+    customPhoneNumbers: z.array(z.string().regex(/^\+[1-9][0-9]{8,14}$/)).max(1000).optional(),
+    importedContacts: z
+      .array(
+        z.object({
+          phoneE164: z.string().regex(/^\+[1-9][0-9]{8,14}$/),
+          name: z.string().max(150).nullable().optional(),
+        })
+      )
+      .max(1000)
+      .optional(),
+    smartFilter: z.enum(["NON_BUYERS", "INACTIVE_30_DAYS", "CTWA_RESCUE"]).optional(),
   }),
   variables: z.record(z.string().max(200)).optional(),
   variantBVariables: z.record(z.string().max(200)).optional(),
@@ -142,6 +152,134 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
           description:
             "O Chat Sales não cobra nem intermedeia custos de mensagens Meta. Todo envio ativo no canal oficial é debitado diretamente no cartão de crédito cadastrado na Meta pelo cliente.",
         },
+      });
+    }
+  );
+
+  // 1.1 GET /v1/workspaces/:workspaceId/broadcasts/audience-count
+  // Fast query to provide live recipient counter for any audience type or smart filter
+  app.get(
+    "/v1/workspaces/:workspaceId/broadcasts/audience-count",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("cockpit:access"),
+      ],
+    },
+    async (request, reply) => {
+      const parsedParams = workspaceParamsSchema.safeParse(request.params);
+      if (!parsedParams.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Invalid workspaceId parameter",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const querySchema = z.object({
+        type: z.enum(["ALL_CONTACTS", "BY_STAGE", "SMART_FILTER"]),
+        stage: z.string().optional(),
+        smartFilter: z.enum(["NON_BUYERS", "INACTIVE_30_DAYS", "CTWA_RESCUE"]).optional(),
+      });
+
+      const parsedQuery = querySchema.safeParse(request.query);
+      if (!parsedQuery.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: parsedQuery.error.issues.map((i) => i.message).join(", "),
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { workspaceId } = parsedParams.data;
+      const { type, stage, smartFilter } = parsedQuery.data;
+
+      const count = await withTenantTransaction(workspaceId, async (client) => {
+        if (type === "BY_STAGE" && stage) {
+          const res = await client.query<{ count: string }>(
+            `SELECT count(DISTINCT c.id)::text as count
+             FROM public.contacts c
+             INNER JOIN public.commercial_journeys cj ON cj.contact_id = c.id AND cj.workspace_id = c.workspace_id
+             WHERE c.workspace_id = $1 AND c.opt_out = false AND c.phone_e164 IS NOT NULL AND LOWER(cj.stage) = LOWER($2);`,
+            [workspaceId, stage]
+          );
+          return Number(res.rows[0]?.count || 0);
+        }
+
+        if (type === "SMART_FILTER" && smartFilter) {
+          if (smartFilter === "NON_BUYERS") {
+            const res = await client.query<{ count: string }>(
+              `SELECT count(DISTINCT c.id)::text as count
+               FROM public.contacts c
+               WHERE c.workspace_id = $1 
+                 AND c.opt_out = false 
+                 AND c.phone_e164 IS NOT NULL
+                 AND NOT EXISTS (
+                   SELECT 1 FROM public.commercial_journeys cj 
+                   WHERE cj.contact_id = c.id 
+                     AND cj.workspace_id = c.workspace_id 
+                     AND LOWER(cj.stage) = 'won'
+                 );`,
+              [workspaceId]
+            );
+            return Number(res.rows[0]?.count || 0);
+          }
+          if (smartFilter === "INACTIVE_30_DAYS") {
+            const res = await client.query<{ count: string }>(
+              `SELECT count(*)::text as count
+               FROM public.contacts c
+               WHERE c.workspace_id = $1 
+                 AND c.opt_out = false 
+                 AND c.phone_e164 IS NOT NULL
+                 AND NOT EXISTS (
+                   SELECT 1 FROM public.messages m
+                   WHERE m.contact_id = c.id 
+                     AND m.workspace_id = c.workspace_id
+                     AND m.created_at >= (now() - interval '30 days')
+                 );`,
+              [workspaceId]
+            );
+            return Number(res.rows[0]?.count || 0);
+          }
+          if (smartFilter === "CTWA_RESCUE") {
+            const res = await client.query<{ count: string }>(
+              `SELECT count(DISTINCT c.id)::text as count
+               FROM public.contacts c
+               INNER JOIN public.commercial_journeys cj ON cj.contact_id = c.id AND cj.workspace_id = c.workspace_id
+               WHERE c.workspace_id = $1 
+                 AND c.opt_out = false 
+                 AND c.phone_e164 IS NOT NULL
+                 AND cj.attribution_source = 'ctwa_meta'
+                 AND LOWER(cj.stage) IN ('lead', 'qualified');`,
+              [workspaceId]
+            );
+            return Number(res.rows[0]?.count || 0);
+          }
+        }
+
+        // Default: ALL_CONTACTS
+        const res = await client.query<{ count: string }>(
+          `SELECT count(*)::text as count
+           FROM public.contacts
+           WHERE workspace_id = $1 AND opt_out = false AND phone_e164 IS NOT NULL;`,
+          [workspaceId]
+        );
+        return Number(res.rows[0]?.count || 0);
+      });
+
+      return reply.status(200).send({
+        success: true,
+        type,
+        stage,
+        smartFilter,
+        count,
       });
     }
   );
@@ -460,10 +598,98 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
           // Resolve Audience
           let targetNumbers: Array<{ phone_e164: string; name?: string | null; contact_id?: string }> = [];
 
-          if (audience.type === "MANUAL" && audience.customPhoneNumbers) {
-            targetNumbers = audience.customPhoneNumbers.map((phone) => ({
-              phone_e164: phone,
-            }));
+          if (audience.type === "IMPORT_LIST" && audience.importedContacts) {
+            // Upsert each imported contact safely under workspace RLS and exclude opt-outs
+            for (const item of audience.importedContacts) {
+              const contact = await createOrGetContact(client, {
+                workspaceId,
+                phoneE164: item.phoneE164,
+                name: item.name || undefined,
+              });
+              if (!contact.opt_out) {
+                targetNumbers.push({
+                  phone_e164: contact.phone_e164,
+                  name: contact.name,
+                  contact_id: contact.id,
+                });
+              }
+            }
+          } else if (audience.type === "SMART_FILTER" && audience.smartFilter) {
+            if (audience.smartFilter === "NON_BUYERS") {
+              const res = await client.query<{
+                phone_e164: string;
+                name: string | null;
+                contact_id: string;
+              }>(
+                `SELECT DISTINCT c.phone_e164, c.name, c.id as contact_id
+                 FROM public.contacts c
+                 WHERE c.workspace_id = $1 
+                   AND c.opt_out = false 
+                   AND c.phone_e164 IS NOT NULL
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.commercial_journeys cj 
+                     WHERE cj.contact_id = c.id 
+                       AND cj.workspace_id = c.workspace_id 
+                       AND LOWER(cj.stage) = 'won'
+                   )
+                 LIMIT 1000;`,
+                [workspaceId]
+              );
+              targetNumbers = res.rows;
+            } else if (audience.smartFilter === "INACTIVE_30_DAYS") {
+              const res = await client.query<{
+                phone_e164: string;
+                name: string | null;
+                contact_id: string;
+              }>(
+                `SELECT c.phone_e164, c.name, c.id as contact_id
+                 FROM public.contacts c
+                 WHERE c.workspace_id = $1 
+                   AND c.opt_out = false 
+                   AND c.phone_e164 IS NOT NULL
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.messages m
+                     WHERE m.contact_id = c.id 
+                       AND m.workspace_id = c.workspace_id
+                       AND m.created_at >= (now() - interval '30 days')
+                   )
+                 LIMIT 1000;`,
+                [workspaceId]
+              );
+              targetNumbers = res.rows;
+            } else if (audience.smartFilter === "CTWA_RESCUE") {
+              const res = await client.query<{
+                phone_e164: string;
+                name: string | null;
+                contact_id: string;
+              }>(
+                `SELECT DISTINCT c.phone_e164, c.name, c.id as contact_id
+                 FROM public.contacts c
+                 INNER JOIN public.commercial_journeys cj ON cj.contact_id = c.id AND cj.workspace_id = c.workspace_id
+                 WHERE c.workspace_id = $1 
+                   AND c.opt_out = false 
+                   AND c.phone_e164 IS NOT NULL
+                   AND cj.attribution_source = 'ctwa_meta'
+                   AND LOWER(cj.stage) IN ('lead', 'qualified')
+                 LIMIT 1000;`,
+                [workspaceId]
+              );
+              targetNumbers = res.rows;
+            }
+          } else if (audience.type === "MANUAL" && audience.customPhoneNumbers) {
+            for (const phone of audience.customPhoneNumbers) {
+              const contact = await createOrGetContact(client, {
+                workspaceId,
+                phoneE164: phone,
+              });
+              if (!contact.opt_out) {
+                targetNumbers.push({
+                  phone_e164: contact.phone_e164,
+                  name: contact.name,
+                  contact_id: contact.id,
+                });
+              }
+            }
           } else if (audience.type === "BY_STAGE" && audience.stage) {
             const stageRes = await client.query<{
               phone_e164: string;
@@ -473,7 +699,8 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
               `SELECT DISTINCT c.phone_e164, c.name, c.id as contact_id
                FROM public.contacts c
                INNER JOIN public.commercial_journeys cj ON cj.contact_id = c.id AND cj.workspace_id = c.workspace_id
-               WHERE c.workspace_id = $1 AND c.opt_out = false AND c.phone_e164 IS NOT NULL AND LOWER(cj.stage) = LOWER($2);`,
+               WHERE c.workspace_id = $1 AND c.opt_out = false AND c.phone_e164 IS NOT NULL AND LOWER(cj.stage) = LOWER($2)
+               LIMIT 1000;`,
               [workspaceId, audience.stage]
             );
             targetNumbers = stageRes.rows;
@@ -487,7 +714,7 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
               `SELECT c.phone_e164, c.name, c.id as contact_id
                FROM public.contacts c
                WHERE c.workspace_id = $1 AND c.opt_out = false AND c.phone_e164 IS NOT NULL
-               LIMIT 500;`,
+               LIMIT 1000;`,
               [workspaceId]
             );
             targetNumbers = allRes.rows;

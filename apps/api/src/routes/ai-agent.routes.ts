@@ -472,6 +472,7 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
         replyText: parsed.cleanReplyText,
         needsHandoff: parsed.needsHandoff,
         handoffReason: parsed.handoffReason || null,
+        offerPixProductId: parsed.offerPixProductId || null,
         matchedCatalogCount: groundedProducts.length,
         groundedRulesCount: activeRulesCount,
         groundedFaqCount: activeFaqCount,

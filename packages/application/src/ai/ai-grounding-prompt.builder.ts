@@ -168,6 +168,16 @@ VOCÊ DEVE SEGUIR ESTRITAMENTE O PROTOCOLO DE IGNORÂNCIA (ZERO ALUCINAÇÃO):
 Mantenha as respostas focadas nas informações comerciais da empresa. Em caso de dúvidas que você não saiba responder com certeza, informe que irá chamar um atendente humano usando [HUMAN_HANDOFF: motivo].
 </guardrails>`;
 
+  // Layer 6: Instant Pix Closing Protocol
+  const pixClosingInstructions = `
+<fechamento_comercial_pix>
+QUANDO O CLIENTE DEMONSTRAR INTENÇÃO DE COMPRA OU ACEITAR UMA OFERTA:
+1. Se o cliente responder de forma afirmativa (ex: "quero", "vou querer", "tenho interesse", "manda o pix", "como pago?", "fechado", "pode reservar"), e o serviço/produto estiver listado no <catalog_truth>:
+2. Responda confirmando o pedido de forma natural e inclua no final a marcação técnica: [OFFER_PIX: id_do_produto].
+3. O Chat Sales irá gerar automaticamente o código Pix Copia e Cola bancário oficial no valor exato do produto e anexar à sua mensagem.
+4. É TERMINANTEMENTE PROIBIDO inventar códigos Pix ou chaves no texto. Use SEMPRE a marcação técnica [OFFER_PIX: id_do_produto].
+</fechamento_comercial_pix>`;
+
   return `Você é ${config.name}, assistente comercial de WhatsApp da empresa.
 ${archetypeInstruction}
 
@@ -180,6 +190,7 @@ ${businessRulesSection}
 ${faqSection}
 
 ${strictModeInstructions}
+${pixClosingInstructions}
 `;
 }
 
@@ -187,24 +198,37 @@ export interface ParsedAiResponse {
   cleanReplyText: string;
   needsHandoff: boolean;
   handoffReason?: string;
+  offerPixProductId?: string;
 }
 
 export function parseAiResponse(rawResponse: string): ParsedAiResponse {
   const handoffRegex = /\[HUMAN_HANDOFF:\s*(.*?)\]/i;
-  const match = rawResponse.match(handoffRegex);
+  const handoffMatch = rawResponse.match(handoffRegex);
 
-  if (match) {
-    const handoffReason = match[1]?.trim() || "Cliente solicitou informação não catalogada";
-    const cleanReplyText = rawResponse.replace(handoffRegex, "").trim();
-    return {
-      cleanReplyText,
-      needsHandoff: true,
-      handoffReason,
-    };
+  const pixRegex = /\[(?:OFFER_PIX|GERAR_PIX):\s*([^\]]+)\]/i;
+  const pixMatch = rawResponse.match(pixRegex);
+
+  let cleanReplyText = rawResponse;
+  let needsHandoff = false;
+  let handoffReason: string | undefined;
+  let offerPixProductId: string | undefined;
+
+  if (handoffMatch) {
+    needsHandoff = true;
+    handoffReason = handoffMatch[1]?.trim() || "Cliente solicitou informação não catalogada";
+    cleanReplyText = cleanReplyText.replace(/\[HUMAN_HANDOFF:\s*(.*?)\]/gi, "");
+  }
+
+  if (pixMatch) {
+    offerPixProductId = pixMatch[1]?.trim();
+    cleanReplyText = cleanReplyText.replace(/\[(?:OFFER_PIX|GERAR_PIX):\s*([^\]]+)\]/gi, "");
   }
 
   return {
-    cleanReplyText: rawResponse.trim(),
-    needsHandoff: false,
+    cleanReplyText: cleanReplyText.replace(/[ \t]{2,}/g, " ").trim(),
+    needsHandoff,
+    handoffReason,
+    offerPixProductId,
   };
 }
+

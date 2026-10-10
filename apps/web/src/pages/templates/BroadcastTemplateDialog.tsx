@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type FC, type FormEvent } from "react";
+import { useState, useEffect, useMemo, useRef, type FC, type FormEvent } from "react";
 import {
   Dialog,
   Button,
@@ -17,13 +17,136 @@ import {
   CheckCircle2,
   Layers,
   Sparkles,
+  FileSpreadsheet,
+  UploadCloud,
+  Trash2,
+  Filter,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import {
   apiClient,
   type MessageTemplateSummary,
   type ChannelSummary,
 } from "../../services/api-client";
 import { renderWhatsappMarkdown } from "../cockpit/utils/whatsappMarkdown";
+
+// Brazilian Phone Sanitizer & E.164 Validator
+export function sanitizeBrazilianPhoneE164(raw: string): { phoneE164: string } | { error: string } {
+  if (!raw) return { error: "Vazio" };
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return { error: "Sem dígitos" };
+
+  let clean = digits.startsWith("0") ? digits.slice(1) : digits;
+
+  if (clean.startsWith("55")) {
+    clean = clean.slice(2);
+  }
+
+  if (clean.length < 10) {
+    return { error: "Menos de 10 dígitos (DDD ausente)" };
+  }
+
+  const ddd = clean.slice(0, 2);
+  const rest = clean.slice(2);
+
+  // Landlines discard (starting with 2, 3, 4, 5 and 8 digits)
+  if (rest.length === 8 && /^[2-5]/.test(rest)) {
+    return { error: "Telefone fixo descartado" };
+  }
+
+  let finalNumber = rest;
+  if (rest.length === 8 && /^[6-9]/.test(rest)) {
+    finalNumber = `9${rest}`;
+  } else if (rest.length === 9 && rest.startsWith("9")) {
+    finalNumber = rest;
+  } else if (rest.length !== 9) {
+    return { error: "Formato de telefone móvel inválido" };
+  }
+
+  const e164 = `+55${ddd}${finalNumber}`;
+  if (!/^\+55[1-9]{2}9[0-9]{8}$/.test(e164)) {
+    return { error: "Dígitos inválidos" };
+  }
+
+  return { phoneE164: e164 };
+}
+
+function parseCsvText(text: string): Array<Record<string, string>> {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return [];
+
+  const firstLine = lines[0]!;
+  const commaCount = (firstLine.match(/,/g) || []).length;
+  const semiCount = (firstLine.match(/;/g) || []).length;
+  const tabCount = (firstLine.match(/\t/g) || []).length;
+  let delimiter = ",";
+  if (semiCount > commaCount && semiCount >= tabCount) delimiter = ";";
+  else if (tabCount > commaCount && tabCount > semiCount) delimiter = "\t";
+
+  const splitLine = (line: string): string[] => {
+    const result: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === delimiter && !inQuotes) {
+        result.push(cur.trim());
+        cur = "";
+      } else {
+        cur += char;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const headers = splitLine(firstLine).map((h) => h.toLowerCase().replace(/["']/g, ""));
+  const rows: Array<Record<string, string>> = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitLine(lines[i]!);
+    const row: Record<string, string> = {};
+    headers.forEach((h, idx) => {
+      row[h] = cells[idx] || "";
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+function extractContactFromRow(row: Record<string, any>): { name?: string; phoneRaw: string } | null {
+  const keys = Object.keys(row);
+  const phoneKey = keys.find((k) =>
+    /telefone|celular|phone|whatsapp|fone|numero|número|mobile|tel|contato/i.test(k)
+  );
+  const nameKey = keys.find((k) => /nome|name|cliente|lead/i.test(k));
+
+  let phoneRaw = phoneKey ? String(row[phoneKey] || "") : "";
+  let name = nameKey ? String(row[nameKey] || "") : "";
+
+  if (!phoneRaw) {
+    const candidate = keys.find((k) => String(row[k] || "").replace(/\D/g, "").length >= 8);
+    if (candidate) {
+      phoneRaw = String(row[candidate] || "");
+    }
+  }
+  if (!nameKey) {
+    const candidateName = keys.find((k) => k !== phoneKey && typeof row[k] === "string" && !/^\d+$/.test(row[k]));
+    if (candidateName) {
+      name = String(row[candidateName] || "");
+    }
+  }
+
+  if (!phoneRaw) return null;
+  return { name: name.trim() || undefined, phoneRaw };
+}
 
 interface BroadcastTemplateDialogProps {
   isOpen: boolean;
@@ -43,6 +166,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
   onBroadcastSuccess,
 }) => {
   const { isMobile } = useBreakpoint();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [isLoadingPreflight, setIsLoadingPreflight] = useState(true);
   const [channels, setChannels] = useState<Array<ChannelSummary & { isBlockedForBroadcast: boolean }>>([]);
@@ -55,8 +179,24 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
   const [isAbTest, setIsAbTest] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedTemplateBId, setSelectedTemplateBId] = useState("");
-  const [audienceType, setAudienceType] = useState<"ALL_CONTACTS" | "BY_STAGE" | "MANUAL">("ALL_CONTACTS");
+  const [audienceType, setAudienceType] = useState<"ALL_CONTACTS" | "SMART_FILTER" | "IMPORT_LIST" | "BY_STAGE" | "MANUAL">("ALL_CONTACTS");
   const [stage, setStage] = useState("LEAD");
+  const [smartFilter, setSmartFilter] = useState<"NON_BUYERS" | "INACTIVE_30_DAYS" | "CTWA_RESCUE">("NON_BUYERS");
+  const [smartCount, setSmartCount] = useState<number | null>(null);
+  const [isLoadingSmartCount, setIsLoadingSmartCount] = useState(false);
+
+  // Planilha Import State
+  const [isParsingFile, setIsParsingFile] = useState(false);
+  const [importedFile, setImportedFile] = useState<File | null>(null);
+  const [importedContacts, setImportedContacts] = useState<Array<{ phoneE164: string; name?: string }>>([]);
+  const [importStats, setImportStats] = useState<{
+    totalRows: number;
+    validCount: number;
+    duplicateCount: number;
+    invalidCount: number;
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
   const [manualPhones, setManualPhones] = useState("");
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [variablesB, setVariablesB] = useState<Record<string, string>>({});
@@ -197,6 +337,134 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     return body;
   }, [selectedTemplateB, templateVarKeysB, variablesB]);
 
+  // Fetch live count for Smart Filters or Stages
+  useEffect(() => {
+    if (!isOpen || !workspaceId || !token) return;
+
+    if (audienceType === "SMART_FILTER") {
+      setIsLoadingSmartCount(true);
+      apiClient
+        .getAudienceCount(workspaceId, { type: "SMART_FILTER", smartFilter }, { token })
+        .then((res) => setSmartCount(res.count))
+        .catch(() => setSmartCount(null))
+        .finally(() => setIsLoadingSmartCount(false));
+    } else if (audienceType === "BY_STAGE") {
+      setIsLoadingSmartCount(true);
+      apiClient
+        .getAudienceCount(workspaceId, { type: "BY_STAGE", stage }, { token })
+        .then((res) => setSmartCount(res.count))
+        .catch(() => setSmartCount(null))
+        .finally(() => setIsLoadingSmartCount(false));
+    }
+  }, [isOpen, workspaceId, token, audienceType, smartFilter, stage]);
+
+  const processFile = async (file: File) => {
+    setIsParsingFile(true);
+    setImportError(null);
+    setImportedFile(file);
+
+    try {
+      let rows: Array<Record<string, any>> = [];
+      const isCsv = file.name.toLowerCase().endsWith(".csv");
+      const isExcel =
+        file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xls");
+
+      if (isCsv) {
+        const text = await file.text();
+        rows = parseCsvText(text);
+      } else if (isExcel) {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: "array" });
+        const firstSheetName = wb.SheetNames[0];
+        if (!firstSheetName) {
+          throw new Error("A planilha não possui abas visíveis.");
+        }
+        const ws = wb.Sheets[firstSheetName];
+        if (!ws) {
+          throw new Error("Aba da planilha vazia.");
+        }
+        rows = XLSX.utils.sheet_to_json(ws);
+      } else {
+        throw new Error("Formato não suportado. Por favor, envie um arquivo .csv ou .xlsx.");
+      }
+
+      if (rows.length === 0) {
+        throw new Error("Nenhum dado encontrado no arquivo.");
+      }
+
+      const phoneMap = new Map<string, { phoneE164: string; name?: string }>();
+      let duplicateCount = 0;
+      let invalidCount = 0;
+
+      for (const row of rows) {
+        const extracted = extractContactFromRow(row);
+        if (!extracted) {
+          invalidCount++;
+          continue;
+        }
+
+        const sanit = sanitizeBrazilianPhoneE164(extracted.phoneRaw);
+        if ("error" in sanit) {
+          invalidCount++;
+          continue;
+        }
+
+        if (phoneMap.has(sanit.phoneE164)) {
+          duplicateCount++;
+        } else {
+          phoneMap.set(sanit.phoneE164, {
+            phoneE164: sanit.phoneE164,
+            name: extracted.name,
+          });
+        }
+      }
+
+      const validList = Array.from(phoneMap.values());
+      if (validList.length === 0) {
+        throw new Error("Nenhum número de WhatsApp válido encontrado na planilha.");
+      }
+
+      setImportedContacts(validList);
+      setImportStats({
+        totalRows: rows.length,
+        validCount: validList.length,
+        duplicateCount,
+        invalidCount,
+      });
+    } catch (err: unknown) {
+      setImportError(err instanceof Error ? err.message : "Erro ao processar planilha.");
+      setImportedContacts([]);
+      setImportStats(null);
+    } finally {
+      setIsParsingFile(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processFile(file);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processFile(file);
+    }
+  };
+
+  const removeImportedFile = () => {
+    setImportedFile(null);
+    setImportedContacts([]);
+    setImportStats(null);
+    setImportError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   // Mandatory Billing Gate Check
   const isMetaWaba = selectedChannel?.provider === "meta_waba";
   const isMetaBillingConfigured = Boolean(selectedChannel?.metaBillingConfigured);
@@ -210,7 +478,9 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     isChannelConnected &&
     !isBillingBlocked &&
     Boolean(selectedTemplateId) &&
-    (!isAbTest || Boolean(selectedTemplateBId));
+    (!isAbTest || Boolean(selectedTemplateBId)) &&
+    (audienceType !== "IMPORT_LIST" || importedContacts.length > 0) &&
+    (audienceType !== "MANUAL" || manualPhones.trim().length > 0);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -240,6 +510,10 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
         customPhoneNumbers = cleaned;
       }
 
+      if (audienceType === "IMPORT_LIST" && importedContacts.length === 0) {
+        throw new Error("Faça o upload de uma planilha válida com pelo menos um contato.");
+      }
+
       const res = await apiClient.createBroadcast(
         workspaceId,
         {
@@ -252,6 +526,8 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
             type: audienceType,
             stage: audienceType === "BY_STAGE" ? stage : undefined,
             customPhoneNumbers,
+            importedContacts: audienceType === "IMPORT_LIST" ? importedContacts : undefined,
+            smartFilter: audienceType === "SMART_FILTER" ? smartFilter : undefined,
           },
           variables,
           variantBVariables: isAbTest ? variablesB : undefined,
@@ -550,16 +826,281 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
               onChange={(v) => setAudienceType(v as typeof audienceType)}
               options={[
                 { value: "ALL_CONTACTS", label: `Todos Ativos (${totalActiveContacts})` },
-                { value: "BY_STAGE", label: "Por Estágio do Funil" },
-                { value: "MANUAL", label: "Lista Manual" },
+                { value: "SMART_FILTER", label: "Filtro Inteligente" },
+                { value: "IMPORT_LIST", label: "Planilha (CSV / Excel)" },
+                { value: "BY_STAGE", label: "Por Estágio" },
+                { value: "MANUAL", label: "Manual" },
               ]}
             />
 
+            {/* A. Filtro Inteligente Soberano */}
+            {audienceType === "SMART_FILTER" && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  padding: "14px",
+                  backgroundColor: "var(--bg-canvas)",
+                  border: "1px solid var(--border-default)",
+                  borderRadius: "var(--radius-lg)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Filter size={13} color="var(--color-operational)" /> Critério de Segmentação Soberana:
+                  </span>
+                  <Badge variant={smartCount && smartCount > 0 ? "action" : "neutral"}>
+                    {isLoadingSmartCount ? "Calculando..." : `${smartCount ?? 0} contatos elegíveis`}
+                  </Badge>
+                </div>
+
+                <select
+                  value={smartFilter}
+                  onChange={(e) => setSmartFilter(e.target.value as typeof smartFilter)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--border-default)",
+                    backgroundColor: "var(--bg-surface)",
+                    fontSize: "var(--font-size-sm)",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  <option value="NON_BUYERS">🎯 Não Compradores (Sem venda/WON registrada)</option>
+                  <option value="INACTIVE_30_DAYS">⏳ Inativos (Sem interação há mais de 30 dias)</option>
+                  <option value="CTWA_RESCUE">📣 Resgate CTWA (Leads de anúncios Meta em Lead/Qualificado)</option>
+                </select>
+
+                <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", lineHeight: 1.4 }}>
+                  {smartFilter === "NON_BUYERS" &&
+                    "Filtra contatos que conversaram com a equipe ou IA mas não possuem fechamento comercial (WON) registrado. Ideal para campanhas de oferta relâmpago e reativação."}
+                  {smartFilter === "INACTIVE_30_DAYS" &&
+                    "Isola contatos sem qualquer mensagem trocada nos últimos 30 dias para campanhas de resgate de base fria."}
+                  {smartFilter === "CTWA_RESCUE" &&
+                    "Filtra leads que vieram de anúncios Click-to-WhatsApp Ads do Facebook/Instagram e ainda estão no início do funil de vendas."}
+                </span>
+              </div>
+            )}
+
+            {/* B. Importador de Planilhas (CSV / Excel) */}
+            {audienceType === "IMPORT_LIST" && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  padding: "14px",
+                  backgroundColor: "var(--bg-canvas)",
+                  border: "1px solid var(--border-default)",
+                  borderRadius: "var(--radius-lg)",
+                }}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv, .xlsx, .xls, text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                  style={{ display: "none" }}
+                  onChange={handleFileChange}
+                />
+
+                {!importedFile ? (
+                  <div
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      border: "2px dashed var(--border-default)",
+                      borderRadius: "var(--radius-md)",
+                      padding: "24px 16px",
+                      textAlign: "center",
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "8px",
+                      backgroundColor: "var(--bg-surface)",
+                      transition: "border-color 0.2s ease",
+                    }}
+                  >
+                    <UploadCloud size={32} color="var(--color-operational)" />
+                    <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--text-primary)" }}>
+                      {isParsingFile ? "Processando e validando planilha..." : "Clique ou arraste uma planilha (.csv, .xlsx, .xls) aqui"}
+                    </span>
+                    <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                      Reconhece colunas de <strong>Nome</strong> e <strong>Telefone</strong> com sanitização E.164 automática (+55DD9XXXXXXXX)
+                    </span>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        backgroundColor: "var(--bg-surface)",
+                        padding: "10px 14px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--border-default)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <FileSpreadsheet size={22} color="var(--color-operational)" />
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: "var(--font-size-sm)", color: "var(--text-primary)" }}>
+                            {importedFile.name}
+                          </div>
+                          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                            {(importedFile.size / 1024).toFixed(1)} KB · {importStats?.totalRows || 0} linhas analisadas
+                          </div>
+                        </div>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={removeImportedFile}
+                        prefixIcon={<Trash2 size={14} />}
+                      >
+                        Trocar Planilha
+                      </Button>
+                    </div>
+
+                    {importError && (
+                      <Alert variant="danger" title="Aviso de Importação">
+                        {importError}
+                      </Alert>
+                    )}
+
+                    {importStats && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                          <span
+                            style={{
+                              fontSize: "var(--font-size-xs)",
+                              padding: "4px 8px",
+                              borderRadius: "var(--radius-sm)",
+                              backgroundColor: "var(--color-action-subtle)",
+                              color: "var(--color-action)",
+                              fontWeight: 600,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <CheckCircle2 size={12} /> {importStats.validCount} Telefones Válidos (E.164)
+                          </span>
+                          {importStats.duplicateCount > 0 && (
+                            <span
+                              style={{
+                                fontSize: "var(--font-size-xs)",
+                                padding: "4px 8px",
+                                borderRadius: "var(--radius-sm)",
+                                backgroundColor: "var(--color-warning-subtle)",
+                                color: "var(--color-warning)",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {importStats.duplicateCount} Duplicados Unificados
+                            </span>
+                          )}
+                          {importStats.invalidCount > 0 && (
+                            <span
+                              style={{
+                                fontSize: "var(--font-size-xs)",
+                                padding: "4px 8px",
+                                borderRadius: "var(--radius-sm)",
+                                backgroundColor: "var(--color-danger-subtle)",
+                                color: "var(--color-danger)",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {importStats.invalidCount} Inválidos/Fixos Descartados
+                            </span>
+                          )}
+                        </div>
+
+                        {importedContacts.length > 0 && (
+                          <div
+                            style={{
+                              maxHeight: "140px",
+                              overflowY: "auto",
+                              borderRadius: "var(--radius-md)",
+                              border: "1px solid var(--border-subtle)",
+                              backgroundColor: "var(--bg-surface)",
+                              fontSize: "var(--font-size-xs)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "1.5fr 1.5fr 1fr",
+                                padding: "6px 10px",
+                                fontWeight: 600,
+                                backgroundColor: "var(--bg-canvas)",
+                                borderBottom: "1px solid var(--border-subtle)",
+                                color: "var(--text-secondary)",
+                              }}
+                            >
+                              <span>Nome</span>
+                              <span>Telefone Sanitizado</span>
+                              <span style={{ textAlign: "right" }}>Status</span>
+                            </div>
+                            {importedContacts.slice(0, 10).map((c, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "1.5fr 1.5fr 1fr",
+                                  padding: "5px 10px",
+                                  borderBottom: "1px solid var(--border-subtle)",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {c.name || "—"}
+                                </span>
+                                <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
+                                  {c.phoneE164}
+                                </span>
+                                <span style={{ textAlign: "right", color: "var(--color-action)", fontWeight: 600 }}>
+                                  Pronto
+                                </span>
+                              </div>
+                            ))}
+                            {importedContacts.length > 10 && (
+                              <div
+                                style={{
+                                  padding: "6px 10px",
+                                  textAlign: "center",
+                                  color: "var(--text-muted)",
+                                  fontSize: "0.75rem",
+                                }}
+                              >
+                                + {importedContacts.length - 10} outros contatos prontos para envio
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* C. Por Estágio do Funil */}
             {audienceType === "BY_STAGE" && (
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-                  Selecione a etapa dos contatos no funil comercial:
-                </span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                    Selecione a etapa dos contatos no funil comercial:
+                  </span>
+                  <Badge variant={smartCount && smartCount > 0 ? "action" : "neutral"}>
+                    {isLoadingSmartCount ? "Calculando..." : `${smartCount ?? 0} contatos nesta etapa`}
+                  </Badge>
+                </div>
                 <select
                   value={stage}
                   onChange={(e) => setStage(e.target.value)}
@@ -582,6 +1123,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
               </div>
             )}
 
+            {/* D. Manual */}
             {audienceType === "MANUAL" && (
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
@@ -714,15 +1256,15 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
               <div
                 style={{
                   padding: "10px 14px",
-                  backgroundColor: "rgba(139, 92, 246, 0.08)",
-                  border: "1px solid rgba(139, 92, 246, 0.3)",
+                  backgroundColor: "var(--color-ai-subtle)",
+                  border: "1px solid var(--color-ai-border)",
                   borderRadius: "var(--radius-md)",
                   display: "flex",
                   gap: "10px",
                   alignItems: "center",
                 }}
               >
-                <Sparkles size={18} color="#8b5cf6" style={{ flexShrink: 0 }} />
+                <Sparkles size={18} color="var(--color-ai)" style={{ flexShrink: 0 }} />
                 <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
                   <strong>Divisão 50/50 Automatizada:</strong> O sistema dividirá seu público igualmente. Você poderá comparar lado a lado a taxa de abertura, respostas e cliques no painel da campanha.
                 </span>
@@ -904,17 +1446,17 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                 isBillingBlocked
                   ? "Disparo travado: Cadastre o cartão no Meta Business Manager e confirme nas configurações de canais"
                   : !isChannelConnected
-                  ? "Canal selecionado está desconectado"
-                  : isAbTest
-                  ? "Iniciar Teste A/B 50/50"
-                  : "Iniciar disparo ativo"
+                    ? "Canal selecionado está desconectado"
+                    : isAbTest
+                      ? "Iniciar Teste A/B 50/50"
+                      : "Iniciar disparo ativo"
               }
             >
               {isBillingBlocked
                 ? "Disparo Travado (Sem Cartão Meta)"
                 : isAbTest
-                ? "Iniciar Teste A/B (50/50)"
-                : "Iniciar Disparo em Massa"}
+                  ? "Iniciar Teste A/B (50/50)"
+                  : "Iniciar Disparo em Massa"}
             </Button>
           </div>
         </form>

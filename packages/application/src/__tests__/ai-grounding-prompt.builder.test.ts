@@ -93,4 +93,45 @@ describe("AI Grounding Prompt Builder & Handoff Parser", () => {
     expect(prompt).toContain("Garanta seu voucher exclusivo de boas-vindas");
     expect(prompt).toContain("INSTRUÇÃO DE GANCHO: Na sua saudação ou resposta inicial");
   });
+
+  it("injects Pix instant closing instructions into grounded prompt", () => {
+    const config: GroundedAiConfig = {
+      name: "Sofia",
+      personality: "cordial_comercial",
+      strictMode: true,
+    };
+    const prompt = buildGroundedSystemPrompt(config, []);
+    expect(prompt).toContain("<fechamento_comercial_pix>");
+    expect(prompt).toContain("[OFFER_PIX: id_do_produto]");
+  });
+
+  it("parses [OFFER_PIX: <productId>] and cleans customer-facing reply text", () => {
+    const raw =
+      "Perfeito! Vou gerar o Pix agora para garantir sua vaga na promoção. [OFFER_PIX: 550e8400-e29b-41d4-a716-446655440000]";
+    const parsed = parseAiResponse(raw);
+    expect(parsed.needsHandoff).toBe(false);
+    expect(parsed.offerPixProductId).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(parsed.cleanReplyText).toBe(
+      "Perfeito! Vou gerar o Pix agora para garantir sua vaga na promoção."
+    );
+  });
+
+  it("parses [GERAR_PIX: <productId>] alias correctly", () => {
+    const raw = "Show de bola! Segue o Pix. [GERAR_PIX: prod-escova-lisa]";
+    const parsed = parseAiResponse(raw);
+    expect(parsed.offerPixProductId).toBe("prod-escova-lisa");
+    expect(parsed.cleanReplyText).toBe("Show de bola! Segue o Pix.");
+  });
+
+  it("parses both [HUMAN_HANDOFF] and [OFFER_PIX] when present simultaneously", () => {
+    const raw =
+      "Vou avisar o financeiro para acompanhar seu pagamento! [OFFER_PIX: prod-1] [HUMAN_HANDOFF: Cliente solicitou nota fiscal]";
+    const parsed = parseAiResponse(raw);
+    expect(parsed.needsHandoff).toBe(true);
+    expect(parsed.handoffReason).toBe("Cliente solicitou nota fiscal");
+    expect(parsed.offerPixProductId).toBe("prod-1");
+    expect(parsed.cleanReplyText).toBe(
+      "Vou avisar o financeiro para acompanhar seu pagamento!"
+    );
+  });
 });

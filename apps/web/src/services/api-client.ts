@@ -1818,6 +1818,25 @@ export class ApiClient {
     });
   }
 
+  async getAudienceCount(
+    workspaceId: string,
+    params: {
+      type: "ALL_CONTACTS" | "BY_STAGE" | "SMART_FILTER";
+      stage?: string;
+      smartFilter?: "NON_BUYERS" | "INACTIVE_30_DAYS" | "CTWA_RESCUE";
+    },
+    options?: RequestOptions
+  ): Promise<{ success: boolean; count: number; type: string; stage?: string; smartFilter?: string }> {
+    const q = new URLSearchParams();
+    q.set("type", params.type);
+    if (params.stage) q.set("stage", params.stage);
+    if (params.smartFilter) q.set("smartFilter", params.smartFilter);
+    return this.request(`/v1/workspaces/${workspaceId}/broadcasts/audience-count?${q.toString()}`, {
+      ...options,
+      workspaceId,
+    });
+  }
+
   async createBroadcast(
     workspaceId: string,
     payload: {
@@ -1827,9 +1846,11 @@ export class ApiClient {
       isAbTest?: boolean;
       variantBTemplateId?: string;
       audience: {
-        type: "ALL_CONTACTS" | "BY_STAGE" | "MANUAL";
+        type: "ALL_CONTACTS" | "BY_STAGE" | "MANUAL" | "IMPORT_LIST" | "SMART_FILTER";
         stage?: string;
         customPhoneNumbers?: string[];
+        importedContacts?: Array<{ phoneE164: string; name?: string | null }>;
+        smartFilter?: "NON_BUYERS" | "INACTIVE_30_DAYS" | "CTWA_RESCUE";
       };
       variables?: Record<string, string>;
       variantBVariables?: Record<string, string>;

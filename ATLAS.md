@@ -66,6 +66,14 @@
 - **Watchdog de Auto-Cura:** Sentinela no crontab a cada 5 minutos monitorando `https://crm.iaparavendas.tech/ready`, reiniciando automaticamente a API em caso de 3 falhas consecutivas e alertando caso o disco ultrapasse 85%.
 - **Log Caps:** Limite rígido de logs no Docker Compose fixado em 20 MB por arquivo e máximo de 3 arquivos por container.
 
+### 2.8 Disparos em Massa com Importador Inteligente & Fechamento Pix na IA
+- **Importador de Planilhas (CSV/XLSX/XLS):** Drag-and-drop no cliente com pré-visualização de auditoria, deduplicação em memória e sanitizador estrito para números brasileiros E.164 (DDD + 9 dígitos móveis, normalização de prefixos `55` e `0`, e rejeição determinística de fixos). Inserção transacional não-destrutiva via `createOrGetContact` com `ON CONFLICT DO UPDATE`, preservando integridade referencial e histórico de conversas.
+- **Segmentação Dinâmica (`SMART_FILTER`):** Filtros nativos sob RLS para reativação comercial (`NON_BUYERS` para leads sem compras pagas, `INACTIVE_30_DAYS` para inativos há mais de 30 dias sem nova mensagem/proposta, `CTWA_RESCUE` para leads oriundos de anúncios Meta sem conversão) com endpoint `GET /v1/workspaces/:workspaceId/broadcasts/audience-count` para contagem em tempo real antes de disparar.
+- **Fechamento Instantâneo de Ofertas com Pix na IA (`<fechamento_comercial_pix>`):**
+  - Prompt Grounding Dual-Engine instrui a IA a emitir a tag canônica `[OFFER_PIX: <productId>]` quando o lead aceitar uma oferta ou demonstrar intenção de compra ("quero", "manda o pix", "fechado").
+  - O `AiReceptionistProcessor` intercepta a tag, emite o código Pix Copia e Cola EMV oficial BACEN via `createPixCharge` do `@sos-sales/database` utilizando a chave Pix cadastrada no workspace e anexa a instrução de pagamento em bloco de código monoespaçado formatado para WhatsApp.
+  - Zero risco de parada: se o workspace não tiver chave cadastrada, a IA envia a resposta conversacional normalmente sem interromper o atendimento.
+
 ---
 
 ## 3. Diretrizes de Segurança e Isolamento

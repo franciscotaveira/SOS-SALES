@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { Pool } from "pg";
 import {
   withWorkerTransaction,
+  createPixCharge,
 } from "@sos-sales/database";
 import {
   buildGroundedSystemPrompt,
@@ -33,6 +34,7 @@ export interface AiReceptionistResult {
   replyText?: string;
   needsHandoff?: boolean;
   handoffReason?: string;
+  generatedPixChargeId?: string | null;
   provider?: string;
   model?: string;
 }
@@ -53,6 +55,7 @@ export class AiReceptionistProcessor {
       workspaceId,
       channelInstanceId,
       threadId,
+      contactId,
       inboundMessageId,
       inboundBody,
       senderPhoneE164,
@@ -310,8 +313,62 @@ export class AiReceptionistProcessor {
           );
         }
 
-        // 11. Enqueue outbound message and outbox command if there is reply text
-        if (parsed.cleanReplyText && parsed.cleanReplyText.trim()) {
+        // 11. Handle automatic Pix generation if AI flagged OFFER_PIX
+        let replyBodyToSend = parsed.cleanReplyText ? parsed.cleanReplyText.trim() : "";
+        let generatedPixChargeId: string | null = null;
+
+        if (parsed.offerPixProductId) {
+          const targetProduct = products.find((p) => p.id === parsed.offerPixProductId);
+          if (targetProduct) {
+            try {
+              const pixCharge = await createPixCharge(client, {
+                workspaceId,
+                threadId,
+                contactId,
+                productId: targetProduct.id,
+                title: targetProduct.title,
+                amountCents: targetProduct.priceCents,
+                expiresMinutes: 30,
+              });
+
+              generatedPixChargeId = pixCharge.id;
+
+              const reais = (targetProduct.priceCents / 100).toLocaleString("pt-BR", {
+                style: "currency",
+                currency: "BRL",
+              });
+
+              const pixSnippet = `\n\n⚡ *PAGAMENTO INSTANTÂNEO VIA PIX*\n📦 *Item:* ${targetProduct.title}\n💰 *Valor:* ${reais}\n⏳ *Validade:* 30 minutos\n\n*Código Pix Copia e Cola:*\n\`\`\`\n${pixCharge.pix_code}\n\`\`\`\n_Copie o código acima e cole na opção "Pix Copia e Cola" no app do seu banco para confirmar sua vaga na hora!_`;
+
+              replyBodyToSend = (replyBodyToSend ? `${replyBodyToSend}\n` : "") + pixSnippet;
+
+              logger.info(
+                {
+                  workspaceId,
+                  threadId,
+                  contactId,
+                  productId: targetProduct.id,
+                  chargeId: pixCharge.id,
+                  amountCents: targetProduct.priceCents,
+                },
+                "AI Receptionist generated Pix Copia e Cola for instant offer closing"
+              );
+            } catch (pixErr: unknown) {
+              logger.warn(
+                {
+                  workspaceId,
+                  threadId,
+                  productId: targetProduct.id,
+                  error: pixErr instanceof Error ? pixErr.message : String(pixErr),
+                },
+                "Could not generate Pix charge in AI Receptionist"
+              );
+            }
+          }
+        }
+
+        // 12. Enqueue outbound message and outbox command if there is reply text
+        if (replyBodyToSend) {
           const idempotencyKey = `ai-reply-${inboundMessageId}`;
           const payloadFingerprint = crypto
             .createHash("sha256")
@@ -321,7 +378,7 @@ export class AiReceptionistProcessor {
                 channelInstanceId,
                 threadId,
                 recipientPhoneE164: senderPhoneE164,
-                body: parsed.cleanReplyText.trim(),
+                body: replyBodyToSend,
                 idempotencyKey,
               })
             )
@@ -346,7 +403,7 @@ export class AiReceptionistProcessor {
               channel.provider,
               channel.phone_number_e164 || recipientPhoneE164,
               senderPhoneE164,
-              parsed.cleanReplyText.trim(),
+              replyBodyToSend,
               JSON.stringify({
                 source: "ai_receptionist",
                 agentName: aiConfig.name,
@@ -354,6 +411,8 @@ export class AiReceptionistProcessor {
                 model: completion.model,
                 needsHandoff: parsed.needsHandoff,
                 handoffReason: parsed.handoffReason || null,
+                generatedPixChargeId,
+                offerPixProductId: parsed.offerPixProductId || null,
               }),
             ]
           );
@@ -380,7 +439,7 @@ export class AiReceptionistProcessor {
               threadId,
               outboundMessageId,
               senderPhoneE164,
-              parsed.cleanReplyText.trim(),
+              replyBodyToSend,
               idempotencyKey,
               payloadFingerprint,
             ]
@@ -393,6 +452,7 @@ export class AiReceptionistProcessor {
               outboundMessageId,
               idempotencyKey,
               needsHandoff: parsed.needsHandoff,
+              hasPix: Boolean(generatedPixChargeId),
               provider: completion.provider,
               model: completion.model,
             },
@@ -402,9 +462,10 @@ export class AiReceptionistProcessor {
 
         return {
           handled: true,
-          replyText: parsed.cleanReplyText,
+          replyText: replyBodyToSend,
           needsHandoff: parsed.needsHandoff,
           handoffReason: parsed.handoffReason,
+          generatedPixChargeId,
           provider: completion.provider,
           model: completion.model,
         };

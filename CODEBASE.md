@@ -298,5 +298,47 @@ A infraestrutura de automações externas da MCT LTDA está centralizada em um d
   - Limite de logs em `docker-compose.prod.yml` fixado em `max-size: 20m` e `max-file: 3`.
   - Limpeza semanal de cache de compilação do Docker aos domingos às 04:00 AM (`docker builder prune -f --filter "until=168h"`).
 
+---
+
+## 11. MOTOR DE DISPAROS EM MASSA, IMPORTADOR INTELIGENTE & FECHAMENTO PIX NA IA
+
+### 11.1 Importador de Planilhas & Sanitização E.164 Determinística
+- **Componente:** `BroadcastTemplateDialog.tsx`
+  - Suporte completo a planilhas `.csv`, `.xlsx` e `.xls` processadas client-side via biblioteca `xlsx`.
+  - Auto-detecção de colunas de telefone (`telefone`, `celular`, `phone`, `whatsapp`, `contato`) e nome (`nome`, `name`, `cliente`, `contato`).
+  - Fallback resiliente: caso o cabeçalho seja atípico, realiza varredura celular por expressão regular de dígitos telefônicos.
+  - Sanitizador `sanitizeBrazilianPhoneE164`:
+    - Remove caracteres não numéricos.
+    - Lida com prefixos nacionais (`55`) e discagem com zero (`049...`).
+    - Validação de DDDs válidos brasileiros (11 a 99).
+    - Inserção transparente do 9º dígito em números legados de 8 dígitos (`XX9XXXXXXXX`).
+    - Rejeição e descarte determinístico de números fixos (`+55XX[2-5]...`) e comprimentos inválidos.
+  - Painel de auditoria visual pré-envio exibindo contadores de **Válidos**, **Duplicados** e **Descartados**, com tabela de amostra dos primeiros 10 contatos.
+- **Inserção Segura no Backend:**
+  - `POST /v1/workspaces/:workspaceId/broadcasts` com `audience.type: "IMPORT_LIST"` e lista `importedContacts: Array<{ phoneE164, name? }>`.
+  - Inserção não-destrutiva via repositório `createOrGetContact` com `ON CONFLICT (workspace_id, phone_e164) DO UPDATE`, preservando integridade referencial, histórico de conversas e threads já existentes.
+
+### 11.2 Segmentação de Audiência Dinâmica & Smart Filters (`SMART_FILTER`)
+- **Filtros Nativos SQL sob RLS:**
+  - `NON_BUYERS`: Localiza contatos cadastrados que nunca concluíram uma compra com status `PAID` em `public.commercial_proposals`.
+  - `INACTIVE_30_DAYS`: Contatos sem atividade de mensagem (`messages`) ou proposta comercial nos últimos 30 dias.
+  - `CTWA_RESCUE`: Contatos originados de campanhas pagas do Meta Ads (`commercial_journeys.ad_headline IS NOT NULL` ou origem CTWA) que não converteram em vendas pagas.
+- **Endpoint de Contagem ao Vivo:**
+  - `GET /v1/workspaces/:workspaceId/broadcasts/audience-count`:
+  - Aceita query params `type`, `smartFilter`, `stage` e retorna `{ success: true, count: number }` de forma ultra-rápida, alimentando badges dinâmicos no modal antes do operador clicar em disparar.
+
+### 11.3 Fechamento Automático de Ofertas com Pix na IA (`<fechamento_comercial_pix>`)
+- **Camada no Prompt Grounding (`ai-grounding-prompt.builder.ts`):**
+  - Instrução explícita para o modelo: ao reconhecer intenção de compra ou aceitação de oferta ("quero", "manda o pix", "fechado"), responder confirmando o pedido e emitir a tag técnica `[OFFER_PIX: <productId>]`.
+  - O modelo é estritamente proibido de inventar chaves ou códigos Pix no texto (Truth in Data).
+- **Extração e Desacoplamento de Tags (`parseAiResponse`):**
+  - Regex aprimorada `/\[(?:OFFER_PIX|GERAR_PIX):\s*([^\]]+)\]/i` extrai o identificador do produto e higieniza o texto que vai para o WhatsApp do cliente.
+- **Emissão Transacional no Worker (`ai-receptionist.processor.ts`):**
+  - Busca o produto correspondente no catálogo homologado `public.products`.
+  - Chama `createPixCharge` do `@sos-sales/database` passando `workspaceId`, `threadId`, `contactId`, `productId`, `title`, `amountCents` e validade de 30 minutos.
+  - Consulta a chave Pix padrão do workspace (`workspaces.default_pix_key`) e gera o payload oficial BACEN EMV Copia e Cola com cálculo de CRC16-CCITT.
+  - Anexa o snippet formatado com código monoespaçado na mensagem que é enfileirada no Outbox transacional (`commercial_outbox_queue`).
+  - Fallback gracioso com log de auditoria: caso o workspace não possua chave cadastrada, a mensagem conversacional da IA segue normalmente para o cliente sem interromper a thread.
+
 
 
