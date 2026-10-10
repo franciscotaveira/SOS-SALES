@@ -370,8 +370,28 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                       <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
                         <Radio size={12} /> {camp.channel.name}
                       </span>
-                      <span>·</span>
-                      <span>Público: <strong>{camp.audienceType === "ALL_CONTACTS" ? "Todos Ativos" : camp.audienceType === "BY_STAGE" ? `Estágio ${camp.audienceStage}` : "Lista Manual"}</strong></span>
+                      <span>
+                        Público:{" "}
+                        <strong>
+                          {camp.audienceType === "ALL_CONTACTS"
+                            ? "Todos Ativos"
+                            : camp.audienceType === "BY_STAGE"
+                            ? `Estágio ${camp.audienceStage}`
+                            : camp.audienceType === "SMART_FILTER"
+                            ? `Filtro Inteligente (${
+                                camp.audienceStage === "NON_BUYERS"
+                                  ? "Não Compradores"
+                                  : camp.audienceStage === "INACTIVE_30_DAYS"
+                                  ? "Inativos > 30d"
+                                  : camp.audienceStage === "CTWA_RESCUE"
+                                  ? "Leads de Anúncio Meta"
+                                  : camp.audienceStage || "Segmentado"
+                              })`
+                            : camp.audienceType === "IMPORT_LIST"
+                            ? "Planilha Importada"
+                            : "Lista Manual"}
+                        </strong>
+                      </span>
                     </div>
                   </div>
 

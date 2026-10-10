@@ -340,5 +340,16 @@ A infraestrutura de automações externas da MCT LTDA está centralizada em um d
   - Anexa o snippet formatado com código monoespaçado na mensagem que é enfileirada no Outbox transacional (`commercial_outbox_queue`).
   - Fallback gracioso com log de auditoria: caso o workspace não possua chave cadastrada, a mensagem conversacional da IA segue normalmente para o cliente sem interromper a thread.
 
-
-
+### 11.4 Conciliação Pix em Tempo Real, Recibo Automático no WhatsApp & Cockpit Cashier
+- **Serviço de Notificação Transacional (`pix-notification.ts`):**
+  - Ao liquidar uma cobrança Pix (tanto na conferência manual de caixa quanto no webhook bancário via PSP), a função `enqueuePixConfirmationMessage` localiza a instância do canal e o telefone do contato e insere atomicamente:
+    1. Uma mensagem outbound formatada no WhatsApp (`🎉 *PAGAMENTO CONFIRMADO!* ...`) em `public.messages` com `metadata.source = 'pix_confirmation'` e `chargeId`.
+    2. Um comando no Outbox transacional (`public.outbound_commands`) com status `'pending'` e chave de idempotência `pix-confirm-${charge.id}`.
+- **Cockpit Cashier & Histórico de Cobranças (`PixDrawer.tsx`):**
+  - Navegação entre "Cobranças da Conversa" e "Nova Cobrança" com `SegmentedControl`.
+  - Visualização em tempo real das cobranças geradas para o contato com badges de status (`PENDING`, `PAID`, `EXPIRED`), valor formatado e data/hora.
+  - Ação de Caixa de 1 clique: botão "Confirmar Recebimento (Caixa)" para cobranças pendentes, chamando `POST /v1/workspaces/:workspaceId/pix-charges/:chargeId/confirm-payment`, atualizando o status na interface e disparando o recibo no WhatsApp.
+  - Copiar Chave Copia e Cola e visualizador de QR Code sob demanda.
+- **Identificação Visual na Mensagem (`MessageBubble.tsx`):**
+  - Mensagens com `metadata.source === 'pix_confirmation'` são renderizadas com destaque esmeralda e badge "🎉 Recibo Pix Confirmado".
+  - Mensagens geradas com cobrança Pix exibem badge informativo "⚡ Cobrança Pix Gerada".

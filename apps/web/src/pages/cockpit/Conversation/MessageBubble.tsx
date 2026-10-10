@@ -156,6 +156,16 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
     return Boolean(meta?.needsHandoff);
   }, [message.metadata]);
 
+  const isPixConfirmation = useMemo(() => {
+    const meta = message.metadata as Record<string, unknown> | undefined;
+    return meta?.source === "pix_confirmation";
+  }, [message.metadata]);
+
+  const hasPixCharge = useMemo(() => {
+    const meta = message.metadata as Record<string, unknown> | undefined;
+    return Boolean(meta?.generatedPixChargeId || meta?.chargeId);
+  }, [message.metadata]);
+
   const renderStatus = () => {
     if (!isOutbound) return null;
     switch (message.deliveryStatus) {
@@ -310,10 +320,14 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
       <div
         style={{
           maxWidth: "min(640px, 85%)",
-          backgroundColor: isOutbound
+          backgroundColor: isPixConfirmation
+            ? "rgba(16, 185, 129, 0.08)"
+            : isOutbound
             ? "var(--color-action-subtle)"
             : "var(--bg-surface)",
-          border: isOutbound
+          border: isPixConfirmation
+            ? "1px solid var(--color-action)"
+            : isOutbound
             ? "1px solid rgba(0, 128, 105, 0.15)"
             : "1px solid var(--border-default)",
           borderRadius: "var(--radius-lg, 12px)",
@@ -325,6 +339,59 @@ export const MessageBubble: FC<MessageBubbleProps> = ({ message }) => {
           position: "relative",
         }}
       >
+        {isPixConfirmation && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              marginBottom: "6px",
+              fontSize: "11px",
+              fontWeight: 700,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "2px 8px",
+                borderRadius: "4px",
+                backgroundColor: "rgba(16, 185, 129, 0.15)",
+                color: "var(--color-primary, #10b981)",
+              }}
+            >
+              🎉 Recibo Pix Confirmado
+            </span>
+          </div>
+        )}
+
+        {hasPixCharge && !isPixConfirmation && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              marginBottom: "6px",
+              fontSize: "10px",
+              fontWeight: 600,
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "2px 6px",
+                borderRadius: "4px",
+                backgroundColor: "rgba(245, 158, 11, 0.12)",
+                color: "#b45309",
+              }}
+            >
+              ⚡ Cobrança Pix Anexada
+            </span>
+          </div>
+        )}
         {isAiGenerated && (
           <div
             style={{

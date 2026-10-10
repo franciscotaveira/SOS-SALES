@@ -8,6 +8,7 @@ import {
   createCommercialJourney,
   recordCommercialOutcome,
 } from "@sos-sales/database";
+import { enqueuePixConfirmationMessage } from "../services/pix-notification";
 
 const workspaceParamsSchema = z.object({
   workspaceId: z.string().uuid(),
@@ -259,6 +260,9 @@ export const pixRoutes: FastifyPluginAsync = async (app) => {
                 reason: "Liquidação Pix confirmada pelo operador",
                 registeredByUserId: actorUserId,
               });
+
+              // Enqueue celebratory payment confirmation message to WhatsApp thread
+              await enqueuePixConfirmationMessage(client, workspaceId, res.charge);
             }
 
             return res;

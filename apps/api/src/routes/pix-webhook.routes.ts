@@ -7,6 +7,7 @@ import {
   createCommercialJourney,
   recordCommercialOutcome,
 } from "@sos-sales/database";
+import { enqueuePixConfirmationMessage } from "../services/pix-notification";
 
 const SIGNATURE_WINDOW_MS = 5 * 60 * 1000;
 const MAX_BODY_BYTES = 64 * 1024;
@@ -172,6 +173,9 @@ export const pixWebhookRoutes: FastifyPluginAsync<PixWebhookRoutesOptions> = asy
             reason: `Liquidação Pix automática via webhook bancário (${event.eventId})`,
             registeredByUserId: actorUserId,
           });
+
+          // Enqueue celebratory payment confirmation message to WhatsApp thread
+          await enqueuePixConfirmationMessage(client, workspaceId, res.charge);
         }
 
         return res;
