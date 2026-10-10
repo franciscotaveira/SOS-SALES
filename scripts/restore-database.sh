@@ -16,7 +16,7 @@ BACKUP_ENC="$1"
 TARGET_DB="${2:-sos_sales_v3}"
 ENV_FILE="${ENV_FILE:-/opt/chat-sales-v3/.env}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-sos-sales-postgres}"
-DB_USER="${DB_USER:-sos_migration_owner}"
+DB_USER="${DB_USER:-sos_user}"
 
 if [[ ! -f "${BACKUP_ENC}" ]]; then
   echo "Erro: Arquivo de backup não encontrado: ${BACKUP_ENC}"

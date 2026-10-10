@@ -10,7 +10,7 @@ ENV_FILE="${ENV_FILE:-/opt/chat-sales-v3/.env}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/sos-sales/backups/daily}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-sos-sales-postgres}"
 DB_NAME="${DB_NAME:-sos_sales_v3}"
-DB_USER="${DB_USER:-sos_migration_owner}"
+DB_USER="${DB_USER:-sos_user}"
 RETENTION_DAYS="${RETENTION_DAYS:-7}"
 
 log() {
