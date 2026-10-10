@@ -234,4 +234,69 @@ A infraestrutura de automações externas da MCT LTDA está centralizada em um d
   - Reescreve dinamicamente URLs legadas internas (`waha:3000/api/files/...`) para a rota autenticada `/media/proxy`.
   - Renderização nativa: Player de áudio HTML5 com microfone e controle de reprodução, player de vídeo com controles e aspect ratio contido, card de documento com botão de download seguro e visualizador de imagem responsivo.
 
+---
+
+## 9. AUTENTICAÇÃO SOBERANA & GESTÃO DE EQUIPE MULTI-TENANT (MCT OS v2.0)
+
+### 9.1 Motor Criptográfico Nativo (Scrypt)
+- Implementado em `@sos-sales/auth` (`password-hasher.ts`):
+  - Formato serializado canônico: `scrypt:<salt_hex>:<hash_hex>`.
+  - Salt criptográfico pseudo-randômico de 16 bytes (`crypto.randomBytes`).
+  - Comparação estrita com tempo constante (`crypto.timingSafeEqual`) eliminando timing-attacks.
+  - Zero dependência externa de pacotes compilados (100% biblioteca padrão `node:crypto`).
+
+### 9.2 Endpoints de Autenticação e Multi-Tenancy
+- `POST /v1/auth/login`:
+  - Recebe `{ email, password, workspaceId? }`.
+  - Busca usuário por `LOWER(email)` e valida senha via `verifyPassword`.
+  - Resolve workspaces do usuário via função `SECURITY DEFINER` `getUserWorkspaces(user.id)`.
+  - Emite token JWT de 7 dias com payload assinado (`sub: user.id`, `email`, `role`, `workspace_id`).
+- `POST /v1/auth/switch-workspace`:
+  - Recebe `{ workspaceId }`.
+  - Valida se o usuário autenticado possui vínculo ativo naquele tenant.
+  - Emite novo JWT com escopo atualizado sem exigir reautenticação de senha.
+
+### 9.3 Gestão de Equipe & Acessos por Workspace
+- Rotas governadas sob isolamento RLS estrito:
+  - `GET /v1/workspaces/:workspaceId/members`: Lista membros do tenant ativo.
+  - `POST /v1/workspaces/:workspaceId/members`: Convida/cria membro com papel (`admin`, `manager`, `operator`) e senha inicial criptografada.
+  - `PATCH /v1/workspaces/:workspaceId/members/:memberId`: Altera cargo e/ou redefine senha.
+  - `DELETE /v1/workspaces/:workspaceId/members/:memberId`: Remove membro (com guarda contra exclusão do proprietário ou auto-exclusão).
+- **Cockpit Comercial (`SettingsPage.tsx` -> `TeamSection.tsx`):**
+  - Aba "Equipe & Acessos" com listagem visual de membros, badges de permissão, modal de cadastro com geração e cópia de senha em um clique, edição de perfil e confirmação de remoção.
+
+---
+
+## 10. BLINDAGEM OPERACIONAL SAAS & DISASTER RECOVERY (MCT OS v2.0)
+
+### 10.1 Perímetro de Segurança & WAF (`SecurityShield`)
+- Implementado em `apps/api/src/services/security-shield.ts` e ativado no hook `onRequest`:
+  - **WAF & Anti-Scanner:** Intercepta ferramentas ofensivas automatizadas (`sqlmap`, `nikto`, `masscan`, `dirbuster`, `nmap`) e sondagens de arquivos sensíveis (`/.env`, `/wp-login.php`, `/.git`, `/dump.sql`, path traversal `../`).
+  - **IP Auto-Jail:** Bloqueia imediatamente o IP do atacante por 15 minutos via chave volátil atômica no Redis (`sos:shield:jail:<ip>`), respondendo com `HTTP 403 Forbidden` e `Retry-After: 900`.
+  - **Anti-Brute-Force & Credential Stuffing:** Teto de 10 tentativas de login por minuto por IP e travamento de segurança da conta alvo após 5 falhas consecutivas de senha por 5 minutos.
+  - **Mitigação de Timing Attack / User Enumeration:** Execução de scrypt dummy em e-mails inexistentes para equiparar a latência de resposta a contas existentes.
+  - **Rate Limiting Global:** Cota de 120 requisições por minuto por IP em todos os endpoints `/v1/*` com injeção de cabeçalhos RFC 6585 (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`).
+  - **Cabeçalhos OWASP:** Injetados em todas as respostas pelo Fastify e Caddy (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`, e supressão do header `Server`).
+
+### 10.2 Motor de Backup & Recuperação de Desastres (RTO < 20 min / RPO < 24 h)
+- **Rotina Diária (`scripts/backup-database.sh`):**
+  - Executado diariamente às 03:00 AM via crontab do host.
+  - Executa `pg_dump` transacional do banco `sos_sales_v3` com o superuser `sos_user` (Bypass RLS habilitado).
+  - Compactação máxima `gzip -9` e encriptação simétrica militar AES-256-CBC com derivação PBKDF2 (`openssl`).
+  - Teste de integridade em memória do fluxo descriptografado antes de confirmar a gravação.
+  - Rotação automática retendo os últimos 7 dias em `/opt/sos-sales/backups/daily/`.
+- **Restauração Assistida (`scripts/restore-database.sh`):**
+  - Decodificação, teste de senha e injeção controlada de dump com trava de confirmação contra sobrescrita acidental.
+
+### 10.3 Watchdog de Auto-Cura & Higiene de Recursos
+- **Sentinela (`scripts/healthcheck-watchdog.sh`):**
+  - Executado a cada 5 minutos via crontab do host.
+  - Monitora `https://crm.iaparavendas.tech/ready` (validando conectividade de aplicação, banco Postgres e Redis).
+  - Auto-cura: em caso de 3 falhas consecutivas de probe, reinicia o container `chat-sales-api` automaticamente e registra log com timestamp em `/var/log/chat-sales-watchdog.log`.
+  - Alerta de capacidade: emite alerta crítico se o disco ultrapassar 85% de uso.
+- **Higiene de Disco e Logs:**
+  - Limite de logs em `docker-compose.prod.yml` fixado em `max-size: 20m` e `max-file: 3`.
+  - Limpeza semanal de cache de compilação do Docker aos domingos às 04:00 AM (`docker builder prune -f --filter "until=168h"`).
+
+
 
