@@ -16,6 +16,15 @@ export interface WorkspaceSummary {
   role: string;
 }
 
+export interface WorkspaceMember {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: "owner" | "admin" | "manager" | "operator";
+  joinedAt: string;
+}
+
 export interface MeResponse {
   user: MeUser;
   workspaces: WorkspaceSummary[];
@@ -587,6 +596,34 @@ export class ApiClient {
     }
   }
 
+  async loginWithPassword(
+    payload: { email: string; password: string; workspaceId?: string },
+    options?: RequestOptions
+  ): Promise<{ token: string; user: MeUser; workspaces: WorkspaceSummary[] }> {
+    return this.request<{ token: string; user: MeUser; workspaces: WorkspaceSummary[] }>(
+      "/v1/auth/login",
+      {
+        ...options,
+        method: "POST",
+        body: payload,
+      }
+    );
+  }
+
+  async switchWorkspace(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ token: string; user: MeUser; workspaces: WorkspaceSummary[] }> {
+    return this.request<{ token: string; user: MeUser; workspaces: WorkspaceSummary[] }>(
+      "/v1/auth/switch-workspace",
+      {
+        ...options,
+        method: "POST",
+        body: { workspaceId },
+      }
+    );
+  }
+
   async requestAuthSession(
     payload: { email: string; accessKey?: string },
     options?: RequestOptions
@@ -597,6 +634,67 @@ export class ApiClient {
         ...options,
         method: "POST",
         body: payload,
+      }
+    );
+  }
+
+  async getWorkspaceMembers(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ members: WorkspaceMember[] }> {
+    return this.request<{ members: WorkspaceMember[] }>(
+      `/v1/workspaces/${workspaceId}/members`,
+      {
+        ...options,
+        workspaceId,
+      }
+    );
+  }
+
+  async addWorkspaceMember(
+    workspaceId: string,
+    payload: { name: string; email: string; role: "admin" | "manager" | "operator"; password?: string },
+    options?: RequestOptions
+  ): Promise<{ member: WorkspaceMember; initialPassword?: string }> {
+    return this.request<{ member: WorkspaceMember; initialPassword?: string }>(
+      `/v1/workspaces/${workspaceId}/members`,
+      {
+        ...options,
+        method: "POST",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
+
+  async updateWorkspaceMember(
+    workspaceId: string,
+    memberId: string,
+    payload: { role?: "admin" | "manager" | "operator"; password?: string },
+    options?: RequestOptions
+  ): Promise<{ member: WorkspaceMember }> {
+    return this.request<{ member: WorkspaceMember }>(
+      `/v1/workspaces/${workspaceId}/members/${memberId}`,
+      {
+        ...options,
+        method: "PATCH",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
+
+  async removeWorkspaceMember(
+    workspaceId: string,
+    memberId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; message?: string }> {
+    return this.request<{ success: boolean; message?: string }>(
+      `/v1/workspaces/${workspaceId}/members/${memberId}`,
+      {
+        ...options,
+        method: "DELETE",
+        workspaceId,
       }
     );
   }

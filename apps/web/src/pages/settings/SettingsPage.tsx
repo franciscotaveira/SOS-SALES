@@ -1,10 +1,11 @@
 import { useState, useEffect, type FC } from "react";
 import { PageHeader, useBreakpoint } from "@sos-sales/ui";
-import { Radio, Bot, QrCode, AlertTriangle, Braces } from "lucide-react";
+import { Radio, Bot, QrCode, AlertTriangle, Braces, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { UseSessionReturn } from "../../hooks/useSession";
 import { apiClient, type ChannelSummary } from "../../services/api-client";
 import { ChannelsSection } from "./ChannelsSection";
+import { TeamSection } from "./TeamSection";
 import { AiAgentSection } from "./AiAgentSection";
 import { PixSection } from "./PixSection";
 import { DangerSection } from "./DangerSection";
@@ -12,7 +13,7 @@ import { IntegrationsSection } from "./IntegrationsSection";
 import { ChannelWizardDialog } from "./ChannelWizardDialog";
 import { QrCodeDialog } from "./QrCodeDialog";
 
-type SettingsTab = "canais" | "ia" | "pix" | "integracoes" | "perigo";
+type SettingsTab = "canais" | "equipe" | "ia" | "pix" | "integracoes" | "perigo";
 
 export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => {
   const { activeWorkspace, token } = session;
@@ -155,6 +156,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
 
   const tabs: Array<{ id: SettingsTab; label: string; icon: LucideIcon }> = [
     { id: "canais", label: "Canais WhatsApp", icon: Radio },
+    { id: "equipe", label: "Equipe & Acessos", icon: Users },
     { id: "ia", label: "Atendimento IA & Skills", icon: Bot },
     { id: "pix", label: "Cobrança Pix", icon: QrCode },
     { id: "integracoes", label: "API & Webhooks", icon: Braces },
@@ -264,6 +266,7 @@ export const SettingsPage: FC<{ session: UseSessionReturn }> = ({ session }) => 
                 onToggleBilling={handleToggleBilling}
               />
             )}
+            {activeTab === "equipe" && <TeamSection session={session} />}
             {activeTab === "ia" && <AiAgentSection workspaceId={activeWorkspace?.id} token={token ?? undefined} />}
             {activeTab === "pix" && <PixSection session={session} />}
             {activeTab === "integracoes" && <IntegrationsSection session={session} />}
