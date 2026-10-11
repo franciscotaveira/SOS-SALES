@@ -16,6 +16,15 @@ export interface WorkspaceSummary {
   role: string;
 }
 
+export interface WorkspaceMember {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: "owner" | "admin" | "manager" | "operator";
+  joinedAt: string;
+}
+
 export interface MeResponse {
   user: MeUser;
   workspaces: WorkspaceSummary[];
@@ -102,6 +111,7 @@ export interface RequestOptions {
   token?: string | null;
   workspaceId?: string | null;
   correlationId?: string;
+  isPublic?: boolean;
 }
 
 export interface ChannelSummary {
@@ -111,6 +121,8 @@ export interface ChannelSummary {
   displayName: string;
   phoneNumberE164: string | null;
   isActive: boolean;
+  metaBillingConfigured?: boolean;
+  metaBillingAccountId?: string | null;
   status?: "connected" | "revoked" | "configuring" | "unconfigured" | "error";
   environment?: "production_certified" | "lab_local";
   createdAt: string;
@@ -127,6 +139,8 @@ export interface CommercialThreadSummary {
   contactPhone: string;
   contactName: string | null;
   status: "active" | "waiting_client" | "waiting_human" | "closed";
+  handoffReason?: string | null;
+  handoffAt?: string | null;
   lastMessageAt: string;
   lastMessage: {
     body: string;
@@ -141,6 +155,9 @@ export interface CommercialThreadSummary {
     status: string;
     assigneeUserId: string | null;
   } | null;
+  fepExpiresAt?: string | null;
+  attributionSource?: string | null;
+  journeyStage?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -365,7 +382,7 @@ export interface IntegrationSuggestionSummary {
   draftMessage: string | null;
   priority: "low" | "normal" | "high" | "urgent";
   metadata: Record<string, unknown>;
-  status: "pending" | "accepted" | "dismissed" | "expired";
+  status: "pending" | "accepted" | "dismissed" | "expired" | "invalidated";
   stateVersion: number;
   decidedByUserId: string | null;
   decidedAt: string | null;
@@ -421,13 +438,44 @@ export interface SendOutboundMessagePayload {
   idempotencyKey?: string;
 }
 
+export interface UploadMediaResponse {
+  mediaUrl: string;
+  expiresInSeconds: number;
+  contentType: string;
+  category: "image" | "audio" | "video" | "document";
+  sizeBytes: number;
+  fileName: string;
+}
+
 export interface ContactSummary {
   id: string;
   workspaceId: string;
   phoneE164: string;
   name: string | null;
+  optOut: boolean;
+  metadata: {
+    email?: string;
+    company?: string;
+    notes?: string;
+    tags?: string[];
+  };
   createdAt: string;
   updatedAt: string;
+}
+
+export type JourneyStage = "lead" | "qualified" | "proposal" | "scheduled" | "won" | "lost";
+
+export interface JourneySummary {
+  id: string;
+  contactId: string;
+  threadId?: string | null;
+  title: string | null;
+  stage: JourneyStage;
+  status?: string;
+  attributionSource?: string | null;
+  estimatedValueCents: number | null;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export class ApiClient {
@@ -520,6 +568,10 @@ export class ApiClient {
       );
     }
 
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
       throw new NetworkError(`Resposta inesperada do servidor (${response.status})`);
@@ -544,6 +596,34 @@ export class ApiClient {
     }
   }
 
+  async loginWithPassword(
+    payload: { email: string; password: string; workspaceId?: string },
+    options?: RequestOptions
+  ): Promise<{ token: string; user: MeUser; workspaces: WorkspaceSummary[] }> {
+    return this.request<{ token: string; user: MeUser; workspaces: WorkspaceSummary[] }>(
+      "/v1/auth/login",
+      {
+        ...options,
+        method: "POST",
+        body: payload,
+      }
+    );
+  }
+
+  async switchWorkspace(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ token: string; user: MeUser; workspaces: WorkspaceSummary[] }> {
+    return this.request<{ token: string; user: MeUser; workspaces: WorkspaceSummary[] }>(
+      "/v1/auth/switch-workspace",
+      {
+        ...options,
+        method: "POST",
+        body: { workspaceId },
+      }
+    );
+  }
+
   async requestAuthSession(
     payload: { email: string; accessKey?: string },
     options?: RequestOptions
@@ -554,6 +634,67 @@ export class ApiClient {
         ...options,
         method: "POST",
         body: payload,
+      }
+    );
+  }
+
+  async getWorkspaceMembers(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ members: WorkspaceMember[] }> {
+    return this.request<{ members: WorkspaceMember[] }>(
+      `/v1/workspaces/${workspaceId}/members`,
+      {
+        ...options,
+        workspaceId,
+      }
+    );
+  }
+
+  async addWorkspaceMember(
+    workspaceId: string,
+    payload: { name: string; email: string; role: "admin" | "manager" | "operator"; password?: string },
+    options?: RequestOptions
+  ): Promise<{ member: WorkspaceMember; initialPassword?: string }> {
+    return this.request<{ member: WorkspaceMember; initialPassword?: string }>(
+      `/v1/workspaces/${workspaceId}/members`,
+      {
+        ...options,
+        method: "POST",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
+
+  async updateWorkspaceMember(
+    workspaceId: string,
+    memberId: string,
+    payload: { role?: "admin" | "manager" | "operator"; password?: string },
+    options?: RequestOptions
+  ): Promise<{ member: WorkspaceMember }> {
+    return this.request<{ member: WorkspaceMember }>(
+      `/v1/workspaces/${workspaceId}/members/${memberId}`,
+      {
+        ...options,
+        method: "PATCH",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
+
+  async removeWorkspaceMember(
+    workspaceId: string,
+    memberId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; message?: string }> {
+    return this.request<{ success: boolean; message?: string }>(
+      `/v1/workspaces/${workspaceId}/members/${memberId}`,
+      {
+        ...options,
+        method: "DELETE",
+        workspaceId,
       }
     );
   }
@@ -638,10 +779,11 @@ export class ApiClient {
 
   async getChannels(
     workspaceId: string,
-    options?: RequestOptions
+    options?: RequestOptions & { includeInactive?: boolean }
   ): Promise<{ channels: ChannelSummary[]; total: number }> {
+    const qs = options?.includeInactive ? "?includeInactive=true" : "";
     return this.request<{ channels: ChannelSummary[]; total: number }>(
-      `/v1/workspaces/${workspaceId}/channels`,
+      `/v1/workspaces/${workspaceId}/channels${qs}`,
       { ...options, workspaceId }
     );
   }
@@ -847,6 +989,48 @@ export class ApiClient {
     );
   }
 
+  async uploadMedia(
+    workspaceId: string,
+    file: File,
+    options?: RequestOptions
+  ): Promise<UploadMediaResponse> {
+    const query = options?.isPublic ? "?public=true" : "";
+    const url = `${this.baseUrl}/v1/workspaces/${workspaceId}/media${query}`;
+    const headers: Record<string, string> = {
+      "Content-Type": file.type,
+      "x-file-name": file.name,
+      "x-correlation-id": this.getCorrelationId(options?.correlationId),
+      ...(options?.isPublic ? { "x-public": "true" } : {}),
+    };
+    if (options?.token) {
+      headers["Authorization"] = `Bearer ${options.token}`;
+    }
+    if (options?.workspaceId || workspaceId) {
+      headers["X-Workspace-Id"] = options?.workspaceId || workspaceId;
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: file,
+      signal: options?.signal,
+    });
+
+    if (!response.ok) {
+      let body: { detail?: string; title?: string } = {};
+      try {
+        body = await response.json();
+      } catch {}
+      throw new ApiError(
+        response.status,
+        body.title || "Erro no upload",
+        body.detail || "Falha ao enviar arquivo"
+      );
+    }
+
+    return response.json() as Promise<UploadMediaResponse>;
+  }
+
   async updateThreadStatus(
     workspaceId: string,
     threadId: string,
@@ -1038,6 +1222,21 @@ export class ApiClient {
     );
   }
 
+  async deleteChannel(
+    workspaceId: string,
+    channelId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; mode: "deleted" | "archived"; message: string }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/channels/${channelId}`,
+      {
+        ...options,
+        workspaceId,
+        method: "DELETE",
+      }
+    );
+  }
+
   async getChannelQrCode(
     workspaceId: string,
     channelId: string,
@@ -1047,6 +1246,8 @@ export class ApiClient {
     status: string;
     qr?: string;
     qrDataUri?: string;
+    alreadyConnected?: boolean;
+    me?: { id?: string; pushName?: string } | null;
     isSimulated?: boolean;
     message?: string;
     error?: string;
@@ -1057,6 +1258,23 @@ export class ApiClient {
         ...options,
         workspaceId,
         method: "GET",
+      }
+    );
+  }
+
+  async updateChannelBilling(
+    workspaceId: string,
+    channelId: string,
+    payload: { metaBillingConfigured: boolean; metaBillingAccountId?: string | null },
+    options?: RequestOptions
+  ): Promise<{ success: boolean; channel: Partial<ChannelSummary> }> {
+    return this.request(
+      `/v1/workspaces/${workspaceId}/channels/${channelId}/billing`,
+      {
+        ...options,
+        workspaceId,
+        method: "PATCH",
+        body: payload,
       }
     );
   }
@@ -1085,7 +1303,7 @@ export class ApiClient {
 
   async getContacts(
     workspaceId: string,
-    query?: { search?: string; limit?: number; offset?: number },
+    query?: { search?: string; limit?: number; offset?: number; status?: "active" | "inactive" | "all" },
     options?: RequestOptions
   ): Promise<{
     contacts: ContactSummary[];
@@ -1095,6 +1313,7 @@ export class ApiClient {
     if (query?.search) params.set("search", query.search);
     if (query?.limit) params.set("limit", String(query.limit));
     if (query?.offset) params.set("offset", String(query.offset));
+    if (query?.status) params.set("status", query.status);
     const qs = params.toString() ? `?${params.toString()}` : "";
 
     return this.request(`/v1/workspaces/${workspaceId}/contacts${qs}`, {
@@ -1110,6 +1329,96 @@ export class ApiClient {
     options?: RequestOptions
   ): Promise<{ contact: ContactSummary }> {
     return this.request(`/v1/workspaces/${workspaceId}/contacts`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  async updateContact(
+    workspaceId: string,
+    contactId: string,
+    payload: {
+      phoneE164?: string;
+      name?: string | null;
+      optOut?: boolean;
+      metadata?: ContactSummary["metadata"];
+    },
+    options?: RequestOptions
+  ): Promise<{ contact: ContactSummary }> {
+    return this.request(`/v1/workspaces/${workspaceId}/contacts/${contactId}`, {
+      ...options,
+      workspaceId,
+      method: "PATCH",
+      body: payload,
+    });
+  }
+
+  async deleteContact(workspaceId: string, contactId: string, options?: RequestOptions): Promise<void> {
+    return this.request(`/v1/workspaces/${workspaceId}/contacts/${contactId}`, {
+      ...options,
+      workspaceId,
+      method: "DELETE",
+    });
+  }
+
+  async listJourneys(
+    workspaceId: string,
+    query?: { status?: string; limit?: number },
+    options?: RequestOptions
+  ): Promise<{ items: JourneySummary[]; total: number }> {
+    const params = new URLSearchParams();
+    if (query?.status) params.set("status", query.status);
+    if (query?.limit) params.set("limit", String(query.limit));
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/v1/workspaces/${workspaceId}/journeys${qs}`, {
+      ...options,
+      workspaceId,
+      method: "GET",
+    });
+  }
+
+  async createJourney(
+    workspaceId: string,
+    payload: {
+      contactId: string;
+      title?: string;
+      stage?: JourneyStage;
+      attributionSource?: string;
+      estimatedValueCents?: number;
+    },
+    options?: RequestOptions
+  ): Promise<JourneySummary> {
+    return this.request(`/v1/workspaces/${workspaceId}/journeys`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  async updateJourneyStage(
+    workspaceId: string,
+    journeyId: string,
+    stage: Exclude<JourneyStage, "won" | "lost">,
+    options?: RequestOptions
+  ): Promise<{ journey: JourneySummary }> {
+    return this.request(`/v1/workspaces/${workspaceId}/journeys/${journeyId}/stage`, {
+      ...options,
+      workspaceId,
+      method: "PATCH",
+      body: { stage },
+    });
+  }
+
+  async recordJourneyOutcome(
+    workspaceId: string,
+    journeyId: string,
+    payload: { status: "won" | "lost"; valueCents: number; currency?: string; reason?: string },
+    options?: RequestOptions
+  ): Promise<unknown> {
+    return this.request(`/v1/workspaces/${workspaceId}/journeys/${journeyId}/outcomes`, {
       ...options,
       workspaceId,
       method: "POST",
@@ -1151,6 +1460,36 @@ export class ApiClient {
     options?: RequestOptions
   ): Promise<{ template: MessageTemplateSummary }> {
     return this.request(`/v1/workspaces/${workspaceId}/templates`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  async generateTemplate(
+    workspaceId: string,
+    payload: {
+      objective: string;
+      audience: string;
+      tone: "PROFESSIONAL" | "FRIENDLY" | "DIRECT";
+      strategy?: "UTILITY_TROJAN" | "DIRECT_MARKETING";
+    },
+    options?: RequestOptions
+  ): Promise<{
+    generated: {
+      name: string;
+      category: "UTILITY" | "MARKETING";
+      headerText: string | null;
+      bodyText: string;
+      footerText: string | null;
+      buttonText: string | null;
+      variableLabels: string[];
+      explanation: string;
+    };
+    model: string;
+  }> {
+    return this.request(`/v1/workspaces/${workspaceId}/templates/generate`, {
       ...options,
       workspaceId,
       method: "POST",
@@ -1294,6 +1633,19 @@ export class ApiClient {
     );
   }
 
+  async scanRadar(
+    workspaceId: string,
+    payload: { minHoursSinceLastMessage?: number; limit?: number; threadId?: string } = {},
+    options?: RequestOptions
+  ): Promise<{ enabled: boolean; candidates: number; created: number }> {
+    return this.request(`/v1/workspaces/${workspaceId}/integrations/radar/scan`, {
+      ...options,
+      method: "POST",
+      workspaceId,
+      body: payload,
+    });
+  }
+
   async getIntegrationSuggestions(
     workspaceId: string,
     params?: { status?: string; threadId?: string; limit?: number; offset?: number },
@@ -1329,8 +1681,382 @@ export class ApiClient {
       }
     );
   }
+
+  async listWebhooks(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ webhooks: OutboundWebhookSubscription[] }> {
+    return this.request<{ webhooks: OutboundWebhookSubscription[] }>(
+      `/v1/workspaces/${workspaceId}/webhooks`,
+      {
+        ...options,
+        method: "GET",
+        workspaceId,
+      }
+    );
+  }
+
+  async createWebhook(
+    workspaceId: string,
+    payload: { url: string; description?: string; events?: string[]; secret?: string },
+    options?: RequestOptions
+  ): Promise<{ webhook: OutboundWebhookSubscription }> {
+    return this.request<{ webhook: OutboundWebhookSubscription }>(
+      `/v1/workspaces/${workspaceId}/webhooks`,
+      {
+        ...options,
+        method: "POST",
+        workspaceId,
+        body: payload,
+      }
+    );
+  }
+
+  async testWebhook(
+    workspaceId: string,
+    webhookId: string,
+    options?: RequestOptions
+  ): Promise<WebhookTestResult> {
+    return this.request<WebhookTestResult>(
+      `/v1/workspaces/${workspaceId}/webhooks/${webhookId}/test`,
+      {
+        ...options,
+        method: "POST",
+        workspaceId,
+      }
+    );
+  }
+
+  async deleteWebhook(
+    workspaceId: string,
+    webhookId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(
+      `/v1/workspaces/${workspaceId}/webhooks/${webhookId}`,
+      {
+        ...options,
+        method: "DELETE",
+        workspaceId,
+      }
+    );
+  }
+
+  async getAiAgentConfig(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; config: AiAgentConfig }> {
+    return this.request<{ success: boolean; config: AiAgentConfig }>(
+      `/v1/workspaces/${workspaceId}/ai-agent`,
+      { ...options, workspaceId }
+    );
+  }
+
+  async updateAiAgentConfig(
+    workspaceId: string,
+    payload: Partial<AiAgentConfig>,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; config: AiAgentConfig }> {
+    return this.request<{ success: boolean; config: AiAgentConfig }>(
+      `/v1/workspaces/${workspaceId}/ai-agent`,
+      {
+        ...options,
+        method: "PUT",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
+
+  async simulateAiAgent(
+    workspaceId: string,
+    payload: {
+      message: string;
+      history?: Array<{ role: "user" | "assistant"; content: string }>;
+      draftConfig?: Partial<AiAgentConfig>;
+      mockLead?: {
+        name?: string;
+        lastPixStatus?: "PAID" | "PENDING" | "EXPIRED";
+        lastPixAmountCents?: number;
+        isReturningCustomer?: boolean;
+      };
+    },
+    options?: RequestOptions
+  ): Promise<AiSimulationResult> {
+    return this.request<AiSimulationResult>(
+      `/v1/workspaces/${workspaceId}/ai-agent/simulate`,
+      {
+        ...options,
+        method: "POST",
+        body: payload,
+        workspaceId,
+      }
+    );
+  }
+
+  async getNichePlaybooks(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; playbooks: Record<string, any> }> {
+    return this.request<{ success: boolean; playbooks: Record<string, any> }>(
+      `/v1/workspaces/${workspaceId}/ai-agent/niche-playbooks`,
+      {
+        ...options,
+        method: "GET",
+        workspaceId,
+      }
+    );
+  }
+
+
+  async getBroadcastPreflight(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{
+    success: boolean;
+    channels: Array<ChannelSummary & { isBlockedForBroadcast: boolean }>;
+    templates: MessageTemplateSummary[];
+    totalActiveContacts: number;
+    billingNotice: { policy: string; description: string };
+  }> {
+    return this.request(`/v1/workspaces/${workspaceId}/broadcasts/preflight`, {
+      ...options,
+      workspaceId,
+      method: "GET",
+    });
+  }
+
+  async getBroadcastCampaigns(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{
+    success: boolean;
+    campaigns: BroadcastCampaignSummary[];
+  }> {
+    return this.request(`/v1/workspaces/${workspaceId}/broadcasts/campaigns`, {
+      ...options,
+      workspaceId,
+      method: "GET",
+    });
+  }
+
+  async getAudienceCount(
+    workspaceId: string,
+    params: {
+      type: "ALL_CONTACTS" | "BY_STAGE" | "SMART_FILTER";
+      stage?: string;
+      smartFilter?: "NON_BUYERS" | "PIX_ABANDONED" | "INACTIVE_30_DAYS" | "CTWA_RESCUE";
+    },
+    options?: RequestOptions
+  ): Promise<{ success: boolean; count: number; type: string; stage?: string; smartFilter?: string }> {
+    const q = new URLSearchParams();
+    q.set("type", params.type);
+    if (params.stage) q.set("stage", params.stage);
+    if (params.smartFilter) q.set("smartFilter", params.smartFilter);
+    return this.request(`/v1/workspaces/${workspaceId}/broadcasts/audience-count?${q.toString()}`, {
+      ...options,
+      workspaceId,
+    });
+  }
+
+  async createBroadcast(
+    workspaceId: string,
+    payload: {
+      name?: string;
+      channelInstanceId: string;
+      templateId: string;
+      isAbTest?: boolean;
+      variantBTemplateId?: string;
+      audience: {
+        type: "ALL_CONTACTS" | "BY_STAGE" | "MANUAL" | "IMPORT_LIST" | "SMART_FILTER";
+        stage?: string;
+        customPhoneNumbers?: string[];
+        importedContacts?: Array<{ phoneE164: string; name?: string | null }>;
+        smartFilter?: "NON_BUYERS" | "PIX_ABANDONED" | "INACTIVE_30_DAYS" | "CTWA_RESCUE";
+      };
+      variables?: Record<string, string>;
+      variantBVariables?: Record<string, string>;
+    },
+    options?: RequestOptions
+  ): Promise<{
+    success: boolean;
+    batchId: string;
+    campaignId?: string;
+    enqueuedCount: number;
+    totalTargeted: number;
+    template: { name: string; category: string };
+    channel: { id: string; displayName: string; provider: string };
+    billingSummary: { policy: string; estimatedUnitCost: string; message: string };
+  }> {
+    return this.request(`/v1/workspaces/${workspaceId}/broadcasts`, {
+      ...options,
+      workspaceId,
+      method: "POST",
+      body: payload,
+    });
+  }
+}
+
+export interface BroadcastCampaignMetrics {
+  sent: number;
+  delivered: number;
+  read: number;
+  replied: number;
+  clicked: number;
+  deliveryRate: number; // %
+  openRate: number; // %
+  replyRate: number; // %
+  ctr: number; // %
+  salesCount?: number;
+  salesCents?: number;
+  conversionRate?: number; // %
+  averageTicketCents?: number;
+}
+
+export interface BroadcastAbVariantStats {
+  templateName: string;
+  category: string;
+  sent: number;
+  delivered: number;
+  read: number;
+  replied: number;
+  openRate: number;
+  replyRate: number;
+  salesCount?: number;
+  salesCents?: number;
+  salesFormatted?: string;
+  conversionRate?: number; // %
+}
+
+export interface BroadcastAbReport {
+  winner: "A" | "B" | "TIED";
+  variantA: BroadcastAbVariantStats;
+  variantB: BroadcastAbVariantStats;
+}
+
+export interface BroadcastCampaignSales {
+  count: number;
+  totalCents: number;
+  totalFormatted: string;
+  conversionRate: number; // %
+  averageTicketCents: number;
+  averageTicketFormatted: string;
+}
+
+export interface BroadcastCampaignSummary {
+  id: string;
+  name: string;
+  status: string;
+  channel: {
+    id: string;
+    name: string;
+    provider: string;
+  };
+  isAbTest: boolean;
+  template: {
+    id: string;
+    name: string;
+    category: string;
+  };
+  audienceType: string;
+  audienceStage?: string | null;
+  totalTargeted: number;
+  metrics: BroadcastCampaignMetrics;
+  sales?: BroadcastCampaignSales;
+  abReport?: BroadcastAbReport | null;
+  createdAt: string;
+}
+
+export interface AiFaqItem {
+  id?: string;
+  question: string;
+  answer: string;
+}
+
+export interface AiObjections {
+  priceDiscount?: string;
+  thinkAboutIt?: string;
+  guaranteeTrust?: string;
+  deliveryTimeline?: string;
+}
+
+export type GroundedObjections = AiObjections;
+
+export interface AiBusinessRules {
+  companyName?: string;
+  agentRole?: string;
+  valueProposition?: string;
+  niche?: "ecommerce" | "clinic" | "infoproduct" | "services" | "general" | string;
+  openingHours?: string;
+  address?: string;
+  cancellationPolicy?: string;
+  paymentMethods?: string;
+  generalRules?: string;
+  objections?: AiObjections;
+  ctaRule?: boolean;
+  emojiDensity?: "sober" | "moderate" | "expressive";
+  [key: string]: any;
+}
+
+
+export interface AiAgentConfig {
+  enabled: boolean;
+  name: string;
+  systemPrompt: string;
+  personality: "cordial_comercial" | "direto_objetivo" | "especialista_consultivo" | "empatico_acolhedor";
+  provider?: "nvidia" | "openrouter";
+  model?: string;
+  apiKey?: string;
+  hasCustomApiKey?: boolean;
+  skills: {
+    qualify_lead?: boolean;
+    catalog_offers?: boolean;
+    pix_charges?: boolean;
+    appointments?: boolean;
+    capi_tracking?: boolean;
+    [key: string]: boolean | undefined;
+  };
+  businessRules?: AiBusinessRules;
+  faq?: AiFaqItem[];
+  strictMode?: boolean;
+  temperature?: number;
+}
+
+export interface AiSimulationResult {
+  success: boolean;
+  replyText: string;
+  needsHandoff: boolean;
+  handoffReason: string | null;
+  matchedCatalogCount: number;
+  groundedRulesCount?: number;
+  groundedFaqCount?: number;
+  isCustomPromptUsed?: boolean;
+  strictMode: boolean;
+  provider: "nvidia" | "openrouter";
+  model: string;
+  latencyMs: number;
+}
+
+export interface OutboundWebhookSubscription {
+  id: string;
+  workspace_id: string;
+  url: string;
+  secret: string;
+  description: string | null;
+  events: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookTestResult {
+  success: boolean;
+  status: "delivered" | "failed";
+  statusCode: number | null;
+  durationMs: number;
+  responseBody: string | null;
+  errorMessage: string | null;
 }
 
 export const apiClient = new ApiClient();
-
 

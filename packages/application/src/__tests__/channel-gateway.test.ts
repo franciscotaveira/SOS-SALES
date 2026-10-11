@@ -23,6 +23,7 @@ import {
   WABA_INBOUND_INTERACTIVE_BUTTON_FIXTURE,
   WABA_INBOUND_INTERACTIVE_LIST_FIXTURE,
   WAHA_INBOUND_TEXT_FIXTURE,
+  WAHA_OUTBOUND_TEXT_FIXTURE,
   WAHA_INBOUND_IMAGE_FIXTURE,
   WAHA_ACK_DELIVERED_FIXTURE,
   WAHA_ACK_READ_FIXTURE,
@@ -564,6 +565,23 @@ describe("Channel Gateway & Normalizers Unit Tests", () => {
       }
     });
 
+    it("should preserve outbound direction for messages sent from the connected number", () => {
+      const results = WahaWebhookNormalizer.normalize(
+        WAHA_OUTBOUND_TEXT_FIXTURE,
+        context
+      );
+
+      expect(results).toHaveLength(1);
+      const result = results[0];
+      expect(result?.kind).toBe("message");
+      if (result?.kind === "message") {
+        expect(result.event.senderPhoneE164).toBe("+5511999998888");
+        expect(result.event.recipientPhoneE164).toBe("+5511988887777");
+        expect(result.event.metadata?.direction).toBe("outbound");
+        expect(result.event.metadata?.fromMe).toBe(true);
+      }
+    });
+
     it("should normalize image message with caption", () => {
       const results = WahaWebhookNormalizer.normalize(
         WAHA_INBOUND_IMAGE_FIXTURE,
@@ -679,6 +697,52 @@ describe("Channel Gateway & Normalizers Unit Tests", () => {
         expect(result.event.contentType).toBe("document");
         expect(result.event.body).toBe("Contrato assinado em anexo");
         expect(result.event.mediaUrl).toBe("https://storage.waha.internal/media/contrato-final.pdf");
+      }
+    });
+
+    it("should normalize message.any and resolve WhatsApp LID identities", () => {
+      const wahaLidPayload = {
+        event: "message.any",
+        session: "plx-documentos",
+        me: {
+          id: "554988447562@c.us",
+          pushName: "Francisco Taveira",
+        },
+        payload: {
+          id: "false_271635491872968@lid_3A1F702AACB734EFC33A",
+          timestamp: 1791555952,
+          from: "271635491872968@lid",
+          fromMe: false,
+          to: null,
+          hasMedia: true,
+          media: {
+            url: "http://waha:3000/api/files/plx-documentos/3A1F702AACB734EFC33A.oga",
+            mimetype: "audio/ogg; codecs=opus",
+          },
+          _data: {
+            Info: {
+              SenderAlt: "554991810054@s.whatsapp.net",
+              MediaType: "ptt",
+            },
+            Message: {
+              audioMessage: {
+                mimetype: "audio/ogg; codecs=opus",
+                seconds: 6,
+              },
+            },
+          },
+        },
+      };
+
+      const results = WahaWebhookNormalizer.normalize(wahaLidPayload, context);
+      expect(results).toHaveLength(1);
+      const res = results[0];
+      expect(res?.kind).toBe("message");
+      if (res?.kind === "message") {
+        expect(res.event.contentType).toBe("audio");
+        expect(res.event.senderPhoneE164).toBe("+554991810054");
+        expect(res.event.recipientPhoneE164).toBe("+554988447562");
+        expect(res.event.mediaUrl).toBe("http://waha:3000/api/files/plx-documentos/3A1F702AACB734EFC33A.oga");
       }
     });
 

@@ -2,7 +2,7 @@ import { type FC, useState, useEffect } from "react";
 import { Drawer, EmptyState, useBreakpoint } from "@sos-sales/ui";
 import { MessageSquare } from "lucide-react";
 import { useSession, type UseSessionReturn } from "../../hooks/useSession";
-import { apiClient, type CommercialProposalSummary } from "../../services/api-client";
+import { apiClient, type CommercialProposalSummary, type ProductRecord } from "../../services/api-client";
 import { useInbox } from "./hooks/useInbox";
 import { useConversation } from "./hooks/useConversation";
 import { useCockpitLayout } from "./hooks/useCockpitLayout";
@@ -12,6 +12,7 @@ import { MessageList } from "./Conversation/MessageList";
 import { Composer } from "./Conversation/Composer";
 import { ContextPanel } from "./ContextPanel/ContextPanel";
 import { CockpitDrawers, type DrawerType } from "./drawers/CockpitDrawers";
+import { panelFrame, PANEL_GAP } from "./utils/panelFrame";
 
 interface CockpitPageProps {
   session?: UseSessionReturn;
@@ -55,10 +56,136 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
     }
   };
 
+  const handleSendProduct = async (product: ProductRecord) => {
+    if (!conversation.selectedThread || !session.activeWorkspace?.id || !session.token) return;
+    const formattedPrice = (product.priceCents / 100).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: product.currency || "BRL",
+    });
+
+    const isWaba = conversation.selectedThread.channelProvider === "meta_waba";
+
+    try {
+      if (isWaba && product.catalogId && product.retailerId) {
+        await apiClient.sendOutboundMessage(
+          session.activeWorkspace.id,
+          conversation.selectedThread.channelInstanceId,
+          {
+            recipientPhoneE164: conversation.selectedThread.contactPhone,
+            contentType: "interactive",
+            body: `🛍️ *${product.title}*\n${product.description ? `\n${product.description}\n` : ""}\n💰 *Valor:* ${product.priceFormatted || formattedPrice}`,
+            interactive: {
+              type: "product",
+              body: {
+                text: `🛍️ *${product.title}*\n${product.description ? `\n${product.description}\n` : ""}\n💰 *Valor:* ${product.priceFormatted || formattedPrice}\n\n_Toque abaixo para ver no catálogo e finalizar pedido:_`,
+              },
+              footer: {
+                text: "SOS Sales",
+              },
+              action: {
+                catalog_id: product.catalogId,
+                product_retailer_id: product.retailerId,
+              },
+            },
+          },
+          { token: session.token }
+        );
+      } else {
+        const body = `🛍️ *${product.title}*\n\n${product.description ? `${product.description}\n\n` : ""}💰 *Valor:* ${product.priceFormatted || formattedPrice}\n\n_Deseja agendar ou adquirir este item? Basta responder aqui!_`;
+        await apiClient.sendOutboundMessage(
+          session.activeWorkspace.id,
+          conversation.selectedThread.channelInstanceId,
+          {
+            recipientPhoneE164: conversation.selectedThread.contactPhone,
+            contentType: product.imageUrl ? "image" : "text",
+            body,
+            mediaUrl: product.imageUrl || undefined,
+          },
+          { token: session.token }
+        );
+      }
+      await conversation.refreshMessages();
+      setActiveDrawer(null);
+    } catch (err: unknown) {
+      alert((err as Error).message || "Falha ao enviar produto.");
+    }
+  };
+
+  const handleSendProducts = async (selectedProducts: ProductRecord[]) => {
+    if (!conversation.selectedThread || !session.activeWorkspace?.id || !session.token || selectedProducts.length === 0) return;
+
+    const isWaba = conversation.selectedThread.channelProvider === "meta_waba";
+    const catalogId = selectedProducts[0]?.catalogId;
+
+    try {
+      if (isWaba && catalogId && selectedProducts.every((p) => p.retailerId)) {
+        await apiClient.sendOutboundMessage(
+          session.activeWorkspace.id,
+          conversation.selectedThread.channelInstanceId,
+          {
+            recipientPhoneE164: conversation.selectedThread.contactPhone,
+            contentType: "interactive",
+            body: `✨ *Catálogo de Destaques Selecionados* (${selectedProducts.length} itens)`,
+            interactive: {
+              type: "product_list",
+              header: {
+                type: "text",
+                text: "Ofertas Selecionadas",
+              },
+              body: {
+                text: "Separamos essas opções especialmente para você. Toque no botão abaixo para explorar o catálogo e escolher:",
+              },
+              footer: {
+                text: "SOS Sales • Atendimento Comercial",
+              },
+              action: {
+                catalog_id: catalogId,
+                sections: [
+                  {
+                    title: "Destaques Disponíveis",
+                    product_items: selectedProducts.map((p) => ({
+                      product_retailer_id: p.retailerId,
+                    })),
+                  },
+                ],
+              },
+            },
+          },
+          { token: session.token }
+        );
+      } else {
+        const lines = selectedProducts.map((p, idx) => {
+          const formattedPrice = (p.priceCents / 100).toLocaleString("pt-BR", {
+            style: "currency",
+            currency: p.currency || "BRL",
+          });
+          return `*${idx + 1}. ${p.title}* — ${p.priceFormatted || formattedPrice}${p.description ? `\n   _${p.description}_` : ""}`;
+        });
+
+        const body = `✨ *Catálogo de Destaques Selecionados:*\n\n${lines.join("\n\n")}\n\n_Qual das opções você gostaria de agendar ou adquirir?_`;
+
+        await apiClient.sendOutboundMessage(
+          session.activeWorkspace.id,
+          conversation.selectedThread.channelInstanceId,
+          {
+            recipientPhoneE164: conversation.selectedThread.contactPhone,
+            contentType: "text",
+            body,
+          },
+          { token: session.token }
+        );
+      }
+      await conversation.refreshMessages();
+      setActiveDrawer(null);
+    } catch (err: unknown) {
+      alert((err as Error).message || "Falha ao enviar carrossel de produtos.");
+    }
+  };
+
   const isThreadActive = Boolean(layout.selectedThreadId && conversation.selectedThread);
 
   return (
-    <div style={{ display: "flex", width: "100%", height: "100%", overflow: "hidden", backgroundColor: "var(--bg-canvas)" }}>
+    <div style={{ display: "flex", width: "100%", height: "100%", overflow: "hidden", backgroundColor: "var(--bg-canvas)", gap: isMobile ? 0 : PANEL_GAP, padding: isMobile ? 0 : PANEL_GAP, boxSizing: "border-box" }}>
       {/* 1. Inbox List Panel */}
       {(!isMobile || !isThreadActive) && (
         <InboxList
@@ -78,24 +205,32 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
 
       {/* 2. Conversation / Empty State Area */}
       {(!isMobile || isThreadActive) && (
-        <main style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", minWidth: 0, backgroundColor: "var(--bg-surface)" }}>
+        <main style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", minWidth: 0, backgroundColor: "var(--bg-surface)", ...panelFrame(isMobile) }}>
           {conversation.selectedThread ? (
             <>
               <ConversationHeader
                 thread={conversation.selectedThread}
                 onBack={layout.handleBackToList}
                 isMobile={isMobile}
-                onRefresh={conversation.refreshMessages}
+                onRefresh={async () => {
+                  await Promise.all([conversation.refreshMessages(), inbox.refreshThreads()]);
+                }}
                 isRefreshing={conversation.isLoadingMessages}
                 onOpenRadar={() => setActiveDrawer("radar")}
                 onOpenDossier={() => setActiveDrawer("dossier")}
                 onToggleContext={() => isMobile || isTablet ? layout.setIsContextDrawerOpen(!layout.isContextDrawerOpen) : layout.toggleRight()}
                 isContextOpen={!layout.isRightCollapsed || layout.isContextDrawerOpen}
+                onAssumeAttendance={async () => {
+                  await conversation.handleUpdateStatus("active");
+                  await inbox.refreshThreads();
+                }}
               />
               <MessageList messages={conversation.messages} isLoading={conversation.isLoadingMessages} />
               <Composer
                 draft={conversation.messageInput}
                 onDraftChange={conversation.handleMessageInputChange}
+                attachedFile={conversation.attachedFile}
+                onAttachFile={conversation.setAttachedFile}
                 onSend={conversation.handleSendMessage}
                 isSending={conversation.isSendingMessage}
                 windowInfo={conversation.windowInfo}
@@ -123,6 +258,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
         <ContextPanel
           thread={conversation.selectedThread}
           onClose={layout.toggleRight}
+          onEditLead={() => setActiveDrawer("dossier")}
           proposals={proposals}
           onCreateProposal={() => setActiveDrawer("proposal")}
           onUpdateProposalStatus={handleUpdateProposalStatus}
@@ -141,6 +277,7 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
           <ContextPanel
             thread={conversation.selectedThread}
             onClose={() => layout.setIsContextDrawerOpen(false)}
+            onEditLead={() => setActiveDrawer("dossier")}
             proposals={proposals}
             onCreateProposal={() => setActiveDrawer("proposal")}
             onUpdateProposalStatus={handleUpdateProposalStatus}
@@ -164,6 +301,9 @@ export const CockpitPage: FC<CockpitPageProps> = ({ session: propSession }) => {
           }
         }}
         onPixCreated={conversation.refreshMessages}
+        onRadarDraftApplied={(draft) => conversation.handleMessageInputChange(draft)}
+        onSendProduct={handleSendProduct}
+        onSendProducts={handleSendProducts}
       />
     </div>
   );

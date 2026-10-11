@@ -1016,6 +1016,7 @@ export interface ListCandidatesOptions {
   minHoursSinceLastMessage?: number;
   limit?: number;
   cursor?: string;
+  threadId?: string;
 }
 
 /**
@@ -1059,8 +1060,8 @@ export async function listIntegrationCandidates(
 
   // Decode cursor if provided (throws InvalidCursorError if malformed)
   let cursorCondition = "";
-  const queryParams: unknown[] = [workspaceId, minHours, cooldownSeconds];
-  let paramIdx = 4;
+  const queryParams: unknown[] = [workspaceId, minHours, cooldownSeconds, options.threadId ?? null];
+  let paramIdx = 5;
 
   if (options.cursor) {
     const decoded = decodeCursor(options.cursor);
@@ -1075,6 +1076,7 @@ export async function listIntegrationCandidates(
     WHERE t.workspace_id = $1
       AND t.status IN ('active', 'waiting_client')
       AND c.opt_out = false
+      AND ($4::uuid IS NULL OR t.id = $4::uuid)
       AND EXTRACT(EPOCH FROM (now() - t.last_message_at)) / 3600 >= $2
       AND NOT EXISTS (
         SELECT 1 FROM public.integration_suggestions s
@@ -1095,7 +1097,7 @@ export async function listIntegrationCandidates(
      FROM public.commercial_threads t
      JOIN public.contacts c ON c.workspace_id = t.workspace_id AND c.id = t.contact_id
      ${baseWhere};`,
-    [workspaceId, minHours, cooldownSeconds]
+    [workspaceId, minHours, cooldownSeconds, options.threadId ?? null]
   );
   const total = parseInt(countRes.rows[0]?.count || "0", 10);
 

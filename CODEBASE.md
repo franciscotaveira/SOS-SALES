@@ -2,7 +2,7 @@
 
 > MCT OS v2.0 | Francisco Rios | MCT LTDA | Chapecó, BR  
 > Filosofia: Poder invisível, simplicidade visível. Truth in Data.  
-> Última atualização: 29 de setembro de 2026 (Meta CAPI v26.0 Business Messaging & CTWA Traversal)
+> Última atualização: 02 de outubro de 2026 (Curadoria de Workflows, Engenharia Reversa e Sanitização de Quarentena)
 
 ---
 
@@ -164,4 +164,256 @@
   ```bash
   ALLOW_TEST_DB_ADMIN_OPERATIONS=true pnpm ci:gate
   ```
+
+---
+
+## 6. Integração com a Biblioteca Soberana de Workflows (n8n Brain)
+
+A infraestrutura de automações externas da MCT LTDA está centralizada em um diretório local de workflows (fora deste monorepo, path configurado por ambiente/operador):
+
+- **Acervo Auditado:** 13.053 JSONs brutos, 4.715 workflows n8n classificados e traduzidos em PT-BR (`00 - Catalogo/workflows-completo-4715-ptbr.csv`).
+- **Top 256 Homologados:** Seleção prioritária íntegra (`workflows-256-selecionados-ptbr.csv`) com links simbólicos em `01 - Selecionados para revisao/`.
+- **Engenharia Reversa de Órfãos:** 763 blueprints estruturais resgatados de fluxos com nós rompidos do repositório Zie619, minerando 512 prompts de IA e 477 snippets de JavaScript (`blueprints-engenharia-reversa-ptbr.csv`).
+- **Resgate e Sanitização de Quarentena:** 18 workflows que continham credenciais esquecidas de terceiros (tokens Apify, GitLab, Perplexity, Google API e chaves privadas RSA do Meta WhatsApp Flows) foram 100% desinfetados, validados e salvos como JSONs prontos para teste na subpasta `01 - Selecionados para revisao/11 - Resgatados da Quarentena/`.
+- **Fronteira Arquitetural (P0):** Workflows n8n operam como laboratório de apoio, scrapers auxiliares e esteiras de prototipagem rápida. Toda lógica comercial transacional de alta confiabilidade, mensageria CTWA, ingestão de webhooks e outbox assíncrono pertencem estritamente a este monorepo SOS Sales.
+
+---
+
+## 7. Motor de Inteligência Artificial Soberano (Multi-Provider & Anti-Alucinação)
+
+### 7.1 Arquitetura Dual-Engine (`SovereignLlmClient`)
+- **Provedor Padrão:** **NVIDIA NIM** via `https://integrate.api.nvidia.com/v1/chat/completions`.
+  - Modelo Soberano Ativo: `nvidia/nemotron-3-super-120b-a12b` (substituição formal do `meta/llama-3.3-70b-instruct` descontinuado pela Nvidia em 26/08/2026).
+  - Modelos Alternativos Homologados: `nvidia/nemotron-3.5-lightning-30b-a3b` (ultrarrápido), `nvidia/llama-3.1-nemotron-70b-instruct` (factual).
+- **Provedor Alternativo:** **OpenRouter** via `https://openrouter.ai/api/v1/chat/completions`.
+  - Modelos Homologados: `anthropic/claude-3.5-sonnet` (alta precisão), `google/gemini-2.5-flash`, `deepseek/deepseek-chat`.
+  - Cabeçalhos de rastreabilidade obrigatórios: `HTTP-Referer: https://crm.iaparavendas.tech` e `X-Title: Chat Sales V3 Commercial Receptionist`.
+- **Governança de Credenciais por Workspace:**
+  - Colunas `ai_provider`, `ai_model`, `ai_api_key` em `public.workspaces`.
+  - Resolução hierárquica fail-closed: Chave customizada do tenant -> Chave de ambiente do servidor (`NVIDIA_API_KEY` / `OPENROUTER_API_KEY`).
+
+### 7.2 Camadas de Grounding Factual e Protocolo de Ignorância (Truth in Data)
+- O prompt do agente é gerado deterministicamente pelo `buildGroundedSystemPrompt` em 4 camadas imutáveis:
+  1. `<identidade_e_escopo>`: Nome, personalidade comercial e tom.
+  2. `<catalogo_oficial_de_produtos>`: Injeção direta de registros `public.products` (título, descrição, preço em centavos, categoria, badge).
+  3. `<regras_operacionais_e_faq>`: Horários, endereço, formas de pagamento, regras gerais e perguntas frequentes cadastradas no workspace.
+  4. `<protocolo_de_ignorancia_e_transbordo>`: Proibição estrita de suposições ou dados não ancorados. Se a informação solicitada pelo cliente não estiver no contexto, a IA emite a tag canônica `[TRANSBORDO_HUMANO: motivo estruturado]`.
+- O parser `parseAiResponse` extrai o texto limpo para o cliente e detecta automaticamente a intenção de transbordo, gravando `handoff_reason` e `handoff_at` na thread.
+
+### 7.3 Memória do Anúncio Meta (CTWA Hook Memory)
+- Eventos de entrada oriundos de Meta Ads (Click-to-WhatsApp) têm seus dados de anúncio (`headline`, `body`) extraídos em `inbox-processor` e persistidos em `commercial_journeys.ad_headline` e `ad_body`.
+- A camada `<origem_do_lead_anuncio_meta>` injeta o gancho original no contexto do agente, permitindo que a IA receba o lead alinhada com a oferta de anúncio específica que gerou o clique.
+
+### 7.4 Briefing no Cockpit e Simulador Dry-Run
+- **Cockpit Visual:**
+  - Mensagens da IA sinalizadas com badge `🤖 {agentName} (IA)`.
+  - Status `waiting_human` exibe card de briefing executivo com o motivo exato registrado pelo modelo e botão `[Assumir Conversa]`.
+- **Simulador Interativo:**
+  - Endpoint seguro `POST /v1/workspaces/:workspaceId/ai-agent/simulate`.
+  - Playground no frontend (`Configurações > IA`) com métricas ao vivo: latência em ms, produtos catalogados, validação de transbordo e visualização do balão de chat.
+
+---
+
+## 8. PIPELINE SOBERANO DE MÍDIA MULTIMODAL (ÁUDIO, VÍDEO, FOTOS E DOCUMENTOS)
+
+### 8.1 Ingestão e Normalização Agnóstica de Provedores
+- **Normalização WAHA (`WahaWebhookNormalizer`):**
+  - Processa tanto eventos `message` quanto `message.any`.
+  - Resolução de identidades WhatsApp LID (`@lid`) mapeando `_data.Info.SenderAlt` para o telefone real E.164.
+  - Inbound seguro: quando `payload.to` for nulo, resolve deterministicamente via `rawPayload.me.id` ou `me.jid`.
+  - Detecção estrita de `contentType`: áudios de voz PTT (`.oga`, `.opus`, `audio/ogg`), vídeos QuickTime/MP4 (`.qt`, `.mp4`), documentos (`.pdf`, `.docx`) e imagens (`.jpeg`, `.png`, `.webp`).
+
+### 8.2 Proxy de Streaming Seguro e Isolamento de Rede (`/media/proxy`)
+- **Arquitetura de Isolamento:** Os contêineres de engine (WAHA na porta 3000 interna) rodam isolados na rede Docker fechada e exigem chaves mestras (`x-api-key`). O navegador do cliente não tem acesso direto a essas portas internas nem pode injetar cabeçalhos em tags HTML `<audio>`, `<img>` ou `<video>`.
+- **Rota Unificada:** `GET /v1/workspaces/:workspaceId/media/proxy`
+  - Suporta `wahaPath` (para arquivos internos do WAHA) e `mediaId` (para Meta Graph API).
+  - Autenticação via header `Authorization: Bearer` ou query parameter `?token=` (validada pelo `auth.plugin.ts`).
+  - Suporte a cabeçalhos `Range: bytes` para busca/seek instantâneo de áudio e vídeo nos players nativos.
+  - Forwarding fiel de `Content-Type`, `Content-Length`, `Content-Range` e cache imutável `Cache-Control: public, max-age=86400, immutable`.
+- **Cockpit (`MessageBubble.tsx`):**
+  - Reescreve dinamicamente URLs legadas internas (`waha:3000/api/files/...`) para a rota autenticada `/media/proxy`.
+  - Renderização nativa: Player de áudio HTML5 com microfone e controle de reprodução, player de vídeo com controles e aspect ratio contido, card de documento com botão de download seguro e visualizador de imagem responsivo.
+
+---
+
+## 9. AUTENTICAÇÃO SOBERANA & GESTÃO DE EQUIPE MULTI-TENANT (MCT OS v2.0)
+
+### 9.1 Motor Criptográfico Nativo (Scrypt)
+- Implementado em `@sos-sales/auth` (`password-hasher.ts`):
+  - Formato serializado canônico: `scrypt:<salt_hex>:<hash_hex>`.
+  - Salt criptográfico pseudo-randômico de 16 bytes (`crypto.randomBytes`).
+  - Comparação estrita com tempo constante (`crypto.timingSafeEqual`) eliminando timing-attacks.
+  - Zero dependência externa de pacotes compilados (100% biblioteca padrão `node:crypto`).
+
+### 9.2 Endpoints de Autenticação e Multi-Tenancy
+- `POST /v1/auth/login`:
+  - Recebe `{ email, password, workspaceId? }`.
+  - Busca usuário por `LOWER(email)` e valida senha via `verifyPassword`.
+  - Resolve workspaces do usuário via função `SECURITY DEFINER` `getUserWorkspaces(user.id)`.
+  - Emite token JWT de 7 dias com payload assinado (`sub: user.id`, `email`, `role`, `workspace_id`).
+- `POST /v1/auth/switch-workspace`:
+  - Recebe `{ workspaceId }`.
+  - Valida se o usuário autenticado possui vínculo ativo naquele tenant.
+  - Emite novo JWT com escopo atualizado sem exigir reautenticação de senha.
+
+### 9.3 Gestão de Equipe & Acessos por Workspace
+- Rotas governadas sob isolamento RLS estrito:
+  - `GET /v1/workspaces/:workspaceId/members`: Lista membros do tenant ativo.
+  - `POST /v1/workspaces/:workspaceId/members`: Convida/cria membro com papel (`admin`, `manager`, `operator`) e senha inicial criptografada.
+  - `PATCH /v1/workspaces/:workspaceId/members/:memberId`: Altera cargo e/ou redefine senha.
+  - `DELETE /v1/workspaces/:workspaceId/members/:memberId`: Remove membro (com guarda contra exclusão do proprietário ou auto-exclusão).
+- **Cockpit Comercial (`SettingsPage.tsx` -> `TeamSection.tsx`):**
+  - Aba "Equipe & Acessos" com listagem visual de membros, badges de permissão, modal de cadastro com geração e cópia de senha em um clique, edição de perfil e confirmação de remoção.
+
+---
+
+## 10. BLINDAGEM OPERACIONAL SAAS & DISASTER RECOVERY (MCT OS v2.0)
+
+### 10.1 Perímetro de Segurança & WAF (`SecurityShield`)
+- Implementado em `apps/api/src/services/security-shield.ts` e ativado no hook `onRequest`:
+  - **WAF & Anti-Scanner:** Intercepta ferramentas ofensivas automatizadas (`sqlmap`, `nikto`, `masscan`, `dirbuster`, `nmap`) e sondagens de arquivos sensíveis (`/.env`, `/wp-login.php`, `/.git`, `/dump.sql`, path traversal `../`).
+  - **IP Auto-Jail:** Bloqueia imediatamente o IP do atacante por 15 minutos via chave volátil atômica no Redis (`sos:shield:jail:<ip>`), respondendo com `HTTP 403 Forbidden` e `Retry-After: 900`.
+  - **Anti-Brute-Force & Credential Stuffing:** Teto de 10 tentativas de login por minuto por IP e travamento de segurança da conta alvo após 5 falhas consecutivas de senha por 5 minutos.
+  - **Mitigação de Timing Attack / User Enumeration:** Execução de scrypt dummy em e-mails inexistentes para equiparar a latência de resposta a contas existentes.
+  - **Rate Limiting Global:** Cota de 120 requisições por minuto por IP em todos os endpoints `/v1/*` com injeção de cabeçalhos RFC 6585 (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`).
+  - **Cabeçalhos OWASP:** Injetados em todas as respostas pelo Fastify e Caddy (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`, e supressão do header `Server`).
+
+### 10.2 Motor de Backup & Recuperação de Desastres (RTO < 20 min / RPO < 24 h)
+- **Rotina Diária (`scripts/backup-database.sh`):**
+  - Executado diariamente às 03:00 AM via crontab do host.
+  - Executa `pg_dump` transacional do banco `sos_sales_v3` com o superuser `sos_user` (Bypass RLS habilitado).
+  - Compactação máxima `gzip -9` e encriptação simétrica militar AES-256-CBC com derivação PBKDF2 (`openssl`).
+  - Teste de integridade em memória do fluxo descriptografado antes de confirmar a gravação.
+  - Rotação automática retendo os últimos 7 dias em `/opt/sos-sales/backups/daily/`.
+- **Restauração Assistida (`scripts/restore-database.sh`):**
+  - Decodificação, teste de senha e injeção controlada de dump com trava de confirmação contra sobrescrita acidental.
+
+### 10.3 Watchdog de Auto-Cura & Higiene de Recursos
+- **Sentinela (`scripts/healthcheck-watchdog.sh`):**
+  - Executado a cada 5 minutos via crontab do host.
+  - Monitora `https://crm.iaparavendas.tech/ready` (validando conectividade de aplicação, banco Postgres e Redis).
+  - Auto-cura: em caso de 3 falhas consecutivas de probe, reinicia o container `chat-sales-api` automaticamente e registra log com timestamp em `/var/log/chat-sales-watchdog.log`.
+  - Alerta de capacidade: emite alerta crítico se o disco ultrapassar 85% de uso.
+- **Higiene de Disco e Logs:**
+  - Limite de logs em `docker-compose.prod.yml` fixado em `max-size: 20m` e `max-file: 3`.
+  - Limpeza semanal de cache de compilação do Docker aos domingos às 04:00 AM (`docker builder prune -f --filter "until=168h"`).
+
+---
+
+## 11. MOTOR DE DISPAROS EM MASSA, IMPORTADOR INTELIGENTE & FECHAMENTO PIX NA IA
+
+### 11.1 Importador de Planilhas & Sanitização E.164 Determinística
+- **Componente:** `BroadcastTemplateDialog.tsx`
+  - Suporte completo a planilhas `.csv`, `.xlsx` e `.xls` processadas client-side via biblioteca `xlsx`.
+  - Auto-detecção de colunas de telefone (`telefone`, `celular`, `phone`, `whatsapp`, `contato`) e nome (`nome`, `name`, `cliente`, `contato`).
+  - Fallback resiliente: caso o cabeçalho seja atípico, realiza varredura celular por expressão regular de dígitos telefônicos.
+  - Sanitizador `sanitizeBrazilianPhoneE164`:
+    - Remove caracteres não numéricos.
+    - Lida com prefixos nacionais (`55`) e discagem com zero (`049...`).
+    - Validação de DDDs válidos brasileiros (11 a 99).
+    - Inserção transparente do 9º dígito em números legados de 8 dígitos (`XX9XXXXXXXX`).
+    - Rejeição e descarte determinístico de números fixos (`+55XX[2-5]...`) e comprimentos inválidos.
+  - Painel de auditoria visual pré-envio exibindo contadores de **Válidos**, **Duplicados** e **Descartados**, com tabela de amostra dos primeiros 10 contatos.
+- **Inserção Segura no Backend:**
+  - `POST /v1/workspaces/:workspaceId/broadcasts` com `audience.type: "IMPORT_LIST"` e lista `importedContacts: Array<{ phoneE164, name? }>`.
+  - Inserção não-destrutiva via repositório `createOrGetContact` com `ON CONFLICT (workspace_id, phone_e164) DO UPDATE`, preservando integridade referencial, histórico de conversas e threads já existentes.
+
+### 11.2 Segmentação de Audiência Dinâmica & Smart Filters (`SMART_FILTER`)
+- **Filtros Nativos SQL sob RLS:**
+  - `NON_BUYERS`: Localiza contatos cadastrados que não possuem jornadas com estágio `won` e categoricamente não possuem cobranças Pix com status `PAID` em `public.pix_charges` (`Truth in Data`).
+  - `PIX_ABANDONED`: Localiza contatos com cobranças Pix expiradas ou pendentes (`status IN ('EXPIRED', 'PENDING')`) que nunca tiveram uma cobrança Pix paga (`status = 'PAID'`), viabilizando réguas automáticas de recuperação de carrinhos e cobranças abandonadas.
+  - `INACTIVE_30_DAYS`: Contatos sem atividade de mensagem (`messages`) ou proposta comercial nos últimos 30 dias.
+  - `CTWA_RESCUE`: Contatos originados de campanhas pagas do Meta Ads (`commercial_journeys.ad_headline IS NOT NULL` ou origem CTWA) que não converteram em vendas pagas.
+- **Endpoint de Contagem ao Vivo:**
+  - `GET /v1/workspaces/:workspaceId/broadcasts/audience-count`:
+  - Aceita query params `type`, `smartFilter`, `stage` e retorna `{ success: true, count: number }` de forma ultra-rápida, alimentando badges dinâmicos no modal antes do operador clicar em disparar.
+
+### 11.3 Fechamento Automático de Ofertas com Pix na IA (`<fechamento_comercial_pix>`)
+- **Camada no Prompt Grounding (`ai-grounding-prompt.builder.ts`):**
+  - Instrução explícita para o modelo: ao reconhecer intenção de compra ou aceitação de oferta ("quero", "manda o pix", "fechado"), responder confirmando o pedido e emitir a tag técnica `[OFFER_PIX: <productId>]`.
+  - O modelo é estritamente proibido de inventar chaves ou códigos Pix no texto (Truth in Data).
+- **Extração e Desacoplamento de Tags (`parseAiResponse`):**
+  - Regex aprimorada `/\[(?:OFFER_PIX|GERAR_PIX):\s*([^\]]+)\]/i` extrai o identificador do produto e higieniza o texto que vai para o WhatsApp do cliente.
+- **Emissão Transacional no Worker (`ai-receptionist.processor.ts`):**
+  - Busca o produto correspondente no catálogo homologado `public.products`.
+  - Chama `createPixCharge` do `@sos-sales/database` passando `workspaceId`, `threadId`, `contactId`, `productId`, `title`, `amountCents` e validade de 30 minutos.
+  - Consulta a chave Pix padrão do workspace (`workspaces.default_pix_key`) e gera o payload oficial BACEN EMV Copia e Cola com cálculo de CRC16-CCITT.
+  - Anexa o snippet formatado com código monoespaçado na mensagem que é enfileirada no Outbox transacional (`commercial_outbox_queue`).
+  - Fallback gracioso com log de auditoria: caso o workspace não possua chave cadastrada, a mensagem conversacional da IA segue normalmente para o cliente sem interromper a thread.
+
+### 11.4 Conciliação Pix em Tempo Real, Recibo Automático no WhatsApp & Cockpit Cashier
+- **Serviço de Notificação Transacional (`pix-notification.ts`):**
+  - Ao liquidar uma cobrança Pix (tanto na conferência manual de caixa quanto no webhook bancário via PSP), a função `enqueuePixConfirmationMessage` localiza a instância do canal e o telefone do contato e insere atomicamente:
+    1. Uma mensagem outbound formatada no WhatsApp (`🎉 *PAGAMENTO CONFIRMADO!* ...`) em `public.messages` com `metadata.source = 'pix_confirmation'` e `chargeId`.
+    2. Um comando no Outbox transacional (`public.outbound_commands`) com status `'pending'` e chave de idempotência `pix-confirm-${charge.id}`.
+- **Cockpit Cashier & Histórico de Cobranças (`PixDrawer.tsx`):**
+  - Navegação entre "Cobranças da Conversa" e "Nova Cobrança" com `SegmentedControl`.
+  - Visualização em tempo real das cobranças geradas para o contato com badges de status (`PENDING`, `PAID`, `EXPIRED`), valor formatado e data/hora.
+  - Ação de Caixa de 1 clique: botão "Confirmar Recebimento (Caixa)" para cobranças pendentes, chamando `POST /v1/workspaces/:workspaceId/pix-charges/:chargeId/confirm-payment`, atualizando o status na interface e disparando o recibo no WhatsApp.
+  - Copiar Chave Copia e Cola e visualizador de QR Code sob demanda.
+- **Identificação Visual na Mensagem (`MessageBubble.tsx`):**
+  - Mensagens com `metadata.source === 'pix_confirmation'` são renderizadas com destaque esmeralda e badge "🎉 Recibo Pix Confirmado".
+  - Mensagens geradas com cobrança Pix exibem badge informativo "⚡ Cobrança Pix Gerada".
+
+### 11.5 Atribuição de Vendas Pix em Campanhas, Funil Comercial & Campeã A/B
+- **Agregação e Atribuição Financeira em Tempo Real (`broadcasts.routes.ts`):**
+  - `GET /v1/workspaces/:workspaceId/broadcasts/campaigns`:
+  - Cruza `broadcast_recipients` com `public.pix_charges` (`WHERE pc.status = 'PAID' AND pc.paid_at >= r.sent_at`), apurando metricas por campanha e por variante:
+    - `pix_sales_count`: Quantidade de vendas Pix convertidas pelo disparo.
+    - `pix_sales_cents`: Faturamento monetário total atribuído à campanha.
+    - `conversionRate`: Taxa de conversão percentual de vendas sobre destinatários alcançados.
+    - `averageTicketCents`: Ticket médio real das conversões.
+- **Determinação de Variante Vencedora A/B por Receita Comercial:**
+  - A variante que obtiver maior receita (`salesCents`) é coroada vencedora com o selo `🏆 Campeã Comercial`.
+  - Em caso de empate de faturamento, o desempate segue determinístico por taxa de conversão (`conversionRate`), respostas (`replyCount`) e aberturas (`readCount`).
+- **Índices de Performance Criados (`035_broadcast_sales_attribution_indexes.sql`):**
+  - `idx_broadcast_recipients_contact_camp`: `(contact_id, campaign_id, sent_at)` sob `sos_sales_v3`.
+  - `idx_pix_charges_contact_paid`: `(contact_id, status, paid_at)` parcial para status `'PAID'`.
+- **Telemetria no Frontend (`CampaignsList.tsx`):**
+  - KPI de topo: "Faturamento Pix" com valor monetário em R$ e badge de volume de vendas.
+  - Funil de Conversão: 6ª etapa "6. Vendas Pix" com percentual de conversão e badge de volume.
+  - Comparativo A/B Lado a Lado: Exibição de Faturamento Pix, Vendas e Taxa por variante com badge `🏆 Campeã Comercial`.
+
+---
+
+## 12. ARQUITETURA META WAME 2026, OTIMIZADOR DE CUSTOS WABA & WYSIWYG WHATSAPP
+
+### 12.1 Arquitetura WAME (WhatsApp Account Model Evolution — Migration 029)
+- **Desacoplamento de Ativos no Meta Business Portfolio:**
+  - Migração de WABA IDs monolíticos para o modelo WAME:
+    - `channel_instances.waac_id`: Identificador do contêiner WhatsApp Assets & Accounts.
+    - `channel_instances.pma_id`: Phone Number Management Asset, desacoplando o número como um ativo portável entre Business Portfolios sem perda de qualidade ou aprovação de templates.
+    - `channel_instances.business_portfolio_id`: Identificador corporativo da organização dona do ativo.
+- **Identidade Privada por BSUID (Business-Scoped User ID) & Usernames:**
+  - Alteração na tabela `public.contacts`: `phone_e164` torna-se `nullable`.
+  - Restrição `chk_contacts_identity` garantindo pelo menos uma âncora de identidade: `phone_e164 IS NOT NULL OR bsuid IS NOT NULL OR username IS NOT NULL`.
+  - Índices parciais únicos por workspace: `uq_contacts_workspace_bsuid` e `uq_contacts_workspace_username`.
+  - No `waba-normalizer.ts` e `inbox-processor.ts`, resolução idempotente com `ON CONFLICT (workspace_id, bsuid)` ou `ON CONFLICT (workspace_id, phone_e164)`.
+- **Janela FEP 7-Day Window (168 Horas — Free Entry Point):**
+  - Campanhas originadas por Click-to-WhatsApp Ads (`ctwa_meta`) recebem isenção integral de tarifas de conversação da Meta por 168 horas completas.
+  - `commercial_journeys.fep_expires_at = clock_timestamp() + INTERVAL '7 days'`.
+  - Visualização em tempo real no cockpit (`ConversationHeader.tsx`) com badge informativo de dias restantes de CTWA Grátis.
+- **Deep Linking Soberano `wa.me` (`ChannelsSection.tsx`):**
+  - Geração e cópia de URLs canônicas `https://wa.me/<e164>?text=<pre-filled-intent>` com sanitização de caracteres e acionamento nativo em mobile ou desktop sem exigir cadastro prévio do número na agenda do lead.
+
+### 12.2 Otimizador de Custos WABA ("Cavalo de Troia da Utilidade")
+- **Engenharia de Economia Tarifária (~85% a 90% de Desconto):**
+  - Tarifação Meta: Mensagens de Marketing custam ~R$ 0,38 por conversa, enquanto Utilidade custa ~R$ 0,04.
+  - Estratégia `UTILITY_TROJAN` injetada no gerador de IA (`templates.routes.ts`):
+    - Redige mensagens no formato de notificação de conta, confirmação ou atualização operacional ("Atualização de Proposta", "Crédito Pendente", "Encaixe Prioritário").
+    - Aprovação algorítmica garantida na categoria `UTILITY`.
+    - Ao ser entregue e respondida pelo cliente, abre a Janela de Atendimento Gratuito (Service Window de 24 horas), permitindo que a IA converse, qualifique e envie ofertas de vendas sem custos adicionais de marketing.
+- **Presets de Alta Conversão:**
+  - `CreateTemplateDialog.tsx` expõe seletor explícito de estratégia com badge de 85% de economia e 3 modelos mestres MCT pré-configurados.
+
+### 12.3 Pré-visualização WYSIWYG Realista e Mapeamento Automático
+- **Interface Realista do WhatsApp (`BroadcastTemplateDialog.tsx`):**
+  - Card de pré-visualização fiel com simulação do contato "Francisco", bolha verde de mensagem com horário de entrega, tiques duplos e renderização de botões interativos (Quick Reply e Call to Action).
+  - Indicador de economia e badge da categoria do template (Utilidade vs Marketing).
+- **Mapeamento de Variáveis Sem Fricção:**
+  - Auto-detecção de `{{1}}` para o primeiro nome do lead com card verde de auto-mapeamento: `[👤 Nome do Contato (Automático) • Auto 100%]`.
+  - Disparo de broadcast em lote (`broadcasts.routes.ts`) monta ordenadamente os `bodyParameters` da Meta Cloud API com fallback gracioso para o primeiro nome sanitizado.
+- **Cobertura de Testes Automatizados:**
+  - 35/35 testes unitários validados no Vitest (`phone-and-spreadsheet-sanitizer.test.ts`), cobrindo sanitização telefônica brasileira, parsing de planilhas e integridade de variáveis.
+
 

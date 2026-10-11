@@ -25,6 +25,7 @@ import { CapiDispatcher } from "./processors/capi-dispatcher";
 export * from "./processors/inbox-processor";
 export * from "./processors/outbox-dispatcher";
 export * from "./processors/capi-dispatcher";
+export * from "./processors/ai-receptionist.processor";
 
 export interface WorkerRuntimeOptions {
   workerId?: string;

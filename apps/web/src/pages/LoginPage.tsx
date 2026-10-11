@@ -1,7 +1,12 @@
 import { useState, type FC, type FormEvent } from "react";
 import { Button, Input, Alert } from "@sos-sales/ui";
-import { MessageSquareText, ArrowRight, KeyRound } from "lucide-react";
+import { MessageSquareText, Mail, ShieldCheck, Lock } from "lucide-react";
 import { apiClient } from "../services/api-client";
+import {
+  isSupabaseConfigured,
+  sendSupabaseOtp,
+  verifySupabaseOtp,
+} from "../services/supabase-auth";
 
 interface LoginPageProps {
   onLoginSuccess: (token: string) => void;
@@ -9,17 +14,32 @@ interface LoginPageProps {
 }
 
 export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) => {
-  const [email, setEmail] = useState("francisco@mct.br");
-  const [accessKey, setAccessKey] = useState("mothership_master_2026");
-  const [rawToken, setRawToken] = useState("");
-  const [showRawToken, setShowRawToken] = useState(false);
+  const hasSupabase = isSupabaseConfigured();
+
+  // Primary Login State (Email + Password)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  // Alternate Mode State (OTP)
+  const [authMode, setAuthMode] = useState<"password" | "otp">("password");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(initialError || null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
-  const handleLogin = async (e?: FormEvent) => {
-    if (e) e.preventDefault();
+  /**
+   * Sovereign Native Login Flow (Email + Password via Scrypt) - MCT OS v2.0
+   */
+  const handlePasswordLogin = async (e: FormEvent) => {
+    e.preventDefault();
     if (!email.trim()) {
-      setErrorMessage("Informe o e-mail cadastrado.");
+      setErrorMessage("Informe seu e-mail cadastrado.");
+      return;
+    }
+    if (!password.trim()) {
+      setErrorMessage("Informe sua senha de acesso.");
       return;
     }
 
@@ -27,9 +47,9 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) 
     setErrorMessage(null);
 
     try {
-      const res = await apiClient.requestAuthSession({
+      const res = await apiClient.loginWithPassword({
         email: email.trim(),
-        accessKey: accessKey.trim() || undefined,
+        password: password.trim(),
       });
 
       if (res.token) {
@@ -41,21 +61,56 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) 
       const msg =
         (err as { detail?: string; message?: string }).detail ||
         (err as Error).message ||
-        "Falha ao autenticar no servidor.";
+        "E-mail ou senha incorretos.";
       setErrorMessage(msg);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleTokenSubmit = (e: FormEvent) => {
+  /**
+   * Supabase Auth OTP Flow (Optional Alternate)
+   */
+  const handleSendOtp = async (e: FormEvent) => {
     e.preventDefault();
-    if (!rawToken.trim()) {
-      setErrorMessage("Cole um token de acesso válido.");
+    if (!email.trim()) {
+      setErrorMessage("Informe o e-mail cadastrado.");
       return;
     }
+
+    setIsLoading(true);
     setErrorMessage(null);
-    onLoginSuccess(rawToken.trim());
+    setSuccessNotice(null);
+
+    const res = await sendSupabaseOtp(email.trim());
+    setIsLoading(false);
+
+    if (res.success) {
+      setOtpSent(true);
+      setSuccessNotice(`Código de acesso enviado para ${email.trim()}. Verifique sua caixa de entrada.`);
+    } else {
+      setErrorMessage(res.message || "Falha ao enviar código de acesso.");
+    }
+  };
+
+  const handleVerifyOtp = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!otpCode.trim()) {
+      setErrorMessage("Informe o código de 6 dígitos recebido.");
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    const res = await verifySupabaseOtp(email.trim(), otpCode.trim());
+    setIsLoading(false);
+
+    if (res.token) {
+      onLoginSuccess(res.token);
+    } else {
+      setErrorMessage(res.error || "Código de acesso inválido ou expirado.");
+    }
   };
 
   return (
@@ -73,11 +128,12 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) 
       <div
         style={{
           width: "100%",
-          maxWidth: "400px",
+          maxWidth: "420px",
           backgroundColor: "var(--bg-surface)",
           border: "1px solid var(--border-default)",
           borderRadius: "var(--radius-xl, 16px)",
-          boxShadow: "var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05))",
+          boxShadow:
+            "var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05))",
           padding: "32px 28px",
           display: "flex",
           flexDirection: "column",
@@ -86,42 +142,68 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) 
         }}
       >
         {/* Brand Header */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: "8px" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+            gap: "8px",
+          }}
+        >
           <div
             style={{
-              width: "44px",
-              height: "44px",
+              width: "48px",
+              height: "48px",
               borderRadius: "var(--radius-lg, 12px)",
               backgroundColor: "var(--color-action)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               color: "var(--color-action-fg)",
-              boxShadow: "0 2px 8px rgba(0, 128, 105, 0.3)",
+              boxShadow: "0 4px 12px rgba(0, 128, 105, 0.35)",
             }}
           >
-            <MessageSquareText size={24} />
+            <MessageSquareText size={26} />
           </div>
           <div>
-            <h1 style={{ fontSize: "var(--font-size-xl, 1.25rem)", fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>
+            <h1
+              style={{
+                fontSize: "var(--font-size-xl, 1.25rem)",
+                fontWeight: 600,
+                color: "var(--text-primary)",
+                margin: 0,
+              }}
+            >
               SOS Sales
             </h1>
-            <p style={{ fontSize: "var(--font-size-sm, 0.875rem)", color: "var(--text-secondary)", margin: "4px 0 0 0" }}>
-              Acesso à plataforma de atendimento e vendas
+            <p
+              style={{
+                fontSize: "var(--font-size-sm, 0.875rem)",
+                color: "var(--text-secondary)",
+                margin: "4px 0 0 0",
+              }}
+            >
+              Sistema Operacional de Vendas & Atendimento
             </p>
           </div>
         </div>
 
-        {/* Error Alert */}
+        {/* Notices & Alerts */}
         {errorMessage && (
           <Alert variant="danger" title="Erro no Acesso">
             {errorMessage}
           </Alert>
         )}
+        {successNotice && (
+          <Alert variant="info" title="Código Enviado">
+            {successNotice}
+          </Alert>
+        )}
 
-        {/* Main Form */}
-        {!showRawToken ? (
-          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {/* 1. Sovereign Native Login (Email + Password) — DEFAULT */}
+        {authMode === "password" && (
+          <form onSubmit={handlePasswordLogin} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <Input
               label="E-mail"
               type="email"
@@ -129,34 +211,15 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoFocus
             />
 
             <Input
-              label="Chave de Acesso"
+              label="Senha de Acesso"
               type="password"
-              placeholder="Digite sua chave..."
-              value={accessKey}
-              onChange={(e) => setAccessKey(e.target.value)}
-            />
-
-            <Button
-              size="md"
-              variant="primary"
-              type="submit"
-              disabled={isLoading}
-              prefixIcon={<ArrowRight size={16} />}
-              style={{ width: "100%", marginTop: "4px" }}
-            >
-              {isLoading ? "Entrando..." : "Entrar"}
-            </Button>
-          </form>
-        ) : (
-          <form onSubmit={handleTokenSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <Input
-              label="Token de Acesso Direto (JWT)"
-              placeholder="Cole o token JWT aqui..."
-              value={rawToken}
-              onChange={(e) => setRawToken(e.target.value)}
+              placeholder="Digite sua senha..."
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               required
             />
 
@@ -164,35 +227,111 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) 
               size="md"
               variant="primary"
               type="submit"
-              prefixIcon={<KeyRound size={16} />}
+              disabled={isLoading}
+              prefixIcon={<Lock size={16} />}
               style={{ width: "100%", marginTop: "4px" }}
             >
-              Acessar com Token
+              {isLoading ? "Autenticando..." : "Entrar no SOS Sales"}
             </Button>
+
+            {hasSupabase && (
+              <div style={{ display: "flex", justifyContent: "center", marginTop: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("otp");
+                    setErrorMessage(null);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    fontSize: "var(--font-size-xs, 0.75rem)",
+                    color: "var(--text-secondary)",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Entrar com código por e-mail (OTP)
+                </button>
+              </div>
+            )}
           </form>
         )}
 
-        {/* Toggle Alternative Access Mode */}
-        <div style={{ display: "flex", justifyContent: "center", borderTop: "1px solid var(--border-default)", paddingTop: "16px" }}>
-          <button
-            type="button"
-            onClick={() => {
-              setShowRawToken(!showRawToken);
-              setErrorMessage(null);
-            }}
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
-              fontSize: "var(--font-size-xs, 0.75rem)",
-              color: "var(--text-secondary)",
-              textDecoration: "underline",
-            }}
-          >
-            {showRawToken ? "Voltar ao login com e-mail e chave" : "Entrar com token manual de desenvolvedor"}
-          </button>
-        </div>
+        {/* 2. Supabase Auth OTP Flow (Optional Alternate) */}
+        {authMode === "otp" && (
+          <>
+            {!otpSent ? (
+              <form onSubmit={handleSendOtp} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <Input
+                  label="E-mail Profissional"
+                  type="email"
+                  placeholder="seu.email@empresa.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+
+                <Button
+                  size="md"
+                  variant="primary"
+                  type="submit"
+                  disabled={isLoading}
+                  prefixIcon={<Mail size={16} />}
+                  style={{ width: "100%", marginTop: "4px" }}
+                >
+                  {isLoading ? "Enviando..." : "Receber Código de Acesso"}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOtp} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <Input
+                  label="Código de Acesso (6 dígitos)"
+                  type="text"
+                  placeholder="123456"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                  required
+                />
+
+                <Button
+                  size="md"
+                  variant="primary"
+                  type="submit"
+                  disabled={isLoading}
+                  prefixIcon={<ShieldCheck size={16} />}
+                  style={{ width: "100%", marginTop: "4px" }}
+                >
+                  {isLoading ? "Validando..." : "Confirmar e Acessar"}
+                </Button>
+              </form>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("password");
+                setOtpSent(false);
+                setOtpCode("");
+                setErrorMessage(null);
+                setSuccessNotice(null);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                color: "var(--text-secondary)",
+                textDecoration: "underline",
+                textAlign: "center",
+              }}
+            >
+              Voltar ao login com senha
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

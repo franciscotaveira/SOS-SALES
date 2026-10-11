@@ -24,9 +24,10 @@ export const ProductsPage: FC<ProductsPageProps> = ({ session }) => {
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string>("ACTIVE");
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<ProductRecord | null>(null);
 
   const fetchProducts = useCallback(async () => {
     if (!workspaceId || !token) return;
@@ -87,7 +88,10 @@ export const ProductsPage: FC<ProductsPageProps> = ({ session }) => {
               size="sm"
               variant="primary"
               prefixIcon={<Plus size={14} />}
-              onClick={() => setIsCreateOpen(true)}
+              onClick={() => {
+                setEditingProduct(null);
+                setIsCreateOpen(true);
+              }}
             >
               Novo Produto
             </Button>
@@ -109,8 +113,8 @@ export const ProductsPage: FC<ProductsPageProps> = ({ session }) => {
             onChange={setStatusFilter}
             options={[
               { value: "ALL", label: `Todos (${products.length})` },
-              { value: "ACTIVE", label: "Ativos" },
-              { value: "INACTIVE", label: "Inativos" },
+              { value: "ACTIVE", label: `Ativos (${products.filter((p) => p.status === "ACTIVE").length})` },
+              { value: "INACTIVE", label: `Inativos (${products.filter((p) => p.status === "INACTIVE").length})` },
             ]}
           />
         </div>
@@ -130,24 +134,37 @@ export const ProductsPage: FC<ProductsPageProps> = ({ session }) => {
                 variant="primary"
                 size="sm"
                 prefixIcon={<Plus size={14} />}
-                onClick={() => setIsCreateOpen(true)}
+                onClick={() => {
+                  setEditingProduct(null);
+                  setIsCreateOpen(true);
+                }}
               >
                 Cadastrar Primeiro Produto
               </Button>
             }
           />
         ) : (
-          <ProductsTable products={filteredProducts} />
+          <ProductsTable
+            products={filteredProducts}
+            onEdit={(product) => {
+              setEditingProduct(product);
+              setIsCreateOpen(true);
+            }}
+          />
         )}
       </div>
 
       {workspaceId && token && (
         <CreateProductDialog
           isOpen={isCreateOpen}
-          onClose={() => setIsCreateOpen(false)}
+          onClose={() => {
+            setIsCreateOpen(false);
+            setEditingProduct(null);
+          }}
           workspaceId={workspaceId}
           token={token}
           onCreated={fetchProducts}
+          product={editingProduct}
         />
       )}
     </div>

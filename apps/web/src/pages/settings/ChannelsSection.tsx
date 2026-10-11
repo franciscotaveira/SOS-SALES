@@ -1,6 +1,6 @@
-import type { FC } from "react";
+import { useState, type FC } from "react";
 import { Badge, Button, EmptyState } from "@sos-sales/ui";
-import { Radio, Plus, QrCode, Trash2, Smartphone } from "lucide-react";
+import { Radio, Plus, QrCode, Trash2, Smartphone, CreditCard, ShieldCheck, ShieldAlert, Link2, Check } from "lucide-react";
 import type { ChannelSummary } from "../../services/api-client";
 
 interface ChannelsSectionProps {
@@ -10,6 +10,9 @@ interface ChannelsSectionProps {
   onOpenQr: (channelId: string, channelName: string) => void;
   onRevoke: (channelId: string, channelName: string) => void;
   revokingId: string | null;
+  onDelete?: (channelId: string, channelName: string) => void;
+  deletingId?: string | null;
+  onToggleBilling?: (channelId: string, currentConfigured: boolean) => void;
 }
 
 export const ChannelsSection: FC<ChannelsSectionProps> = ({
@@ -19,7 +22,19 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
   onOpenQr,
   onRevoke,
   revokingId,
+  onDelete,
+  deletingId,
+  onToggleBilling,
 }) => {
+  const [copiedChannelId, setCopiedChannelId] = useState<string | null>(null);
+
+  const handleCopyWaMe = (phone: string, channelId: string) => {
+    const cleanPhone = phone.replace(/\D/g, "");
+    const url = `https://wa.me/${cleanPhone}`;
+    navigator.clipboard.writeText(url);
+    setCopiedChannelId(channelId);
+    setTimeout(() => setCopiedChannelId(null), 2500);
+  };
   const getStatusBadge = (status?: string) => {
     switch (status) {
       case "connected":
@@ -83,10 +98,12 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
           {channels.map((ch) => {
             const isWaha = ch.provider === "waha";
             const isRevoking = revokingId === ch.id;
+            const isDeleting = deletingId === ch.id;
 
             return (
               <div
                 key={ch.id}
+                className="sos-card-interactive"
                 style={{
                   padding: "12px 14px",
                   backgroundColor: "var(--bg-canvas)",
@@ -120,14 +137,47 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
                       </span>
                       {getStatusBadge(ch.status)}
                     </div>
-                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", marginTop: "2px" }}>
-                      {ch.provider.toUpperCase()} {ch.phoneNumberE164 ? `· ${ch.phoneNumberE164}` : ""}
+                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", marginTop: "3px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                      <span>{ch.provider.toUpperCase()} {ch.phoneNumberE164 ? `· ${ch.phoneNumberE164}` : ""}</span>
+                      {ch.provider === "meta_waba" && (
+                        ch.metaBillingConfigured ? (
+                          <span style={{ fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", backgroundColor: "rgba(16, 185, 129, 0.15)", color: "#10b981", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                            <ShieldCheck size={11} /> Cartão Meta Ativo (Disparos Liberados)
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#ef4444", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                            <ShieldAlert size={11} /> Sem Cartão Meta (Disparo Travado)
+                          </span>
+                        )
+                      )}
                     </div>
                   </div>
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  {isWaha && (
+                  {ch.phoneNumberE164 && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      prefixIcon={copiedChannelId === ch.id ? <Check size={12} color="#10b981" /> : <Link2 size={12} />}
+                      onClick={() => handleCopyWaMe(ch.phoneNumberE164!, ch.id)}
+                      title={`Copiar link direto https://wa.me/${ch.phoneNumberE164.replace(/\D/g, "")}`}
+                    >
+                      {copiedChannelId === ch.id ? "Copiado!" : "wa.me"}
+                    </Button>
+                  )}
+                  {ch.provider === "meta_waba" && onToggleBilling && (
+                    <Button
+                      size="xs"
+                      variant={ch.metaBillingConfigured ? "secondary" : "primary"}
+                      prefixIcon={<CreditCard size={12} />}
+                      onClick={() => onToggleBilling(ch.id, Boolean(ch.metaBillingConfigured))}
+                      title="O SOS Sales não cobra mensagens: tarifação ocorre direto no seu cartão na Meta"
+                    >
+                      {ch.metaBillingConfigured ? "Cartão Meta OK" : "Ativar Cartão Meta"}
+                    </Button>
+                  )}
+                  {isWaha && ch.status !== "revoked" && (
                     <Button
                       size="xs"
                       variant="secondary"
@@ -137,14 +187,24 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
                       QR Code
                     </Button>
                   )}
+                  {ch.status === "connected" && (
+                    <Button
+                      size="xs"
+                      variant="secondary"
+                      onClick={() => onRevoke(ch.id, ch.displayName || ch.phoneNumberE164 || "Linha WhatsApp")}
+                      disabled={isRevoking || isDeleting}
+                    >
+                      {isRevoking ? "Revogando..." : "Desconectar"}
+                    </Button>
+                  )}
                   <Button
                     size="xs"
                     variant="danger"
                     prefixIcon={<Trash2 size={13} />}
-                    onClick={() => onRevoke(ch.id, ch.displayName || ch.phoneNumberE164 || "Linha WhatsApp")}
-                    disabled={isRevoking}
+                    onClick={() => onDelete?.(ch.id, ch.displayName || ch.phoneNumberE164 || "Linha WhatsApp")}
+                    disabled={isRevoking || isDeleting}
                   >
-                    {isRevoking ? "Revogando..." : "Revogar"}
+                    {isDeleting ? "Excluindo..." : ch.status === "revoked" ? "Excluir" : "Excluir / Arquivar"}
                   </Button>
                 </div>
               </div>

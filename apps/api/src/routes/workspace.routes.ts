@@ -1,13 +1,37 @@
 import type { FastifyPluginAsync } from "fastify";
+import crypto from "node:crypto";
 import { withTenantTransaction } from "@sos-sales/database";
+import { hashPassword } from "@sos-sales/auth";
 import { z } from "zod";
 
 const updateWorkspaceSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   defaultPixKey: z.string().min(3).max(100).optional().nullable(),
   defaultPixKeyType: z.enum(["cpf", "cnpj", "email", "phone", "random"]).optional().nullable(),
-  defaultPixMerchantName: z.string().min(2).max(25).optional().nullable(),
-  defaultPixMerchantCity: z.string().min(2).max(15).optional().nullable(),
+  defaultPixMerchantName: z
+    .string()
+    .transform((val) => (val ? val.trim().slice(0, 25) : val))
+    .pipe(z.string().min(2).max(25))
+    .optional()
+    .nullable(),
+  defaultPixMerchantCity: z
+    .string()
+    .transform((val) => (val ? val.trim().slice(0, 15) : val))
+    .pipe(z.string().min(2).max(15))
+    .optional()
+    .nullable(),
+});
+
+const addMemberSchema = z.object({
+  name: z.string().min(2).max(100),
+  email: z.string().email(),
+  role: z.enum(["admin", "manager", "operator"]),
+  password: z.string().min(6).max(100).optional(),
+});
+
+const updateMemberSchema = z.object({
+  role: z.enum(["admin", "manager", "operator"]).optional(),
+  password: z.string().min(6).max(100).optional(),
 });
 
 export const workspaceRoutes: FastifyPluginAsync = async (app) => {
@@ -251,6 +275,384 @@ export const workspaceRoutes: FastifyPluginAsync = async (app) => {
           createdAt: updated.created_at,
           updatedAt: updated.updated_at,
         },
+      });
+    }
+  );
+
+  // GET /v1/workspaces/:workspaceId/members — list all team members in active workspace
+  app.get(
+    "/v1/workspaces/:workspaceId/members",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("workspace:view"),
+      ],
+    },
+    async (request, reply) => {
+      const workspaceId = request.workspaceId!;
+
+      const members = await withTenantTransaction(workspaceId, async (client) => {
+        const res = await client.query<{
+          id: string;
+          user_id: string;
+          email: string;
+          name: string;
+          role: string;
+          created_at: string;
+        }>(
+          `SELECT 
+             m.id,
+             u.id as user_id,
+             u.email,
+             u.name,
+             m.role,
+             m.created_at
+           FROM workspace_memberships m
+           JOIN users u ON u.id = m.user_id
+           WHERE m.workspace_id = $1
+           ORDER BY 
+             CASE m.role 
+               WHEN 'owner' THEN 1 
+               WHEN 'admin' THEN 2 
+               WHEN 'manager' THEN 3 
+               WHEN 'operator' THEN 4 
+               ELSE 5 
+             END ASC,
+             u.name ASC`,
+          [workspaceId]
+        );
+        return res.rows;
+      });
+
+      return reply.status(200).send({
+        members: members.map((m) => ({
+          id: m.id,
+          userId: m.user_id,
+          name: m.name,
+          email: m.email,
+          role: m.role,
+          joinedAt: m.created_at,
+        })),
+      });
+    }
+  );
+
+  // POST /v1/workspaces/:workspaceId/members — invite or add member to workspace
+  app.post(
+    "/v1/workspaces/:workspaceId/members",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("workspace:invite"),
+      ],
+    },
+    async (request, reply) => {
+      const workspaceId = request.workspaceId!;
+      const parseResult = addMemberSchema.safeParse(request.body);
+
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: parseResult.error.issues.map((i) => i.message).join(", "),
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { name, email, role, password } = parseResult.data;
+      const normalizedEmail = email.trim().toLowerCase();
+
+      try {
+        const result = await withTenantTransaction(workspaceId, async (client) => {
+          // 1. Check if user already exists in global users table
+          const existingUserRes = await client.query<{
+            id: string;
+            email: string;
+            name: string;
+            password_hash: string | null;
+          }>(
+            `SELECT id, email, name, password_hash FROM users WHERE LOWER(email) = $1 LIMIT 1`,
+            [normalizedEmail]
+          );
+
+          let userId: string;
+          let userName = name.trim();
+          let createdPassword = password ? password.trim() : "";
+
+          const existingUser = existingUserRes.rows[0];
+          if (existingUser) {
+            userId = existingUser.id;
+            userName = existingUser.name || userName;
+
+            // Check if already member of THIS workspace
+            const existingMemberRes = await client.query<{ id: string }>(
+              `SELECT id FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 LIMIT 1`,
+              [workspaceId, userId]
+            );
+
+            if (existingMemberRes.rows.length > 0) {
+              const err = new Error("ALREADY_MEMBER");
+              throw err;
+            }
+
+            // If a new password is provided, update it
+            if (password) {
+              const hashed = hashPassword(password.trim());
+              await client.query(
+                `UPDATE users SET password_hash = $1 WHERE id = $2`,
+                [hashed, userId]
+              );
+            }
+          } else {
+            // New user registration
+            if (!createdPassword) {
+              createdPassword = crypto.randomBytes(6).toString("base64url");
+            }
+            const hashed = hashPassword(createdPassword);
+
+            const newUserRes = await client.query<{ id: string; email: string; name: string }>(
+              `INSERT INTO users (email, name, password_hash)
+               VALUES ($1, $2, $3)
+               RETURNING id, email, name`,
+              [normalizedEmail, userName, hashed]
+            );
+            const newUser = newUserRes.rows[0];
+            if (!newUser) {
+              throw new Error("FAILED_TO_CREATE_USER");
+            }
+            userId = newUser.id;
+          }
+
+          // 2. Insert workspace membership
+          const insMemberRes = await client.query<{ id: string; created_at: string }>(
+            `INSERT INTO workspace_memberships (workspace_id, user_id, role)
+             VALUES ($1, $2, $3)
+             RETURNING id, created_at`,
+            [workspaceId, userId, role]
+          );
+
+          const membership = insMemberRes.rows[0];
+          if (!membership) {
+            throw new Error("FAILED_TO_CREATE_MEMBERSHIP");
+          }
+
+          return {
+            member: {
+              id: membership.id,
+              userId,
+              name: userName,
+              email: normalizedEmail,
+              role,
+              joinedAt: membership.created_at,
+            },
+            initialPassword: createdPassword || undefined,
+          };
+        });
+
+        return reply.status(201).send(result);
+      } catch (err: unknown) {
+        if ((err as Error).message === "ALREADY_MEMBER") {
+          return reply.status(409).send({
+            type: "https://sos-sales.mct.br/errors/conflict",
+            title: "Conflict",
+            status: 409,
+            detail: "Este e-mail já pertence à equipe desta empresa",
+            instance: request.url,
+            correlationId: request.id,
+          });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // PATCH /v1/workspaces/:workspaceId/members/:memberId — update member role or password
+  app.patch(
+    "/v1/workspaces/:workspaceId/members/:memberId",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("workspace:manage"),
+      ],
+    },
+    async (request, reply) => {
+      const workspaceId = request.workspaceId!;
+      const { memberId } = request.params as { memberId: string };
+      const parseResult = updateMemberSchema.safeParse(request.body);
+
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: parseResult.error.issues.map((i) => i.message).join(", "),
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { role, password } = parseResult.data;
+      if (!role && !password) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Informe ao menos a nova role ou nova senha",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const updated = await withTenantTransaction(workspaceId, async (client) => {
+        // Find membership by membership ID or user ID
+        const targetRes = await client.query<{
+          id: string;
+          user_id: string;
+          role: string;
+        }>(
+          `SELECT id, user_id, role 
+           FROM workspace_memberships 
+           WHERE workspace_id = $1 AND (id = $2::uuid OR user_id = $2::uuid)
+           LIMIT 1`,
+          [workspaceId, memberId]
+        );
+
+        const target = targetRes.rows[0];
+        if (!target) {
+          return null;
+        }
+
+        // Owner protection: cannot demote owner unless caller is owner
+        if (target.role === "owner" && role) {
+          const callerRole = request.activeRole || "owner";
+          if (callerRole !== "owner") {
+            const err = new Error("CANNOT_MODIFY_OWNER");
+            throw err;
+          }
+        }
+
+        if (role) {
+          await client.query(
+            `UPDATE workspace_memberships SET role = $1 WHERE id = $2`,
+            [role, target.id]
+          );
+        }
+
+        if (password) {
+          const hashed = hashPassword(password.trim());
+          await client.query(
+            `UPDATE users SET password_hash = $1 WHERE id = $2`,
+            [hashed, target.user_id]
+          );
+        }
+
+        const refreshed = await client.query<{
+          id: string;
+          user_id: string;
+          name: string;
+          email: string;
+          role: string;
+          created_at: string;
+        }>(
+          `SELECT m.id, u.id as user_id, u.name, u.email, m.role, m.created_at
+           FROM workspace_memberships m
+           JOIN users u ON u.id = m.user_id
+           WHERE m.id = $1`,
+          [target.id]
+        );
+
+        return refreshed.rows[0] || null;
+      });
+
+      if (!updated) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: "Membro não encontrado nesta empresa",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      return reply.status(200).send({
+        member: {
+          id: updated.id,
+          userId: updated.user_id,
+          name: updated.name,
+          email: updated.email,
+          role: updated.role,
+          joinedAt: updated.created_at,
+        },
+      });
+    }
+  );
+
+  // DELETE /v1/workspaces/:workspaceId/members/:memberId — remove member from workspace
+  app.delete(
+    "/v1/workspaces/:workspaceId/members/:memberId",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("workspace:manage"),
+      ],
+    },
+    async (request, reply) => {
+      const workspaceId = request.workspaceId!;
+      const { memberId } = request.params as { memberId: string };
+
+      const removed = await withTenantTransaction(workspaceId, async (client) => {
+        const targetRes = await client.query<{
+          id: string;
+          user_id: string;
+          role: string;
+        }>(
+          `SELECT id, user_id, role 
+           FROM workspace_memberships 
+           WHERE workspace_id = $1 AND (id = $2::uuid OR user_id = $2::uuid)
+           LIMIT 1`,
+          [workspaceId, memberId]
+        );
+
+        const target = targetRes.rows[0];
+        if (!target) {
+          return null;
+        }
+
+        if (target.role === "owner") {
+          const err = new Error("CANNOT_REMOVE_OWNER");
+          throw err;
+        }
+
+        if (target.user_id === request.user.id) {
+          const err = new Error("CANNOT_REMOVE_SELF");
+          throw err;
+        }
+
+        await client.query(`DELETE FROM workspace_memberships WHERE id = $1`, [target.id]);
+        return true;
+      });
+
+      if (!removed) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: "Membro não encontrado nesta empresa",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      return reply.status(200).send({
+        success: true,
+        message: "Membro removido da empresa com sucesso",
       });
     }
   );

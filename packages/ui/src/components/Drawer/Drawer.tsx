@@ -15,19 +15,52 @@ export const Drawer: FC<DrawerProps> = ({
 }) => {
   const drawerRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+  const hasInitiallyFocusedRef = useRef(false);
+  const wasOpenRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   const idPrefix = useId();
   const titleId = `${idPrefix}-title`;
   const descId = `${idPrefix}-desc`;
 
+  // Focus restoration when drawer transitions from open -> closed
   useEffect(() => {
-    if (!isOpen) return;
+    if (isOpen) {
+      wasOpenRef.current = true;
+    } else if (wasOpenRef.current) {
+      wasOpenRef.current = false;
+      hasInitiallyFocusedRef.current = false;
+      previouslyFocusedElementRef.current?.focus();
+    }
+  }, [isOpen]);
 
-    previouslyFocusedElementRef.current = document.activeElement as HTMLElement;
+  // Clean-up on unmount if drawer was open
+  useEffect(() => {
+    return () => {
+      if (wasOpenRef.current) {
+        previouslyFocusedElementRef.current?.focus();
+      }
+    };
+  }, []);
+
+  // Keyboard trap & Escape listener & initial focus
+  useEffect(() => {
+    if (!isOpen) {
+      hasInitiallyFocusedRef.current = false;
+      return;
+    }
+
+    if (!hasInitiallyFocusedRef.current) {
+      previouslyFocusedElementRef.current = document.activeElement as HTMLElement;
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -40,7 +73,7 @@ export const Drawer: FC<DrawerProps> = ({
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];
 
-        const isReverseTab = e.shiftKey || (e.ctrlKey && !e.altKey && !e.metaKey);
+        const isReverseTab = e.shiftKey;
 
         if (isReverseTab) {
           if (document.activeElement === firstElement && lastElement) {
@@ -58,27 +91,32 @@ export const Drawer: FC<DrawerProps> = ({
 
     document.addEventListener("keydown", handleKeyDown);
 
-    const timer = setTimeout(() => {
-      if (drawerRef.current) {
-        const firstFocusable = drawerRef.current.querySelector<HTMLElement>(
-          'button, input, [tabindex]:not([tabindex="-1"])'
-        );
-        if (firstFocusable) {
-          firstFocusable.focus();
-        } else {
-          drawerRef.current.focus();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (!hasInitiallyFocusedRef.current) {
+      hasInitiallyFocusedRef.current = true;
+      timer = setTimeout(() => {
+        if (drawerRef.current) {
+          // If user or browser already focused something inside the drawer, NEVER steal focus!
+          if (drawerRef.current.contains(document.activeElement)) {
+            return;
+          }
+          const firstFocusable = drawerRef.current.querySelector<HTMLElement>(
+            'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
+          if (firstFocusable) {
+            firstFocusable.focus();
+          } else {
+            drawerRef.current.focus();
+          }
         }
-      }
-    }, 50);
+      }, 50);
+    }
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      clearTimeout(timer);
-      if (previouslyFocusedElementRef.current) {
-        previouslyFocusedElementRef.current.focus();
-      }
+      if (timer) clearTimeout(timer);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -99,6 +137,7 @@ export const Drawer: FC<DrawerProps> = ({
       {/* Backdrop */}
       <div
         onClick={onClose}
+        className="sos-backdrop"
         style={{
           position: "fixed",
           inset: 0,

@@ -14,7 +14,7 @@ export const MessageList: FC<MessageListProps> = ({ messages, isLoading }) => {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  }, [messages.length, messages[messages.length - 1]?.id]);
 
   if (isLoading && messages.length === 0) {
     return (
@@ -24,7 +24,7 @@ export const MessageList: FC<MessageListProps> = ({ messages, isLoading }) => {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "var(--bg-canvas)",
+          backgroundColor: "var(--bg-surface-subtle)",
         }}
       >
         <LoadingState variant="skeleton" lines={4} />
@@ -40,7 +40,7 @@ export const MessageList: FC<MessageListProps> = ({ messages, isLoading }) => {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "var(--bg-canvas)",
+          backgroundColor: "var(--bg-surface-subtle)",
           padding: "var(--space-6)",
         }}
       >
@@ -60,7 +60,7 @@ export const MessageList: FC<MessageListProps> = ({ messages, isLoading }) => {
       style={{
         flex: 1,
         overflowY: "auto",
-        backgroundColor: "var(--bg-canvas)",
+        backgroundColor: "var(--bg-surface-subtle)",
         padding: "var(--space-4)",
         display: "flex",
         flexDirection: "column",

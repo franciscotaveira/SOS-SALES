@@ -5,6 +5,7 @@ import type {
 } from "./channel-adapter.interface";
 import type { ISigningSecretResolver } from "../services/signature-verification.service";
 import { validateMediaUrl, detectMediaType } from "../security/ssrf-guard";
+import { META_GRAPH_API_VERSION } from "@sos-sales/contracts";
 
 export function parseRetryAfter(
   headerValue: string | null | undefined,
@@ -63,7 +64,7 @@ export class MetaWabaAdapter implements IChannelAdapter {
   private readonly timeoutMs: number;
 
   constructor(options: MetaWabaAdapterOptions = {}) {
-    this.baseUrl = options.baseUrl || "https://graph.facebook.com/v21.0";
+    this.baseUrl = options.baseUrl || `https://graph.facebook.com/${META_GRAPH_API_VERSION}`;
     this.fetchFn = options.fetchFn || globalThis.fetch;
     this.timeoutMs = options.timeoutMs || 15_000;
   }

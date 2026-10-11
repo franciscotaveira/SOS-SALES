@@ -96,6 +96,12 @@ const decideSuggestionBodySchema = z.object({
   stateVersion: z.number().int().positive(),
 }).strict();
 
+const scanRadarBodySchema = z.object({
+  minHoursSinceLastMessage: z.number().min(1).max(8760).default(12),
+  limit: z.number().int().min(1).max(50).default(20),
+  threadId: z.string().uuid().optional(),
+}).strict();
+
 /**
  * Inline permission check: returns true if the request's active role
  * has ANY of the provided permissions.
@@ -191,6 +197,73 @@ export const integrationRoutes: FastifyPluginAsync = async (app) => {
         }
         throw err;
       }
+    }
+  );
+
+  // Governed on-demand scan. It creates reviewable suggestions only; it never sends messages.
+  app.post(
+    "/v1/workspaces/:workspaceId/integrations/radar/scan",
+    {
+      preHandler: [app.authenticate, app.requireWorkspaceContext],
+    },
+    async (request, reply) => {
+      if (!hasAnyPermission(request, "integration:suggestions:manage", "integration:manage")) {
+        return forbidden(reply, request, "Missing permission to run Radar scan");
+      }
+      const parsedParams = workspaceParamsSchema.safeParse(request.params);
+      const parsedBody = scanRadarBodySchema.safeParse(request.body ?? {});
+      if (!parsedParams.success || !parsedBody.success) {
+        return badRequest(reply, request, "Invalid Radar scan parameters");
+      }
+
+      const { workspaceId } = parsedParams.data;
+      const result = await withTenantTransaction(workspaceId, async (client) => {
+        const config = await client.query<{ radar_enabled: boolean }>(
+          `SELECT radar_enabled FROM public.workspaces WHERE id = $1`, [workspaceId]
+        );
+        if (!config.rows[0]?.radar_enabled) {
+          return { enabled: false, candidates: 0, created: 0 };
+        }
+
+        const candidates = await listIntegrationCandidates(client, workspaceId, parsedBody.data);
+        let created = 0;
+        for (const candidate of candidates.items) {
+          const hours = candidate.evidence.hoursSinceLastMessage;
+          const inbound = candidate.evidence.lastMessageDirection === "inbound";
+          const name = candidate.contactName || "este contato";
+          const title = inbound ? `Cliente aguardando retorno: ${name}` : `Retomar contato com ${name}`;
+          const body = inbound
+            ? `A última mensagem do cliente está sem retorno há ${hours} hora(s). Revise a conversa e responda.`
+            : `A conversa está parada há ${hours} hora(s). Avalie se existe oportunidade de retomada.`;
+          const draftMessage = inbound
+            ? `Olá, ${candidate.contactName || "tudo bem"}? Vi sua mensagem e estou retomando seu atendimento agora.`
+            : `Olá, ${candidate.contactName || "tudo bem"}? Estou retomando nosso contato para saber se ainda posso ajudar.`;
+          const outcome = await createIntegrationSuggestion(client, workspaceId, {
+            idempotencyKey: `radar:${candidate.threadId}:${candidate.candidateRevision}`,
+            source: "system",
+            threadId: candidate.threadId,
+            contactId: candidate.contactId,
+            suggestionType: inbound ? "follow_up" : "reengagement",
+            title,
+            body,
+            draftMessage,
+            priority: inbound ? "high" : "normal",
+            reasonCode: candidate.reasonCode,
+            evidence: {
+              hoursSinceLastMessage: hours,
+              lastMessageSnippet: candidate.evidence.lastMessageBody?.slice(0, 500) ?? undefined,
+              lastMessageDirection: candidate.evidence.lastMessageDirection as "inbound" | "outbound" | undefined,
+              signals: [candidate.reasonCode],
+            },
+            candidateRevision: candidate.candidateRevision,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          });
+          if (outcome.created) created += 1;
+        }
+        return { enabled: true, candidates: candidates.total, created };
+      });
+
+      return reply.status(200).send(result);
     }
   );
 

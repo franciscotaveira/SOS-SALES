@@ -1,14 +1,19 @@
 import type { FC } from "react";
 import { Badge, Button, ListItem, useBreakpoint } from "@sos-sales/ui";
-import { FileText, Eye } from "lucide-react";
+import { FileText, Eye, Send } from "lucide-react";
 import type { MessageTemplateSummary } from "../../services/api-client";
 
 interface TemplatesTableProps {
   templates: MessageTemplateSummary[];
   onSelectPreview: (template: MessageTemplateSummary) => void;
+  onSelectBroadcast?: (template: MessageTemplateSummary) => void;
 }
 
-export const TemplatesTable: FC<TemplatesTableProps> = ({ templates, onSelectPreview }) => {
+export const TemplatesTable: FC<TemplatesTableProps> = ({
+  templates,
+  onSelectPreview,
+  onSelectBroadcast,
+}) => {
   const { isMobile } = useBreakpoint();
 
   if (isMobile) {
@@ -50,9 +55,24 @@ export const TemplatesTable: FC<TemplatesTableProps> = ({ templates, onSelectPre
               </div>
             }
             meta={
-              <Badge variant={t.metaTemplateId ? "action" : "neutral"}>
-                {t.metaTemplateId ? "Meta Aprovado" : "Local"}
-              </Badge>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Badge variant={t.metaTemplateId ? "action" : "neutral"}>
+                  {t.metaTemplateId ? "Meta Aprovado" : "Local"}
+                </Badge>
+                {onSelectBroadcast && (
+                  <Button
+                    size="xs"
+                    variant="primary"
+                    prefixIcon={<Send size={11} />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectBroadcast(t);
+                    }}
+                  >
+                    Disparar
+                  </Button>
+                )}
+              </div>
             }
             onClick={() => onSelectPreview(t)}
           />
@@ -132,14 +152,26 @@ export const TemplatesTable: FC<TemplatesTableProps> = ({ templates, onSelectPre
                 </Badge>
               </td>
               <td style={{ padding: "0 16px", textAlign: "right" }}>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  prefixIcon={<Eye size={14} />}
-                  onClick={() => onSelectPreview(t)}
-                >
-                  Visualizar
-                </Button>
+                <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    prefixIcon={<Eye size={14} />}
+                    onClick={() => onSelectPreview(t)}
+                  >
+                    Visualizar
+                  </Button>
+                  {onSelectBroadcast && (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      prefixIcon={<Send size={13} />}
+                      onClick={() => onSelectBroadcast(t)}
+                    >
+                      Disparar em Massa
+                    </Button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

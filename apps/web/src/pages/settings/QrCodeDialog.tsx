@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { Dialog, Button, LoadingState } from "@sos-sales/ui";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 
 interface QrCodeDialogProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface QrCodeDialogProps {
   qrDataUri?: string;
   qrText?: string;
   isLoading: boolean;
+  alreadyConnected?: boolean;
   error?: string;
 }
 
@@ -18,19 +19,48 @@ export const QrCodeDialog: FC<QrCodeDialogProps> = ({
   channelName,
   qrDataUri,
   isLoading,
+  alreadyConnected,
   error,
 }) => {
   return (
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title={`Escanear QR Code — ${channelName}`}
-      description="Abra o WhatsApp no seu smartphone, vá em Aparelhos Conectados e aponte a câmera para o código abaixo."
+      title={alreadyConnected ? `Canal Conectado — ${channelName}` : `Escanear QR Code — ${channelName}`}
+      description={
+        alreadyConnected
+          ? "Esta linha do WhatsApp já está sincronizada e autenticada."
+          : "Abra o WhatsApp no seu smartphone, vá em Aparelhos Conectados e aponte a câmera para o código abaixo."
+      }
     >
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", padding: "12px 0" }}>
         {isLoading ? (
           <div style={{ padding: "32px 0", textAlign: "center" }}>
-            <LoadingState variant="spinner" text="Gerando sessão e QR Code seguro..." />
+            <LoadingState variant="spinner" text="Verificando sessão e QR Code seguro..." />
+          </div>
+        ) : alreadyConnected ? (
+          <div
+            style={{
+              padding: "16px",
+              backgroundColor: "var(--color-success-subtle, rgba(16, 185, 129, 0.15))",
+              color: "var(--color-success, #10b981)",
+              borderRadius: "var(--radius-md)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "10px",
+              textAlign: "center",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <CheckCircle2 size={36} />
+            <div>
+              <strong style={{ fontSize: "var(--font-size-sm, 0.875rem)" }}>WhatsApp Autenticado e Operacional!</strong>
+              <p style={{ margin: "6px 0 0 0", fontSize: "var(--font-size-xs, 0.75rem)", opacity: 0.9 }}>
+                A sessão deste canal já está conectada no servidor. As mensagens e o assistente de IA já podem responder normalmente.
+              </p>
+            </div>
           </div>
         ) : error ? (
           <div

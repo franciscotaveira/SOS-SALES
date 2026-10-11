@@ -5,6 +5,7 @@ import { Avatar } from "@sos-sales/ui";
 import type { CommercialThreadSummary, ChannelSummary } from "../../../services/api-client";
 import { ConversationRow } from "./ConversationRow";
 import type { QueueFilter } from "../hooks/useInbox";
+import { panelFrame } from "../utils/panelFrame";
 
 export type { QueueFilter };
 
@@ -47,7 +48,7 @@ export const InboxList: FC<InboxListProps> = ({
           width: "58px",
           minWidth: "58px",
           backgroundColor: "var(--bg-surface)",
-          borderRight: "1px solid var(--border-default)",
+          ...panelFrame(false),
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -145,20 +146,20 @@ export const InboxList: FC<InboxListProps> = ({
         display: "flex",
         flexDirection: "column",
         backgroundColor: "var(--bg-surface)",
-        borderRight: isMobile ? "none" : "1px solid var(--border-default)",
         boxSizing: "border-box",
         overflow: "hidden",
+        ...panelFrame(isMobile),
       }}
     >
       {/* 1. Header with title, badge count, active channel, and collapse toggle */}
       <div
         style={{
           padding: "var(--space-3) var(--space-4)",
-          borderBottom: "1px solid var(--border-default)",
+          borderBottom: "2px solid var(--border-strong)",
           display: "flex",
           flexDirection: "column",
           gap: "10px",
-          backgroundColor: "var(--bg-surface)",
+          backgroundColor: "var(--bg-surface-elevated)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

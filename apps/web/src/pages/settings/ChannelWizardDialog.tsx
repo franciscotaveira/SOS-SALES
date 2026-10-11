@@ -1,4 +1,4 @@
-import { useState, type FC } from "react";
+import { useState, useCallback, type FC } from "react";
 import { Dialog, Button, Input, SegmentedControl, Alert } from "@sos-sales/ui";
 import { Check, ArrowRight, ArrowLeft } from "lucide-react";
 import { apiClient } from "../../services/api-client";
@@ -101,7 +101,7 @@ export const ChannelWizardDialog: FC<ChannelWizardDialogProps> = ({
     }
   };
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setStep(1);
     setDisplayName("");
     setPhoneNumber("");
@@ -110,7 +110,7 @@ export const ChannelWizardDialog: FC<ChannelWizardDialogProps> = ({
     setTestResult(null);
     setErrorMsg(null);
     onClose();
-  };
+  }, [onClose]);
 
   return (
     <Dialog

@@ -42,6 +42,10 @@ const createJourneyBodySchema = z.object({
   estimatedValueCents: z.number().int().nonnegative().optional(),
 });
 
+const transitionJourneyBodySchema = z.object({
+  stage: z.enum(["lead", "qualified", "proposal", "scheduled"] as const),
+});
+
 const recordOutcomeBodySchema = z.object({
   status: z.enum(["won", "lost"]),
   valueCents: z.number().int().nonnegative(),
@@ -173,6 +177,70 @@ export const commercialRoutes: FastifyPluginAsync = async (app) => {
         attributionSource: journey.attribution_source,
         estimatedValueCents: journey.estimated_value_cents,
         createdAt: journey.created_at.toISOString(),
+      });
+    }
+  );
+
+  // 2.1 Move an open opportunity between non-terminal funnel stages.
+  // Won/lost must use the governed outcome endpoint so conversion/audit remains consistent.
+  app.patch(
+    "/v1/workspaces/:workspaceId/journeys/:journeyId/stage",
+    {
+      preHandler: [
+        app.authenticate,
+        app.requireWorkspaceContext,
+        app.requirePermission("journey:transition_stage"),
+      ],
+    },
+    async (request, reply) => {
+      const parsedParams = journeyParamsSchema.safeParse(request.params);
+      const parsedBody = transitionJourneyBodySchema.safeParse(request.body);
+      if (!parsedParams.success || !parsedBody.success) {
+        return reply.status(400).send({
+          type: "https://sos-sales.mct.br/errors/bad-request",
+          title: "Bad Request",
+          status: 400,
+          detail: "Etapa inválida. Ganhos e perdas devem ser registrados como desfecho.",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      const { workspaceId, journeyId } = parsedParams.data;
+      const journey = await withTenantTransaction(workspaceId, async (client) => {
+        const result = await client.query(
+          `UPDATE public.commercial_journeys
+           SET stage = $1, updated_at = clock_timestamp()
+           WHERE workspace_id = $2 AND id = $3
+             AND status NOT IN ('won', 'lost')
+           RETURNING *;`,
+          [parsedBody.data.stage, workspaceId, journeyId]
+        );
+        return result.rows[0];
+      });
+
+      if (!journey) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: "Oportunidade não encontrada ou já encerrada.",
+          instance: request.url,
+          correlationId: request.id,
+        });
+      }
+
+      return reply.status(200).send({
+        journey: {
+          id: journey.id,
+          contactId: journey.contact_id,
+          threadId: journey.thread_id,
+          title: journey.title,
+          stage: journey.stage,
+          status: journey.status,
+          estimatedValueCents: journey.estimated_value_cents,
+          updatedAt: journey.updated_at.toISOString(),
+        },
       });
     }
   );

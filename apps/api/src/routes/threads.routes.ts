@@ -93,6 +93,8 @@ export const threadsRoutes: FastifyPluginAsync = async (app) => {
           contactPhone: t.contact_phone,
           contactName: t.contact_name,
           status: t.status,
+          handoffReason: t.handoff_reason ?? null,
+          handoffAt: t.handoff_at ? t.handoff_at.toISOString() : null,
           lastMessageAt: t.last_message_at,
           lastMessage: t.last_message_body
             ? {
@@ -111,6 +113,9 @@ export const threadsRoutes: FastifyPluginAsync = async (app) => {
                 assigneeUserId: t.next_action_assignee_id,
               }
             : null,
+          fepExpiresAt: t.fep_expires_at ? t.fep_expires_at.toISOString() : null,
+          attributionSource: t.attribution_source ?? null,
+          journeyStage: t.journey_stage ?? null,
           createdAt: t.created_at,
           updatedAt: t.updated_at,
         })),

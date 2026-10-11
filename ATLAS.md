@@ -1,0 +1,93 @@
+# ATLAS SOBERANO — SOS SALES & MCT OS
+
+> Francisco Rios | MCT LTDA | Chapecó, BR  
+> Filosofia: Poder invisível, simplicidade visível. Truth in Data.  
+> Hierarquia: P0 (Kernel Soberano) > P1 (Atlas & CODEBASE) > P2 (Agentes & Skills).
+
+---
+
+## 1. Topologia de Infraestrutura Soberana
+
+- **VPS Próprio:** `179.197.72.221` (Ubuntu Linux x86_64, Docker Compose).
+- **Acesso SSH:** `ssh -i ~/.ssh/tx-crm-codex-deploy root@179.197.72.221`
+- **Diretório da Aplicação em Produção:** `/opt/chat-sales-v3`
+- **Domínio Ativo:** `https://crm.iaparavendas.tech`
+- **Reverse Proxy & SSL:** Caddy (`sos-sales-caddy`) com emissão TLS automática Let's Encrypt para `crm.iaparavendas.tech`.
+- **Topologia de Portas Internas & Contêineres:**
+  - `chat-sales-web`: Porta interna 80 (Nginx servindo build SPA otimizada).
+  - `chat-sales-api`: Porta interna 4400 (Fastify 5 gateway HTTP).
+  - `chat-sales-worker`: Background processing (BullMQ, InboxProcessor, OutboxDispatcher, CapiDispatcher).
+  - `sos-sales-postgres`: PostgreSQL 16 (Porta 5432 interna, banco `sos_sales_v3`).
+  - `sos-sales-redis`: Redis 7 (Porta 6379 interna, cache e filas operacionais).
+  - `sos-sales-waha`: WAHA Core (Porta 3000 interna mapeada para 3006 no host).
+
+---
+
+## 2. Decisões Arquiteturais Macro & Milestones (P0)
+
+### 2.1 Motor de Inteligência Artificial Soberano (Dual-Engine)
+- **NVIDIA NIM como Padrão Soberano:**
+  - Endpoint: `https://integrate.api.nvidia.com/v1/chat/completions`.
+  - **Decisão Crítica (Outubro/2026):** O modelo `meta/llama-3.3-70b-instruct` atingiu EOL oficial na infraestrutura da NVIDIA em 26/08/2026 (HTTP 410 Gone). O modelo de referência soberano foi migrado para `nvidia/nemotron-3-super-120b-a12b`, entregando capacidade superior de raciocínio, aderência estrita a restrições e latência reduzida.
+  - Modelos rápidos certificados: `nvidia/nemotron-3.5-lightning-30b-a3b` e `nvidia/llama-3.1-nemotron-70b-instruct`.
+- **OpenRouter como Provedor Alternativo Aberto:**
+  - Endpoint: `https://openrouter.ai/api/v1/chat/completions`.
+  - Modelos homologados: `anthropic/claude-3.5-sonnet`, `google/gemini-2.5-flash`, `deepseek/deepseek-chat`.
+  - Cabeçalhos de rastreabilidade: `HTTP-Referer` e `X-Title` obrigatórios.
+- **Chaves de API Isoladas:** Cada tenant pode utilizar a credencial central da empresa ou definir sua própria chave em `workspaces.ai_api_key`.
+
+### 2.2 Truth in Data & Anti-Alucinação Estrito
+- **Zero Mock / Zero Alucinação:** A IA nunca inventa preços, prazos ou políticas comerciais.
+- **Grounding Dinâmico em 4 Camadas:** Todo atendimento ancora diretamente nos dados de `public.products`, `ai_business_rules` e `ai_faq`.
+- **Protocolo de Ignorância & Transbordo Humano:** Dúvidas fora do escopo geram a tag `[TRANSBORDO_HUMANO: motivo]`. O sistema transiciona a thread para `waiting_human`, grava `handoff_reason` e gera alerta executivo no Cockpit para o atendente humano assumir com um clique.
+
+### 2.3 Memória de Aquisição Meta CTWA (Click-to-WhatsApp Ads)
+- Leads originados de anúncios trazem metadados de anúncio (`headline`, `body`).
+- Ingestão contínua em `commercial_journeys` e injeção contextual em `<origem_do_lead_anuncio_meta>`. A IA inicia a conversa ciente da dor e da promessa do criativo específico clicado pelo lead.
+
+### 2.4 Fronteira do n8n (Regra Inquebrável)
+- O n8n é utilizado unicamente como acervo de pesquisa, scrapers e testes exploratórios de laboratório.
+- Toda lógica core de produto, despacho de mensageria, transações financeiras e controle de filas reside exclusivamente no monorepo SOS Sales.
+
+### 2.5 Autenticação Soberana & Gestão Multi-Tenant de Equipe (MCT OS v2.0)
+- **Criptografia Nativa com Scrypt:** Senhas armazenadas com salt de 16 bytes e validação `timingSafeEqual`. Zero dependências cloud para autenticação.
+- **Isolamento de Membros:** Gestão de equipe no Cockpit Comercial (`Configurações > Equipe & Acessos`). Operadores vinculados unicamente à sua respectiva empresa sob RLS.
+- **Troca de Contexto:** `POST /v1/auth/switch-workspace` permite alternância imediata de empresas permitidas com novo JWT sem reautenticação.
+
+### 2.6 Perímetro Defensivo & WAF (SecurityShield)
+- **Detecção de Scanners:** Interceptação imediata de ferramentas ofensivas (`sqlmap`, `nikto`, `masscan`) e sondagens de arquivos sensíveis (`/.env`, `/wp-admin`, `../`).
+- **IP Auto-Jail:** Bloqueio de 15 minutos em chave volátil no Redis (`sos:shield:jail:<ip>`) com `HTTP 403` e `Retry-After: 900`.
+- **Anti-Brute Force:** Limite de 10 tentativas de login/min por IP e bloqueio temporário de 5 minutos da conta após 5 erros consecutivos de senha.
+- **Timing Attack Mitigation:** Cálculo de scrypt dummy em e-mails não existentes para igualar a latência de processamento (~60ms).
+- **Rate Limit Global:** Cota de 120 req/min por IP com cabeçalhos RFC 6585.
+
+### 2.7 Governança Operacional SaaS & Disaster Recovery
+- **Backup Diário Encriptado (AES-256):** Execução automática às 03:00 AM via crontab com verificação de integridade do stream e retenção de 7 dias em `/opt/sos-sales/backups/daily/`.
+- **Watchdog de Auto-Cura:** Sentinela no crontab a cada 5 minutos monitorando `https://crm.iaparavendas.tech/ready`, reiniciando automaticamente a API em caso de 3 falhas consecutivas e alertando caso o disco ultrapasse 85%.
+- **Log Caps:** Limite rígido de logs no Docker Compose fixado em 20 MB por arquivo e máximo de 3 arquivos por container.
+
+### 2.8 Disparos em Massa com Importador Inteligente & Fechamento Pix na IA
+- **Importador de Planilhas (CSV/XLSX/XLS):** Drag-and-drop no cliente com pré-visualização de auditoria, deduplicação em memória e sanitizador estrito para números brasileiros E.164 (DDD + 9 dígitos móveis, normalização de prefixos `55` e `0`, e rejeição determinística de fixos). Inserção transacional não-destrutiva via `createOrGetContact` com `ON CONFLICT DO UPDATE`, preservando integridade referencial e histórico de conversas.
+- **Segmentação Dinâmica (`SMART_FILTER`):** Filtros nativos sob RLS para reativação comercial:
+  - `NON_BUYERS`: Contatos cadastrados sem propostas pagas e sem cobranças Pix pagas (`status = 'PAID'`).
+  - `PIX_ABANDONED`: Contatos que possuem cobrança Pix em status `EXPIRED` ou `PENDING` e que nunca concluíram uma compra com status `PAID` (recuperação ativa de checkout/carrinho abandonado).
+  - `INACTIVE_30_DAYS`: Contatos sem atividade de mensagem ou proposta nos últimos 30 dias.
+  - `CTWA_RESCUE`: Contatos originados de anúncios Meta sem conversão.
+  - Endpoint `GET /v1/workspaces/:workspaceId/broadcasts/audience-count` para contagem reativa em tempo real.
+- **Atribuição Comercial & Vencedora A/B por Faturamento Real:**
+  - Métricas agregadas em `GET /v1/workspaces/:workspaceId/broadcasts/campaigns` cruzando destinatários de cada variante com `pix_charges` (`status = 'PAID'`).
+  - O algoritmo da variante campeã A/B elege com autoridade a variante que gerou maior receita monetária (`salesCents`), com fallbacks sequenciais para taxa de conversão, respostas e aberturas (`🏆 Campeã Comercial`).
+  - Índices de performance de produção: `idx_broadcast_recipients_contact_camp` e `idx_pix_charges_contact_paid`.
+- **Fechamento Instantâneo de Ofertas com Pix na IA (`<fechamento_comercial_pix>`):**
+  - Prompt Grounding Dual-Engine instrui a IA a emitir a tag canônica `[OFFER_PIX: <productId>]` quando o lead aceitar uma oferta ou demonstrar intenção de compra ("quero", "manda o pix", "fechado").
+  - O `AiReceptionistProcessor` intercepta a tag, emite o código Pix Copia e Cola EMV oficial BACEN via `createPixCharge` do `@sos-sales/database` utilizando a chave Pix cadastrada no workspace e anexa a instrução de pagamento em bloco de código monoespaçado formatado para WhatsApp.
+  - Zero risco de parada: se o workspace não tiver chave cadastrada, a IA envia a resposta conversacional normalmente sem interromper o atendimento.
+
+---
+
+## 3. Diretrizes de Segurança e Isolamento
+
+- **PostgreSQL RLS:** `FORCE ROW LEVEL SECURITY` em todas as tabelas comerciais. Nenhuma query executa sem o tenant contextual (`SET LOCAL app.current_tenant_id`).
+- **Autenticação Segura:** Sessões de usuário autenticadas por JWT HS256 criptograficamente seguro via `JwtIdentityProvider`.
+- **Mascaramento de PII:** Ausência de telefone e segredos em texto puro em logs de aplicação e despacho.
+- **Firewall UFW Ativo:** Apenas portas 22 (SSH restrito a chaves), 80 (HTTP) e 443 (HTTPS) expostas. Portas de banco e Redis estritamente confinadas à rede interna Docker.

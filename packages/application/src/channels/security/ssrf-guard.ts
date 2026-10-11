@@ -166,6 +166,26 @@ export function hasAlternativeIpFormat(input: string): boolean {
   return false;
 }
 
+export const DEFAULT_INTERNAL_HOSTS: readonly string[] = Object.freeze([
+  "waha",
+  "sos-sales-waha",
+  "chat-sales-waha",
+  "sos-v3-waha",
+  "evolution",
+  "evolution-api",
+  "sos-sales-evolution",
+  "chat-sales-evolution",
+  "command-tower-evolution",
+]);
+
+export function getInternalAllowedHosts(): string[] {
+  const envHosts =
+    process.env.INTERNAL_SERVICE_ALLOWLIST?.split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean) || [];
+  return Array.from(new Set([...DEFAULT_INTERNAL_HOSTS, ...envHosts]));
+}
+
 /**
  * Resolves all DNS records for a given hostname and validates every resolved address against SSRF rules.
  */
@@ -186,7 +206,8 @@ export async function resolveAndValidateHost(
   }
 
   // 3. Check allowed internal infrastructure allowlist (e.g. Docker service names)
-  if (options.allowedInternalHosts && options.allowedInternalHosts.includes(lowerHost)) {
+  const allowedInternal = options.allowedInternalHosts || getInternalAllowedHosts();
+  if (allowedInternal.includes(lowerHost)) {
     return [lowerHost];
   }
 
@@ -264,7 +285,8 @@ export async function validateTargetUrl(
 
   // Enforce HTTPS in production unless explicitly allowed for internal/test
   if (!options.allowLocalTest && protocol !== "https:") {
-    const isAllowedInternal = options.allowedInternalHosts?.includes(parsed.hostname.toLowerCase());
+    const allowedInternal = options.allowedInternalHosts || getInternalAllowedHosts();
+    const isAllowedInternal = allowedInternal.includes(parsed.hostname.toLowerCase());
     if (!isAllowedInternal) {
       throw new Error(`SSRF_VIOLATION: Destination '${urlStr}' must use HTTPS in production`);
     }
@@ -341,9 +363,14 @@ export function detectMediaType(pathnameOrUrl: string): ValidatedMediaType {
   if (
     lower.endsWith(".mp3") ||
     lower.endsWith(".ogg") ||
+    lower.endsWith(".oga") ||
     lower.endsWith(".m4a") ||
     lower.endsWith(".aac") ||
-    lower.endsWith(".opus")
+    lower.endsWith(".opus") ||
+    lower.endsWith(".wav") ||
+    lower.endsWith(".weba") ||
+    lower.endsWith(".flac") ||
+    lower.endsWith(".amr")
   ) {
     return "audio";
   }
@@ -351,16 +378,25 @@ export function detectMediaType(pathnameOrUrl: string): ValidatedMediaType {
     lower.endsWith(".mp4") ||
     lower.endsWith(".3gp") ||
     lower.endsWith(".mov") ||
-    lower.endsWith(".webm")
+    lower.endsWith(".qt") ||
+    lower.endsWith(".webm") ||
+    lower.endsWith(".mkv") ||
+    lower.endsWith(".avi") ||
+    lower.endsWith(".m4v")
   ) {
     return "video";
   }
   if (
     lower.endsWith(".pdf") ||
     lower.endsWith(".docx") ||
+    lower.endsWith(".doc") ||
     lower.endsWith(".xlsx") ||
+    lower.endsWith(".xls") ||
+    lower.endsWith(".pptx") ||
+    lower.endsWith(".ppt") ||
     lower.endsWith(".txt") ||
-    lower.endsWith(".csv")
+    lower.endsWith(".csv") ||
+    lower.endsWith(".zip")
   ) {
     return "document";
   }

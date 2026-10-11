@@ -56,3 +56,8 @@ supabase/.temp/
 # Scratch & Prompts
 *PROMPT-UI-FIX.md
 
+# Backups & Temp files
+backups/
+*.backup*
+*.before-*
+._*
