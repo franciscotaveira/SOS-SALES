@@ -21,6 +21,7 @@ import {
   Award,
   Clock,
   Radio,
+  CircleDollarSign,
 } from "lucide-react";
 import {
   apiClient,
@@ -85,15 +86,19 @@ export const CampaignsList: FC<CampaignsListProps> = ({
       acc.read += c.metrics.read;
       acc.replied += c.metrics.replied;
       acc.clicked += c.metrics.clicked;
+      acc.salesCount += c.sales?.count || c.metrics.salesCount || 0;
+      acc.salesCents += c.sales?.totalCents || c.metrics.salesCents || 0;
       return acc;
     },
-    { sent: 0, delivered: 0, read: 0, replied: 0, clicked: 0 }
+    { sent: 0, delivered: 0, read: 0, replied: 0, clicked: 0, salesCount: 0, salesCents: 0 }
   );
 
   const avgDeliveryRate = totals.sent > 0 ? ((totals.delivered / totals.sent) * 100).toFixed(1) : "0.0";
   const avgOpenRate = totals.delivered > 0 ? ((totals.read / totals.delivered) * 100).toFixed(1) : "0.0";
   const avgReplyRate = totals.delivered > 0 ? ((totals.replied / totals.delivered) * 100).toFixed(1) : "0.0";
   const avgCtr = totals.delivered > 0 ? ((totals.clicked / totals.delivered) * 100).toFixed(1) : "0.0";
+  const avgSalesConvRate = totals.delivered > 0 ? ((totals.salesCount / totals.delivered) * 100).toFixed(2) : "0.00";
+  const formattedTotalRevenue = (totals.salesCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -136,7 +141,7 @@ export const CampaignsList: FC<CampaignsListProps> = ({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)",
+          gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(6, 1fr)",
           gap: "12px",
         }}
       >
@@ -267,6 +272,32 @@ export const CampaignsList: FC<CampaignsListProps> = ({
           </div>
           <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
             {totals.clicked} cliques em botões CTA
+          </span>
+        </div>
+
+        {/* KPI 6: Faturamento Pix Gerado */}
+        <div
+          style={{
+            padding: "14px",
+            backgroundColor: "var(--bg-surface)",
+            borderRadius: "var(--radius-lg)",
+            border: "1px solid var(--border-default)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", fontWeight: 500 }}>
+              Faturamento Pix
+            </span>
+            <CircleDollarSign size={14} style={{ color: "#10b981" }} />
+          </div>
+          <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "#10b981", whiteSpace: "nowrap" }}>
+            {formattedTotalRevenue}
+          </div>
+          <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+            {totals.salesCount} vendas ({avgSalesConvRate}% conv.)
           </span>
         </div>
       </div>
@@ -411,7 +442,7 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                     borderRadius: "var(--radius-md)",
                     border: "1px solid var(--border-default)",
                     display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)",
+                    gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(6, 1fr)",
                     gap: "12px",
                   }}
                 >
@@ -477,6 +508,19 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                       {camp.metrics.ctr}% CTR
                     </span>
                   </div>
+
+                  {/* Etapa 6: Vendas Pix */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <span style={{ fontSize: "0.7rem", color: "#10b981", textTransform: "uppercase", fontWeight: 700 }}>
+                      6. Vendas Pix
+                    </span>
+                    <span style={{ fontSize: "1rem", fontWeight: 700, color: "#10b981", whiteSpace: "nowrap" }}>
+                      {camp.sales?.totalFormatted || "R$ 0,00"}
+                    </span>
+                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                      {camp.sales?.count || 0} pagas ({camp.sales?.conversionRate || 0}%)
+                    </span>
+                  </div>
                 </div>
 
                 {/* Seção Exclusiva de Teste A/B: Comparador Lado a Lado e Vencedor */}
@@ -500,18 +544,18 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                         <div
                           style={{
                             padding: "4px 10px",
-                            backgroundColor: "rgba(245, 158, 11, 0.15)",
-                            border: "1px solid #f59e0b",
+                            backgroundColor: "rgba(16, 185, 129, 0.15)",
+                            border: "1px solid #10b981",
                             borderRadius: "var(--radius-md)",
                             fontSize: "var(--font-size-xs)",
                             fontWeight: 700,
-                            color: "#d97706",
+                            color: "#059669",
                             display: "inline-flex",
                             alignItems: "center",
                             gap: "6px",
                           }}
                         >
-                          <Award size={14} /> Variante Vencedora: Variante {camp.abReport.winner}
+                          <Award size={14} /> Campeã Comercial: Variante {camp.abReport.winner}
                         </div>
                       ) : (
                         <div
@@ -549,7 +593,7 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                           </span>
                           {camp.abReport.winner === "A" && (
                             <Badge variant="action">
-                              <Award size={11} style={{ marginRight: "3px" }} /> Melhor Copy
+                              <Award size={11} style={{ marginRight: "3px" }} /> Campeã Comercial
                             </Badge>
                           )}
                         </div>
@@ -558,7 +602,7 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                           Modelo: <strong>{camp.abReport.variantA.templateName}</strong> ({camp.abReport.variantA.category})
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "4px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1.2fr", gap: "8px", marginTop: "4px" }}>
                           <div style={{ display: "flex", flexDirection: "column" }}>
                             <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Taxa de Leitura</span>
                             <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "#3b82f6" }}>
@@ -573,6 +617,16 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                               {camp.abReport.variantA.replyRate}%
                             </span>
                             <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>{camp.abReport.variantA.replied} respostas</span>
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column" }}>
+                            <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Vendas Pix</span>
+                            <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "#10b981", whiteSpace: "nowrap" }}>
+                              {camp.abReport.variantA.salesFormatted || "R$ 0,00"}
+                            </span>
+                            <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>
+                              {camp.abReport.variantA.salesCount || 0} vendas ({camp.abReport.variantA.conversionRate || 0}%)
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -596,7 +650,7 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                           </span>
                           {camp.abReport.winner === "B" && (
                             <Badge variant="action">
-                              <Award size={11} style={{ marginRight: "3px" }} /> Melhor Copy
+                              <Award size={11} style={{ marginRight: "3px" }} /> Campeã Comercial
                             </Badge>
                           )}
                         </div>
@@ -605,7 +659,7 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                           Modelo: <strong>{camp.abReport.variantB.templateName}</strong> ({camp.abReport.variantB.category})
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "4px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1.2fr", gap: "8px", marginTop: "4px" }}>
                           <div style={{ display: "flex", flexDirection: "column" }}>
                             <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Taxa de Leitura</span>
                             <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "#3b82f6" }}>
@@ -620,6 +674,16 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                               {camp.abReport.variantB.replyRate}%
                             </span>
                             <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>{camp.abReport.variantB.replied} respostas</span>
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column" }}>
+                            <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Vendas Pix</span>
+                            <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "#10b981", whiteSpace: "nowrap" }}>
+                              {camp.abReport.variantB.salesFormatted || "R$ 0,00"}
+                            </span>
+                            <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>
+                              {camp.abReport.variantB.salesCount || 0} vendas ({camp.abReport.variantB.conversionRate || 0}%)
+                            </span>
                           </div>
                         </div>
                       </div>

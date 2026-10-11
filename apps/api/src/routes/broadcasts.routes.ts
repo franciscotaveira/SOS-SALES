@@ -368,6 +368,53 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
             const replyRate = delivered > 0 ? Number(((replied / delivered) * 100).toFixed(1)) : 0;
             const ctr = delivered > 0 ? Number(((clicked / delivered) * 100).toFixed(1)) : 0;
 
+            // Pix Sales Attribution (Truth in Data)
+            // Attributes paid Pix charges to broadcast recipients who converted on or after campaign dispatch
+            const salesRes = await client.query<{
+              variant: string;
+              sales_count: string;
+              sales_cents: string;
+            }>(
+              `SELECT COALESCE(br.variant, 'A') as variant,
+                      COALESCE(count(DISTINCT pc.id), 0) as sales_count,
+                      COALESCE(sum(pc.amount_cents), 0) as sales_cents
+               FROM public.broadcast_recipients br
+               JOIN public.pix_charges pc 
+                 ON pc.contact_id = br.contact_id 
+                 AND pc.workspace_id = br.workspace_id
+                 AND pc.status = 'PAID'
+                 AND pc.paid_at >= br.sent_at
+               WHERE br.workspace_id = $1 AND br.campaign_id = $2
+               GROUP BY br.variant;`,
+              [workspaceId, camp.id]
+            );
+
+            let totalSalesCount = 0;
+            let totalSalesCents = 0;
+            let salesCountA = 0;
+            let salesCentsA = 0;
+            let salesCountB = 0;
+            let salesCentsB = 0;
+
+            for (const row of salesRes.rows) {
+              const count = Number(row.sales_count || 0);
+              const cents = Number(row.sales_cents || 0);
+              totalSalesCount += count;
+              totalSalesCents += cents;
+              if (row.variant === "A") {
+                salesCountA += count;
+                salesCentsA += cents;
+              } else if (row.variant === "B") {
+                salesCountB += count;
+                salesCentsB += cents;
+              }
+            }
+
+            const totalConversionRate = delivered > 0 ? Number(((totalSalesCount / delivered) * 100).toFixed(2)) : 0;
+            const averageTicketCents = totalSalesCount > 0 ? Math.round(totalSalesCents / totalSalesCount) : 0;
+            const totalFormatted = (totalSalesCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const averageTicketFormatted = (averageTicketCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
             let abReport = null;
 
             if (camp.is_ab_test) {
@@ -404,6 +451,8 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
               const repA = Number(rowA.replied);
               const openRateA = delA > 0 ? Number(((readA / delA) * 100).toFixed(1)) : 0;
               const replyRateA = delA > 0 ? Number(((repA / delA) * 100).toFixed(1)) : 0;
+              const convRateA = delA > 0 ? Number(((salesCountA / delA) * 100).toFixed(2)) : 0;
+              const salesFormattedA = (salesCentsA / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
               const sentB = Number(rowB.sent);
               const delB = Number(rowB.delivered);
@@ -411,9 +460,16 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
               const repB = Number(rowB.replied);
               const openRateB = delB > 0 ? Number(((readB / delB) * 100).toFixed(1)) : 0;
               const replyRateB = delB > 0 ? Number(((repB / delB) * 100).toFixed(1)) : 0;
+              const convRateB = delB > 0 ? Number(((salesCountB / delB) * 100).toFixed(2)) : 0;
+              const salesFormattedB = (salesCentsB / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-              let winner = "TIED";
-              if (replyRateA > replyRateB) winner = "A";
+              let winner: "A" | "B" | "TIED" = "TIED";
+              // Highest revenue determines the commercial winner. If revenue tied, fallback to conversion, replies, opens
+              if (salesCentsA > salesCentsB) winner = "A";
+              else if (salesCentsB > salesCentsA) winner = "B";
+              else if (convRateA > convRateB) winner = "A";
+              else if (convRateB > convRateA) winner = "B";
+              else if (replyRateA > replyRateB) winner = "A";
               else if (replyRateB > replyRateA) winner = "B";
               else if (openRateA > openRateB) winner = "A";
               else if (openRateB > openRateA) winner = "B";
@@ -429,6 +485,10 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
                   replied: repA,
                   openRate: openRateA,
                   replyRate: replyRateA,
+                  salesCount: salesCountA,
+                  salesCents: salesCentsA,
+                  salesFormatted: salesFormattedA,
+                  conversionRate: convRateA,
                 },
                 variantB: {
                   templateName: camp.variant_b_name,
@@ -439,6 +499,10 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
                   replied: repB,
                   openRate: openRateB,
                   replyRate: replyRateB,
+                  salesCount: salesCountB,
+                  salesCents: salesCentsB,
+                  salesFormatted: salesFormattedB,
+                  conversionRate: convRateB,
                 },
               };
             }
@@ -471,6 +535,18 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
                 openRate,
                 replyRate,
                 ctr,
+                salesCount: totalSalesCount,
+                salesCents: totalSalesCents,
+                conversionRate: totalConversionRate,
+                averageTicketCents,
+              },
+              sales: {
+                count: totalSalesCount,
+                totalCents: totalSalesCents,
+                totalFormatted,
+                conversionRate: totalConversionRate,
+                averageTicketCents,
+                averageTicketFormatted,
               },
               abReport,
               createdAt: camp.created_at.toISOString(),

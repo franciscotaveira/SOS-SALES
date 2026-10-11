@@ -1885,6 +1885,10 @@ export interface BroadcastCampaignMetrics {
   openRate: number; // %
   replyRate: number; // %
   ctr: number; // %
+  salesCount?: number;
+  salesCents?: number;
+  conversionRate?: number; // %
+  averageTicketCents?: number;
 }
 
 export interface BroadcastAbVariantStats {
@@ -1896,12 +1900,25 @@ export interface BroadcastAbVariantStats {
   replied: number;
   openRate: number;
   replyRate: number;
+  salesCount?: number;
+  salesCents?: number;
+  salesFormatted?: string;
+  conversionRate?: number; // %
 }
 
 export interface BroadcastAbReport {
   winner: "A" | "B" | "TIED";
   variantA: BroadcastAbVariantStats;
   variantB: BroadcastAbVariantStats;
+}
+
+export interface BroadcastCampaignSales {
+  count: number;
+  totalCents: number;
+  totalFormatted: string;
+  conversionRate: number; // %
+  averageTicketCents: number;
+  averageTicketFormatted: string;
 }
 
 export interface BroadcastCampaignSummary {
@@ -1923,6 +1940,7 @@ export interface BroadcastCampaignSummary {
   audienceStage?: string | null;
   totalTargeted: number;
   metrics: BroadcastCampaignMetrics;
+  sales?: BroadcastCampaignSales;
   abReport?: BroadcastAbReport | null;
   createdAt: string;
 }
