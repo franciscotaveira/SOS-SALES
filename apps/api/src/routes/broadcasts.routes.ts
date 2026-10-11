@@ -30,7 +30,7 @@ const createBroadcastBodySchema = z.object({
       )
       .max(1000)
       .optional(),
-    smartFilter: z.enum(["NON_BUYERS", "INACTIVE_30_DAYS", "CTWA_RESCUE"]).optional(),
+    smartFilter: z.enum(["NON_BUYERS", "PIX_ABANDONED", "INACTIVE_30_DAYS", "CTWA_RESCUE"]).optional(),
   }),
   variables: z.record(z.string().max(200)).optional(),
   variantBVariables: z.record(z.string().max(200)).optional(),
@@ -183,7 +183,7 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
       const querySchema = z.object({
         type: z.enum(["ALL_CONTACTS", "BY_STAGE", "SMART_FILTER"]),
         stage: z.string().optional(),
-        smartFilter: z.enum(["NON_BUYERS", "INACTIVE_30_DAYS", "CTWA_RESCUE"]).optional(),
+        smartFilter: z.enum(["NON_BUYERS", "PIX_ABANDONED", "INACTIVE_30_DAYS", "CTWA_RESCUE"]).optional(),
       });
 
       const parsedQuery = querySchema.safeParse(request.query);
@@ -226,6 +226,33 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
                    WHERE cj.contact_id = c.id 
                      AND cj.workspace_id = c.workspace_id 
                      AND LOWER(cj.stage) = 'won'
+                 )
+                 AND NOT EXISTS (
+                   SELECT 1 FROM public.pix_charges pc
+                   WHERE pc.contact_id = c.id
+                     AND pc.workspace_id = c.workspace_id
+                     AND pc.status = 'PAID'
+                 );`,
+              [workspaceId]
+            );
+            return Number(res.rows[0]?.count || 0);
+          }
+          if (smartFilter === "PIX_ABANDONED") {
+            const res = await client.query<{ count: string }>(
+              `SELECT count(DISTINCT c.id)::text as count
+               FROM public.contacts c
+               INNER JOIN public.pix_charges pc 
+                 ON pc.contact_id = c.id 
+                 AND pc.workspace_id = c.workspace_id
+               WHERE c.workspace_id = $1 
+                 AND c.opt_out = false 
+                 AND c.phone_e164 IS NOT NULL
+                 AND pc.status IN ('EXPIRED', 'PENDING')
+                 AND NOT EXISTS (
+                   SELECT 1 FROM public.pix_charges pc_paid 
+                   WHERE pc_paid.contact_id = c.id 
+                     AND pc_paid.workspace_id = c.workspace_id 
+                     AND pc_paid.status = 'PAID'
                  );`,
               [workspaceId]
             );
@@ -707,6 +734,37 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
                      WHERE cj.contact_id = c.id 
                        AND cj.workspace_id = c.workspace_id 
                        AND LOWER(cj.stage) = 'won'
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.pix_charges pc
+                     WHERE pc.contact_id = c.id
+                       AND pc.workspace_id = c.workspace_id
+                       AND pc.status = 'PAID'
+                   )
+                 LIMIT 1000;`,
+                [workspaceId]
+              );
+              targetNumbers = res.rows;
+            } else if (audience.smartFilter === "PIX_ABANDONED") {
+              const res = await client.query<{
+                phone_e164: string;
+                name: string | null;
+                contact_id: string;
+              }>(
+                `SELECT DISTINCT c.phone_e164, c.name, c.id as contact_id
+                 FROM public.contacts c
+                 INNER JOIN public.pix_charges pc 
+                   ON pc.contact_id = c.id 
+                   AND pc.workspace_id = c.workspace_id
+                 WHERE c.workspace_id = $1 
+                   AND c.opt_out = false 
+                   AND c.phone_e164 IS NOT NULL
+                   AND pc.status IN ('EXPIRED', 'PENDING')
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.pix_charges pc_paid 
+                     WHERE pc_paid.contact_id = c.id 
+                       AND pc_paid.workspace_id = c.workspace_id 
+                       AND pc_paid.status = 'PAID'
                    )
                  LIMIT 1000;`,
                 [workspaceId]

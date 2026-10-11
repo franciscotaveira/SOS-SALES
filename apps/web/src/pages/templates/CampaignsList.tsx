@@ -412,6 +412,8 @@ export const CampaignsList: FC<CampaignsListProps> = ({
                             ? `Filtro Inteligente (${
                                 camp.audienceStage === "NON_BUYERS"
                                   ? "Não Compradores"
+                                  : camp.audienceStage === "PIX_ABANDONED"
+                                  ? "⚡ Recuperação de Pix"
                                   : camp.audienceStage === "INACTIVE_30_DAYS"
                                   ? "Inativos > 30d"
                                   : camp.audienceStage === "CTWA_RESCUE"

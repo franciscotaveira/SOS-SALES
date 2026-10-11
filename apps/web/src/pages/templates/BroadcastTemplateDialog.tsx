@@ -181,7 +181,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
   const [selectedTemplateBId, setSelectedTemplateBId] = useState("");
   const [audienceType, setAudienceType] = useState<"ALL_CONTACTS" | "SMART_FILTER" | "IMPORT_LIST" | "BY_STAGE" | "MANUAL">("ALL_CONTACTS");
   const [stage, setStage] = useState("LEAD");
-  const [smartFilter, setSmartFilter] = useState<"NON_BUYERS" | "INACTIVE_30_DAYS" | "CTWA_RESCUE">("NON_BUYERS");
+  const [smartFilter, setSmartFilter] = useState<"NON_BUYERS" | "PIX_ABANDONED" | "INACTIVE_30_DAYS" | "CTWA_RESCUE">("NON_BUYERS");
   const [smartCount, setSmartCount] = useState<number | null>(null);
   const [isLoadingSmartCount, setIsLoadingSmartCount] = useState(false);
 
@@ -867,14 +867,17 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                     color: "var(--text-primary)",
                   }}
                 >
-                  <option value="NON_BUYERS">🎯 Não Compradores (Sem venda/WON registrada)</option>
+                  <option value="NON_BUYERS">🎯 Não Compradores (Sem venda/WON ou Pix pago)</option>
+                  <option value="PIX_ABANDONED">⚡ Recuperação Pix (Cobrança expirada ou não paga)</option>
                   <option value="INACTIVE_30_DAYS">⏳ Inativos (Sem interação há mais de 30 dias)</option>
                   <option value="CTWA_RESCUE">📣 Resgate CTWA (Leads de anúncios Meta em Lead/Qualificado)</option>
                 </select>
 
                 <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", lineHeight: 1.4 }}>
                   {smartFilter === "NON_BUYERS" &&
-                    "Filtra contatos que conversaram com a equipe ou IA mas não possuem fechamento comercial (WON) registrado. Ideal para campanhas de oferta relâmpago e reativação."}
+                    "Filtra contatos que conversaram com a equipe ou IA mas não possuem fechamento comercial (WON) ou Pix pago registrado. Ideal para campanhas de oferta relâmpago e reativação."}
+                  {smartFilter === "PIX_ABANDONED" &&
+                    "Isola clientes com cobrança Pix gerada que expirou ou não foi concluída, sem histórico de pagamento aprovado. Ideal para recuperação imediata de faturamento perdido com cupons ou novas ofertas."}
                   {smartFilter === "INACTIVE_30_DAYS" &&
                     "Isola contatos sem qualquer mensagem trocada nos últimos 30 dias para campanhas de resgate de base fria."}
                   {smartFilter === "CTWA_RESCUE" &&

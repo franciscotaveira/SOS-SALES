@@ -21,7 +21,7 @@ const createBroadcastBodySchema = z.object({
       )
       .max(1000)
       .optional(),
-    smartFilter: z.enum(["NON_BUYERS", "INACTIVE_30_DAYS", "CTWA_RESCUE"]).optional(),
+    smartFilter: z.enum(["NON_BUYERS", "PIX_ABANDONED", "INACTIVE_30_DAYS", "CTWA_RESCUE"]).optional(),
   }),
   variables: z.record(z.string().max(200)).optional(),
   variantBVariables: z.record(z.string().max(200)).optional(),
@@ -73,7 +73,7 @@ describe("Broadcast Audience Body Schema Validation", () => {
   });
 
   it("validates SMART_FILTER with valid segment options", () => {
-    for (const filter of ["NON_BUYERS", "INACTIVE_30_DAYS", "CTWA_RESCUE"] as const) {
+    for (const filter of ["NON_BUYERS", "PIX_ABANDONED", "INACTIVE_30_DAYS", "CTWA_RESCUE"] as const) {
       const payload = {
         name: `Campanha Filtro ${filter}`,
         channelInstanceId: baseChannelId,

@@ -1823,7 +1823,7 @@ export class ApiClient {
     params: {
       type: "ALL_CONTACTS" | "BY_STAGE" | "SMART_FILTER";
       stage?: string;
-      smartFilter?: "NON_BUYERS" | "INACTIVE_30_DAYS" | "CTWA_RESCUE";
+      smartFilter?: "NON_BUYERS" | "PIX_ABANDONED" | "INACTIVE_30_DAYS" | "CTWA_RESCUE";
     },
     options?: RequestOptions
   ): Promise<{ success: boolean; count: number; type: string; stage?: string; smartFilter?: string }> {
@@ -1850,7 +1850,7 @@ export class ApiClient {
         stage?: string;
         customPhoneNumbers?: string[];
         importedContacts?: Array<{ phoneE164: string; name?: string | null }>;
-        smartFilter?: "NON_BUYERS" | "INACTIVE_30_DAYS" | "CTWA_RESCUE";
+        smartFilter?: "NON_BUYERS" | "PIX_ABANDONED" | "INACTIVE_30_DAYS" | "CTWA_RESCUE";
       };
       variables?: Record<string, string>;
       variantBVariables?: Record<string, string>;
