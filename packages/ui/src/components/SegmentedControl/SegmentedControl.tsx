@@ -37,6 +37,7 @@ export const SegmentedControl: FC<SegmentedControlProps> = ({
             role="radio"
             aria-checked={isSelected}
             disabled={option.disabled}
+            className={`sos-segmented-item ${isSelected ? "sos-segmented-item-selected" : ""}`}
             onClick={() => !option.disabled && onChange(option.value)}
             style={{
               flex: 1,

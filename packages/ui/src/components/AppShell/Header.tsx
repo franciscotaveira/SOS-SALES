@@ -267,6 +267,9 @@ export const Header: FC<HeaderProps> = ({
       {/* 2. Center Region: Global Search (Desktop/Tablet) */}
       {!isMobileView && (
         <div
+          role="search"
+          tabIndex={0}
+          className="sos-search-trigger"
           style={{
             flex: 1,
             maxWidth: "380px",
@@ -340,6 +343,7 @@ export const Header: FC<HeaderProps> = ({
             onClick={() => setIsUserMenuOpen((prev) => !prev)}
             aria-expanded={isUserMenuOpen}
             aria-label="Menu do Usuário"
+            className="sos-user-avatar-btn"
             style={{
               width: "var(--control-h-sm, 32px)",
               height: "var(--control-h-sm, 32px)",

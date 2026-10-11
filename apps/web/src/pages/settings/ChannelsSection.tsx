@@ -103,6 +103,7 @@ export const ChannelsSection: FC<ChannelsSectionProps> = ({
             return (
               <div
                 key={ch.id}
+                className="sos-card-interactive"
                 style={{
                   padding: "12px 14px",
                   backgroundColor: "var(--bg-canvas)",

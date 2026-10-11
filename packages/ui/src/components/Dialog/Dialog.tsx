@@ -135,6 +135,7 @@ export const Dialog: FC<DialogProps> = ({
       {/* Backdrop */}
       <div
         onClick={onClose}
+        className="sos-backdrop"
         style={{
           position: "fixed",
           inset: 0,

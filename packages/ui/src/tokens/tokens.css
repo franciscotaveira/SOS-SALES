@@ -7,10 +7,10 @@
   /* ==========================================================================
      1. COLOR PALETTE: LIGHT THEME (CANONICAL DEFAULT)
      ========================================================================== */
-  --bg-canvas: #D5DDE7;            /* Canvas — distinct from white panels */
+  --bg-canvas: #F8FAFC;            /* Clean light canvas matching colors.canvas */
   --bg-surface: #FFFFFF;           /* Pure White card/panel surface */
-  --bg-surface-elevated: #EEF2F7;  /* Panel headers, hover & table headers */
-  --bg-surface-subtle: #F6F8FB;    /* Subtle inset container */
+  --bg-surface-elevated: #F1F5F9;  /* Panel headers, hover & table headers */
+  --bg-surface-subtle: #F8FAFC;    /* Subtle inset container */
 
   /* Structural Dark Navy (Sidebar & Continuity Ribbon) */
   --bg-sidebar: #0B132B;           /* Sovereign Dark Navy */
@@ -25,9 +25,9 @@
   --text-inverse: #FFFFFF;         /* Pure White on action buttons */
 
   /* Precision Borders & Lines */
-  --border-subtle: #E6EBF1;        /* Inset divider */
-  --border-default: #BFCAD7;       /* Panel container border */
-  --border-strong: #B4BFCD;        /* Control strong border */
+  --border-subtle: #F1F5F9;        /* Inset divider */
+  --border-default: #E2E8F0;       /* Panel container border */
+  --border-strong: #CBD5E1;        /* Control strong border */
   --border-focus: #008069;         /* Action green focus ring */
 
   /* Operational Semantic Accents */
@@ -105,15 +105,21 @@
   --context-panel-w: 360px;
   --mobile-nav-h: 56px;
 
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
   --radius-full: 9999px;
 
-  --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.08);
-  --shadow-sm: 0 2px 8px 0 rgba(15, 23, 42, 0.14), 0 1px 2px 0 rgba(15, 23, 42, 0.12);
-  --shadow-md: 0 4px 10px -2px rgba(15, 23, 42, 0.14), 0 2px 4px -2px rgba(15, 23, 42, 0.10);
-  --shadow-lg: 0 12px 24px -6px rgba(15, 23, 42, 0.18), 0 4px 8px -4px rgba(15, 23, 42, 0.10);
+  /* Multilayer Ambient Shadows */
+  --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 1px 2px -1px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.10), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
+  --shadow-glow: 0 0 20px -2px rgba(0, 128, 105, 0.25);
 
   /* Transition timings */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -168,6 +174,23 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+  transition: border-color var(--transition-fast, 150ms ease),
+              box-shadow var(--transition-fast, 150ms ease);
+}
+
+.bounded-container-interactive,
+.sos-card-interactive {
+  cursor: pointer;
+  transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 180ms ease;
+}
+
+.bounded-container-interactive:hover,
+.sos-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md) !important;
+  border-color: #94A3B8 !important;
 }
 
 /* Accessible focus ring */
@@ -176,16 +199,337 @@
   outline-offset: 2px;
 }
 
-/* Reduced motion preference */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+/* ==========================================================================
+   6. INTERACTIVE BUTTON ELEVATION & MICRO-INTERACTIONS
+   ========================================================================== */
+.sos-button,
+.sos-icon-button {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+  transition: background-color var(--transition-fast, 150ms ease),
+              border-color var(--transition-fast, 150ms ease),
+              color var(--transition-fast, 150ms ease),
+              box-shadow var(--transition-fast, 150ms ease),
+              transform 100ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sos-button:active:not(:disabled),
+.sos-icon-button:active:not(:disabled) {
+  transform: scale(0.97) !important;
+}
+
+/* Primary Button Hover */
+.sos-button-primary:hover:not(:disabled),
+.sos-icon-button-primary:hover:not(:disabled) {
+  background-color: var(--color-action-hover, #006E5A) !important;
+  box-shadow: 0 4px 12px -2px rgba(0, 128, 105, 0.35), 0 2px 4px -2px rgba(0, 128, 105, 0.25) !important;
+  transform: translateY(-1px);
+}
+
+/* Secondary Button Hover */
+.sos-button-secondary:hover:not(:disabled),
+.sos-icon-button-secondary:hover:not(:disabled) {
+  background-color: var(--bg-surface-elevated, #EEF2F7) !important;
+  border-color: #94A3B8 !important;
+  color: var(--text-primary, #0F172A) !important;
+  box-shadow: 0 2px 8px -2px rgba(15, 23, 42, 0.12) !important;
+  transform: translateY(-1px);
+}
+
+/* Outline Button Hover */
+.sos-button-outline:hover:not(:disabled),
+.sos-icon-button-outline:hover:not(:disabled) {
+  background-color: var(--bg-surface-subtle, #F8FAFC) !important;
+  border-color: #94A3B8 !important;
+  transform: translateY(-1px);
+}
+
+/* Ghost Button Hover */
+.sos-button-ghost:hover:not(:disabled),
+.sos-icon-button-ghost:hover:not(:disabled) {
+  background-color: rgba(15, 23, 42, 0.06) !important;
+  color: var(--text-primary, #0F172A) !important;
+}
+
+/* Danger Button Hover */
+.sos-button-danger:hover:not(:disabled),
+.sos-icon-button-danger:hover:not(:disabled) {
+  background-color: var(--color-danger-hover, #B91C1C) !important;
+  box-shadow: 0 4px 12px -2px rgba(220, 38, 38, 0.35), 0 2px 4px -2px rgba(220, 38, 38, 0.25) !important;
+  transform: translateY(-1px);
+}
+
+/* Accessible focus outline */
+.sos-button:focus-visible,
+.sos-icon-button:focus-visible {
+  outline: 2px solid var(--border-focus, #008069) !important;
+  outline-offset: 2px !important;
+}
+
+/* ==========================================================================
+   7. INPUTS, SELECTS & FORM CONTROLS
+   ========================================================================== */
+.sos-input {
+  transition: border-color var(--transition-fast, 150ms ease),
+              box-shadow var(--transition-fast, 150ms ease),
+              background-color var(--transition-fast, 150ms ease);
+}
+
+.sos-input:hover:not(:disabled) {
+  border-color: #94A3B8 !important;
+}
+
+.sos-input:focus,
+.sos-input:focus-visible {
+  border-color: var(--color-action, #008069) !important;
+  box-shadow: 0 0 0 3px rgba(0, 128, 105, 0.18) !important;
+  outline: none !important;
+}
+
+.sos-input.sos-input-error:focus,
+.sos-input.sos-input-error:focus-visible {
+  border-color: var(--color-danger, #DC2626) !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18) !important;
+}
+
+select {
+  font-family: var(--font-sans, sans-serif);
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--text-primary, #0F172A);
+  background-color: var(--bg-surface, #FFFFFF);
+  border: 1px solid var(--border-strong, #CBD5E1);
+  border-radius: var(--radius-md, 8px);
+  padding: 8px 32px 8px 12px;
+  min-height: var(--control-h-md, 40px);
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast, 150ms ease),
+              box-shadow var(--transition-fast, 150ms ease);
+}
+
+select:hover:not(:disabled) {
+  border-color: #94A3B8;
+}
+
+select:focus,
+select:focus-visible {
+  border-color: var(--color-action, #008069);
+  box-shadow: 0 0 0 3px rgba(0, 128, 105, 0.18);
+  outline: none;
+}
+
+textarea {
+  font-family: var(--font-sans, sans-serif);
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--text-primary, #0F172A);
+  background-color: var(--bg-surface, #FFFFFF);
+  border: 1px solid var(--border-strong, #CBD5E1);
+  border-radius: var(--radius-md, 8px);
+  padding: 10px 12px;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast, 150ms ease),
+              box-shadow var(--transition-fast, 150ms ease);
+}
+
+textarea:hover:not(:disabled) {
+  border-color: #94A3B8;
+}
+
+textarea:focus,
+textarea:focus-visible {
+  border-color: var(--color-action, #008069);
+  box-shadow: 0 0 0 3px rgba(0, 128, 105, 0.18);
+  outline: none;
+}
+
+/* ==========================================================================
+   8. TABLE & DATA ROW POLISH
+   ========================================================================== */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+tbody tr {
+  transition: background-color var(--transition-fast, 150ms ease);
+}
+
+tbody tr:hover {
+  background-color: var(--bg-surface-elevated, #F1F5F9);
+}
+
+tbody tr[role="button"]:hover,
+tbody tr[style*="cursor: pointer"]:hover,
+tbody tr.cursor-pointer:hover {
+  background-color: rgba(0, 128, 105, 0.05) !important;
+}
+
+/* ==========================================================================
+   9. NAVIGATION, SIDEBAR & SEGMENTED CONTROLS
+   ========================================================================== */
+.sos-nav-item {
+  transition: background-color var(--transition-fast, 150ms ease),
+              color var(--transition-fast, 150ms ease),
+              transform 100ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sos-nav-item:hover:not(:disabled) {
+  background-color: var(--bg-sidebar-hover, #152243) !important;
+  color: #FFFFFF !important;
+}
+
+.sos-nav-item:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.sos-segmented-item {
+  transition: background-color var(--transition-fast, 150ms ease),
+              color var(--transition-fast, 150ms ease),
+              box-shadow var(--transition-fast, 150ms ease),
+              transform 100ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sos-segmented-item:hover:not(:disabled):not([aria-checked="true"]) {
+  background-color: rgba(15, 23, 42, 0.05) !important;
+  color: var(--text-primary, #0F172A) !important;
+}
+
+.sos-segmented-item:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.sos-workspace-trigger {
+  transition: background-color var(--transition-fast, 150ms ease),
+              border-color var(--transition-fast, 150ms ease),
+              box-shadow var(--transition-fast, 150ms ease);
+}
+
+.sos-workspace-trigger:hover {
+  background-color: var(--bg-surface, #FFFFFF) !important;
+  border-color: #94A3B8 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08) !important;
+}
+
+.sos-user-avatar-btn {
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.sos-user-avatar-btn:hover {
+  transform: scale(1.06);
+  box-shadow: 0 0 0 2px rgba(0, 128, 105, 0.25);
+}
+
+.sos-search-trigger {
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.sos-search-trigger:hover {
+  border-color: #94A3B8 !important;
+  background-color: var(--bg-surface-elevated, #EEF2F7) !important;
+  color: var(--text-primary, #0F172A) !important;
+}
+
+.sos-dropzone {
+  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+.sos-dropzone:hover {
+  border-color: var(--color-action, #008069) !important;
+  background-color: var(--color-action-subtle, #E6F4F1) !important;
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   10. SMOOTH MODAL & DRAWER ENTRANCE ANIMATIONS
+   ========================================================================== */
+@keyframes sosFadeIn {
+  from {
+    opacity: 0;
   }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sosModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes sosDrawerRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sosDrawerLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sosDrawerBottom {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.sos-backdrop {
+  animation: sosFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.sos-dialog {
+  animation: sosModalIn 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.sos-drawer-right {
+  animation: sosDrawerRight 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.sos-drawer-left {
+  animation: sosDrawerLeft 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.sos-drawer-bottom {
+  animation: sosDrawerBottom 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Pulse dot animation for status badges */
+@keyframes badgeDotPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+.sos-badge-dot {
+  animation: badgeDotPulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 /* Skeleton animation */
@@ -211,4 +555,17 @@
     transform: rotate(360deg);
   }
 }
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 

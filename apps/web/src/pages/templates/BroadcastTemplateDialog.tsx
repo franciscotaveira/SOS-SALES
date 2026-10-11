@@ -1074,6 +1074,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
+                    className="sos-dropzone"
                     style={{
                       border: "2px dashed var(--border-default)",
                       borderRadius: "var(--radius-md)",

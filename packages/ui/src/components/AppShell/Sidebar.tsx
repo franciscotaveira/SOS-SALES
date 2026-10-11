@@ -106,6 +106,7 @@ export const Sidebar: FC<SidebarProps> = ({
               key={item.id}
               data-nav-id={item.id}
               type="button"
+              className={`sos-nav-item ${isActive ? "sos-nav-item-active" : ""}`}
               onClick={() => {
                 if (item.onClick) item.onClick();
                 onNavSelect(item.id);
