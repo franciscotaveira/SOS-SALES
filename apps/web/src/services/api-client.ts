@@ -1473,6 +1473,7 @@ export class ApiClient {
       objective: string;
       audience: string;
       tone: "PROFESSIONAL" | "FRIENDLY" | "DIRECT";
+      strategy?: "UTILITY_TROJAN" | "DIRECT_MARKETING";
     },
     options?: RequestOptions
   ): Promise<{

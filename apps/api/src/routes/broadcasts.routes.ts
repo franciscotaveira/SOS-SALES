@@ -991,9 +991,45 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
         const currentTemplate = isVariantB && templateB ? templateB : templateA;
         const currentVariables = isVariantB ? variantBVariables : variables;
 
+        // Dynamic Personalization per Recipient:
+        // Extract first name if available; fallback to "cliente" if completely absent
+        const recipientFirstName =
+          rec.name && rec.name.trim().length > 0
+            ? rec.name.trim().split(/\s+/)[0]!
+            : "cliente";
+
+        // Find ordered variable placeholders in template body to ensure 100% Meta WABA parameter compliance
+        const varMatches = [...currentTemplate.body_text.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g)];
+        const orderedBodyKeys = Array.from(new Set(varMatches.map((m) => m[1]!)));
+
+        const resolvedVariables: Record<string, string> = {};
+        for (const [k, rawVal] of Object.entries(currentVariables)) {
+          const isNameVar =
+            k.trim() === "1" ||
+            /^(nome|name|cliente|lead|primeiro_nome|cliente_nome)$/i.test(k.trim()) ||
+            (typeof rawVal === "string" && (rawVal.includes("[Nome") || rawVal.includes("Nome do Contato")));
+
+          if (
+            isNameVar &&
+            (!rawVal || rawVal.includes("[Nome") || /^(nome|name|cliente|lead|primeiro_nome|cliente_nome|1)$/i.test(k.trim()))
+          ) {
+            resolvedVariables[k] = recipientFirstName;
+          } else {
+            resolvedVariables[k] = String(rawVal);
+          }
+        }
+
+        // If template has {{1}} or {{cliente_nome}} but wasn't explicitly supplied in variables object:
+        orderedBodyKeys.forEach((key) => {
+          if (resolvedVariables[key] === undefined) {
+            const isNameVar = key === "1" || /^(nome|name|cliente|lead|primeiro_nome|cliente_nome)$/i.test(key);
+            resolvedVariables[key] = isNameVar ? recipientFirstName : "";
+          }
+        });
+
         // Render template body
         let renderedBody = currentTemplate.body_text;
-        Object.entries(currentVariables).forEach(([k, v]) => {
+        Object.entries(resolvedVariables).forEach(([k, v]) => {
           renderedBody = renderedBody.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v);
         });
 
@@ -1013,9 +1049,9 @@ export const broadcastsRoutes: FastifyPluginAsync<BroadcastsRoutesOptions> = asy
         };
 
         const isMetaWaba = channel.provider === "meta_waba";
-        const bodyParameters = Object.entries(currentVariables).map(([_, val]) => ({
+        const bodyParameters = (orderedBodyKeys.length > 0 ? orderedBodyKeys : Object.keys(resolvedVariables)).map((key) => ({
           type: "text",
-          text: String(val),
+          text: resolvedVariables[key] ?? "",
         }));
 
         try {

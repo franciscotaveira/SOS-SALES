@@ -29,6 +29,7 @@ import {
   type ChannelSummary,
 } from "../../services/api-client";
 import { renderWhatsappMarkdown } from "../cockpit/utils/whatsappMarkdown";
+import { CreateTemplateDialog } from "./CreateTemplateDialog";
 
 // Brazilian Phone Sanitizer & E.164 Validator
 export function sanitizeBrazilianPhoneE164(raw: string): { phoneE164: string } | { error: string } {
@@ -148,6 +149,117 @@ function extractContactFromRow(row: Record<string, any>): { name?: string; phone
   return { name: name.trim() || undefined, phoneRaw };
 }
 
+// Recipient Name Variable Detector
+export function isRecipientNameVariable(key: string): boolean {
+  const clean = key.trim().toLowerCase();
+  return (
+    clean === "1" ||
+    /^(nome|name|cliente|lead|primeiro_nome|cliente_nome|nome_do_cliente|primeiro_nome_cliente)$/i.test(clean)
+  );
+}
+
+// Format template name for commercial/human readability and cost awareness
+export function formatTemplateDisplayTitle(
+  tpl: MessageTemplateSummary | { name: string; category?: string; metaTemplateId?: string | null }
+): string {
+  let clean = tpl.name
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\bv(\d+)\b/gi, "(v$1)")
+    .trim();
+
+  clean = clean
+    .split(" ")
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (["de", "do", "da", "dos", "das", "e", "para", "em", "com"].includes(lower)) return lower;
+      if (lower === "nps") return "NPS";
+      if (lower === "pix") return "Pix";
+      if (lower === "ctwa") return "CTWA";
+      if (lower === "vip") return "VIP";
+      if (lower === "ia") return "IA";
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+
+  const isUtility = tpl.category === "UTILITY";
+  const costBadge = isUtility ? "⚡ Utilidade (~R$ 0,04 • -85%)" : "⭐ Marketing (~R$ 0,40)";
+  const approvalBadge = tpl.metaTemplateId ? "Meta Aprovado" : "Local";
+  return `${clean} [${costBadge} • ${approvalBadge}]`;
+}
+
+// Variable metadata with human labels, placeholders, and quick suggestions
+export function getVariableMetadata(key: string): {
+  label: string;
+  placeholder: string;
+  isName: boolean;
+  suggestions: string[];
+} {
+  const isName = isRecipientNameVariable(key);
+  if (isName) {
+    return {
+      label: "Nome do Contato",
+      placeholder: "[👤 Nome do Contato (Automático)]",
+      isName: true,
+      suggestions: [],
+    };
+  }
+
+  const clean = key.trim().toLowerCase();
+  if (
+    clean === "2" ||
+    clean.includes("procedimento") ||
+    clean.includes("servico") ||
+    clean.includes("produto") ||
+    clean.includes("tratamento")
+  ) {
+    return {
+      label: clean === "2" ? "Procedimento ou Oferta ({{2}})" : `Procedimento / Serviço ({{${key}}})`,
+      placeholder: "ex: Limpeza Facial, Consulta Avaliativa, Botox",
+      isName: false,
+      suggestions: ["Limpeza de Pele", "Consulta Avaliativa", "Avaliação Gratuita", "Sessão Especial"],
+    };
+  }
+  if (
+    clean === "3" ||
+    clean.includes("desconto") ||
+    clean.includes("cupom") ||
+    clean.includes("oferta") ||
+    clean.includes("promocao") ||
+    clean.includes("bonus")
+  ) {
+    return {
+      label: clean === "3" ? "Oferta / Desconto ({{3}})" : `Desconto / Cupom ({{${key}}})`,
+      placeholder: "ex: 15% OFF, FRETEGRATIS, Bônus R$ 50",
+      isName: false,
+      suggestions: ["15% OFF", "20% OFF", "Cupom VIP", "Bônus Especial"],
+    };
+  }
+  if (clean.includes("data") || clean.includes("horario") || clean.includes("dia")) {
+    return {
+      label: `Data ou Horário ({{${key}}})`,
+      placeholder: "ex: amanhã às 14h / nesta sexta-feira",
+      isName: false,
+      suggestions: ["hoje às 15h", "amanhã", "nesta sexta-feira"],
+    };
+  }
+  if (clean.includes("link") || clean.includes("url") || clean.includes("site")) {
+    return {
+      label: `Link de Ação ({{${key}}})`,
+      placeholder: "ex: https://...",
+      isName: false,
+      suggestions: [],
+    };
+  }
+
+  return {
+    label: `Variável {{${key}}}`,
+    placeholder: `Conteúdo para {{${key}}}`,
+    isName: false,
+    suggestions: [],
+  };
+}
+
 interface BroadcastTemplateDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -210,6 +322,20 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     templateName: string;
     isAbTest: boolean;
   } | null>(null);
+  const [isCreateAiModalOpen, setIsCreateAiModalOpen] = useState(false);
+
+  const handleTemplateCreated = async () => {
+    setIsCreateAiModalOpen(false);
+    try {
+      const res = await apiClient.getBroadcastPreflight(workspaceId, { token });
+      setTemplates(res.templates || []);
+      if (res.templates && res.templates.length > 0) {
+        setSelectedTemplateId(res.templates[0]!.id);
+      }
+    } catch (e) {
+      console.error("Falha ao recarregar modelos após criação com IA", e);
+    }
+  };
 
   // Load preflight data on open
   useEffect(() => {
@@ -285,7 +411,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     [templates, selectedTemplateBId]
   );
 
-  // Extract variables for Template A
+  // Extract variables for Template A (Supports both {{1}} and {{nome_cliente}})
   const templateVarKeys = useMemo<string[]>(() => {
     if (!selectedTemplate) return [];
     if (selectedTemplate.variables && selectedTemplate.variables.length > 0) {
@@ -293,13 +419,18 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     }
     const rawBody = selectedTemplate.bodyText || (selectedTemplate as any)?.body_text || "";
     if (!rawBody) return [];
-    const matches = rawBody.match(/\{\{(\d+)\}\}/g);
+    const matches = rawBody.match(/\{\{([a-zA-Z0-9_]+)\}\}/g);
     if (!matches) return [];
     const keys = Array.from<string>(new Set(matches.map((m: string) => m.replace(/[{}]/g, ""))));
-    return keys.sort((a, b) => Number(a) - Number(b));
+    return keys.sort((a, b) => {
+      const numA = Number(a);
+      const numB = Number(b);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b);
+    });
   }, [selectedTemplate]);
 
-  // Extract variables for Template B
+  // Extract variables for Template B (Supports both {{1}} and {{nome_cliente}})
   const templateVarKeysB = useMemo<string[]>(() => {
     if (!selectedTemplateB) return [];
     if (selectedTemplateB.variables && selectedTemplateB.variables.length > 0) {
@@ -307,31 +438,46 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
     }
     const rawBody = selectedTemplateB.bodyText || (selectedTemplateB as any)?.body_text || "";
     if (!rawBody) return [];
-    const matches = rawBody.match(/\{\{(\d+)\}\}/g);
+    const matches = rawBody.match(/\{\{([a-zA-Z0-9_]+)\}\}/g);
     if (!matches) return [];
     const keys = Array.from<string>(new Set(matches.map((m: string) => m.replace(/[{}]/g, ""))));
-    return keys.sort((a, b) => Number(a) - Number(b));
+    return keys.sort((a, b) => {
+      const numA = Number(a);
+      const numB = Number(b);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b);
+    });
   }, [selectedTemplateB]);
 
-  // Preview body A
+  // Preview body A with Realistic WYSIWYG
   const previewBody = useMemo(() => {
     if (!selectedTemplate) return "";
     let body = selectedTemplate.bodyText || (selectedTemplate as any)?.body_text || "";
     if (!body) return "";
     for (const key of templateVarKeys) {
-      const val = variables[key] || `{{${key}}}`;
+      const isName = isRecipientNameVariable(key);
+      const userVal = variables[key];
+      let val = userVal;
+      if (!val || val === "[Nome do Contato]" || (isName && (!val.trim() || val.includes("[Nome")))) {
+        val = isName ? "Francisco" : `[${getVariableMetadata(key).label.split(" (")[0]}]`;
+      }
       body = body.split(`{{${key}}}`).join(val);
     }
     return body;
   }, [selectedTemplate, templateVarKeys, variables]);
 
-  // Preview body B
+  // Preview body B with Realistic WYSIWYG
   const previewBodyB = useMemo(() => {
     if (!selectedTemplateB) return "";
     let body = selectedTemplateB.bodyText || (selectedTemplateB as any)?.body_text || "";
     if (!body) return "";
     for (const key of templateVarKeysB) {
-      const val = variablesB[key] || `{{${key}}}`;
+      const isName = isRecipientNameVariable(key);
+      const userVal = variablesB[key];
+      let val = userVal;
+      if (!val || val === "[Nome do Contato]" || (isName && (!val.trim() || val.includes("[Nome")))) {
+        val = isName ? "Francisco" : `[${getVariableMetadata(key).label.split(" (")[0]}]`;
+      }
       body = body.split(`{{${key}}}`).join(val);
     }
     return body;
@@ -514,6 +660,21 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
         throw new Error("Faça o upload de uma planilha válida com pelo menos um contato.");
       }
 
+      // Prepare sanitized variables: Ensure auto-mapped name variables default to [Nome do Contato] if empty
+      const sanitizedVariables: Record<string, string> = { ...variables };
+      for (const k of templateVarKeys) {
+        if (isRecipientNameVariable(k) && !sanitizedVariables[k]) {
+          sanitizedVariables[k] = "[Nome do Contato]";
+        }
+      }
+
+      const sanitizedVariablesB: Record<string, string> = { ...variablesB };
+      for (const k of templateVarKeysB) {
+        if (isRecipientNameVariable(k) && !sanitizedVariablesB[k]) {
+          sanitizedVariablesB[k] = "[Nome do Contato]";
+        }
+      }
+
       const res = await apiClient.createBroadcast(
         workspaceId,
         {
@@ -529,8 +690,8 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
             importedContacts: audienceType === "IMPORT_LIST" ? importedContacts : undefined,
             smartFilter: audienceType === "SMART_FILTER" ? smartFilter : undefined,
           },
-          variables,
-          variantBVariables: isAbTest ? variablesB : undefined,
+          variables: sanitizedVariables,
+          variantBVariables: isAbTest ? sanitizedVariablesB : undefined,
         },
         { token }
       );
@@ -554,7 +715,8 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
   };
 
   return (
-    <Dialog
+    <>
+      <Dialog
       isOpen={isOpen}
       onClose={onClose}
       title={isAbTest ? "Disparo com Teste A/B (Divisão 50/50)" : "Disparo em Massa de Modelo WABA"}
@@ -1155,17 +1317,41 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
             /* Modo Disparo Simples */
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
-                  Modelo Aprovado (Template WABA)
-                </label>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
+                    Modelo de Mensagem (WhatsApp)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateAiModalOpen(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "rgba(99, 102, 241, 0.1)",
+                      border: "1px solid rgba(99, 102, 241, 0.25)",
+                      color: "var(--color-ai, #6366f1)",
+                      fontSize: "var(--font-size-xs)",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      padding: "3px 10px",
+                      borderRadius: "var(--radius-md)",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <Sparkles size={13} />
+                    <span>Criar Modelo com IA</span>
+                  </button>
+                </div>
                 <select
                   value={selectedTemplateId}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
+                  disabled={templates.length === 0}
                   style={{
-                    padding: "8px 12px",
+                    padding: "9px 12px",
                     borderRadius: "var(--radius-md)",
                     border: "1px solid var(--border-default)",
-                    backgroundColor: "var(--bg-surface)",
+                    backgroundColor: "var(--bg-canvas)",
                     fontSize: "var(--font-size-sm)",
                     color: "var(--text-primary)",
                   }}
@@ -1175,11 +1361,20 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                   ) : (
                     templates.map((tpl) => (
                       <option key={tpl.id} value={tpl.id}>
-                        {tpl.name} ({tpl.category}) {tpl.metaTemplateId ? "— Meta Aprovado" : "— Local"}
+                        {formatTemplateDisplayTitle(tpl)}
                       </option>
                     ))
                   )}
                 </select>
+                {selectedTemplate && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
+                    <Badge variant={selectedTemplate.category === "UTILITY" ? "operational" : "neutral"}>
+                      {selectedTemplate.category === "UTILITY"
+                        ? "⚡ Utilidade (~R$ 0,04 • Economia de 85% + Janela 24h Grátis)"
+                        : "⭐ Marketing (~R$ 0,40 • Custo Padrão)"}
+                    </Badge>
+                  </div>
+                )}
               </div>
 
               {templateVarKeys.length > 0 && (
@@ -1187,52 +1382,154 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                   style={{
                     display: "flex",
                     flexDirection: "column",
-                    gap: "8px",
-                    padding: "12px",
+                    gap: "10px",
+                    padding: "14px",
                     backgroundColor: "var(--bg-canvas)",
                     borderRadius: "var(--radius-md)",
                     border: "1px solid var(--border-default)",
                   }}
                 >
-                  <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
-                    Variáveis Dinâmicas do Modelo:
-                  </span>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "8px" }}>
-                    {templateVarKeys.map((k) => (
-                      <Input
-                        key={k}
-                        label={`Variável {{${k}}}`}
-                        placeholder={`Conteúdo para {{${k}}} (ex: Nome / Desconto)`}
-                        value={variables[k] || ""}
-                        onChange={(e) => setVariables({ ...variables, [k]: e.target.value })}
-                      />
-                    ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 700, color: "var(--text-primary)" }}>
+                      Personalização da Mensagem ({templateVarKeys.length} {templateVarKeys.length === 1 ? "campo" : "campos"}):
+                    </span>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      Campos dinâmicos do modelo
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {templateVarKeys.map((k) => {
+                      const meta = getVariableMetadata(k);
+                      if (meta.isName) {
+                        return (
+                          <div
+                            key={k}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              padding: "10px 14px",
+                              backgroundColor: "rgba(16, 185, 129, 0.08)",
+                              border: "1px solid rgba(16, 185, 129, 0.25)",
+                              borderRadius: "var(--radius-md)",
+                              gap: "10px",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                              <div
+                                style={{
+                                  width: "32px",
+                                  height: "32px",
+                                  borderRadius: "50%",
+                                  backgroundColor: "rgba(16, 185, 129, 0.2)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  color: "#10b981",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <CheckCircle2 size={18} />
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column" }}>
+                                <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 700, color: "var(--text-primary)" }}>
+                                  👤 {meta.label} (Automático)
+                                </span>
+                                <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                                  Substituído automaticamente pelo primeiro nome de cada cliente da lista (ex: "Francisco").
+                                </span>
+                              </div>
+                            </div>
+                            <Badge variant="operational">Auto 100%</Badge>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={k}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "6px",
+                            padding: "10px 12px",
+                            backgroundColor: "var(--bg-surface)",
+                            borderRadius: "var(--radius-md)",
+                            border: "1px solid var(--border-subtle)",
+                          }}
+                        >
+                          <Input
+                            label={meta.label}
+                            placeholder={meta.placeholder}
+                            value={variables[k] || ""}
+                            onChange={(e) => setVariables({ ...variables, [k]: e.target.value })}
+                          />
+                          {meta.suggestions.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginTop: "2px" }}>
+                              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Sugestões rápidas:</span>
+                              {meta.suggestions.map((sug) => (
+                                <button
+                                  key={sug}
+                                  type="button"
+                                  onClick={() => setVariables({ ...variables, [k]: sug })}
+                                  style={{
+                                    fontSize: "11px",
+                                    padding: "2px 8px",
+                                    borderRadius: "12px",
+                                    border: "1px solid var(--border-default)",
+                                    backgroundColor: "var(--bg-canvas)",
+                                    color: "var(--text-secondary)",
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                  }}
+                                >
+                                  {sug}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
               {selectedTemplate && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
-                    Prévia da Mensagem (WhatsApp)
-                  </span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
+                      Prévia Real da Mensagem (WhatsApp)
+                    </span>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      Simulação real com lead de exemplo (Francisco)
+                    </span>
+                  </div>
                   <div
                     style={{
                       backgroundColor: "var(--bg-canvas)",
-                      padding: "12px",
-                      borderRadius: "var(--radius-md)",
+                      padding: "16px",
+                      borderRadius: "var(--radius-lg)",
                       border: "1px solid var(--border-default)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-start",
+                      background: "repeating-linear-gradient(45deg, var(--bg-canvas), var(--bg-canvas) 10px, rgba(0,0,0,0.015) 10px, rgba(0,0,0,0.015) 20px)",
                     }}
                   >
                     <div
                       style={{
+                        maxWidth: "92%",
                         backgroundColor: "var(--bg-surface)",
-                        padding: "10px 14px",
-                        borderRadius: "var(--radius-md)",
-                        boxShadow: "var(--shadow-sm)",
+                        padding: "12px 16px",
+                        borderRadius: "8px 8px 8px 0px",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
                         display: "flex",
                         flexDirection: "column",
                         gap: "6px",
+                        position: "relative",
+                        border: "1px solid var(--border-subtle)",
                       }}
                     >
                       {selectedTemplate.headerText && (
@@ -1240,15 +1537,65 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                           {selectedTemplate.headerText}
                         </div>
                       )}
-                      <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>
+                      <div
+                        style={{
+                          fontSize: "var(--font-size-sm)",
+                          color: "var(--text-primary)",
+                          lineHeight: 1.45,
+                          whiteSpace: "pre-wrap",
+                        }}
+                      >
                         {renderWhatsappMarkdown(previewBody)}
                       </div>
-                      {selectedTemplate.footerText && (
-                        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-                          {selectedTemplate.footerText}
-                        </div>
-                      )}
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          alignItems: "center",
+                          gap: "4px",
+                          marginTop: "2px",
+                        }}
+                      >
+                        {selectedTemplate.footerText && (
+                          <span style={{ fontSize: "10px", color: "var(--text-muted)", marginRight: "auto" }}>
+                            {selectedTemplate.footerText}
+                          </span>
+                        )}
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>10:42</span>
+                        <CheckCircle2 size={12} color="#53bdeb" />
+                      </div>
                     </div>
+
+                    {selectedTemplate.buttons && selectedTemplate.buttons.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: "4px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "4px",
+                          width: "92%",
+                        }}
+                      >
+                        {selectedTemplate.buttons.map((btn, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              backgroundColor: "var(--bg-surface)",
+                              padding: "8px 12px",
+                              borderRadius: "6px",
+                              border: "1px solid var(--border-subtle)",
+                              textAlign: "center",
+                              fontSize: "var(--font-size-xs)",
+                              fontWeight: 600,
+                              color: "var(--color-brand-primary, #10b981)",
+                              boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+                            }}
+                          >
+                            {btn.text}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1300,31 +1647,52 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                         padding: "8px 10px",
                         borderRadius: "var(--radius-md)",
                         border: "1px solid var(--border-default)",
-                        backgroundColor: "var(--bg-surface)",
+                        backgroundColor: "var(--bg-canvas)",
                         fontSize: "var(--font-size-sm)",
                         color: "var(--text-primary)",
                       }}
                     >
                       {templates.map((tpl) => (
                         <option key={tpl.id} value={tpl.id}>
-                          {tpl.name} ({tpl.category})
+                          {formatTemplateDisplayTitle(tpl)}
                         </option>
                       ))}
                     </select>
                   </div>
 
                   {templateVarKeys.length > 0 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600 }}>Variáveis A:</span>
-                      {templateVarKeys.map((k) => (
-                        <Input
-                          key={k}
-                          label={`{{${k}}}`}
-                          placeholder={`Conteúdo {{${k}}}`}
-                          value={variables[k] || ""}
-                          onChange={(e) => setVariables({ ...variables, [k]: e.target.value })}
-                        />
-                      ))}
+                      {templateVarKeys.map((k) => {
+                        const meta = getVariableMetadata(k);
+                        if (meta.isName) {
+                          return (
+                            <div
+                              key={k}
+                              style={{
+                                padding: "6px 10px",
+                                backgroundColor: "rgba(16, 185, 129, 0.08)",
+                                border: "1px solid rgba(16, 185, 129, 0.2)",
+                                borderRadius: "var(--radius-md)",
+                                fontSize: "11px",
+                                color: "#10b981",
+                                fontWeight: 600,
+                              }}
+                            >
+                              👤 {meta.label} (Automático)
+                            </div>
+                          );
+                        }
+                        return (
+                          <Input
+                            key={k}
+                            label={meta.label}
+                            placeholder={meta.placeholder}
+                            value={variables[k] || ""}
+                            onChange={(e) => setVariables({ ...variables, [k]: e.target.value })}
+                          />
+                        );
+                      })}
                     </div>
                   )}
 
@@ -1336,7 +1704,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                         borderRadius: "var(--radius-md)",
                         border: "1px solid var(--border-subtle)",
                         fontSize: "var(--font-size-xs)",
-                        color: "var(--text-secondary)",
+                        color: "var(--text-primary)",
                         whiteSpace: "pre-wrap",
                         maxHeight: "180px",
                         overflowY: "auto",
@@ -1373,31 +1741,52 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                         padding: "8px 10px",
                         borderRadius: "var(--radius-md)",
                         border: "1px solid var(--border-default)",
-                        backgroundColor: "var(--bg-surface)",
+                        backgroundColor: "var(--bg-canvas)",
                         fontSize: "var(--font-size-sm)",
                         color: "var(--text-primary)",
                       }}
                     >
                       {templates.map((tpl) => (
                         <option key={tpl.id} value={tpl.id}>
-                          {tpl.name} ({tpl.category})
+                          {formatTemplateDisplayTitle(tpl)}
                         </option>
                       ))}
                     </select>
                   </div>
 
                   {templateVarKeysB.length > 0 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600 }}>Variáveis B:</span>
-                      {templateVarKeysB.map((k) => (
-                        <Input
-                          key={k}
-                          label={`{{${k}}}`}
-                          placeholder={`Conteúdo {{${k}}}`}
-                          value={variablesB[k] || ""}
-                          onChange={(e) => setVariablesB({ ...variablesB, [k]: e.target.value })}
-                        />
-                      ))}
+                      {templateVarKeysB.map((k) => {
+                        const meta = getVariableMetadata(k);
+                        if (meta.isName) {
+                          return (
+                            <div
+                              key={k}
+                              style={{
+                                padding: "6px 10px",
+                                backgroundColor: "rgba(16, 185, 129, 0.08)",
+                                border: "1px solid rgba(16, 185, 129, 0.2)",
+                                borderRadius: "var(--radius-md)",
+                                fontSize: "11px",
+                                color: "#10b981",
+                                fontWeight: 600,
+                              }}
+                            >
+                              👤 {meta.label} (Automático)
+                            </div>
+                          );
+                        }
+                        return (
+                          <Input
+                            key={k}
+                            label={meta.label}
+                            placeholder={meta.placeholder}
+                            value={variablesB[k] || ""}
+                            onChange={(e) => setVariablesB({ ...variablesB, [k]: e.target.value })}
+                          />
+                        );
+                      })}
                     </div>
                   )}
 
@@ -1409,7 +1798,7 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
                         borderRadius: "var(--radius-md)",
                         border: "1px solid var(--border-subtle)",
                         fontSize: "var(--font-size-xs)",
-                        color: "var(--text-secondary)",
+                        color: "var(--text-primary)",
                         whiteSpace: "pre-wrap",
                         maxHeight: "180px",
                         overflowY: "auto",
@@ -1465,5 +1854,17 @@ export const BroadcastTemplateDialog: FC<BroadcastTemplateDialogProps> = ({
         </form>
       )}
     </Dialog>
+
+      {/* Modal Integrado de Criação de Modelo com IA & Redução de Custo */}
+      {isCreateAiModalOpen && (
+        <CreateTemplateDialog
+          isOpen={isCreateAiModalOpen}
+          onClose={() => setIsCreateAiModalOpen(false)}
+          workspaceId={workspaceId}
+          token={token}
+          onCreated={handleTemplateCreated}
+        />
+      )}
+    </>
   );
 };

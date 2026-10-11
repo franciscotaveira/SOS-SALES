@@ -45,6 +45,7 @@ const generateTemplateBodySchema = z.object({
   objective: z.string().min(10).max(800),
   audience: z.string().min(2).max(200),
   tone: z.enum(["PROFESSIONAL", "FRIENDLY", "DIRECT"]).default("FRIENDLY"),
+  strategy: z.enum(["UTILITY_TROJAN", "DIRECT_MARKETING"]).default("UTILITY_TROJAN"),
 });
 
 const generatedTemplateSchema = z.object({
@@ -94,10 +95,36 @@ export const templatesRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      const { objective, audience, tone } = parsedBody.data;
+      const { objective, audience, tone, strategy = "UTILITY_TROJAN" } = parsedBody.data;
       const model = process.env.NVIDIA_TEMPLATE_MODEL || "nvidia/nemotron-3-super-120b-a12b";
-      const systemPrompt = `Você é especialista em templates WhatsApp Business da Meta para empresas brasileiras.
-Gere uma sugestão clara e curta a partir do objetivo informado. Separe UTILITY (continuação de uma transação ou serviço solicitado pelo cliente) de MARKETING (oferta, promoção, retomada comercial ou persuasão). Não prometa aprovação pela Meta. Use variáveis sequenciais {{1}}, {{2}} sem saltos e informe o significado de cada uma na mesma ordem. Não inclua dados sensíveis. Retorne SOMENTE JSON válido com: name, category, headerText, bodyText, footerText, buttonText, variableLabels, explanation. name deve usar apenas letras minúsculas, números e sublinhados. Limites: header 60, body 1024, footer 60, button 25 caracteres.`;
+
+      const systemPrompt = `Você é o maior especialista do Brasil em Engenharia de Templates WhatsApp Business da Meta (Meta Cloud API / WABA) e Otimização de Custos (MCT OS).
+
+DIRETRIZ DE CUSTOS DA META (2025/2026):
+- Marketing custa ~R$ 0,40 a R$ 0,45 por conversa.
+- Utility (Utilidade) custa ~R$ 0,03 a R$ 0,06 por conversa (Economia de 85% a 90%).
+- Service Window (Janela 24h): Quando o cliente clica no botão rápido ou responde, abre uma Janela de 24h GRATUITA (R$ 0,00) onde todas as mensagens de vendas, áudios e ofertas da IA têm CUSTO ZERO.
+
+ESTRATÉGIA SELECIONADA: ${strategy === "UTILITY_TROJAN" ? "CAVALO DE TROIA DA UTILIDADE (UTILITY TROJAN)" : "MARKETING DIRETO"}
+
+REGRAS DE CONSTRUÇÃO ${strategy === "UTILITY_TROJAN" ? "PARA APROVAÇÃO COMO UTILITY (ECONOMIA DE 85%)" : "PARA MARKETING DIRETO"}:
+${
+  strategy === "UTILITY_TROJAN"
+    ? `1. Enquadre a mensagem como notificação transacional, confirmação operacional, atualização de cadastro/crédito, aviso de reserva ou protocolo (ex: "reserva prioritária de horário", "atualização de proposta", "crédito de fidelidade pendente").
+2. NUNCA use palavras abertamente promocionais como "Compre já", "Mega promoção", "Black Friday", "X% de Desconto", pois a Meta rejeitaria a classificação Utility. Em vez disso, use "condição reservada", "benefício exclusivo liberado", "atualização do seu atendimento".
+3. Crie um botão de resposta rápida (QUICK_REPLY) irresistível de 1 clique (ex: "Confirmar Horário", "Ver Detalhes", "Consultar Saldo", "Tenho Interesse"). Ao clicar, destrava a Janela de 24h Grátis de Atendimento.
+4. Defina a category OBRIGATORIAMENTE como "UTILITY".`
+    : `1. Enquadre a mensagem com persuasão direta, escassez e apelo comercial.
+2. Defina a category como "MARKETING".`
+}
+
+REGRAS TÉCNICAS INVIOLÁVEIS DA META:
+1. Variáveis sequenciais {{1}}, {{2}}... A variável {{1}} DEVE ser sempre o nome do cliente (ex: Olá {{1}}, tudo bem?).
+2. Variáveis NUNCA podem estar no início isolado ou no final da mensagem sem texto/pontuação posterior.
+3. Botão rápido sem emojis, máximo de 25 caracteres.
+4. Retorne SOMENTE JSON válido com: name, category, headerText, bodyText, footerText, buttonText, variableLabels, explanation.
+- name deve usar snake_case com sufixo de versão (ex: confirmacao_reserva_v1).
+- explanation deve explicar sucintamente a tática utilizada, ressaltando o custo reduzido (~R$ 0,04) e o destravamento da Janela de 24h Grátis.`;
 
       try {
         const aiResponse = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
@@ -112,7 +139,10 @@ Gere uma sugestão clara e curta a partir do objetivo informado. Separe UTILITY 
             max_tokens: 1600,
             messages: [
               { role: "system", content: systemPrompt },
-              { role: "user", content: `Objetivo: ${objective}\nPúblico: ${audience}\nTom: ${tone}` },
+              {
+                role: "user",
+                content: `Objetivo: ${objective}\nPúblico: ${audience}\nTom: ${tone}\nEstratégia: ${strategy}`,
+              },
             ],
           }),
           signal: AbortSignal.timeout(45000),
