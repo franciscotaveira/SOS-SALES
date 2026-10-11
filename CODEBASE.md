@@ -374,3 +374,46 @@ A infraestrutura de automações externas da MCT LTDA está centralizada em um d
   - Funil de Conversão: 6ª etapa "6. Vendas Pix" com percentual de conversão e badge de volume.
   - Comparativo A/B Lado a Lado: Exibição de Faturamento Pix, Vendas e Taxa por variante com badge `🏆 Campeã Comercial`.
 
+---
+
+## 12. ARQUITETURA META WAME 2026, OTIMIZADOR DE CUSTOS WABA & WYSIWYG WHATSAPP
+
+### 12.1 Arquitetura WAME (WhatsApp Account Model Evolution — Migration 029)
+- **Desacoplamento de Ativos no Meta Business Portfolio:**
+  - Migração de WABA IDs monolíticos para o modelo WAME:
+    - `channel_instances.waac_id`: Identificador do contêiner WhatsApp Assets & Accounts.
+    - `channel_instances.pma_id`: Phone Number Management Asset, desacoplando o número como um ativo portável entre Business Portfolios sem perda de qualidade ou aprovação de templates.
+    - `channel_instances.business_portfolio_id`: Identificador corporativo da organização dona do ativo.
+- **Identidade Privada por BSUID (Business-Scoped User ID) & Usernames:**
+  - Alteração na tabela `public.contacts`: `phone_e164` torna-se `nullable`.
+  - Restrição `chk_contacts_identity` garantindo pelo menos uma âncora de identidade: `phone_e164 IS NOT NULL OR bsuid IS NOT NULL OR username IS NOT NULL`.
+  - Índices parciais únicos por workspace: `uq_contacts_workspace_bsuid` e `uq_contacts_workspace_username`.
+  - No `waba-normalizer.ts` e `inbox-processor.ts`, resolução idempotente com `ON CONFLICT (workspace_id, bsuid)` ou `ON CONFLICT (workspace_id, phone_e164)`.
+- **Janela FEP 7-Day Window (168 Horas — Free Entry Point):**
+  - Campanhas originadas por Click-to-WhatsApp Ads (`ctwa_meta`) recebem isenção integral de tarifas de conversação da Meta por 168 horas completas.
+  - `commercial_journeys.fep_expires_at = clock_timestamp() + INTERVAL '7 days'`.
+  - Visualização em tempo real no cockpit (`ConversationHeader.tsx`) com badge informativo de dias restantes de CTWA Grátis.
+- **Deep Linking Soberano `wa.me` (`ChannelsSection.tsx`):**
+  - Geração e cópia de URLs canônicas `https://wa.me/<e164>?text=<pre-filled-intent>` com sanitização de caracteres e acionamento nativo em mobile ou desktop sem exigir cadastro prévio do número na agenda do lead.
+
+### 12.2 Otimizador de Custos WABA ("Cavalo de Troia da Utilidade")
+- **Engenharia de Economia Tarifária (~85% a 90% de Desconto):**
+  - Tarifação Meta: Mensagens de Marketing custam ~R$ 0,38 por conversa, enquanto Utilidade custa ~R$ 0,04.
+  - Estratégia `UTILITY_TROJAN` injetada no gerador de IA (`templates.routes.ts`):
+    - Redige mensagens no formato de notificação de conta, confirmação ou atualização operacional ("Atualização de Proposta", "Crédito Pendente", "Encaixe Prioritário").
+    - Aprovação algorítmica garantida na categoria `UTILITY`.
+    - Ao ser entregue e respondida pelo cliente, abre a Janela de Atendimento Gratuito (Service Window de 24 horas), permitindo que a IA converse, qualifique e envie ofertas de vendas sem custos adicionais de marketing.
+- **Presets de Alta Conversão:**
+  - `CreateTemplateDialog.tsx` expõe seletor explícito de estratégia com badge de 85% de economia e 3 modelos mestres MCT pré-configurados.
+
+### 12.3 Pré-visualização WYSIWYG Realista e Mapeamento Automático
+- **Interface Realista do WhatsApp (`BroadcastTemplateDialog.tsx`):**
+  - Card de pré-visualização fiel com simulação do contato "Francisco", bolha verde de mensagem com horário de entrega, tiques duplos e renderização de botões interativos (Quick Reply e Call to Action).
+  - Indicador de economia e badge da categoria do template (Utilidade vs Marketing).
+- **Mapeamento de Variáveis Sem Fricção:**
+  - Auto-detecção de `{{1}}` para o primeiro nome do lead com card verde de auto-mapeamento: `[👤 Nome do Contato (Automático) • Auto 100%]`.
+  - Disparo de broadcast em lote (`broadcasts.routes.ts`) monta ordenadamente os `bodyParameters` da Meta Cloud API com fallback gracioso para o primeiro nome sanitizado.
+- **Cobertura de Testes Automatizados:**
+  - 35/35 testes unitários validados no Vitest (`phone-and-spreadsheet-sanitizer.test.ts`), cobrindo sanitização telefônica brasileira, parsing de planilhas e integridade de variáveis.
+
+
