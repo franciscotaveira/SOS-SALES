@@ -14,6 +14,7 @@ import {
   type GroundedProduct,
   type GroundedBusinessRules,
   type GroundedFaqItem,
+  type GroundedLeadContext,
 } from "@sos-sales/application";
 import { logger } from "@sos-sales/observability";
 
@@ -55,7 +56,6 @@ export class AiReceptionistProcessor {
       workspaceId,
       channelInstanceId,
       threadId,
-      contactId,
       inboundMessageId,
       inboundBody,
       senderPhoneE164,
@@ -71,6 +71,7 @@ export class AiReceptionistProcessor {
       async (client) => {
         // 1. Fetch workspace AI configuration
         const wsRes = await client.query<{
+          workspace_name: string | null;
           ai_receptionist_enabled: boolean | null;
           ai_agent_name: string | null;
           ai_system_prompt: string | null;
@@ -85,6 +86,7 @@ export class AiReceptionistProcessor {
           ai_api_key: string | null;
         }>(
           `SELECT
+             name as workspace_name,
              ai_receptionist_enabled,
              ai_agent_name,
              ai_system_prompt,
@@ -107,14 +109,25 @@ export class AiReceptionistProcessor {
           return { handled: false, reason: "ai_receptionist_disabled" };
         }
 
-        // 2. Check thread status (if already waiting_human or closed, do not intervene)
-        const threadRes = await client.query<{ status: string }>(
-          `SELECT status FROM public.commercial_threads
-           WHERE workspace_id = $1 AND id = $2;`,
+        // 2. Check thread status and fetch contact context
+        const threadRes = await client.query<{
+          status: string;
+          contact_id: string | null;
+          contact_name: string | null;
+          phone_e164: string | null;
+        }>(
+          `SELECT ct.status, ct.contact_id, c.name as contact_name, c.phone_e164
+           FROM public.commercial_threads ct
+           LEFT JOIN public.contacts c ON c.id = ct.contact_id
+           WHERE ct.workspace_id = $1 AND ct.id = $2;`,
           [workspaceId, threadId]
         );
 
         const currentStatus = threadRes.rows[0]?.status;
+        const contactId = threadRes.rows[0]?.contact_id || event.contactId;
+        const contactName = threadRes.rows[0]?.contact_name || null;
+        const contactPhone = threadRes.rows[0]?.phone_e164 || senderPhoneE164;
+
         if (currentStatus === "waiting_human") {
           logger.info(
             { workspaceId, threadId },
@@ -219,14 +232,56 @@ export class AiReceptionistProcessor {
         // Reverse to chronological order
         const recentMessages = historyRes.rows.reverse();
 
-        // 8. Build grounded prompt with 4 layers, CTWA ad hook & Ignorance Protocol
+        // 7.1 Fetch contact's recent Pix and customer journey context
+        let lastPixStatus: string | null = null;
+        let lastPixAmountCents: number | null = null;
+        let isReturningCustomer = false;
+
+        if (contactId) {
+          const pixRes = await client.query<{ status: string; amount_cents: number }>(
+            `SELECT status, amount_cents
+             FROM public.pix_charges
+             WHERE workspace_id = $1 AND contact_id = $2
+             ORDER BY created_at DESC
+             LIMIT 1;`,
+            [workspaceId, contactId]
+          );
+          if (pixRes.rows[0]) {
+            lastPixStatus = pixRes.rows[0].status;
+            lastPixAmountCents = pixRes.rows[0].amount_cents;
+          }
+
+          const paidCountRes = await client.query<{ count: string }>(
+            `SELECT count(*)::text as count
+             FROM public.pix_charges
+             WHERE workspace_id = $1 AND contact_id = $2 AND status = 'PAID';`,
+            [workspaceId, contactId]
+          );
+          isReturningCustomer = Number(paidCountRes.rows[0]?.count || 0) > 0;
+        }
+
+        const leadContext: GroundedLeadContext = {
+          contactName,
+          contactPhone,
+          lastPixStatus,
+          lastPixAmountCents,
+          isReturningCustomer,
+        };
+
+        // 8. Build grounded prompt with 6 layers, CTWA ad hook & Ignorance Protocol
         const personality = (ws.ai_personality || "cordial_comercial") as GroundedAiConfig["personality"];
+        const rawBusinessRules = (ws.ai_business_rules || {}) as GroundedBusinessRules & Record<string, any>;
+        const businessRules: GroundedBusinessRules = {
+          ...rawBusinessRules,
+          companyName: rawBusinessRules.companyName || ws.workspace_name || undefined,
+        };
+
         const aiConfig: GroundedAiConfig = {
           name: ws.ai_agent_name || "Assistente Virtual",
           personality,
           systemPrompt: ws.ai_system_prompt || "",
           strictMode: ws.ai_strict_mode ?? true,
-          businessRules: ws.ai_business_rules || {},
+          businessRules,
           faq: Array.isArray(ws.ai_faq) ? ws.ai_faq : [],
           adHook: adJourney
             ? {
@@ -234,6 +289,7 @@ export class AiReceptionistProcessor {
                 body: adJourney.ad_body,
               }
             : undefined,
+          leadContext,
         };
 
         const systemPrompt = buildGroundedSystemPrompt(aiConfig, products);

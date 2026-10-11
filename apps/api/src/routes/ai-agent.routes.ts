@@ -6,8 +6,10 @@ import {
   buildGroundedSystemPrompt,
   parseAiResponse,
   DEFAULT_MODELS,
+  NICHE_PLAYBOOKS,
   type GroundedAiConfig,
   type GroundedProduct,
+  type GroundedLeadContext,
   type AiProvider,
 } from "@sos-sales/application";
 
@@ -37,11 +39,25 @@ const updateAiAgentBodySchema = z.object({
     .optional(),
   businessRules: z
     .object({
+      companyName: z.string().max(200).optional(),
+      agentRole: z.string().max(200).optional(),
+      valueProposition: z.string().max(1000).optional(),
+      niche: z.string().max(100).optional(),
       openingHours: z.string().max(1000).optional(),
       address: z.string().max(1000).optional(),
       cancellationPolicy: z.string().max(1000).optional(),
       paymentMethods: z.string().max(1000).optional(),
       generalRules: z.string().max(2000).optional(),
+      objections: z
+        .object({
+          priceDiscount: z.string().max(2000).optional(),
+          thinkAboutIt: z.string().max(2000).optional(),
+          guaranteeTrust: z.string().max(2000).optional(),
+          deliveryTimeline: z.string().max(2000).optional(),
+        })
+        .optional(),
+      ctaRule: z.boolean().optional(),
+      emojiDensity: z.enum(["sober", "moderate", "expressive"]).optional(),
     })
     .passthrough()
     .optional(),
@@ -69,6 +85,14 @@ const simulateBodySchema = z.object({
     )
     .optional(),
   draftConfig: updateAiAgentBodySchema.optional(),
+  mockLead: z
+    .object({
+      name: z.string().max(100).optional(),
+      lastPixStatus: z.enum(["PAID", "PENDING", "EXPIRED"]).optional(),
+      lastPixAmountCents: z.number().int().optional(),
+      isReturningCustomer: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
@@ -96,6 +120,7 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
       const config = await withTenantTransaction(workspaceId, async (client) => {
         const res = await client.query(
           `SELECT
+             name as workspace_name,
              ai_receptionist_enabled,
              ai_agent_name,
              ai_system_prompt,
@@ -126,13 +151,26 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      const rawRules = (config.ai_business_rules || {}) as Record<string, string | undefined>;
+      const rawRules = (config.ai_business_rules || {}) as Record<string, any>;
+      const rawObjections = (rawRules.objections || {}) as Record<string, string | undefined>;
       const normalizedRules = {
+        companyName: rawRules.companyName || config.workspace_name || "",
+        agentRole: rawRules.agentRole || "",
+        valueProposition: rawRules.valueProposition || "",
+        niche: rawRules.niche || "general",
         openingHours: rawRules.openingHours || rawRules.opening_hours || "",
         address: rawRules.address || "",
         cancellationPolicy: rawRules.cancellationPolicy || rawRules.cancellation_policy || "",
         paymentMethods: rawRules.paymentMethods || rawRules.payment_methods || "",
         generalRules: rawRules.generalRules || rawRules.general_rules || "",
+        objections: {
+          priceDiscount: rawObjections.priceDiscount || "",
+          thinkAboutIt: rawObjections.thinkAboutIt || "",
+          guaranteeTrust: rawObjections.guaranteeTrust || "",
+          deliveryTimeline: rawObjections.deliveryTimeline || "",
+        },
+        ctaRule: rawRules.ctaRule !== false,
+        emojiDensity: rawRules.emojiDensity || "moderate",
       };
 
       return reply.status(200).send({
@@ -241,11 +279,19 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
             data.skills ? JSON.stringify(data.skills) : null,
             data.businessRules
               ? JSON.stringify({
+                  ...data.businessRules,
+                  companyName: data.businessRules.companyName?.trim() || "",
+                  agentRole: data.businessRules.agentRole?.trim() || "",
+                  valueProposition: data.businessRules.valueProposition?.trim() || "",
+                  niche: data.businessRules.niche || "general",
                   openingHours: data.businessRules.openingHours?.trim() || "",
                   address: data.businessRules.address?.trim() || "",
                   cancellationPolicy: data.businessRules.cancellationPolicy?.trim() || "",
                   paymentMethods: data.businessRules.paymentMethods?.trim() || "",
                   generalRules: data.businessRules.generalRules?.trim() || "",
+                  objections: data.businessRules.objections || {},
+                  ctaRule: data.businessRules.ctaRule !== false,
+                  emojiDensity: data.businessRules.emojiDensity || "moderate",
                   // Backwards-compatibility
                   opening_hours: data.businessRules.openingHours?.trim() || "",
                   cancellation_policy: data.businessRules.cancellationPolicy?.trim() || "",
@@ -275,13 +321,26 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      const rawUpdatedRules = (updated.ai_business_rules || {}) as Record<string, string | undefined>;
+      const rawUpdatedRules = (updated.ai_business_rules || {}) as Record<string, any>;
+      const rawUpdatedObjections = (rawUpdatedRules.objections || {}) as Record<string, string | undefined>;
       const normalizedUpdatedRules = {
+        companyName: rawUpdatedRules.companyName || "",
+        agentRole: rawUpdatedRules.agentRole || "",
+        valueProposition: rawUpdatedRules.valueProposition || "",
+        niche: rawUpdatedRules.niche || "general",
         openingHours: rawUpdatedRules.openingHours || rawUpdatedRules.opening_hours || "",
         address: rawUpdatedRules.address || "",
         cancellationPolicy: rawUpdatedRules.cancellationPolicy || rawUpdatedRules.cancellation_policy || "",
         paymentMethods: rawUpdatedRules.paymentMethods || rawUpdatedRules.payment_methods || "",
         generalRules: rawUpdatedRules.generalRules || rawUpdatedRules.general_rules || "",
+        objections: {
+          priceDiscount: rawUpdatedObjections.priceDiscount || "",
+          thinkAboutIt: rawUpdatedObjections.thinkAboutIt || "",
+          guaranteeTrust: rawUpdatedObjections.guaranteeTrust || "",
+          deliveryTimeline: rawUpdatedObjections.deliveryTimeline || "",
+        },
+        ctaRule: rawUpdatedRules.ctaRule !== false,
+        emojiDensity: rawUpdatedRules.emojiDensity || "moderate",
       };
 
       return reply.status(200).send({
@@ -300,6 +359,20 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
           strictMode: updated.ai_strict_mode,
           temperature: Number(updated.ai_temperature),
         },
+      });
+    }
+  );
+
+  // GET /v1/workspaces/:workspaceId/ai-agent/niche-playbooks
+  app.get(
+    "/v1/workspaces/:workspaceId/ai-agent/niche-playbooks",
+    {
+      preHandler: [app.authenticate, app.requireWorkspaceContext],
+    },
+    async (_request, reply) => {
+      return reply.status(200).send({
+        success: true,
+        playbooks: NICHE_PLAYBOOKS,
       });
     }
   );
@@ -415,6 +488,16 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
       }));
 
       const rawBusinessRules = draftConfig?.businessRules || ws.ai_business_rules || {};
+      const mockLead = parsedBody.data.mockLead;
+      const leadContext: GroundedLeadContext | undefined = mockLead
+        ? {
+            contactName: mockLead.name || null,
+            lastPixStatus: mockLead.lastPixStatus || null,
+            lastPixAmountCents: mockLead.lastPixAmountCents || null,
+            isReturningCustomer: mockLead.isReturningCustomer,
+          }
+        : undefined;
+
       const aiConfig: GroundedAiConfig = {
         name: draftConfig?.name || ws.ai_agent_name || "Assistente Virtual",
         personality: draftConfig?.personality || ws.ai_personality || "cordial_comercial",
@@ -422,6 +505,7 @@ export const aiAgentRoutes: FastifyPluginAsync = async (app) => {
         strictMode: draftConfig?.strictMode !== undefined ? draftConfig.strictMode : (ws.ai_strict_mode ?? true),
         businessRules: rawBusinessRules,
         faq: Array.isArray(draftConfig?.faq) ? draftConfig.faq : (Array.isArray(ws.ai_faq) ? ws.ai_faq : []),
+        leadContext,
       };
 
       const rulesRecord = (aiConfig.businessRules || {}) as Record<string, string | undefined>;

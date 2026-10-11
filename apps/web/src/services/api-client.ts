@@ -1773,6 +1773,12 @@ export class ApiClient {
       message: string;
       history?: Array<{ role: "user" | "assistant"; content: string }>;
       draftConfig?: Partial<AiAgentConfig>;
+      mockLead?: {
+        name?: string;
+        lastPixStatus?: "PAID" | "PENDING" | "EXPIRED";
+        lastPixAmountCents?: number;
+        isReturningCustomer?: boolean;
+      };
     },
     options?: RequestOptions
   ): Promise<AiSimulationResult> {
@@ -1786,6 +1792,21 @@ export class ApiClient {
       }
     );
   }
+
+  async getNichePlaybooks(
+    workspaceId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; playbooks: Record<string, any> }> {
+    return this.request<{ success: boolean; playbooks: Record<string, any> }>(
+      `/v1/workspaces/${workspaceId}/ai-agent/niche-playbooks`,
+      {
+        ...options,
+        method: "GET",
+        workspaceId,
+      }
+    );
+  }
+
 
   async getBroadcastPreflight(
     workspaceId: string,
@@ -1951,14 +1972,31 @@ export interface AiFaqItem {
   answer: string;
 }
 
+export interface AiObjections {
+  priceDiscount?: string;
+  thinkAboutIt?: string;
+  guaranteeTrust?: string;
+  deliveryTimeline?: string;
+}
+
+export type GroundedObjections = AiObjections;
+
 export interface AiBusinessRules {
+  companyName?: string;
+  agentRole?: string;
+  valueProposition?: string;
+  niche?: "ecommerce" | "clinic" | "infoproduct" | "services" | "general" | string;
   openingHours?: string;
   address?: string;
   cancellationPolicy?: string;
   paymentMethods?: string;
   generalRules?: string;
-  [key: string]: string | undefined;
+  objections?: AiObjections;
+  ctaRule?: boolean;
+  emojiDensity?: "sober" | "moderate" | "expressive";
+  [key: string]: any;
 }
+
 
 export interface AiAgentConfig {
   enabled: boolean;

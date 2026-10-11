@@ -45,7 +45,7 @@ describe("AI Grounding Prompt Builder & Handoff Parser", () => {
 
     const prompt = buildGroundedSystemPrompt(config, products);
 
-    expect(prompt).toContain("Você é Sofia, assistente comercial de WhatsApp");
+    expect(prompt).toContain("Você é Sofia, atendente comercial oficial de WhatsApp da empresa.");
     expect(prompt).toContain("<catalog_truth>");
     expect(prompt).toContain("Escova Lisa | Preço:");
     expect(prompt).toContain("<business_rules>");
@@ -134,4 +134,93 @@ describe("AI Grounding Prompt Builder & Handoff Parser", () => {
       "Vou avisar o financeiro para acompanhar seu pagamento!"
     );
   });
+
+  it("injects company identity, agent role and value proposition into prompt", () => {
+    const config: GroundedAiConfig = {
+      name: "Camila",
+      personality: "empatico_acolhedor",
+      strictMode: true,
+      businessRules: {
+        companyName: "Clínica DermaLuxe",
+        agentRole: "Especialista em Avaliação Facial",
+        valueProposition: "Transformação estética segura e natural",
+      },
+    };
+
+    const prompt = buildGroundedSystemPrompt(config, []);
+
+    expect(prompt).toContain("Você é Camila, Especialista em Avaliação Facial, atendente comercial oficial de WhatsApp da empresa Clínica DermaLuxe.");
+    expect(prompt).toContain("<identidade_empresa>");
+    expect(prompt).toContain("- Empresa / Marca: Clínica DermaLuxe");
+    expect(prompt).toContain("- Cargo / Atuação: Especialista em Avaliação Facial");
+    expect(prompt).toContain('Proposta de Valor: "Transformação estética segura e natural"');
+  });
+
+  it("injects real-time lead context with contact name and abandoned Pix recovery warning", () => {
+    const config: GroundedAiConfig = {
+      name: "Bia",
+      personality: "cordial_comercial",
+      strictMode: true,
+      leadContext: {
+        contactName: "Mariana Silva",
+        contactPhone: "+5511999998888",
+        lastPixStatus: "EXPIRED",
+        lastPixAmountCents: 29700,
+        isReturningCustomer: false,
+      },
+    };
+
+    const prompt = buildGroundedSystemPrompt(config, []);
+
+    expect(prompt).toContain("<contexto_do_lead>");
+    expect(prompt).toContain("Nome do Cliente: Mariana Silva");
+    expect(prompt).toContain("DIRETRIZ DE TRATAMENTO: Chame o cliente pelo primeiro nome");
+    expect(prompt).toContain("ATENÇÃO DE VENDA: Este cliente possui uma cobrança Pix recente em aberto/expirada no valor de");
+    expect(prompt).toContain("297,00");
+  });
+
+  it("injects objection shield matrix with price, hesitation, guarantee and timeline scripts", () => {
+    const config: GroundedAiConfig = {
+      name: "Lucas",
+      personality: "especialista_consultivo",
+      strictMode: true,
+      businessRules: {
+        objections: {
+          priceDiscount: "Oferecemos 5% de desconto exclusivo para pagamento no Pix à vista.",
+          thinkAboutIt: "As vagas com bônus expiram hoje às 23h59.",
+          guaranteeTrust: "Garantia incondicional de 7 dias com devolução total.",
+          deliveryTimeline: "Acesso liberado no mesmo minuto da confirmação do Pix.",
+        },
+      },
+    };
+
+    const prompt = buildGroundedSystemPrompt(config, []);
+
+    expect(prompt).toContain("<matriz_de_objecoes>");
+    expect(prompt).toContain("[Se o cliente disser que está caro ou pedir desconto]:");
+    expect(prompt).toContain("Oferecemos 5% de desconto exclusivo para pagamento no Pix à vista.");
+    expect(prompt).toContain("[Se o cliente disser que vai pensar ou falar com outra pessoa]:");
+    expect(prompt).toContain("As vagas com bônus expiram hoje às 23h59.");
+    expect(prompt).toContain("[Se o cliente tiver dúvidas de garantia, segurança ou procedência]:");
+    expect(prompt).toContain("[Se o cliente perguntar sobre prazos de entrega ou execução]:");
+  });
+
+  it("injects WhatsApp Golden Rules with CTA closing requirement and emoji density", () => {
+    const config: GroundedAiConfig = {
+      name: "Rodrigo",
+      personality: "direto_objetivo",
+      strictMode: true,
+      businessRules: {
+        ctaRule: true,
+        emojiDensity: "expressive",
+      },
+    };
+
+    const prompt = buildGroundedSystemPrompt(config, []);
+
+    expect(prompt).toContain("<regras_de_ouro_whatsapp>");
+    expect(prompt).toContain("REGRA DE OURO DO CTA FINAL: TODA mensagem sua DEVE OBRIGATORIAMENTE terminar com uma pergunta clara de avanço");
+    expect(prompt).toContain("vibrante e comercial, utilizando emojis estratégicos");
+  });
 });
+

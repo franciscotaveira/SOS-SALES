@@ -23,13 +23,23 @@ import {
   Key,
   Terminal,
   Loader2,
+  Building2,
+  Target,
+  MessageSquare,
+  Smile,
+  UserCheck,
+  Check,
+  Briefcase,
+  ArrowRight,
 } from "lucide-react";
+import { NICHE_PLAYBOOKS } from "./playbooks";
 import {
   apiClient,
   type AiAgentConfig,
   type AiBusinessRules,
   type AiFaqItem,
   type AiSimulationResult,
+  type GroundedObjections,
 } from "../../services/api-client";
 
 interface AiAgentSectionProps {
@@ -42,6 +52,7 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [playbookAppliedNotice, setPlaybookAppliedNotice] = useState<string | null>(null);
 
   const [enabled, setEnabled] = useState(true);
   const [name, setName] = useState("Assistente Virtual");
@@ -56,18 +67,32 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
   const [apiKey, setApiKey] = useState("");
   const [hasCustomApiKey, setHasCustomApiKey] = useState(false);
 
-  // Simulation Playground State
+  // Simulation Playground State & Mock Lead
   const [simInput, setSimInput] = useState("");
   const [simLoading, setSimLoading] = useState(false);
   const [simResult, setSimResult] = useState<AiSimulationResult | null>(null);
   const [simError, setSimError] = useState<string | null>(null);
+  const [mockLeadName, setMockLeadName] = useState("Francisco");
+  const [mockPixScenario, setMockPixScenario] = useState<"none" | "pending" | "paid">("none");
 
   const [businessRules, setBusinessRules] = useState<AiBusinessRules>({
+    companyName: "",
+    agentRole: "",
+    valueProposition: "",
+    niche: "",
     openingHours: "",
     address: "",
     cancellationPolicy: "",
     paymentMethods: "",
     generalRules: "",
+    objections: {
+      priceDiscount: "",
+      thinkAboutIt: "",
+      guaranteeTrust: "",
+      deliveryTimeline: "",
+    },
+    ctaRule: true,
+    emojiDensity: "moderate",
   });
 
   const [faq, setFaq] = useState<AiFaqItem[]>([]);
@@ -110,11 +135,23 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
           setHasCustomApiKey(Boolean(res.config.hasCustomApiKey));
           setApiKey("");
           setBusinessRules({
+            companyName: res.config.businessRules?.companyName || "",
+            agentRole: res.config.businessRules?.agentRole || "",
+            valueProposition: res.config.businessRules?.valueProposition || "",
+            niche: res.config.businessRules?.niche || "",
             openingHours: res.config.businessRules?.openingHours || "",
             address: res.config.businessRules?.address || "",
             cancellationPolicy: res.config.businessRules?.cancellationPolicy || "",
             paymentMethods: res.config.businessRules?.paymentMethods || "",
             generalRules: res.config.businessRules?.generalRules || "",
+            objections: {
+              priceDiscount: res.config.businessRules?.objections?.priceDiscount || "",
+              thinkAboutIt: res.config.businessRules?.objections?.thinkAboutIt || "",
+              guaranteeTrust: res.config.businessRules?.objections?.guaranteeTrust || "",
+              deliveryTimeline: res.config.businessRules?.objections?.deliveryTimeline || "",
+            },
+            ctaRule: res.config.businessRules?.ctaRule !== undefined ? Boolean(res.config.businessRules?.ctaRule) : true,
+            emojiDensity: res.config.businessRules?.emojiDensity || "moderate",
           });
           setFaq(Array.isArray(res.config.faq) ? res.config.faq : []);
           setSkills({
@@ -139,11 +176,61 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
     }));
   };
 
-  const handleUpdateBusinessRule = (field: keyof AiBusinessRules, value: string) => {
+  const handleUpdateBusinessRule = (field: keyof AiBusinessRules, value: any) => {
     setBusinessRules((prev) => ({
       ...prev,
       [field]: value,
     }));
+  };
+
+  const handleUpdateObjection = (key: keyof GroundedObjections, value: string) => {
+    setBusinessRules((prev) => ({
+      ...prev,
+      objections: {
+        ...(prev.objections || {}),
+        [key]: value,
+      },
+    }));
+  };
+
+  const handleApplyPlaybook = (playbookKey: string) => {
+    const pb = NICHE_PLAYBOOKS[playbookKey];
+    if (!pb) return;
+
+    setName(pb.defaultName);
+    setPersonality(pb.defaultPersonality);
+    setSystemPrompt(pb.systemPrompt);
+    setBusinessRules((prev) => ({
+      ...prev,
+      companyName: prev.companyName || "",
+      agentRole: pb.defaultRole,
+      valueProposition: pb.valueProposition,
+      niche: pb.id,
+      objections: {
+        priceDiscount: pb.objections.priceDiscount || "",
+        thinkAboutIt: pb.objections.thinkAboutIt || "",
+        guaranteeTrust: pb.objections.guaranteeTrust || "",
+        deliveryTimeline: pb.objections.deliveryTimeline || "",
+      },
+      ctaRule: pb.ctaRule,
+      emojiDensity: pb.emojiDensity,
+    }));
+
+    const hasRealFaq = faq.some((f) => f.question.trim() || f.answer.trim());
+    if (!hasRealFaq && pb.faq && pb.faq.length > 0) {
+      setFaq(
+        pb.faq.map((f, i) => ({
+          id: `faq-${pb.id}-${i}-${Date.now()}`,
+          question: f.question,
+          answer: f.answer,
+        }))
+      );
+    }
+
+    setPlaybookAppliedNotice(
+      `Playbook "${pb.title}" aplicado com sucesso! Revise o DNA da Marca abaixo e clique em Salvar.`
+    );
+    setTimeout(() => setPlaybookAppliedNotice(null), 6000);
   };
 
   const handleAddFaq = () => {
@@ -184,11 +271,28 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
     }
   };
 
-  const handleSimulate = async (customMessage?: string) => {
+  const handleSimulate = async (
+    customMessage?: string,
+    leadOverride?: { name?: string; pixScenario?: "none" | "pending" | "paid" }
+  ) => {
     const textToSimulate = (customMessage !== undefined ? customMessage : simInput).trim();
     if (!workspaceId || !token || !textToSimulate) return;
     setSimLoading(true);
     setSimError(null);
+
+    const effName = leadOverride?.name !== undefined ? leadOverride.name : mockLeadName;
+    const effPix = leadOverride?.pixScenario !== undefined ? leadOverride.pixScenario : mockPixScenario;
+
+    let mockLeadPayload: any = undefined;
+    if (effName.trim() || effPix !== "none") {
+      mockLeadPayload = {
+        name: effName.trim() || undefined,
+        lastPixStatus: effPix === "pending" ? "PENDING" : effPix === "paid" ? "PAID" : undefined,
+        lastPixAmountCents: effPix === "pending" ? 14990 : effPix === "paid" ? 29900 : undefined,
+        isReturningCustomer: effPix === "paid",
+      };
+    }
+
     try {
       const res = await apiClient.simulateAiAgent(
         workspaceId,
@@ -207,6 +311,7 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
             businessRules,
             faq: faq.filter((item) => item.question.trim() || item.answer.trim()),
           },
+          mockLead: mockLeadPayload,
         },
         { token }
       );
@@ -352,6 +457,637 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
           <CheckCircle2 size={16} /> Configurações e base de conhecimento da IA salvas com sucesso!
         </div>
       )}
+
+      {/* 1-CLICK NICHE PLAYBOOKS BANNER */}
+      <div
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          border: "1px solid var(--border-default)",
+          borderRadius: "var(--radius-lg, 12px)",
+          padding: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          boxShadow: "var(--shadow-sm)",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "8px",
+                backgroundColor: "var(--color-primary-subtle, rgba(16, 185, 129, 0.12))",
+                color: "var(--color-primary, #10b981)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Sparkles size={22} />
+            </div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <h4 style={{ margin: 0, fontSize: "var(--font-size-sm, 0.875rem)", fontWeight: 700 }}>
+                  Playbooks de Vendas por Nicho (1-Clique)
+                </h4>
+                <span
+                  style={{
+                    fontSize: "0.65rem",
+                    padding: "2px 8px",
+                    borderRadius: "999px",
+                    backgroundColor: "rgba(16, 185, 129, 0.15)",
+                    color: "var(--color-primary, #10b981)",
+                    fontWeight: 700,
+                  }}
+                >
+                  ⚡ Conversão Acelerada
+                </span>
+              </div>
+              <p style={{ margin: "2px 0 0 0", fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)" }}>
+                Aplique instantaneamente configurações de excelência, objeções pré-formatadas e o tom ideal para o seu segmento.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {playbookAppliedNotice && (
+          <div
+            role="status"
+            style={{
+              padding: "10px 14px",
+              backgroundColor: "var(--color-success-subtle, rgba(16, 185, 129, 0.12))",
+              border: "1px solid var(--color-primary, #10b981)",
+              color: "var(--color-primary, #10b981)",
+              borderRadius: "var(--radius-md, 8px)",
+              fontSize: "var(--font-size-xs, 0.75rem)",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <CheckCircle2 size={16} /> {playbookAppliedNotice}
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+          {Object.values(NICHE_PLAYBOOKS).map((pb) => {
+            const isCurrent = businessRules.niche === pb.id;
+            return (
+              <div
+                key={pb.id}
+                onClick={() => handleApplyPlaybook(pb.id)}
+                style={{
+                  padding: "14px",
+                  borderRadius: "var(--radius-md, 8px)",
+                  border: isCurrent
+                    ? "2px solid var(--color-primary, #10b981)"
+                    : "1px solid var(--border-default)",
+                  backgroundColor: isCurrent
+                    ? "var(--color-primary-subtle, rgba(16, 185, 129, 0.08))"
+                    : "var(--bg-canvas)",
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "1.25rem" }}>{pb.emoji}</span>
+                  <span
+                    style={{
+                      fontSize: "0.65rem",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                      backgroundColor: isCurrent ? "var(--color-primary, #10b981)" : "var(--border-default)",
+                      color: isCurrent ? "#ffffff" : "var(--text-secondary)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {isCurrent ? "✓ Ativo" : pb.badge}
+                  </span>
+                </div>
+                <div>
+                  <strong style={{ fontSize: "var(--font-size-xs, 0.8rem)", color: "var(--text-primary)", display: "block" }}>
+                    {pb.title}
+                  </strong>
+                  <p
+                    style={{
+                      margin: "4px 0 0 0",
+                      fontSize: "0.7rem",
+                      color: "var(--text-secondary)",
+                      lineHeight: 1.35,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {pb.description}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  style={{
+                    marginTop: "auto",
+                    padding: "6px 8px",
+                    borderRadius: "6px",
+                    border: "none",
+                    backgroundColor: isCurrent ? "var(--color-primary, #10b981)" : "var(--bg-surface)",
+                    color: isCurrent ? "#ffffff" : "var(--text-primary)",
+                    fontSize: "0.7rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "4px",
+                  }}
+                >
+                  {isCurrent ? <Check size={12} /> : <ArrowRight size={12} />}
+                  {isCurrent ? "Playbook Carregado" : "Aplicar 1-Clique"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* DNA DA MARCA & PAPEL DO ATENDENTE */}
+      <div
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          border: "1px solid var(--border-default)",
+          borderRadius: "var(--radius-lg, 12px)",
+          padding: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <Building2 size={20} color="var(--color-primary, #10b981)" />
+          <div>
+            <h4 style={{ margin: 0, fontSize: "var(--font-size-sm, 0.875rem)", fontWeight: 600 }}>
+              DNA da Marca & Papel do Atendente
+            </h4>
+            <p style={{ margin: "2px 0 0 0", fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)" }}>
+              Diretrizes de identidade corporativa que ensinam à IA quem ela representa e qual a promessa irrecusável do negócio.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          <div>
+            <label style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+              <Building2 size={14} /> Nome da Sua Empresa / Marca
+            </label>
+            <input
+              type="text"
+              value={businessRules.companyName || ""}
+              onChange={(e) => handleUpdateBusinessRule("companyName", e.target.value)}
+              placeholder="Ex.: Haven Escovaria & SPA, Loja Aurora..."
+              style={{
+                width: "100%",
+                height: "36px",
+                padding: "0 10px",
+                fontSize: "var(--font-size-sm, 0.875rem)",
+                color: "var(--text-primary)",
+                backgroundColor: "var(--bg-canvas)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "var(--radius-md, 8px)",
+                fontFamily: "inherit",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+              <Briefcase size={14} /> Papel / Cargo Comercial do Atendente
+            </label>
+            <input
+              type="text"
+              value={businessRules.agentRole || ""}
+              onChange={(e) => handleUpdateBusinessRule("agentRole", e.target.value)}
+              placeholder="Ex.: Consultora Especialista de Vendas, Concierge de Atendimento..."
+              style={{
+                width: "100%",
+                height: "36px",
+                padding: "0 10px",
+                fontSize: "var(--font-size-sm, 0.875rem)",
+                color: "var(--text-primary)",
+                backgroundColor: "var(--bg-canvas)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "var(--radius-md, 8px)",
+                fontFamily: "inherit",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+            <Target size={14} /> Proposta Única de Valor (Promessa Central)
+          </label>
+          <input
+            type="text"
+            value={businessRules.valueProposition || ""}
+            onChange={(e) => handleUpdateBusinessRule("valueProposition", e.target.value)}
+            placeholder="Ex.: Cabelos impecáveis em 45 minutos sem agendamento prévio com produtos 100% orgânicos."
+            style={{
+              width: "100%",
+              height: "36px",
+              padding: "0 10px",
+              fontSize: "var(--font-size-sm, 0.875rem)",
+              color: "var(--text-primary)",
+              backgroundColor: "var(--bg-canvas)",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--radius-md, 8px)",
+              fontFamily: "inherit",
+              boxSizing: "border-box",
+            }}
+          />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          <Input
+            label="Nome do Atendente no WhatsApp"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ex.: Camila, Sofia, Lucas..."
+            helperText="Nome apresentado aos leads logo no primeiro contato."
+          />
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <label style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, color: "var(--text-secondary)" }}>
+              Arquétipo de Comunicação
+            </label>
+            <select
+              value={personality}
+              onChange={(e) => setPersonality(e.target.value as AiAgentConfig["personality"])}
+              style={{
+                width: "100%",
+                height: "36px",
+                padding: "0 10px",
+                fontSize: "var(--font-size-sm, 0.875rem)",
+                color: "var(--text-primary)",
+                backgroundColor: "var(--bg-canvas)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "var(--radius-md, 8px)",
+                fontFamily: "inherit",
+              }}
+            >
+              <option value="cordial_comercial">Cordial & Comercial (Recomendado para Vendas)</option>
+              <option value="direto_objetivo">Direto & Objetivo (Rápido e focado em respostas curtas)</option>
+              <option value="especialista_consultivo">Especialista & Consultivo (Focado em tirar dúvidas técnicas)</option>
+              <option value="empatico_acolhedor">Empático & Acolhedor (Foco em beleza, saúde e bem-estar)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Prompt */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <label style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, color: "var(--text-secondary)" }}>
+            Instruções Gerais de Contexto Adicionais (System Prompt)
+          </label>
+          <textarea
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            rows={3}
+            placeholder="Ex.: Atenda os clientes com agilidade, apresente as opções disponíveis no catálogo e estimule o fechamento via Pix à vista."
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              fontSize: "var(--font-size-sm, 0.875rem)",
+              color: "var(--text-primary)",
+              backgroundColor: "var(--bg-canvas)",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--radius-md, 8px)",
+              fontFamily: "inherit",
+              resize: "vertical",
+              boxSizing: "border-box",
+            }}
+          />
+          <div style={{ fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)", textAlign: "right" }}>
+            {systemPrompt.length} / 5000 caracteres
+          </div>
+        </div>
+      </div>
+
+      {/* DIRETRIZES DE CONVERSAÇÃO WHATSAPP */}
+      <div
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          border: "1px solid var(--border-default)",
+          borderRadius: "var(--radius-lg, 12px)",
+          padding: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <MessageSquare size={20} color="var(--color-primary, #10b981)" />
+          <div>
+            <h4 style={{ margin: 0, fontSize: "var(--font-size-sm, 0.875rem)", fontWeight: 600 }}>
+              Diretrizes de Conversação WhatsApp (Regras de Ouro)
+            </h4>
+            <p style={{ margin: "2px 0 0 0", fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)" }}>
+              Controle a dinâmica comercial das mensagens para manter o lead engajado até a conclusão do Pix.
+            </p>
+          </div>
+        </div>
+
+        {/* CTA Rule Toggle Card */}
+        <div
+          style={{
+            padding: "14px 16px",
+            backgroundColor: "var(--bg-canvas)",
+            border: "1px solid var(--border-default)",
+            borderRadius: "var(--radius-md, 8px)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "16px",
+          }}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <Target size={16} color="var(--color-primary, #10b981)" />
+              <strong style={{ fontSize: "var(--font-size-sm, 0.875rem)", color: "var(--text-primary)" }}>
+                Pergunta de Fechamento Obrigatória (Call to Action)
+              </strong>
+            </div>
+            <p style={{ margin: "4px 0 0 0", fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)" }}>
+              A IA <strong>obrigatoriamente</strong> encerra cada mensagem com uma pergunta orientada para a ação (Ex.: <em>&quot;Posso gerar o Pix com desconto para você agora?&quot;</em> ou <em>&quot;Qual o melhor dia para você?&quot;</em>).
+            </p>
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600, fontSize: "var(--font-size-sm, 0.875rem)" }}>
+            <span style={{ fontSize: "0.75rem", color: (businessRules.ctaRule ?? true) ? "var(--color-primary, #10b981)" : "var(--text-secondary)" }}>
+              {(businessRules.ctaRule ?? true) ? "Ativo" : "Desativado"}
+            </span>
+            <input
+              type="checkbox"
+              checked={businessRules.ctaRule ?? true}
+              onChange={(e) => handleUpdateBusinessRule("ctaRule", e.target.checked)}
+              style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: "var(--color-primary, #10b981)" }}
+            />
+          </label>
+        </div>
+
+        {/* Emoji Density Segmented Buttons */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <label style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
+            <Smile size={14} /> Densidade e Frequência de Emojis
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px" }}>
+            {[
+              {
+                id: "sober",
+                label: "🧊 Sóbrio & Executivo",
+                desc: "Poucos ou nenhum emoji. Tom sério e institucional.",
+              },
+              {
+                id: "moderate",
+                label: "🌿 Moderado (Recomendado)",
+                desc: "1 a 2 emojis pontuais por mensagem. Comercial e humanizado.",
+              },
+              {
+                id: "expressive",
+                label: "✨ Expressivo & Dinâmico",
+                desc: "Emojis frequentes e calorosos. Tom jovem e informal.",
+              },
+            ].map((opt) => {
+              const isSelected = (businessRules.emojiDensity || "moderate") === opt.id;
+              return (
+                <div
+                  key={opt.id}
+                  onClick={() => handleUpdateBusinessRule("emojiDensity", opt.id)}
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: "var(--radius-md, 8px)",
+                    border: isSelected ? "2px solid var(--color-primary, #10b981)" : "1px solid var(--border-default)",
+                    backgroundColor: isSelected ? "var(--color-primary-subtle, rgba(16, 185, 129, 0.08))" : "var(--bg-canvas)",
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <strong style={{ fontSize: "var(--font-size-xs, 0.8rem)", color: isSelected ? "var(--color-primary, #10b981)" : "var(--text-primary)" }}>
+                    {opt.label}
+                  </strong>
+                  <span style={{ fontSize: "0.7rem", color: "var(--text-secondary)", lineHeight: 1.3 }}>
+                    {opt.desc}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* MATRIZ DE CONTORNO DE OBJEÇÕES (OBJECTION SHIELD) */}
+      <div
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          border: "1px solid var(--border-default)",
+          borderRadius: "var(--radius-lg, 12px)",
+          padding: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "16px",
+          boxShadow: "var(--shadow-sm)",
+        }}
+      >
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <ShieldCheck size={20} color="var(--color-primary, #10b981)" />
+          <div>
+            <h4 style={{ margin: 0, fontSize: "var(--font-size-sm, 0.875rem)", fontWeight: 600 }}>
+              Matriz de Contorno de Objeções (Objection Shield)
+            </h4>
+            <p style={{ margin: "2px 0 0 0", fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)" }}>
+              Blindagem tática para responder com firmeza e elegância às 4 principais resistências comerciais no WhatsApp.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          {/* Objeção 1: Preço Alto / Desconto */}
+          <div
+            style={{
+              padding: "14px",
+              backgroundColor: "var(--bg-canvas)",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--radius-md, 8px)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "1rem" }}>💰</span>
+              <strong style={{ fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-primary)" }}>
+                Preço Alto & Pedido de Desconto
+              </strong>
+            </div>
+            <p style={{ margin: 0, fontSize: "0.7rem", color: "var(--text-secondary)" }}>
+              Quando o lead diz &quot;tá caro&quot; ou &quot;tem desconto?&quot;. Defenda o valor e ofereça benefício no Pix:
+            </p>
+            <textarea
+              value={businessRules.objections?.priceDiscount || ""}
+              onChange={(e) => handleUpdateObjection("priceDiscount", e.target.value)}
+              rows={3}
+              placeholder="Ex.: Nossas peças contam com acabamento premium. Para pagamento via Pix à vista, conseguimos 5% de desconto imediato..."
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                color: "var(--text-primary)",
+                backgroundColor: "var(--bg-surface)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "var(--radius-md, 8px)",
+                fontFamily: "inherit",
+                resize: "vertical",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          {/* Objeção 2: Vou Pensar / Terceiro */}
+          <div
+            style={{
+              padding: "14px",
+              backgroundColor: "var(--bg-canvas)",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--radius-md, 8px)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "1rem" }}>⏳</span>
+              <strong style={{ fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-primary)" }}>
+                &quot;Vou Pensar / Falar com Cônjuge/Sócio&quot;
+              </strong>
+            </div>
+            <p style={{ margin: 0, fontSize: "0.7rem", color: "var(--text-secondary)" }}>
+              Gere urgência respeitosa e proponha uma pré-reserva de lote/horário por tempo limitado:
+            </p>
+            <textarea
+              value={businessRules.objections?.thinkAboutIt || ""}
+              onChange={(e) => handleUpdateObjection("thinkAboutIt", e.target.value)}
+              rows={3}
+              placeholder="Ex.: Compreendo perfeitamente! Como a nossa agenda gira rápido, quer que eu reserve seu horário por até 2 horas sem custo?..."
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                color: "var(--text-primary)",
+                backgroundColor: "var(--bg-surface)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "var(--radius-md, 8px)",
+                fontFamily: "inherit",
+                resize: "vertical",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          {/* Objeção 3: Garantia & Confiança */}
+          <div
+            style={{
+              padding: "14px",
+              backgroundColor: "var(--bg-canvas)",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--radius-md, 8px)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "1rem" }}>🛡️</span>
+              <strong style={{ fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-primary)" }}>
+                Garantia, Segurança & Incerteza
+              </strong>
+            </div>
+            <p style={{ margin: 0, fontSize: "0.7rem", color: "var(--text-secondary)" }}>
+              Quando o lead hesita sobre confiança, qualidade ou suporte pós-venda:
+            </p>
+            <textarea
+              value={businessRules.objections?.guaranteeTrust || ""}
+              onChange={(e) => handleUpdateObjection("guaranteeTrust", e.target.value)}
+              rows={3}
+              placeholder="Ex.: Você tem 7 dias de garantia incondicional e a primeira troca é totalmente gratuita sem burocracia..."
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                color: "var(--text-primary)",
+                backgroundColor: "var(--bg-surface)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "var(--radius-md, 8px)",
+                fontFamily: "inherit",
+                resize: "vertical",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          {/* Objeção 4: Prazos, Entrega & Disponibilidade */}
+          <div
+            style={{
+              padding: "14px",
+              backgroundColor: "var(--bg-canvas)",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--radius-md, 8px)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "1rem" }}>🚚</span>
+              <strong style={{ fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-primary)" }}>
+                Prazos, Entrega & Agilidade
+              </strong>
+            </div>
+            <p style={{ margin: 0, fontSize: "0.7rem", color: "var(--text-secondary)" }}>
+              Quando o lead pergunta se chega rápido, quanto tempo dura o serviço ou quando começa:
+            </p>
+            <textarea
+              value={businessRules.objections?.deliveryTimeline || ""}
+              onChange={(e) => handleUpdateObjection("deliveryTimeline", e.target.value)}
+              rows={3}
+              placeholder="Ex.: Postamos em até 24 horas úteis com código de rastreio direto aqui no WhatsApp..."
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                color: "var(--text-primary)",
+                backgroundColor: "var(--bg-surface)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "var(--radius-md, 8px)",
+                fontFamily: "inherit",
+                resize: "vertical",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* AI ENGINE & PROVIDER SELECTION */}
       <div
@@ -1009,88 +1745,6 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
         )}
       </div>
 
-      {/* Persona settings */}
-      <div
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-default)",
-          borderRadius: "var(--radius-lg, 12px)",
-          padding: "20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "16px",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <h4 style={{ margin: 0, fontSize: "var(--font-size-sm, 0.875rem)", fontWeight: 600, display: "flex", alignItems: "center", gap: "8px" }}>
-          <Sparkles size={16} color="var(--color-action, #059669)" /> Identidade & Tom de Voz
-        </h4>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          <Input
-            label="Nome da Atendente Virtual"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ex.: Sofia - Haven Escovaria"
-            helperText="Nome apresentado aos leads durante o atendimento."
-          />
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <label style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, color: "var(--text-secondary)" }}>
-              Arquétipo de Comunicação
-            </label>
-            <select
-              value={personality}
-              onChange={(e) => setPersonality(e.target.value as AiAgentConfig["personality"])}
-              style={{
-                width: "100%",
-                height: "36px",
-                padding: "0 10px",
-                fontSize: "var(--font-size-sm, 0.875rem)",
-                color: "var(--text-primary)",
-                backgroundColor: "var(--bg-canvas)",
-                border: "1px solid var(--border-default)",
-                borderRadius: "var(--radius-md, 8px)",
-                fontFamily: "inherit",
-              }}
-            >
-              <option value="cordial_comercial">Cordial & Comercial (Recomendado para Vendas)</option>
-              <option value="direto_objetivo">Direto & Objetivo (Rápido e focado em respostas curtas)</option>
-              <option value="especialista_consultivo">Especialista & Consultivo (Focado em tirar dúvidas técnicas)</option>
-              <option value="empatico_acolhedor">Empático & Acolhedor (Foco em beleza, saúde e estética)</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Prompt */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          <label style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, color: "var(--text-secondary)" }}>
-            Instruções Gerais de Contexto (System Prompt)
-          </label>
-          <textarea
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            rows={4}
-            placeholder="Ex.: Você é a assistente de vendas da empresa. Atenda os clientes com carinho e agilidade, apresente nossos pacotes de escova e tratamentos, tire dúvidas de preços e convide para agendar um horário..."
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              fontSize: "var(--font-size-sm, 0.875rem)",
-              color: "var(--text-primary)",
-              backgroundColor: "var(--bg-canvas)",
-              border: "1px solid var(--border-default)",
-              borderRadius: "var(--radius-md, 8px)",
-              fontFamily: "inherit",
-              resize: "vertical",
-              boxSizing: "border-box",
-            }}
-          />
-          <div style={{ fontSize: "var(--font-size-xs, 0.75rem)", color: "var(--text-secondary)", textAlign: "right" }}>
-            {systemPrompt.length} / 5000 caracteres
-          </div>
-        </div>
-      </div>
-
       {/* Commercial Skills toggles */}
       <div
         style={{
@@ -1298,16 +1952,79 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
           </div>
         </div>
 
+        {/* Contexto do Lead Simulado */}
+        <div
+          style={{
+            padding: "12px 14px",
+            backgroundColor: "var(--bg-canvas)",
+            border: "1px solid var(--border-default)",
+            borderRadius: "var(--radius-md, 8px)",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "14px",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-primary)" }}>
+            <UserCheck size={16} color="var(--color-primary, #10b981)" />
+            Contexto do Lead Simulado:
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <label style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>Nome do Lead:</label>
+            <input
+              type="text"
+              value={mockLeadName}
+              onChange={(e) => setMockLeadName(e.target.value)}
+              placeholder="Ex.: Francisco"
+              style={{
+                height: "28px",
+                padding: "0 8px",
+                fontSize: "0.75rem",
+                borderRadius: "4px",
+                border: "1px solid var(--border-default)",
+                backgroundColor: "var(--bg-surface)",
+                color: "var(--text-primary)",
+                width: "120px",
+              }}
+            />
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <label style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>Status Pix / Histórico:</label>
+            <select
+              value={mockPixScenario}
+              onChange={(e) => setMockPixScenario(e.target.value as any)}
+              style={{
+                height: "28px",
+                padding: "0 8px",
+                fontSize: "0.75rem",
+                borderRadius: "4px",
+                border: "1px solid var(--border-default)",
+                backgroundColor: "var(--bg-surface)",
+                color: "var(--text-primary)",
+              }}
+            >
+              <option value="none">Lead Frio (Sem Pix recente)</option>
+              <option value="pending">Pix Pendente (R$ 149,90 gerado)</option>
+              <option value="paid">Cliente Fiel (Pix Já Pago)</option>
+            </select>
+          </div>
+        </div>
+
         {/* Quick Question Chips */}
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           <span style={{ fontSize: "var(--font-size-xs, 0.7rem)", color: "var(--text-secondary)", fontWeight: 600 }}>
-            Testes Rápidos Sugeridos:
+            Testes Rápidos de Estresse de Objeções & Vendas:
           </span>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
             {[
-              { label: "💰 Consulta de Valores", text: "Olá! Quais são os produtos e valores disponíveis?" },
-              { label: "⏰ Horário & Regras", text: "Qual o horário de atendimento e formas de pagamento?" },
-              { label: "🛡️ Teste de Ignorância", text: "Vocês aceitam permuta por um carro ou fazem fiado?" },
+              { label: "💰 'Tá muito caro, tem desconto?'", text: "Achei o valor bem salgado, não tem nenhum desconto pra fechar agora?" },
+              { label: "⏳ 'Vou pensar e te aviso'", text: "Achei bacana, mas vou pensar com calma e qualquer coisa te chamo." },
+              { label: "🛡️ 'É de confiança? Tenho garantia?'", text: "Como sei que é seguro e de confiança? Tenho alguma garantia se não der certo?" },
+              { label: "🚚 'Demora pra entregar / atender?'", text: "Se eu pagar hoje no Pix, quando chega meu pedido ou quando posso ser atendido?" },
+              { label: "⚡ 'Me manda a chave Pix'", text: "Perfeito, gostei muito! Me manda o Pix pra eu pagar agora." },
+              { label: "🛡️ Ignorância: 'Faz permuta ou fiado?'", text: "Vocês aceitam permuta por um carro ou parcelam no boleto fiado?" },
             ].map((chip, idx) => (
               <button
                 key={idx}
@@ -1506,7 +2223,12 @@ export const AiAgentSection: FC<AiAgentSectionProps> = ({ workspaceId, token }) 
                   }}
                 >
                   <div style={{ fontSize: "0.65rem", fontWeight: 700, opacity: 0.7, marginBottom: "2px" }}>
-                    CLIENTE (SIMULADO)
+                    LEAD: {mockLeadName.trim() ? mockLeadName.toUpperCase() : "SIMULADO"}{" "}
+                    {mockPixScenario === "pending"
+                      ? "• ⏳ PIX PENDENTE"
+                      : mockPixScenario === "paid"
+                      ? "• 🌟 CLIENTE RECORRENTE"
+                      : ""}
                   </div>
                   {simInput}
                 </div>
