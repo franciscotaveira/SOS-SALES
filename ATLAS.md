@@ -68,7 +68,16 @@
 
 ### 2.8 Disparos em Massa com Importador Inteligente & Fechamento Pix na IA
 - **Importador de Planilhas (CSV/XLSX/XLS):** Drag-and-drop no cliente com pré-visualização de auditoria, deduplicação em memória e sanitizador estrito para números brasileiros E.164 (DDD + 9 dígitos móveis, normalização de prefixos `55` e `0`, e rejeição determinística de fixos). Inserção transacional não-destrutiva via `createOrGetContact` com `ON CONFLICT DO UPDATE`, preservando integridade referencial e histórico de conversas.
-- **Segmentação Dinâmica (`SMART_FILTER`):** Filtros nativos sob RLS para reativação comercial (`NON_BUYERS` para leads sem compras pagas, `INACTIVE_30_DAYS` para inativos há mais de 30 dias sem nova mensagem/proposta, `CTWA_RESCUE` para leads oriundos de anúncios Meta sem conversão) com endpoint `GET /v1/workspaces/:workspaceId/broadcasts/audience-count` para contagem em tempo real antes de disparar.
+- **Segmentação Dinâmica (`SMART_FILTER`):** Filtros nativos sob RLS para reativação comercial:
+  - `NON_BUYERS`: Contatos cadastrados sem propostas pagas e sem cobranças Pix pagas (`status = 'PAID'`).
+  - `PIX_ABANDONED`: Contatos que possuem cobrança Pix em status `EXPIRED` ou `PENDING` e que nunca concluíram uma compra com status `PAID` (recuperação ativa de checkout/carrinho abandonado).
+  - `INACTIVE_30_DAYS`: Contatos sem atividade de mensagem ou proposta nos últimos 30 dias.
+  - `CTWA_RESCUE`: Contatos originados de anúncios Meta sem conversão.
+  - Endpoint `GET /v1/workspaces/:workspaceId/broadcasts/audience-count` para contagem reativa em tempo real.
+- **Atribuição Comercial & Vencedora A/B por Faturamento Real:**
+  - Métricas agregadas em `GET /v1/workspaces/:workspaceId/broadcasts/campaigns` cruzando destinatários de cada variante com `pix_charges` (`status = 'PAID'`).
+  - O algoritmo da variante campeã A/B elege com autoridade a variante que gerou maior receita monetária (`salesCents`), com fallbacks sequenciais para taxa de conversão, respostas e aberturas (`🏆 Campeã Comercial`).
+  - Índices de performance de produção: `idx_broadcast_recipients_contact_camp` e `idx_pix_charges_contact_paid`.
 - **Fechamento Instantâneo de Ofertas com Pix na IA (`<fechamento_comercial_pix>`):**
   - Prompt Grounding Dual-Engine instrui a IA a emitir a tag canônica `[OFFER_PIX: <productId>]` quando o lead aceitar uma oferta ou demonstrar intenção de compra ("quero", "manda o pix", "fechado").
   - O `AiReceptionistProcessor` intercepta a tag, emite o código Pix Copia e Cola EMV oficial BACEN via `createPixCharge` do `@sos-sales/database` utilizando a chave Pix cadastrada no workspace e anexa a instrução de pagamento em bloco de código monoespaçado formatado para WhatsApp.

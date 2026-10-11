@@ -320,7 +320,8 @@ A infraestrutura de automações externas da MCT LTDA está centralizada em um d
 
 ### 11.2 Segmentação de Audiência Dinâmica & Smart Filters (`SMART_FILTER`)
 - **Filtros Nativos SQL sob RLS:**
-  - `NON_BUYERS`: Localiza contatos cadastrados que nunca concluíram uma compra com status `PAID` em `public.commercial_proposals`.
+  - `NON_BUYERS`: Localiza contatos cadastrados que não possuem jornadas com estágio `won` e categoricamente não possuem cobranças Pix com status `PAID` em `public.pix_charges` (`Truth in Data`).
+  - `PIX_ABANDONED`: Localiza contatos com cobranças Pix expiradas ou pendentes (`status IN ('EXPIRED', 'PENDING')`) que nunca tiveram uma cobrança Pix paga (`status = 'PAID'`), viabilizando réguas automáticas de recuperação de carrinhos e cobranças abandonadas.
   - `INACTIVE_30_DAYS`: Contatos sem atividade de mensagem (`messages`) ou proposta comercial nos últimos 30 dias.
   - `CTWA_RESCUE`: Contatos originados de campanhas pagas do Meta Ads (`commercial_journeys.ad_headline IS NOT NULL` ou origem CTWA) que não converteram em vendas pagas.
 - **Endpoint de Contagem ao Vivo:**
@@ -353,3 +354,23 @@ A infraestrutura de automações externas da MCT LTDA está centralizada em um d
 - **Identificação Visual na Mensagem (`MessageBubble.tsx`):**
   - Mensagens com `metadata.source === 'pix_confirmation'` são renderizadas com destaque esmeralda e badge "🎉 Recibo Pix Confirmado".
   - Mensagens geradas com cobrança Pix exibem badge informativo "⚡ Cobrança Pix Gerada".
+
+### 11.5 Atribuição de Vendas Pix em Campanhas, Funil Comercial & Campeã A/B
+- **Agregação e Atribuição Financeira em Tempo Real (`broadcasts.routes.ts`):**
+  - `GET /v1/workspaces/:workspaceId/broadcasts/campaigns`:
+  - Cruza `broadcast_recipients` com `public.pix_charges` (`WHERE pc.status = 'PAID' AND pc.paid_at >= r.sent_at`), apurando metricas por campanha e por variante:
+    - `pix_sales_count`: Quantidade de vendas Pix convertidas pelo disparo.
+    - `pix_sales_cents`: Faturamento monetário total atribuído à campanha.
+    - `conversionRate`: Taxa de conversão percentual de vendas sobre destinatários alcançados.
+    - `averageTicketCents`: Ticket médio real das conversões.
+- **Determinação de Variante Vencedora A/B por Receita Comercial:**
+  - A variante que obtiver maior receita (`salesCents`) é coroada vencedora com o selo `🏆 Campeã Comercial`.
+  - Em caso de empate de faturamento, o desempate segue determinístico por taxa de conversão (`conversionRate`), respostas (`replyCount`) e aberturas (`readCount`).
+- **Índices de Performance Criados (`035_broadcast_sales_attribution_indexes.sql`):**
+  - `idx_broadcast_recipients_contact_camp`: `(contact_id, campaign_id, sent_at)` sob `sos_sales_v3`.
+  - `idx_pix_charges_contact_paid`: `(contact_id, status, paid_at)` parcial para status `'PAID'`.
+- **Telemetria no Frontend (`CampaignsList.tsx`):**
+  - KPI de topo: "Faturamento Pix" com valor monetário em R$ e badge de volume de vendas.
+  - Funil de Conversão: 6ª etapa "6. Vendas Pix" com percentual de conversão e badge de volume.
+  - Comparativo A/B Lado a Lado: Exibição de Faturamento Pix, Vendas e Taxa por variante com badge `🏆 Campeã Comercial`.
+
