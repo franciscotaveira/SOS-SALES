@@ -528,4 +528,44 @@ describe("SOS Sales V3 — ApiClient & Concurrency Suite", () => {
       harness.unmount();
     });
   });
+
+  describe("7. Upload de Mídia (G5)", () => {
+    it("should send binary payload with Content-Type, x-file-name, Authorization, and return media response", async () => {
+      let capturedUrl = "";
+      let capturedHeaders: Record<string, string> = {};
+      let capturedBody: any;
+
+      globalThis.fetch = vi.fn().mockImplementation((url, init) => {
+        capturedUrl = url;
+        capturedHeaders = init.headers;
+        capturedBody = init.body;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              mediaUrl: "https://storage.supabase.co/object/sign/chat-sales-media/ws-1/file.png?token=xyz",
+              expiresInSeconds: 3600,
+              contentType: "image/png",
+              category: "image",
+              sizeBytes: 1024,
+              fileName: "foto.png",
+            }),
+            { status: 201, headers: { "Content-Type": "application/json" } }
+          )
+        );
+      });
+
+      const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "foto.png", { type: "image/png" });
+      const res = await client.uploadMedia("ws-1", file, { token: "user-jwt" });
+
+      expect(capturedUrl).toBe("http://localhost:4400/v1/workspaces/ws-1/media");
+      expect(capturedHeaders["Content-Type"]).toBe("image/png");
+      expect(capturedHeaders["x-file-name"]).toBe("foto.png");
+      expect(capturedHeaders["Authorization"]).toBe("Bearer user-jwt");
+      expect(capturedHeaders["X-Workspace-Id"]).toBe("ws-1");
+      expect(capturedBody).toBe(file);
+      expect(res.mediaUrl).toContain("chat-sales-media");
+      expect(res.category).toBe("image");
+    });
+  });
 });
+

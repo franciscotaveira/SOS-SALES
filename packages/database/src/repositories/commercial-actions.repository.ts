@@ -125,6 +125,16 @@ export async function createCommercialAction(
         input.createdByUserId ?? null,
       ]
     );
+
+    // Automatically advance commercial journey to 'scheduled' stage
+    await client.query(
+      `UPDATE public.commercial_journeys
+       SET stage = 'scheduled', updated_at = clock_timestamp()
+       WHERE workspace_id = $1 AND (thread_id = $2 OR id = $3)
+         AND stage IN ('lead', 'qualified', 'proposal') AND status = 'open';`,
+      [input.workspaceId, input.threadId, input.journeyId ?? null]
+    );
+
     return { created: true, action: inserted };
   }
 

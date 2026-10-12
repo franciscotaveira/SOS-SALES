@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3400 --host",
-    "build": "tsc && vite build",
+    "build": "NODE_ENV=production tsc && NODE_ENV=production vite build --mode production && node ../../scripts/verify-production-bundle.mjs",
     "build:lab": "tsc && vite build --mode lab --outDir dist-lab",
     "preview": "vite preview --port 3400",
     "typecheck": "tsc --noEmit",
@@ -17,7 +17,8 @@
     "@sos-sales/ui": "workspace:*",
     "lucide-react": "^1.16.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/react": "^19.0.10",

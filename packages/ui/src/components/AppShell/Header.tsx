@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type FC, type ReactNode } from "react";
-import { Building2, ChevronDown, Check, Menu, Search, LogOut } from "lucide-react";
+import { Building2, ChevronDown, Check, Menu, Search, LogOut, Plus } from "lucide-react";
 import type { WorkspaceItem } from "./AppShell.types";
 
 interface HeaderProps {
@@ -7,6 +7,7 @@ interface HeaderProps {
   activeWorkspace?: WorkspaceItem | null;
   onWorkspaceSelect?: (workspace: WorkspaceItem) => void;
   isLoadingWorkspaces?: boolean;
+  onCreateWorkspaceClick?: () => void;
   userEmail?: string;
   userRole?: string;
   onLogout?: () => void;
@@ -19,6 +20,7 @@ interface HeaderProps {
   onOpenMobileMenu?: () => void;
   actions?: ReactNode;
   isMobile?: boolean;
+  onSearchClick?: () => void;
 }
 
 export const Header: FC<HeaderProps> = ({
@@ -26,6 +28,7 @@ export const Header: FC<HeaderProps> = ({
   activeWorkspace,
   onWorkspaceSelect,
   isLoadingWorkspaces = false,
+  onCreateWorkspaceClick,
   userEmail,
   userRole = "owner",
   onLogout,
@@ -33,6 +36,7 @@ export const Header: FC<HeaderProps> = ({
   onOpenMobileMenu,
   actions,
   isMobile = false,
+  onSearchClick,
 }) => {
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -82,7 +86,9 @@ export const Header: FC<HeaderProps> = ({
       className="sos-app-header"
       style={{
         height: "var(--topbar-h, 56px)",
-        backgroundColor: "var(--bg-surface, #FFFFFF)",
+        backgroundColor: "rgba(255, 255, 255, 0.90)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
         borderBottom: "1px solid var(--border-default, #E2E8F0)",
         display: "flex",
         alignItems: "center",
@@ -259,6 +265,40 @@ export const Header: FC<HeaderProps> = ({
                   );
                 })
               )}
+
+              {onCreateWorkspaceClick && (
+                <div style={{ borderTop: "1px solid var(--border-default, #E2E8F0)", marginTop: "4px", paddingTop: "4px" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsWorkspaceDropdownOpen(false);
+                      onCreateWorkspaceClick();
+                    }}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 10px",
+                      borderRadius: "var(--radius-sm, 6px)",
+                      border: "none",
+                      backgroundColor: "transparent",
+                      color: "var(--color-action, #008069)",
+                      fontSize: "var(--font-size-sm, 0.875rem)",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "background-color 150ms ease",
+                      boxSizing: "border-box",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-action-subtle, #E6F4F1)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                  >
+                    <Plus size={15} style={{ flexShrink: 0 }} />
+                    <span>Criar Nova Empresa</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -267,6 +307,16 @@ export const Header: FC<HeaderProps> = ({
       {/* 2. Center Region: Global Search (Desktop/Tablet) */}
       {!isMobileView && (
         <div
+          role="button"
+          tabIndex={0}
+          className="sos-search-trigger"
+          onClick={onSearchClick}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onSearchClick?.();
+            }
+          }}
           style={{
             flex: 1,
             maxWidth: "380px",
@@ -282,12 +332,25 @@ export const Header: FC<HeaderProps> = ({
             gap: "8px",
             cursor: "pointer",
           }}
-          title="Busca global em conversas, leads e produtos"
+          title="Busca global em conversas, leads e produtos (⌘K)"
         >
           <Search size={14} />
           <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            Buscar (⌘K)
+            Buscar no sistema...
           </span>
+          <kbd
+            style={{
+              fontSize: "0.6875rem",
+              padding: "1px 5px",
+              borderRadius: "var(--radius-sm, 4px)",
+              backgroundColor: "var(--bg-surface, #FFFFFF)",
+              border: "1px solid var(--border-default, #E2E8F0)",
+              color: "var(--text-muted, #64748B)",
+              fontWeight: 600,
+            }}
+          >
+            ⌘K
+          </kbd>
         </div>
       )}
 
@@ -300,6 +363,28 @@ export const Header: FC<HeaderProps> = ({
           flexShrink: 0,
         }}
       >
+        {isMobileView && onSearchClick && (
+          <button
+            type="button"
+            onClick={onSearchClick}
+            aria-label="Abrir busca global"
+            style={{
+              border: "none",
+              background: "none",
+              padding: "6px",
+              cursor: "pointer",
+              color: "var(--text-secondary, #475569)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: "var(--radius-md, 8px)",
+            }}
+            title="Busca global (⌘K)"
+          >
+            <Search size={18} />
+          </button>
+        )}
+
         {actions}
 
         {/* System Connection Dot with xs text */}
@@ -340,6 +425,7 @@ export const Header: FC<HeaderProps> = ({
             onClick={() => setIsUserMenuOpen((prev) => !prev)}
             aria-expanded={isUserMenuOpen}
             aria-label="Menu do Usuário"
+            className="sos-user-avatar-btn"
             style={{
               width: "var(--control-h-sm, 32px)",
               height: "var(--control-h-sm, 32px)",

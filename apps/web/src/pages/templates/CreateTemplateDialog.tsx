@@ -2,6 +2,7 @@ import { useState, type FC, type FormEvent } from "react";
 import { Button, Input, Dialog, SegmentedControl, useBreakpoint } from "@sos-sales/ui";
 import { apiClient } from "../../services/api-client";
 import { renderWhatsappMarkdown } from "../cockpit/utils/whatsappMarkdown";
+import { Sparkles } from "lucide-react";
 
 interface CreateTemplateDialogProps {
   isOpen: boolean;
@@ -30,6 +31,13 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
   const [formBody, setFormBody] = useState("");
   const [formFooter, setFormFooter] = useState("");
   const [formButton, setFormButton] = useState("");
+  const [aiObjective, setAiObjective] = useState("");
+  const [aiAudience, setAiAudience] = useState("Clientes e leads da empresa");
+  const [aiTone, setAiTone] = useState<"PROFESSIONAL" | "FRIENDLY" | "DIRECT">("FRIENDLY");
+  const [aiStrategy, setAiStrategy] = useState<"UTILITY_TROJAN" | "DIRECT_MARKETING">("UTILITY_TROJAN");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [variableLabels, setVariableLabels] = useState<string[]>([]);
 
   const resetForm = () => {
     setFormName("");
@@ -41,6 +49,45 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
     setFormButton("");
     setFormErrors({});
     setServerError(null);
+    setAiObjective("");
+    setAiAudience("Clientes e leads da empresa");
+    setAiTone("FRIENDLY");
+    setAiStrategy("UTILITY_TROJAN");
+    setAiExplanation(null);
+    setVariableLabels([]);
+  };
+
+  const handleGenerateWithAi = async () => {
+    setServerError(null);
+    if (aiObjective.trim().length < 10) {
+      setServerError("Explique em uma frase o que a mensagem precisa conseguir.");
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const { generated } = await apiClient.generateTemplate(
+        workspaceId,
+        {
+          objective: aiObjective.trim(),
+          audience: aiAudience.trim(),
+          tone: aiTone,
+          strategy: aiStrategy,
+        },
+        { token }
+      );
+      setFormName(generated.name);
+      setFormCategory(generated.category);
+      setFormHeader(generated.headerText || "");
+      setFormBody(generated.bodyText);
+      setFormFooter(generated.footerText || "");
+      setFormButton(generated.buttonText || "");
+      setVariableLabels(generated.variableLabels);
+      setAiExplanation(generated.explanation);
+    } catch (err: unknown) {
+      setServerError((err as Error).message || "Não foi possível gerar o modelo com IA.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -114,9 +161,39 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
 
   const WABA_PRESETS = [
     {
+      id: "trojan-schedule",
+      label: "⚡ Encaixe Prioritário (Utility -85%)",
+      name: "confirmacao_horario_prioritario_v1",
+      category: "UTILITY" as const,
+      header: "Reserva de Atendimento",
+      body: "Olá {{1}}! Identificamos uma vaga prioritária para seu atendimento de {{2}} nesta semana. Podemos confirmar seu horário preferencial?",
+      footer: "SOS Sales • Confirmação",
+      button: "Confirmar Horário",
+    },
+    {
+      id: "trojan-loyalty",
+      label: "⚡ Crédito Pendente (Utility -85%)",
+      name: "notificacao_credito_pendente_v1",
+      category: "UTILITY" as const,
+      header: "Atualização de Cadastro",
+      body: "Olá {{1}}, consta em seu cadastro um benefício/crédito ativo referente a {{2}}. Deseja consultar as opções disponíveis para utilização?",
+      footer: "Atendimento ao Cliente",
+      button: "Consultar Benefício",
+    },
+    {
+      id: "trojan-proposal",
+      label: "⚡ Atualização de Proposta (Utility -85%)",
+      name: "atualizacao_proposta_v1",
+      category: "UTILITY" as const,
+      header: "Atualização de Atendimento",
+      body: "Olá {{1}}, seu protocolo de proposta para {{2}} foi atualizado com condições prioritárias. Podemos apresentar os detalhes agora?",
+      footer: "Equipe de Atendimento",
+      button: "Ver Proposta",
+    },
+    {
       id: "pix",
-      label: "Cobrança Pix",
-      name: "cobranca_pix_instantaneo",
+      label: "⚡ Cobrança Pix (Utility)",
+      name: "cobranca_pix_instantaneo_v1",
       category: "UTILITY" as const,
       header: "Pagamento do Pedido",
       body: "Olá {{1}}, segue o link/chave Pix no valor de {{2}} referente ao seu pedido {{3}}. Por favor, efetue o pagamento para confirmação imediata.",
@@ -125,33 +202,13 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
     },
     {
       id: "catalog",
-      label: "Oferta Catálogo",
-      name: "oferta_catalogo_produto",
+      label: "⭐ Oferta Catálogo (Marketing)",
+      name: "oferta_catalogo_produto_v1",
       category: "MARKETING" as const,
       header: "Novidade Exclusiva",
       body: "Olá {{1}}, separamos esta condição especial do produto {{2}} por apenas {{3}}. O que acha de aproveitarmos agora?",
       footer: "Oferta por tempo limitado",
       button: "Ver Detalhes",
-    },
-    {
-      id: "flow",
-      label: "Flow Formulário",
-      name: "formulario_qualificacao_lead",
-      category: "UTILITY" as const,
-      header: "Qualificação de Atendimento",
-      body: "Olá {{1}}, para agilizarmos sua proposta personalizada de {{2}}, preencha as preferências no formulário rápido abaixo.",
-      footer: "Leva menos de 1 minuto",
-      button: "Abrir Formulário",
-    },
-    {
-      id: "reengagement",
-      label: "Reengajamento 24h",
-      name: "retomada_conversa_lead",
-      category: "UTILITY" as const,
-      header: "Retomada de Atendimento",
-      body: "Olá {{1}}, estamos retomando seu contato sobre o assunto {{2}}. Ainda tem interesse ou podemos tirar mais alguma dúvida?",
-      footer: "SOS Sales Suporte",
-      button: "Falar com Consultor",
     },
   ];
 
@@ -169,7 +226,8 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Cadastrar Modelo WABA"
-      description="Defina os parâmetros do template conforme especificações da Meta Cloud API."
+      maxWidth="880px"
+      description="Conte o que deseja comunicar. A IA prepara o modelo e explica os campos para você revisar."
     >
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {serverError && (
@@ -187,6 +245,73 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
           </div>
         )}
 
+        <div style={{ padding: "14px", backgroundColor: "var(--color-operational-subtle)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-operational)", display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, color: "var(--text-primary)" }}>
+              <Sparkles size={18} /> Criar com Inteligência Artificial
+            </div>
+            <span style={{ fontSize: "11px", fontWeight: 600, color: aiStrategy === "UTILITY_TROJAN" ? "#10b981" : "var(--text-muted)" }}>
+              {aiStrategy === "UTILITY_TROJAN" ? "⚡ Custo Mínimo (~R$ 0,04) + 24h Grátis" : "⭐ Marketing Direto (~R$ 0,40)"}
+            </span>
+          </div>
+          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+            Explique o objetivo da mensagem em linguagem simples. A IA formula o texto e os botões seguindo os padrões da Meta.
+          </span>
+          <textarea rows={2} value={aiObjective} onChange={(e) => setAiObjective(e.target.value)} placeholder="Ex.: Quero reativar clientes que pararam de responder sobre o orçamento de procedimentos estéticos." style={{ padding: "10px 12px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", font: "inherit", resize: "vertical" }} />
+          
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "10px" }}>
+            <Input label="Para quem?" value={aiAudience} onChange={(e) => setAiAudience(e.target.value)} placeholder="Ex.: clientes com orçamento parado" />
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 500, color: "var(--text-secondary)" }}>Tom da mensagem</label>
+              <SegmentedControl value={aiTone} onChange={(value) => setAiTone(value as typeof aiTone)} options={[{ value: "FRIENDLY", label: "Próximo" }, { value: "PROFESSIONAL", label: "Profissional" }, { value: "DIRECT", label: "Direto" }]} />
+            </div>
+          </div>
+
+          {/* Seletor Estratégico de Redução de Custo */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <label style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-primary)" }}>
+              Estratégia de Custo Meta
+            </label>
+            <SegmentedControl
+              value={aiStrategy}
+              onChange={(value) => setAiStrategy(value as typeof aiStrategy)}
+              options={[
+                { value: "UTILITY_TROJAN", label: "⚡ Cavalo de Troia (Paga como Utilidade ~R$ 0,04)" },
+                { value: "DIRECT_MARKETING", label: "⭐ Campanha Promocional Direta (~R$ 0,40)" },
+              ]}
+            />
+          </div>
+
+          {aiStrategy === "UTILITY_TROJAN" && (
+            <div
+              style={{
+                padding: "8px 12px",
+                backgroundColor: "rgba(16, 185, 129, 0.08)",
+                border: "1px solid rgba(16, 185, 129, 0.25)",
+                borderRadius: "var(--radius-md)",
+                fontSize: "11px",
+                color: "var(--text-secondary)",
+                display: "flex",
+                gap: "8px",
+                alignItems: "center",
+              }}
+            >
+              <span style={{ fontSize: "14px" }}>💡</span>
+              <span>
+                <strong>Cavalo de Troia da Utilidade:</strong> A IA constrói a mensagem com enquadramento operacional/transacional para a Meta aprovar como <strong>Utilidade (~R$ 0,04)</strong>. Quando o cliente clica no botão, destrava uma <strong>Janela de 24h Gratuita</strong> onde a IA faz a venda sem custos adicionais!
+              </span>
+            </div>
+          )}
+
+          <div><Button type="button" size="sm" variant="primary" prefixIcon={<Sparkles size={14} />} loading={isGenerating} onClick={handleGenerateWithAi}>Gerar Modelo Estratégico</Button></div>
+          {aiExplanation && (
+            <div style={{ padding: "10px 12px", background: "var(--bg-surface)", borderRadius: "var(--radius-md)", fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+              <strong style={{ color: "var(--text-primary)" }}>Estratégia aplicada pela IA:</strong> {aiExplanation}
+              {variableLabels.length > 0 && <div style={{ marginTop: "6px" }}><strong>Variáveis sugeridas:</strong> {variableLabels.map((label, index) => `{{${index + 1}}} = ${label}`).join(" · ")}</div>}
+            </div>
+          )}
+        </div>
+
         {/* Quick WABA Presets */}
         <div
           style={{
@@ -200,7 +325,7 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
           }}
         >
           <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-secondary)" }}>
-            ⚡ Modelos Facilitados por Função WABA:
+            Ou comece com um exemplo pronto:
           </span>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
             {WABA_PRESETS.map((preset) => (
@@ -217,8 +342,8 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 0.8fr", gap: "20px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 300px)", gap: "20px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", minWidth: 0 }}>
             <Input
               label="Identificador do Modelo (slug)"
               placeholder="ex: confirmacao_proposta_v1"
@@ -294,7 +419,7 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
           </div>
 
           {/* Live WhatsApp Bubble Preview */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 }}>
             <span style={{ fontSize: "var(--font-size-xs)", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase" }}>
               Pré-visualização WhatsApp
             </span>
@@ -315,7 +440,6 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
                   padding: "12px 14px",
                   borderRadius: "10px 0 10px 10px",
                   boxShadow: "var(--shadow-sm)",
-                  maxWidth: "280px",
                   width: "100%",
                   display: "flex",
                   flexDirection: "column",
@@ -325,11 +449,11 @@ export const CreateTemplateDialog: FC<CreateTemplateDialogProps> = ({
                 }}
               >
                 {formHeader && (
-                  <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.85rem" }}>
+                  <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.85rem", overflowWrap: "anywhere" }}>
                     {formHeader}
                   </div>
                 )}
-                <div style={{ color: "var(--text-primary)", wordBreak: "break-word" }}>
+                <div style={{ color: "var(--text-primary)", overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
                   {formBody ? renderWhatsappMarkdown(formBody) : <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Corpo do modelo aparecerá aqui...</span>}
                 </div>
                 {formFooter && (

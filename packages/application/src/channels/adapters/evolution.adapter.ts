@@ -8,6 +8,7 @@ import {
   validateMediaUrl,
   detectMediaType,
   hasAlternativeIpFormat,
+  getInternalAllowedHosts,
 } from "../security/ssrf-guard";
 
 export interface EvolutionAdapterOptions {
@@ -53,12 +54,7 @@ export function validateEvolutionBaseUrl(urlStr: string, allowLocalTest = false)
   }
 
   // Internal Docker hostnames allowlist
-  const internalAllowed = process.env.INTERNAL_SERVICE_ALLOWLIST?.split(",").map((s) => s.trim().toLowerCase()) || [
-    "evolution",
-    "evolution-api",
-    "chat-sales-evolution",
-    "command-tower-evolution",
-  ];
+  const internalAllowed = getInternalAllowedHosts();
   if (internalAllowed.includes(host)) {
     return urlStr.replace(/\/$/, "");
   }

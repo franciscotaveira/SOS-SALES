@@ -147,7 +147,15 @@ const authPluginCallback: FastifyPluginAsync<AuthPluginOptions> = async (app, op
   // 1. Authenticate Hook: validates token and discovers user memberships
   const authenticate = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const authHeader = request.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    const queryToken = (request.query as Record<string, string> | undefined)?.token;
+    let token: string | null = null;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.slice(7).trim();
+    } else if (queryToken && typeof queryToken === "string") {
+      token = queryToken.trim();
+    }
+
+    if (!token) {
       return reply.status(401).send({
         type: "https://sos-sales.mct.br/errors/unauthorized",
         title: "Unauthorized",
@@ -157,8 +165,6 @@ const authPluginCallback: FastifyPluginAsync<AuthPluginOptions> = async (app, op
         correlationId: request.id,
       });
     }
-
-    const token = authHeader.slice(7).trim();
 
     // Validate token with detailed error differentiation (AC10)
     let verification: TokenVerificationResult;
@@ -271,9 +277,14 @@ const authPluginCallback: FastifyPluginAsync<AuthPluginOptions> = async (app, op
       request.workspaceId = membership.workspace_id;
       request.activeRole = membership.role as Role;
     } else {
-      // If no explicit X-Workspace-Id header, default to token's workspace or first membership
+      // If no explicit X-Workspace-Id header, default to token's workspace or deterministic first membership
       const defaultMembership =
-        memberships.find((m) => m.workspace_id === verifiedUser.workspaceId) || memberships[0];
+        memberships.find((m) => m.workspace_id === verifiedUser.workspaceId) ||
+        [...memberships].sort(
+          (a, b) =>
+            a.workspace_name.localeCompare(b.workspace_name) ||
+            a.workspace_id.localeCompare(b.workspace_id)
+        )[0];
 
       if (defaultMembership) {
         request.workspaceId = defaultMembership.workspace_id;

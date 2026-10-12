@@ -161,8 +161,8 @@ export class WahaWebhookNormalizer {
       ];
     }
 
-    // 2. Process Message Event
-    if (eventType === "message") {
+    // 2. Process Message Event (supports both 'message' and 'message.any')
+    if (eventType === "message" || eventType === "message.any") {
       const externalMessageId = String(payload.id || "").trim();
       if (!externalMessageId) {
         throw new WahaNormalizationError(
@@ -170,17 +170,48 @@ export class WahaWebhookNormalizer {
         );
       }
 
-      const rawFrom = String(payload.from || "").trim();
-      const rawTo = String(payload.to || "").trim();
+      const rawData = (payload._data && typeof payload._data === "object") ? (payload._data as Record<string, unknown>) : undefined;
+      const rawInfo = (rawData?.Info && typeof rawData.Info === "object") ? (rawData.Info as Record<string, unknown>) : undefined;
+      const rawMsg = (rawData?.Message && typeof rawData.Message === "object") ? (rawData.Message as Record<string, unknown>) : undefined;
+
+      const rawChat = String(rawInfo?.Chat || "").trim();
+      let rawFrom = String(payload.from || rawInfo?.Sender || "").trim();
+      let rawTo = String(payload.to || rawInfo?.Recipient || "").trim();
+
       if (
-        !rawFrom ||
-        !rawTo ||
         rawFrom.includes("@broadcast") ||
         rawTo.includes("@broadcast") ||
+        rawChat.includes("@g.us") ||
         rawFrom.includes("@g.us") ||
         rawTo.includes("@g.us")
       ) {
         return [];
+      }
+
+      const fromMe = Boolean(payload.fromMe ?? rawInfo?.IsFromMe);
+
+      // In WAHA inbound messages, payload.to is often null/empty; resolve from me.id or me.jid
+      const meObj = (rawPayload.me && typeof rawPayload.me === "object") ? (rawPayload.me as Record<string, unknown>) : undefined;
+      const meJid = String(meObj?.id || meObj?.jid || "").trim();
+
+      if (!rawTo && !fromMe && meJid) {
+        rawTo = meJid;
+      }
+      if (!rawFrom && fromMe && meJid) {
+        rawFrom = meJid;
+      }
+
+      // Handle WhatsApp LID (privacy pseudo-JIDs, e.g. 271635491872968@lid)
+      const senderAlt = String(rawInfo?.SenderAlt || "").trim();
+      if (rawFrom.includes("@lid") && senderAlt) {
+        rawFrom = senderAlt;
+      }
+
+      const recipientAlt = String(rawInfo?.RecipientAlt || "").trim();
+      if (rawTo.includes("@lid") && recipientAlt) {
+        rawTo = recipientAlt;
+      } else if (rawTo.includes("@lid") && !fromMe && meJid) {
+        rawTo = meJid;
       }
 
       const senderPhoneE164 = jidToE164(rawFrom);
@@ -195,13 +226,92 @@ export class WahaWebhookNormalizer {
       const body: string | undefined = payload.body
         ? String(payload.body)
         : undefined;
+
+      const mediaObj = (payload.media && typeof payload.media === "object") ? (payload.media as Record<string, unknown>) : null;
       const mediaUrl: string | undefined = payload.mediaUrl
         ? String(payload.mediaUrl)
+        : mediaObj?.url
+        ? String(mediaObj.url)
         : undefined;
 
-      if (payload.hasMedia) {
-        contentType = mediaUrl ? detectMediaType(mediaUrl) : "image";
+      const rawMsgType = String(rawInfo?.MediaType || rawData?.type || payload.type || "").toLowerCase();
+      const hasMediaFlag = Boolean(
+        payload.hasMedia ||
+        mediaUrl ||
+        rawMsg?.imageMessage ||
+        rawMsg?.audioMessage ||
+        rawMsg?.videoMessage ||
+        rawMsg?.documentMessage ||
+        rawMsg?.stickerMessage ||
+        rawMsgType === "media" ||
+        rawMsgType === "image" ||
+        rawMsgType === "audio" ||
+        rawMsgType === "ptt" ||
+        rawMsgType === "video" ||
+        rawMsgType === "document"
+      );
+
+      const mediaMime = String(
+        mediaObj?.mimetype ||
+        mediaObj?.mimeType ||
+        rawData?.mimetype ||
+        (rawMsg?.audioMessage as Record<string, unknown> | undefined)?.mimetype ||
+        (rawMsg?.imageMessage as Record<string, unknown> | undefined)?.mimetype ||
+        (rawMsg?.videoMessage as Record<string, unknown> | undefined)?.mimetype ||
+        (rawMsg?.documentMessage as Record<string, unknown> | undefined)?.mimetype ||
+        ""
+      ).toLowerCase();
+
+      const mediaFilename = String(
+        mediaObj?.filename ||
+        (rawMsg?.documentMessage as Record<string, unknown> | undefined)?.fileName ||
+        (rawMsg?.documentMessage as Record<string, unknown> | undefined)?.title ||
+        ""
+      ).trim() || undefined;
+
+      if (hasMediaFlag) {
+        if (
+          rawMsgType === "audio" ||
+          rawMsgType === "ptt" ||
+          rawMsg?.audioMessage ||
+          mediaMime.startsWith("audio/")
+        ) {
+          contentType = "audio";
+        } else if (
+          rawMsgType === "video" ||
+          rawMsg?.videoMessage ||
+          mediaMime.startsWith("video/")
+        ) {
+          contentType = "video";
+        } else if (
+          rawMsgType === "document" ||
+          rawMsg?.documentMessage ||
+          mediaMime.includes("pdf") ||
+          mediaMime.includes("document") ||
+          mediaMime.includes("sheet") ||
+          mediaMime.includes("msword")
+        ) {
+          contentType = "document";
+        } else if (
+          rawMsgType === "image" ||
+          rawMsgType === "sticker" ||
+          rawMsg?.imageMessage ||
+          rawMsg?.stickerMessage ||
+          mediaMime.startsWith("image/")
+        ) {
+          contentType = "image";
+        } else if (mediaUrl) {
+          contentType = detectMediaType(mediaUrl);
+        } else {
+          contentType = "image";
+        }
       }
+
+      const contactName = !fromMe && typeof rawData?.notifyName === "string"
+        ? (rawData.notifyName as string).trim()
+        : !fromMe && typeof rawInfo?.PushName === "string"
+        ? (rawInfo.PushName as string).trim()
+        : undefined;
 
       const event = InboundMessageEventSchema.parse({
         channelInstanceId: context.channelInstanceId,
@@ -216,7 +326,13 @@ export class WahaWebhookNormalizer {
         timestamp,
         rawPayloadHash,
         metadata: {
-          wahaSession: payload.session,
+          direction: fromMe ? "outbound" : "inbound",
+          fromMe,
+          wahaSession: payload.session ?? rawPayload.session,
+          ...(contactName ? { contactName } : {}),
+          ...(mediaFilename ? { filename: mediaFilename } : {}),
+          ...(mediaMime ? { mimetype: mediaMime } : {}),
+          ...(mediaObj ? { media: mediaObj } : {}),
         },
       });
 

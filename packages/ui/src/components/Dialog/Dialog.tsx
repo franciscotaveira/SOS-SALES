@@ -1,4 +1,5 @@
 import { useEffect, useRef, useId, type FC } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import type { DialogProps } from "./Dialog.types";
 
@@ -13,21 +14,53 @@ export const Dialog: FC<DialogProps> = ({
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+  const hasInitiallyFocusedRef = useRef(false);
+  const wasOpenRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   const idPrefix = useId();
   const titleId = `${idPrefix}-title`;
   const descId = `${idPrefix}-desc`;
 
+  // Focus restoration when dialog transitions from open -> closed
+  useEffect(() => {
+    if (isOpen) {
+      wasOpenRef.current = true;
+    } else if (wasOpenRef.current) {
+      wasOpenRef.current = false;
+      hasInitiallyFocusedRef.current = false;
+      previouslyFocusedElementRef.current?.focus();
+    }
+  }, [isOpen]);
+
+  // Clean-up on unmount if dialog was open
+  useEffect(() => {
+    return () => {
+      if (wasOpenRef.current) {
+        previouslyFocusedElementRef.current?.focus();
+      }
+    };
+  }, []);
+
   // Focus trap & Escape listener
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      hasInitiallyFocusedRef.current = false;
+      return;
+    }
 
-    // Store active element to restore focus on close
-    previouslyFocusedElementRef.current = document.activeElement as HTMLElement;
+    // Store active element to restore focus on close (only once upon open)
+    if (!hasInitiallyFocusedRef.current) {
+      previouslyFocusedElementRef.current = document.activeElement as HTMLElement;
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -40,7 +73,7 @@ export const Dialog: FC<DialogProps> = ({
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];
 
-        const isReverseTab = e.shiftKey || (e.ctrlKey && !e.altKey && !e.metaKey);
+        const isReverseTab = e.shiftKey;
 
         if (isReverseTab) {
           if (document.activeElement === firstElement && lastElement) {
@@ -58,32 +91,37 @@ export const Dialog: FC<DialogProps> = ({
 
     document.addEventListener("keydown", handleKeyDown);
 
-    // Initial focus on dialog container or first button
-    const timer = setTimeout(() => {
-      if (dialogRef.current) {
-        const firstFocusable = dialogRef.current.querySelector<HTMLElement>(
-          'button, input, [tabindex]:not([tabindex="-1"])'
-        );
-        if (firstFocusable) {
-          firstFocusable.focus();
-        } else {
-          dialogRef.current.focus();
+    // Initial focus on dialog container or first focusable ONLY ONCE on opening
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (!hasInitiallyFocusedRef.current) {
+      hasInitiallyFocusedRef.current = true;
+      timer = setTimeout(() => {
+        if (dialogRef.current) {
+          // If user or browser already focused something inside the dialog, do not steal it
+          if (dialogRef.current.contains(document.activeElement)) {
+            return;
+          }
+          const firstFocusable = dialogRef.current.querySelector<HTMLElement>(
+            'input, select, textarea, button, [tabindex]:not([tabindex="-1"])'
+          );
+          if (firstFocusable) {
+            firstFocusable.focus();
+          } else {
+            dialogRef.current.focus();
+          }
         }
-      }
-    }, 50);
+      }, 50);
+    }
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      clearTimeout(timer);
-      if (previouslyFocusedElementRef.current) {
-        previouslyFocusedElementRef.current.focus();
-      }
+      if (timer) clearTimeout(timer);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  return (
+  const dialogElement = (
     <div
       style={{
         position: "fixed",
@@ -93,11 +131,13 @@ export const Dialog: FC<DialogProps> = ({
         alignItems: "center",
         justifyContent: "center",
         padding: "16px",
+        boxSizing: "border-box",
       }}
     >
       {/* Backdrop */}
       <div
         onClick={onClose}
+        className="sos-backdrop"
         style={{
           position: "fixed",
           inset: 0,
@@ -121,6 +161,8 @@ export const Dialog: FC<DialogProps> = ({
           position: "relative",
           width: "100%",
           maxWidth,
+          boxSizing: "border-box",
+          overflow: "hidden",
           backgroundColor: "var(--bg-surface, #FFFFFF)",
           borderRadius: "var(--radius-lg, 12px)",
           boxShadow: "var(--shadow-lg)",
@@ -140,6 +182,7 @@ export const Dialog: FC<DialogProps> = ({
             justifyContent: "space-between",
             padding: "20px 24px",
             borderBottom: "1px solid var(--border-default, #E2E8F0)",
+            flexShrink: 0,
           }}
         >
           <div>
@@ -191,6 +234,9 @@ export const Dialog: FC<DialogProps> = ({
           style={{
             padding: "20px 24px",
             overflowY: "auto",
+            overflowX: "hidden",
+            width: "100%",
+            boxSizing: "border-box",
             color: "var(--text-primary, #0F172A)",
             fontSize: "0.875rem",
             lineHeight: 1.5,
@@ -211,6 +257,7 @@ export const Dialog: FC<DialogProps> = ({
               gap: "12px",
               borderBottomLeftRadius: "var(--radius-lg, 12px)",
               borderBottomRightRadius: "var(--radius-lg, 12px)",
+              flexShrink: 0,
             }}
           >
             {footer}
@@ -219,4 +266,10 @@ export const Dialog: FC<DialogProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document !== "undefined") {
+    return createPortal(dialogElement, document.body);
+  }
+
+  return dialogElement;
 };

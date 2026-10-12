@@ -376,10 +376,15 @@ export class WabaWebhookNormalizer {
             }
 
             let contactName: string | undefined;
+            let bsuid: string | undefined;
+            let username: string | undefined;
             if (Array.isArray(value.contacts)) {
               const matchingContact = (
                 value.contacts as Array<{
                   wa_id?: string;
+                  user_id?: string;
+                  bsuid?: string;
+                  username?: string;
                   profile?: { name?: string };
                 }>
               ).find(
@@ -388,6 +393,8 @@ export class WabaWebhookNormalizer {
                   (c.wa_id && formatToE164(c.wa_id) === senderPhoneE164)
               );
               contactName = matchingContact?.profile?.name;
+              bsuid = matchingContact?.bsuid || matchingContact?.user_id;
+              username = matchingContact?.username;
             }
 
             const rawReferral = msgObj.referral as Record<string, unknown> | undefined;
@@ -427,6 +434,8 @@ export class WabaWebhookNormalizer {
               metadata: {
                 wabaPhoneNumberId: metadata?.phone_number_id,
                 ...(contactName ? { contactName } : {}),
+                ...(bsuid ? { bsuid } : {}),
+                ...(username ? { username } : {}),
                 ...(mediaId ? { mediaId } : {}),
                 ...(mimeType ? { mimeType } : {}),
                 ...(fileSha256 ? { fileSha256 } : {}),

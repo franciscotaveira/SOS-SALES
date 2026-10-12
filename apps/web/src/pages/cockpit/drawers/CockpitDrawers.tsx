@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import type { UseSessionReturn } from "../../../hooks/useSession";
-import type { CommercialThreadSummary } from "../../../services/api-client";
+import type { CommercialThreadSummary, ContactSummary, ProductRecord } from "../../../services/api-client";
 import { TemplateDrawer } from "./TemplateDrawer";
 import { ProposalDrawer } from "./ProposalDrawer";
 import { PixDrawer } from "./PixDrawer";
@@ -19,6 +19,10 @@ interface CockpitDrawersProps {
   onTemplateSent?: () => void;
   onProposalCreated?: () => void;
   onPixCreated?: () => void;
+  onRadarDraftApplied?: (draft: string) => void;
+  onSendProduct?: (product: ProductRecord) => void;
+  onSendProducts?: (products: ProductRecord[]) => void;
+  onContactUpdated?: (contact: ContactSummary) => void;
 }
 
 export const CockpitDrawers: FC<CockpitDrawersProps> = ({
@@ -29,6 +33,10 @@ export const CockpitDrawers: FC<CockpitDrawersProps> = ({
   onTemplateSent,
   onProposalCreated,
   onPixCreated,
+  onRadarDraftApplied,
+  onSendProduct,
+  onSendProducts,
+  onContactUpdated,
 }) => {
   const token = session.token ?? undefined;
 
@@ -61,12 +69,18 @@ export const CockpitDrawers: FC<CockpitDrawersProps> = ({
       <RadarDrawer
         isOpen={activeDrawer === "radar"}
         onClose={onClose}
-        suggestions={[]}
+        workspaceId={session.activeWorkspace?.id}
+        token={token}
+        threadId={selectedThread?.id}
+        onDraftApplied={onRadarDraftApplied}
       />
       <DossierDrawer
         isOpen={activeDrawer === "dossier"}
         onClose={onClose}
-        workspace={session.activeWorkspace}
+        thread={selectedThread}
+        workspaceId={session.activeWorkspace?.id}
+        token={token}
+        onContactUpdated={onContactUpdated}
       />
       <CatalogDrawer
         isOpen={activeDrawer === "catalog"}
@@ -74,6 +88,8 @@ export const CockpitDrawers: FC<CockpitDrawersProps> = ({
         thread={selectedThread}
         workspaceId={session.activeWorkspace?.id}
         token={token}
+        onSendProduct={onSendProduct}
+        onSendProducts={onSendProducts}
       />
       <FlowDrawer
         isOpen={activeDrawer === "flow"}

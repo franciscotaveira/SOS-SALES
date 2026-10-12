@@ -68,26 +68,58 @@ export const useInbox = (session: UseSessionReturn) => {
     return () => clearInterval(interval);
   }, [loadThreads, activeWorkspace?.id, token]);
 
-  // Filtered threads by search query
+  const [selectedChannelId, setSelectedChannelId] = useState<string | "all">("all");
+
+  // Filtered threads by channel and search query
   const filteredThreads = useMemo(() => {
-    if (!searchQuery.trim()) return threads;
+    let result = threads;
+    if (selectedChannelId !== "all") {
+      result = result.filter((t) => t.channelInstanceId === selectedChannelId);
+    }
+    if (!searchQuery.trim()) return result;
     const q = searchQuery.toLowerCase().trim();
-    return threads.filter((t) => {
+    return result.filter((t) => {
       const name = (t.contactName || "").toLowerCase();
       const phone = (t.contactPhone || "").toLowerCase();
       const snippet = (t.lastMessage?.body || "").toLowerCase();
       return name.includes(q) || phone.includes(q) || snippet.includes(q);
     });
-  }, [threads, searchQuery]);
+  }, [threads, searchQuery, selectedChannelId]);
 
-  const activeChannel = channels.find((c) => c.status === "connected") || channels[0] || null;
+  const activeChannel = useMemo(() => {
+    if (selectedChannelId !== "all") {
+      return channels.find((c) => c.id === selectedChannelId) || null;
+    }
+    return channels.find((c) => c.status === "connected") || channels[0] || null;
+  }, [channels, selectedChannelId]);
+
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  const syncActiveChannel = useCallback(async (channelId?: string) => {
+    if (!activeWorkspace?.id || !token) return;
+    const targetChannelId = channelId || (selectedChannelId !== "all" ? selectedChannelId : activeChannel?.id);
+    if (!targetChannelId) return;
+
+    setIsSyncing(true);
+    try {
+      const res = await apiClient.syncChannelChats(activeWorkspace.id, targetChannelId, { token });
+      await loadThreads();
+      return res;
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [activeWorkspace?.id, token, selectedChannelId, activeChannel?.id, loadThreads]);
 
   return {
     threads,
     filteredThreads,
     channels,
     activeChannel,
+    selectedChannelId,
+    setSelectedChannelId,
     isLoadingThreads,
+    isSyncing,
+    syncActiveChannel,
     queueFilter,
     setQueueFilter,
     searchQuery,
@@ -95,3 +127,4 @@ export const useInbox = (session: UseSessionReturn) => {
     refreshThreads: loadThreads,
   };
 };
+

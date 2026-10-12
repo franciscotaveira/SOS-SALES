@@ -49,22 +49,11 @@ async function seedHavenWaba() {
     const workspace = wsRes.rows[0];
     console.log(`✓ Workspace garantido: ${workspace.name} (${workspace.id})`);
 
-    // 3. Obter ou criar Usuário Dono/Operador Haven
-    const userRes = await pool.query(
-      `INSERT INTO users (email, name, role)
-       VALUES ('dra.camilia@haven.com.br', 'Dra. Camila Haven', 'authenticated')
-       ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
-       RETURNING id, email, name;`
-    );
-    const user = userRes.rows[0];
-
-    await pool.query(
-      `INSERT INTO memberships (workspace_id, user_id, role)
-       VALUES ($1, $2, 'owner')
-       ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role;`,
-      [workspace.id, user.id]
-    );
-    console.log(`✓ Usuário Dono associado: ${user.name} (${user.email})`);
+    // 3. Usuários e Membros:
+    // NOTA DE SEGURANÇA: Não cadastrar usuários ou operadores por este script.
+    // O cadastro de operadores deve ser feito exclusivamente via 'scripts/admin-upsert-member.ts'
+    // utilizando o subject UUID previamente autenticado no Supabase Auth.
+    console.log("ℹ️  Provisionamento de operadores delegado a scripts/admin-upsert-member.ts");
 
     // 4. Credenciais WABA — Verificação Fail-Closed e Suporte a Modo Lab
     const isLab = process.env.NODE_ENV !== "production" || process.env.ENABLE_LAB_SYNTHETIC === "true";

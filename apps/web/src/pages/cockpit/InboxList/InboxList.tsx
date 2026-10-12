@@ -1,10 +1,11 @@
 import type { FC } from "react";
-import { Badge, IconButton, Input, SegmentedControl, EmptyState, useBreakpoint } from "@sos-sales/ui";
-import { PanelLeftClose, PanelLeftOpen, Search, MessageSquare } from "lucide-react";
+import { Badge, Button, IconButton, Input, SegmentedControl, EmptyState, useBreakpoint } from "@sos-sales/ui";
+import { PanelLeftClose, PanelLeftOpen, Search, MessageSquare, RefreshCw } from "lucide-react";
 import { Avatar } from "@sos-sales/ui";
 import type { CommercialThreadSummary, ChannelSummary } from "../../../services/api-client";
 import { ConversationRow } from "./ConversationRow";
 import type { QueueFilter } from "../hooks/useInbox";
+import { panelFrame } from "../utils/panelFrame";
 
 export type { QueueFilter };
 
@@ -17,9 +18,14 @@ interface InboxListProps {
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
   activeChannel: ChannelSummary | null;
+  channels?: ChannelSummary[];
+  selectedChannelId?: string | "all";
+  onSelectChannelId?: (channelId: string | "all") => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   isMobile?: boolean;
+  onSync?: () => void;
+  isSyncing?: boolean;
 }
 
 export const InboxList: FC<InboxListProps> = ({
@@ -31,9 +37,14 @@ export const InboxList: FC<InboxListProps> = ({
   searchQuery,
   onSearchQueryChange,
   activeChannel,
+  channels,
+  selectedChannelId,
+  onSelectChannelId,
   isCollapsed,
   onToggleCollapse,
   isMobile: isMobileProp,
+  onSync,
+  isSyncing,
 }) => {
   const { isMobile: hookMobile } = useBreakpoint();
   const isMobile = isMobileProp ?? hookMobile;
@@ -47,7 +58,7 @@ export const InboxList: FC<InboxListProps> = ({
           width: "58px",
           minWidth: "58px",
           backgroundColor: "var(--bg-surface)",
-          borderRight: "1px solid var(--border-default)",
+          ...panelFrame(false),
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -138,27 +149,27 @@ export const InboxList: FC<InboxListProps> = ({
     <aside
       aria-label="Fila de Conversas Inbox"
       style={{
-        width: isMobile ? "100%" : "var(--inbox-list-w, 320px)",
-        minWidth: isMobile ? "100%" : "var(--inbox-list-w, 320px)",
-        maxWidth: isMobile ? "100%" : "var(--inbox-list-w, 320px)",
+        width: isMobile ? "100%" : "var(--inbox-list-w, 340px)",
+        minWidth: isMobile ? "100%" : "var(--inbox-list-w, 340px)",
+        maxWidth: isMobile ? "100%" : "var(--inbox-list-w, 340px)",
         height: "100%",
         display: "flex",
         flexDirection: "column",
         backgroundColor: "var(--bg-surface)",
-        borderRight: isMobile ? "none" : "1px solid var(--border-default)",
         boxSizing: "border-box",
         overflow: "hidden",
+        ...panelFrame(isMobile),
       }}
     >
       {/* 1. Header with title, badge count, active channel, and collapse toggle */}
       <div
         style={{
           padding: "var(--space-3) var(--space-4)",
-          borderBottom: "1px solid var(--border-default)",
+          borderBottom: "2px solid var(--border-strong)",
           display: "flex",
           flexDirection: "column",
           gap: "10px",
-          backgroundColor: "var(--bg-surface)",
+          backgroundColor: "var(--bg-surface-elevated)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -175,23 +186,61 @@ export const InboxList: FC<InboxListProps> = ({
               Inbox
             </h1>
             <Badge variant="action">{threads.length}</Badge>
-            {activeChannel && (
+            {channels && channels.length > 1 && onSelectChannelId ? (
+              <select
+                value={selectedChannelId || "all"}
+                onChange={(e) => onSelectChannelId(e.target.value)}
+                aria-label="Filtrar por canal"
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  padding: "2px 6px",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border-default)",
+                  backgroundColor: "var(--bg-surface)",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  maxWidth: "130px",
+                  outline: "none",
+                }}
+              >
+                <option value="all">Todos ({channels.length})</option>
+                {channels.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.displayName || c.phoneNumberE164 || c.provider}
+                  </option>
+                ))}
+              </select>
+            ) : activeChannel ? (
               <Badge variant="neutral">
                 {(activeChannel.provider || "WhatsApp").toUpperCase()}
               </Badge>
-            )}
+            ) : null}
           </div>
 
-          {!isMobile && (
-            <IconButton
-              aria-label="Recolher Fila de Conversas"
-              icon={<PanelLeftClose size={16} />}
-              size="sm"
-              variant="ghost"
-              onClick={onToggleCollapse}
-              tooltip="Recolher Fila (58px)"
-            />
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {onSync && (
+              <IconButton
+                aria-label="Sincronizar conversas do WhatsApp"
+                icon={<RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />}
+                size="sm"
+                variant="ghost"
+                onClick={onSync}
+                disabled={isSyncing}
+                tooltip={isSyncing ? "Sincronizando conversas..." : "Sincronizar conversas do WhatsApp"}
+              />
+            )}
+            {!isMobile && (
+              <IconButton
+                aria-label="Recolher Fila de Conversas"
+                icon={<PanelLeftClose size={16} />}
+                size="sm"
+                variant="ghost"
+                onClick={onToggleCollapse}
+                tooltip="Recolher Fila (58px)"
+              />
+            )}
+          </div>
         </div>
 
         {/* Search Bar */}
@@ -205,6 +254,7 @@ export const InboxList: FC<InboxListProps> = ({
 
         {/* 32px SegmentedControl Filters */}
         <SegmentedControl
+          size="sm"
           options={filterOptions}
           value={queueFilter}
           onChange={(val) => onQueueFilterChange(val as QueueFilter)}
@@ -222,7 +272,7 @@ export const InboxList: FC<InboxListProps> = ({
         }}
       >
         {threads.length === 0 ? (
-          <div style={{ padding: "var(--space-8) var(--space-4)", textAlign: "center" }}>
+          <div style={{ padding: "var(--space-8) var(--space-4)", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
             <EmptyState
               icon={<MessageSquare size={36} color="var(--text-muted)" />}
               title="Nenhuma conversa ativa"
@@ -232,6 +282,17 @@ export const InboxList: FC<InboxListProps> = ({
                   : "Aguardando novos leads e mensagens no canal."
               }
             />
+            {onSync && !searchQuery && (
+              <Button
+                size="sm"
+                variant="primary"
+                prefixIcon={<RefreshCw size={13} className={isSyncing ? "animate-spin" : ""} />}
+                onClick={onSync}
+                disabled={isSyncing}
+              >
+                {isSyncing ? "Sincronizando Conversas..." : "Sincronizar Conversas do WhatsApp"}
+              </Button>
+            )}
           </div>
         ) : (
           threads.map((thread) => (

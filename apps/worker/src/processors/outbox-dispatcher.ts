@@ -478,6 +478,14 @@ export class OutboxDispatcher {
               );
             }
 
+            // Step 3.1: Reconcile broadcast_recipients if command was dispatched by a broadcast campaign
+            await client.query(
+              `UPDATE public.broadcast_recipients
+               SET external_message_id = $1, status = 'sent'
+               WHERE outbound_command_id = $2;`,
+              [sendResult.externalMessageId, item.id]
+            );
+
             // Step 4: Record delivery event append-only without swallowing errors
             const rawEvent = JSON.stringify({
               externalMessageId: sendResult.externalMessageId,

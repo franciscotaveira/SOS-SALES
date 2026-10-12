@@ -35,12 +35,13 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         border: "1px solid transparent",
       },
       secondary: {
-        backgroundColor: "var(--bg-surface-elevated, #F1F5F9)",
+        backgroundColor: "var(--bg-surface, #FFFFFF)",
         color: "var(--text-primary, #0F172A)",
-        border: "1px solid var(--border-default, #E2E8F0)",
+        border: "1px solid var(--border-strong, #CBD5E1)",
+        boxShadow: "var(--shadow-xs)",
       },
       outline: {
-        backgroundColor: "transparent",
+        backgroundColor: "var(--bg-surface, #FFFFFF)",
         color: "var(--text-primary, #0F172A)",
         border: "1px solid var(--border-strong, #CBD5E1)",
       },

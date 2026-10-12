@@ -15,6 +15,7 @@ export * from "./templates";
 export * from "./flows";
 export * from "./products";
 export * from "./pix";
+export * from "./outbound-webhooks";
 export { Pool, type PoolClient } from "pg";
 
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { buildApp } from "../index";
 
 const testOptions = {
@@ -9,6 +9,11 @@ const testOptions = {
 };
 
 describe("POST /v1/auth/session - Sovereign Authentication Endpoint", () => {
+  beforeAll(() => {
+    process.env.ENABLE_LAB_AUTH = "true";
+    process.env.MASTER_ACCESS_KEY = "mothership_master_2026";
+  });
+
   it("rejects invalid request body with 400 Bad Request", async () => {
     const app = await buildApp(testOptions);
     const response = await app.inject({
@@ -34,7 +39,7 @@ describe("POST /v1/auth/session - Sovereign Authentication Endpoint", () => {
     expect(response.statusCode).toBe(401);
     const json = JSON.parse(response.body);
     expect(json.type).toBe("https://sos-sales.mct.br/errors/unauthorized");
-    expect(json.detail).toBe("Chave de acesso soberana inválida");
+    expect(json.detail).toBe("Credenciais de acesso inválidas");
     await app.close();
   });
 });

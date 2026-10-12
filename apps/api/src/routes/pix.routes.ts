@@ -5,7 +5,10 @@ import {
   createPixCharge,
   listPixChargesByThread,
   confirmPixChargeManual,
+  createCommercialJourney,
+  recordCommercialOutcome,
 } from "@sos-sales/database";
+import { enqueuePixConfirmationMessage } from "../services/pix-notification";
 
 const workspaceParamsSchema = z.object({
   workspaceId: z.string().uuid(),
@@ -219,12 +222,50 @@ export const pixRoutes: FastifyPluginAsync = async (app) => {
         const { charge, alreadySettled } = await withTenantTransaction(
           workspaceId,
           async (client) => {
-            return confirmPixChargeManual(client, {
+            const res = await confirmPixChargeManual(client, {
               workspaceId,
               chargeId,
               actorUserId,
               verificationNotes: "Conferência manual efetuada pelo operador",
             });
+
+            // Automatically evolve commercial journey to 'won' and enqueue Meta CAPI PurchaseCompleted
+            if (!res.alreadySettled) {
+              let journeyId: string | undefined;
+              const jRes = await client.query<{ id: string }>(
+                `SELECT id FROM public.commercial_journeys
+                 WHERE workspace_id = $1 AND (thread_id = $2 OR contact_id = $3) AND status = 'open'
+                 ORDER BY created_at DESC LIMIT 1 FOR UPDATE;`,
+                [workspaceId, res.charge.thread_id, res.charge.contact_id]
+              );
+              if (jRes.rows[0]) {
+                journeyId = jRes.rows[0].id;
+              } else {
+                const created = await createCommercialJourney(client, workspaceId, {
+                  contactId: res.charge.contact_id,
+                  threadId: res.charge.thread_id,
+                  title: res.charge.title || "Venda Concluída (Pix)",
+                  stage: "proposal",
+                  attributionSource: "organic_whatsapp",
+                  estimatedValueCents: res.charge.amount_cents,
+                });
+                journeyId = created.id;
+              }
+
+              await recordCommercialOutcome(client, workspaceId, {
+                journeyId,
+                status: "won",
+                valueCents: res.charge.amount_cents,
+                currency: res.charge.currency || "BRL",
+                reason: "Liquidação Pix confirmada pelo operador",
+                registeredByUserId: actorUserId,
+              });
+
+              // Enqueue celebratory payment confirmation message to WhatsApp thread
+              await enqueuePixConfirmationMessage(client, workspaceId, res.charge);
+            }
+
+            return res;
           }
         );
 

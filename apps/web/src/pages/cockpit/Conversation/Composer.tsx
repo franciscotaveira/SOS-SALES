@@ -1,11 +1,13 @@
 import { type FC, type KeyboardEvent, useRef } from "react";
 import { Button, IconButton } from "@sos-sales/ui";
-import { Send, Paperclip, FileCode, ShoppingBag, Workflow, QrCode } from "lucide-react";
+import { Send, Paperclip, FileCode, ShoppingBag, Workflow, QrCode, File, X } from "lucide-react";
 import type { WindowInfo } from "../hooks/useConversation";
 
 interface ComposerProps {
   draft: string;
   onDraftChange: (text: string) => void;
+  attachedFile?: File | null;
+  onAttachFile?: (file: File | null) => void;
   onSend: () => void;
   isSending: boolean;
   windowInfo: WindowInfo;
@@ -19,6 +21,8 @@ interface ComposerProps {
 export const Composer: FC<ComposerProps> = ({
   draft,
   onDraftChange,
+  attachedFile,
+  onAttachFile,
   onSend,
   isSending,
   windowInfo,
@@ -29,12 +33,13 @@ export const Composer: FC<ComposerProps> = ({
   isMobile = false,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isWindowClosed = !windowInfo.isOpen;
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (draft.trim() && !isSending && !isWindowClosed) {
+      if ((draft.trim() || attachedFile) && !isSending && !isWindowClosed) {
         onSend();
       }
     }
@@ -52,8 +57,8 @@ export const Composer: FC<ComposerProps> = ({
   return (
     <footer
       style={{
-        backgroundColor: "var(--bg-surface)",
-        borderTop: "1px solid var(--border-default)",
+        backgroundColor: "var(--bg-surface-elevated)",
+        borderTop: "2px solid var(--border-strong)",
         padding: "var(--space-3, 12px) var(--space-4, 16px)",
         display: "flex",
         flexDirection: "column",
@@ -141,52 +146,113 @@ export const Composer: FC<ComposerProps> = ({
           </Button>
         </div>
       ) : (
-        <div style={{ display: "flex", alignItems: "flex-end", gap: "8px" }}>
-          <IconButton
-            aria-label="Anexar arquivo"
-            icon={<Paperclip size={18} />}
-            size="sm"
-            variant="ghost"
-            tooltip="Anexar arquivo"
-          />
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          {attachedFile && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "6px 10px",
+                backgroundColor: "var(--bg-subtle)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "var(--radius-md, 8px)",
+                fontSize: "var(--font-size-sm, 0.875rem)",
+                color: "var(--text-primary)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
+                <File size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                <span
+                  style={{
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: isMobile ? "180px" : "320px",
+                  }}
+                >
+                  {attachedFile.name}
+                </span>
+                <span style={{ color: "var(--text-muted)", fontSize: "11px", flexShrink: 0 }}>
+                  ({(attachedFile.size / 1024).toFixed(0)} KB)
+                </span>
+              </div>
+              <IconButton
+                aria-label="Remover anexo"
+                icon={<X size={14} />}
+                size="sm"
+                variant="ghost"
+                onClick={() => onAttachFile?.(null)}
+                tooltip="Remover anexo"
+              />
+            </div>
+          )}
 
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(e) => handleTextChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Escrever mensagem..."
-            rows={1}
-            style={{
-              flex: 1,
-              resize: "none",
-              minHeight: "36px",
-              maxHeight: "140px",
-              padding: "8px 12px",
-              fontSize: isMobile ? "16px" : "var(--font-size-base, 1rem)",
-              lineHeight: "1.4",
-              color: "var(--text-primary)",
-              backgroundColor: "var(--bg-canvas)",
-              border: "1px solid var(--border-default)",
-              borderRadius: "var(--radius-md, 8px)",
-              outline: "none",
-              boxSizing: "border-box",
-              fontFamily: "inherit",
-            }}
-          />
+          <div style={{ display: "flex", alignItems: "flex-end", gap: "8px" }}>
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: "none" }}
+              accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,audio/ogg,audio/mpeg"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  onAttachFile?.(file);
+                }
+                e.target.value = "";
+              }}
+            />
 
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={!draft.trim() || isSending}
-            onClick={onSend}
-            prefixIcon={<Send size={15} />}
-            title="Enviar mensagem (Enter)"
-          >
-            Enviar
-          </Button>
+            <IconButton
+              aria-label="Anexar arquivo"
+              icon={<Paperclip size={18} />}
+              size="sm"
+              variant="ghost"
+              tooltip="Anexar arquivo"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isSending}
+            />
+
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(e) => handleTextChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Escrever mensagem..."
+              rows={1}
+              style={{
+                flex: 1,
+                resize: "none",
+                minHeight: "36px",
+                maxHeight: "140px",
+                padding: "8px 12px",
+                fontSize: isMobile ? "16px" : "var(--font-size-base, 1rem)",
+                lineHeight: "1.4",
+                color: "var(--text-primary)",
+                backgroundColor: "var(--bg-canvas)",
+                border: "1px solid var(--border-default)",
+                borderRadius: "var(--radius-md, 8px)",
+                outline: "none",
+                boxSizing: "border-box",
+                fontFamily: "inherit",
+              }}
+            />
+
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={(!draft.trim() && !attachedFile) || isSending}
+              onClick={onSend}
+              prefixIcon={<Send size={15} />}
+              title="Enviar mensagem (Enter)"
+            >
+              Enviar
+            </Button>
+          </div>
         </div>
       )}
     </footer>
   );
 };
+

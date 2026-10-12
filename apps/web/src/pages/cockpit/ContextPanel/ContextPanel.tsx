@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { IconButton } from "@sos-sales/ui";
+import { Button, IconButton } from "@sos-sales/ui";
 import {
   X,
   User,
@@ -8,24 +8,32 @@ import {
   GitCommit,
   StickyNote,
   Award,
+  Edit3,
 } from "lucide-react";
 import type {
   CommercialThreadSummary,
   CommercialProposalSummary,
+  ContactSummary,
 } from "../../../services/api-client";
 import { LeadSummary } from "./LeadSummary";
 import { PixStatus } from "./PixStatus";
 import { OutcomeActions } from "./OutcomeActions";
 import { Notes } from "./Notes";
 import { ProposalsSection } from "./ProposalsSection";
+import { panelFrame } from "../utils/panelFrame";
 import { JourneyTimeline } from "./JourneyTimeline";
 
 interface ContextPanelProps {
   thread: CommercialThreadSummary;
+  contact?: ContactSummary | null;
   onClose?: () => void;
   // Journey & lead
   journeyStage?: string | null;
   estimatedValueCents?: number | null;
+  onEditLead?: () => void;
+  onUpdateStage?: (newStage: string) => Promise<void> | void;
+  customStages?: Record<string, string>;
+  isUpdatingStage?: boolean;
   // Proposals (F3)
   proposals?: CommercialProposalSummary[];
   onCreateProposal?: () => void;
@@ -54,9 +62,14 @@ interface ContextPanelProps {
 
 export const ContextPanel: FC<ContextPanelProps> = ({
   thread,
+  contact,
   onClose,
   journeyStage,
   estimatedValueCents,
+  onEditLead,
+  onUpdateStage,
+  customStages,
+  isUpdatingStage,
   proposals = [],
   onCreateProposal,
   onUpdateProposalStatus,
@@ -82,8 +95,8 @@ export const ContextPanel: FC<ContextPanelProps> = ({
         minWidth: isMobile ? "100%" : "var(--context-panel-w, 360px)",
         maxWidth: isMobile ? "100%" : "var(--context-panel-w, 360px)",
         height: "100%",
-        backgroundColor: "var(--bg-canvas)",
-        borderLeft: isMobile ? "none" : "1px solid var(--border-default)",
+        backgroundColor: "var(--bg-surface-subtle)",
+        ...panelFrame(isMobile),
         display: "flex",
         flexDirection: "column",
         boxSizing: "border-box",
@@ -98,8 +111,8 @@ export const ContextPanel: FC<ContextPanelProps> = ({
           alignItems: "center",
           justifyContent: "space-between",
           padding: "0 var(--space-4, 16px)",
-          borderBottom: "1px solid var(--border-default)",
-          backgroundColor: "var(--bg-surface)",
+          borderBottom: "2px solid var(--border-strong)",
+          backgroundColor: "var(--bg-surface-elevated)",
           boxSizing: "border-box",
         }}
       >
@@ -153,27 +166,26 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              justifyContent: "space-between",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
-            <User size={14} style={{ color: "var(--color-action)" }} />
-            <span
-              style={{
-                fontSize: "var(--font-size-xs, 0.75rem)",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                color: "var(--text-secondary)",
-              }}
-            >
-              Lead & Origem
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <User size={14} style={{ color: "var(--color-action)" }} />
+              <span style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-secondary)" }}>Lead & Origem</span>
+            </div>
+            {onEditLead && <Button size="xs" variant="secondary" prefixIcon={<Edit3 size={12}/>} onClick={onEditLead}>Editar ficha</Button>}
           </div>
           <LeadSummary
             thread={thread}
+            contact={contact}
             journeyStage={journeyStage}
             estimatedValueCents={estimatedValueCents}
+            onUpdateStage={onUpdateStage}
+            customStages={customStages}
+            isUpdatingStage={isUpdatingStage}
+            onEditLead={onEditLead}
           />
         </section>
 
@@ -195,7 +207,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -239,7 +251,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -281,7 +293,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -322,7 +334,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -365,7 +377,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
-                borderBottom: "1px solid var(--border-subtle)",
+                borderBottom: "1px solid var(--border-default)",
                 paddingBottom: "8px",
               }}
             >

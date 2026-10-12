@@ -1,13 +1,14 @@
 import type { FC } from "react";
 import { Badge, ListItem, useBreakpoint } from "@sos-sales/ui";
-import { Package } from "lucide-react";
+import { Package, Pencil } from "lucide-react";
 import type { ProductRecord } from "../../services/api-client";
 
 interface ProductsTableProps {
   products: ProductRecord[];
+  onEdit: (product: ProductRecord) => void;
 }
 
-export const ProductsTable: FC<ProductsTableProps> = ({ products }) => {
+export const ProductsTable: FC<ProductsTableProps> = ({ products, onEdit }) => {
   const { isMobile } = useBreakpoint();
 
   const getStatusBadge = (status: string) => {
@@ -84,6 +85,9 @@ export const ProductsTable: FC<ProductsTableProps> = ({ products }) => {
                   {p.priceFormatted}
                 </span>
                 {getStatusBadge(p.status)}
+                <button type="button" aria-label={`Editar ${p.title}`} onClick={() => onEdit(p)} style={{ border: 0, background: "transparent", color: "var(--color-operational)", cursor: "pointer", padding: "4px" }}>
+                  <Pencil size={16} />
+                </button>
               </div>
             }
           />
@@ -133,6 +137,9 @@ export const ProductsTable: FC<ProductsTableProps> = ({ products }) => {
             </th>
             <th style={{ padding: "0 16px", height: "48px", fontWeight: 600, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
               Status
+            </th>
+            <th style={{ padding: "0 16px", height: "48px", width: "64px", fontWeight: 600, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+              Ações
             </th>
           </tr>
         </thead>
@@ -200,6 +207,11 @@ export const ProductsTable: FC<ProductsTableProps> = ({ products }) => {
               </td>
               <td style={{ padding: "0 16px" }}>
                 {getStatusBadge(p.status)}
+              </td>
+              <td style={{ padding: "0 16px" }}>
+                <button type="button" aria-label={`Editar ${p.title}`} title="Editar produto" onClick={() => onEdit(p)} style={{ width: "32px", height: "32px", border: "1px solid var(--border-default)", borderRadius: "var(--radius-sm)", background: "var(--bg-surface)", color: "var(--text-secondary)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <Pencil size={15} />
+                </button>
               </td>
             </tr>
           ))}

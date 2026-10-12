@@ -39,8 +39,8 @@ export const PixSection: FC<{ session: UseSessionReturn }> = ({ session }) => {
         {
           defaultPixKey: pixKey.trim() || null,
           defaultPixKeyType: pixKeyType,
-          defaultPixMerchantName: merchantName.trim() || null,
-          defaultPixMerchantCity: merchantCity.trim() || null,
+          defaultPixMerchantName: merchantName.trim() ? merchantName.trim().slice(0, 25) : null,
+          defaultPixMerchantCity: merchantCity.trim() ? merchantCity.trim().slice(0, 15) : null,
         },
         { token }
       );
@@ -72,7 +72,7 @@ export const PixSection: FC<{ session: UseSessionReturn }> = ({ session }) => {
           Cobrança Pix Oficial
         </h2>
         <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", margin: "4px 0 0 0" }}>
-          Configure a chave Pix padrão para geração de QR Codes e chaves Copia e Cola no Cockpit.
+          Configure a chave Pix padrão para geração de QR Codes e chaves Copia e Cola no Cockpit (Padrão Banco Central / EMV).
         </p>
       </div>
 
@@ -136,12 +136,16 @@ export const PixSection: FC<{ session: UseSessionReturn }> = ({ session }) => {
           label="Nome do Beneficiário"
           placeholder="Ex: Minha Empresa LTDA"
           value={merchantName}
+          maxLength={25}
+          helperText={`${merchantName.length}/25 caracteres (máx. 25 — padrão Bacen)`}
           onChange={(e) => setMerchantName(e.target.value)}
         />
         <Input
           label="Cidade do Beneficiário"
           placeholder="Ex: São Paulo"
           value={merchantCity}
+          maxLength={15}
+          helperText={`${merchantCity.length}/15 caracteres (máx. 15 — padrão Bacen)`}
           onChange={(e) => setMerchantCity(e.target.value)}
         />
       </div>
