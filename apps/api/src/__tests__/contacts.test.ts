@@ -170,4 +170,98 @@ describe("Contacts Routes Integration (Fastify + RLS)", () => {
 
     expect(res.statusCode).toBe(403);
   });
+  it("updates and deletes a contact in Workspace A", async () => {
+    const auth = { authorization: `Bearer ${operatorToken}` };
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/workspaces/${workspaceAId}/contacts`,
+      headers: auth,
+      payload: { phoneE164: "+5511977770001", name: "Para Editar" },
+    });
+    expect(created.statusCode).toBe(201);
+    const contactId = created.json().contact.id as string;
+    const base = `/v1/workspaces/${workspaceAId}/contacts/${contactId}`;
+
+    const patched = await app.inject({ method: "PATCH", url: base, headers: auth, payload: { name: "Renomeado" } });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().contact.name).toBe("Renomeado");
+    expect(patched.json().contact.phoneE164).toBe("+5511977770001");
+
+    const empty = await app.inject({ method: "PATCH", url: base, headers: auth, payload: {} });
+    expect(empty.statusCode).toBe(400);
+
+    const badPhone = await app.inject({ method: "PATCH", url: base, headers: auth, payload: { phoneE164: "123" } });
+    expect(badPhone.statusCode).toBe(400);
+
+    // Hard delete is revoked for sos_app_user (migration 005) — API must fail closed with 403, never 500.
+    const removed = await app.inject({ method: "DELETE", url: base, headers: auth });
+    expect(removed.statusCode).toBe(403);
+  });
+
+  it("returns 409 when patching a contact's phone to one already in use", async () => {
+    const auth = { authorization: `Bearer ${operatorToken}` };
+    const base = `/v1/workspaces/${workspaceAId}/contacts`;
+
+    const created = await app.inject({
+      method: "POST",
+      url: base,
+      headers: auth,
+      payload: { phoneE164: "+5511977770002", name: "Contato Duplicado" },
+    });
+    expect(created.statusCode).toBe(201);
+    const contactId = created.json().contact.id as string;
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `${base}/${contactId}`,
+      headers: auth,
+      payload: { phoneE164: "+5511999990001" },
+    });
+
+    expect(patched.statusCode).toBe(409);
+    expect(patched.json().status).toBe(409);
+  });
+
+  it("returns 404 when patching an unknown contact", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/workspaces/${workspaceAId}/contacts/00000000-0000-4000-8000-000000000000`,
+      headers: { authorization: `Bearer ${operatorToken}` },
+      payload: { name: "Ninguém" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("blocks cross-tenant PATCH/DELETE on Workspace B", async () => {
+    const url = `/v1/workspaces/${workspaceBId}/contacts/00000000-0000-4000-8000-000000000000`;
+    const auth = { authorization: `Bearer ${operatorToken}` };
+    const patch = await app.inject({ method: "PATCH", url, headers: auth, payload: { name: "X" } });
+    const del = await app.inject({ method: "DELETE", url, headers: auth });
+    expect(patch.statusCode).toBe(403);
+    expect(del.statusCode).toBe(403);
+  });
+  it("rejects stale notes atomically and serializes competing writers", async () => {
+    const created = await createOrGetContact(ownerPool, {workspaceId:workspaceAId,phoneE164:"+5511977700011",name:"Original"});
+    const url = `/v1/workspaces/${workspaceAId}/contacts/${created.id}`;
+    const headers = {authorization:`Bearer ${operatorToken}`};
+    const results = await Promise.all(["SIM first", "SIM second"].map(notes => app.inject({method:"PATCH",url,headers,payload:{metadata:{notes},expectedNotes:null}})));
+    expect(results.map(r=>r.statusCode).sort()).toEqual([200,409]);
+    const winner=results.find(r=>r.statusCode===200)!.json().contact.metadata.notes;
+    const stale=await app.inject({method:"PATCH",url,headers,payload:{name:"Must not apply",metadata:{notes:"SIM stale",company:"Must not apply"},expectedNotes:null}});
+    expect(stale.statusCode).toBe(409); expect(stale.json().type).toContain("contact-notes-conflict");
+    const stored=await ownerPool.query("SELECT name,metadata FROM public.contacts WHERE id=$1",[created.id]);
+    expect(stored.rows[0].name).toBe("Original"); expect(stored.rows[0].metadata.notes).toBe(winner); expect(stored.rows[0].metadata.company).toBeUndefined();
+    const retry=await app.inject({method:"PATCH",url,headers,payload:{metadata:{notes:"SIM reviewed"},expectedNotes:winner}});
+    expect(retry.statusCode).toBe(200); expect(retry.json().contact.metadata.notes).toBe("SIM reviewed");
+  });
+  it("compares legacy JSON notes without coercion and rejects a detached precondition", async () => {
+    const contact=await createOrGetContact(ownerPool,{workspaceId:workspaceAId,phoneE164:"+5511977700012"});
+    await ownerPool.query("UPDATE public.contacts SET metadata=$2::jsonb WHERE id=$1",[contact.id,JSON.stringify({notes:{legacy:true},tags:["SIM"]})]);
+    const url=`/v1/workspaces/${workspaceAId}/contacts/${contact.id}`; const headers={authorization:`Bearer ${operatorToken}`};
+    expect((await app.inject({method:"PATCH",url,headers,payload:{expectedNotes:null,metadata:{notes:"wrong"}}})).statusCode).toBe(409);
+    const repaired=await app.inject({method:"PATCH",url,headers,payload:{expectedNotes:{legacy:true},metadata:{notes:"SIM repaired"}}});
+    expect(repaired.statusCode).toBe(200); expect(repaired.json().contact.metadata.tags).toEqual(["SIM"]);
+    expect((await app.inject({method:"PATCH",url,headers,payload:{expectedNotes:"SIM repaired",name:"Other"}})).statusCode).toBe(400);
+  });
+
 });

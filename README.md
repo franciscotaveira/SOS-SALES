@@ -1,15 +1,15 @@
-# SOS Sales V3 — Sovereign Greenfield Commercial OS
+# SOS Vendas — Sistema Operacional Comercial para WhatsApp & Pix
 
 > Sistema Operacional Comercial Greenfield com Migração Segura (MCT OS v2.0)  
 > Titularidade: Francisco Taveira Rios | MCT LTDA  
-> Data: Setembro de 2026
+> Data: Outubro de 2026
 
 ---
 
 ## 1. Visão Geral
 
-O **SOS Sales V3** fecha o ciclo comercial de ponta a ponta:
-`Aquisição Meta Ads / CTWA / Lead Ads → Atendimento Cockpit (WhatsApp Dual Engine: WABA + WAHA) → Qualificação & Funil/Agenda → Fechamento com Prova → Feedback CAPI com Recibo`.
+O **SOS Vendas** fecha o ciclo comercial de ponta a ponta:
+`Aquisição Meta Ads / CTWA / Lead Ads → Atendimento Cockpit (WhatsApp Dual Engine: WABA + WAHA) → Qualificação & Funil/Agenda → Cobrança Pix Nativa (AbacatePay) → Fechamento com Prova → Feedback CAPI com Recibo`.
 
 ### Decisões Arquiteturais Fundamentais (ADRs)
 - [ADR-001: Fronteira e Escopo Fechado do MVP](docs/adr/ADR-001-mvp-frontier.md)
@@ -66,6 +66,19 @@ CHAT-SALES/
 │   ├── database/            # Client PostgreSQL, migrations SQL e RLS
 │   └── observability/       # Pino logger com redaction de segredos
 ├── docs/
-│   └── adr/                 # ADR-001 a ADR-004 formalizados
+│   ├── adr/                 # ADR-001 a ADR-004 formalizados
+│   └── tools/               # Catálogo e Manual de Ferramentas (Diataxis)
 └── docker-compose.yml       # Docker Lab hermético isolado
 ```
+
+---
+
+## 5. Documentação de Ferramentas & Motores (Diataxis)
+
+Acesse o manual completo e auditado de ferramentas:
+- 📖 **[Catálogo de Ferramentas Soberanas](docs/tools/README.md)**
+  - 🚀 [Tutorial: Do Zero à Primeira Venda](docs/tools/tutorial-tools-quickstart.md)
+  - 🛠️ [How-To: Guias Práticos de Operação](docs/tools/howto-tools-operations.md)
+  - 📋 [Reference: Especificações de APIs e Schemas](docs/tools/reference-tools-catalog.md)
+  - 🧠 [Explanation: Decisões Arquiteturais e Racional de Design](docs/tools/explanation-tools-architecture.md)
+

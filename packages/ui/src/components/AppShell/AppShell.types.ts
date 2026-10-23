@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 export interface NavItem {
   id: string;
   label: string;
+  mobileLabel?: string;
   icon: ReactNode;
   badge?: string | number;
   active?: boolean;
@@ -27,6 +28,7 @@ export interface AppShellProps {
   activeWorkspace?: WorkspaceItem | null;
   onWorkspaceSelect?: (workspace: WorkspaceItem) => void;
   isLoadingWorkspaces?: boolean;
+  onCreateWorkspaceClick?: () => void;
 
   // User & Status
   userEmail?: string;
@@ -44,6 +46,7 @@ export interface AppShellProps {
   headerActions?: ReactNode;
   noPadding?: boolean;
   hideMobileNav?: boolean;
+  onSearchClick?: () => void;
 
   // Sidebar collapsible state
   sidebarCollapsed?: boolean;

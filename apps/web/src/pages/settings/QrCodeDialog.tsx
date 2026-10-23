@@ -1,75 +1,41 @@
-import type { FC } from "react";
-import { Dialog, Button, LoadingState } from "@sos-sales/ui";
-import { AlertCircle } from "lucide-react";
-
-interface QrCodeDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  channelName: string;
-  qrDataUri?: string;
-  qrText?: string;
-  isLoading: boolean;
-  error?: string;
-}
-
-export const QrCodeDialog: FC<QrCodeDialogProps> = ({
-  isOpen,
-  onClose,
-  channelName,
-  qrDataUri,
-  isLoading,
-  error,
-}) => {
-  return (
-    <Dialog
-      isOpen={isOpen}
-      onClose={onClose}
-      title={`Escanear QR Code — ${channelName}`}
-      description="Abra o WhatsApp no seu smartphone, vá em Aparelhos Conectados e aponte a câmera para o código abaixo."
-    >
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", padding: "12px 0" }}>
-        {isLoading ? (
-          <div style={{ padding: "32px 0", textAlign: "center" }}>
-            <LoadingState variant="spinner" text="Gerando sessão e QR Code seguro..." />
-          </div>
-        ) : error ? (
-          <div
-            role="alert"
-            style={{
-              padding: "12px",
-              backgroundColor: "var(--color-danger-subtle)",
-              color: "var(--color-danger)",
-              borderRadius: "var(--radius-md)",
-              fontSize: "var(--font-size-sm)",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              width: "100%",
-            }}
-          >
-            <AlertCircle size={16} />
-            <span>{error}</span>
-          </div>
-        ) : qrDataUri ? (
-          <div style={{ padding: "12px", backgroundColor: "var(--bg-surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-default)" }}>
-            <img
-              src={qrDataUri}
-              alt="QR Code de Conexão WhatsApp"
-              style={{ width: "240px", height: "240px", display: "block" }}
-            />
-          </div>
-        ) : (
-          <div style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: "var(--font-size-sm)" }}>
-            QR Code indisponível ou instância já autenticada.
-          </div>
-        )}
-
-        <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
-          <Button size="sm" variant="secondary" onClick={onClose}>
-            Fechar
-          </Button>
-        </div>
-      </div>
-    </Dialog>
-  );
+import {useEffect,useState,type FC,type CSSProperties} from "react";
+import {Dialog,Button,LoadingState,Alert,useBreakpoint} from "@sos-sales/ui";
+import type {WahaConnectionState} from "../../services/api-client";
+import {canReviewQrAction,type QrReviewAction} from "./channel-qr-actions";
+interface Props {isOpen:boolean;onClose:()=>void;channelName:string;qrDataUri?:string;isLoading:boolean;isStarting?:boolean;isRefreshing?:boolean;isChecking?:boolean;alreadyConnected?:boolean;error?:string;onRefresh?:()=>void;connection?:WahaConnectionState;reviewAction?:QrReviewAction;isActing?:boolean;actionNotice?:string;pollingPaused?:boolean;onActionRequest?:(action:QrReviewAction)=>void;onActionConfirm?:()=>void;onCancelReview?:()=>void;}
+const labels:Record<QrReviewAction,string>={create:'Criar sessão',start:'Iniciar sessão',restart:'Reiniciar sessão',activate:'Confirmar uso desta sessão',review:'Revisar resultado não confirmado'};
+export const QrCodeDialog:FC<Props>=({isOpen,onClose,channelName,qrDataUri,isLoading,isStarting,isRefreshing,isChecking,alreadyConnected,error,onRefresh,connection,reviewAction,isActing,actionNotice,pollingPaused,onActionRequest,onActionConfirm,onCancelReview})=>{
+ const {isMobile}=useBreakpoint();
+ const mobileActionStyle:CSSProperties|undefined=isMobile?{width:'100%',height:'auto',minHeight:44,whiteSpace:'normal',lineHeight:1.35,overflowWrap:'anywhere'}:undefined;
+ const [acknowledged,setAcknowledged]=useState(false);useEffect(()=>setAcknowledged(false),[isOpen,reviewAction,channelName,connection?.revision,connection?.sessionName,connection?.verifiedPhoneNumber,connection?.operation?.id]);
+ const simulated=connection?.isSimulated===true,busy=Boolean(isLoading||isRefreshing||isChecking||isActing),operation=connection?.operation;
+ const allowed=(action:QrReviewAction)=>!busy&&canReviewQrAction(connection?{...connection,error:error||connection.error,pollingPaused,isLoading,isRefreshing,isActing}:undefined,action);
+ return <Dialog isOpen={isOpen} onClose={onClose} title={`Conexão WhatsApp — ${channelName}`} description="Consulte a sessão, confira o número e revise qualquer ação antes de executar.">
+  <div style={{display:'flex',flexDirection:'column',gap:16,overflowWrap:'anywhere'}}>
+   {connection?.sessionName&&<p style={{margin:0}}>Sessão configurada: <strong>{connection.sessionName}</strong></p>}
+   {simulated?<Alert variant="warning" title="SIMULAÇÃO — sem conexão real">Este exemplo não conecta um aparelho, não ativa o canal e não comprova envio ou recebimento.</Alert>:null}
+   {actionNotice&&<Alert variant="info" title="Resultado da ação">{actionNotice}</Alert>}
+   {reviewAction?<>
+    <h3 style={{margin:0,fontSize:16}}>{labels[reviewAction]}</h3>
+    <p style={{margin:0}}>{reviewAction==='activate'?`O número ${connection?.verifiedPhoneNumber||'ainda não confirmado'} será usado por este canal no SOS Vendas. Recepção, envios e IA seguirão as permissões já aprovadas da empresa.`:reviewAction==='review'?'O estado será consultado novamente. A execução anterior continuará sem confirmação; reconhecer a pendência permite escolher outra ação depois, sem repeti-la agora.':reviewAction==='restart'?'A sessão será reiniciada no provedor. O uso local fica pausado; pode ser necessário ler um novo QR Code e confirmar a identidade novamente. Uma chamada já em andamento pode concluir.':reviewAction==='create'?'Uma sessão exclusiva será criada e iniciada no WAHA, com o webhook protegido deste canal. Depois, leia o QR Code e confirme o número.':'A sessão configurada será iniciada no WAHA. Isso não ativa o atendimento local automaticamente. Confira o número quando o provedor estiver pronto.'}</p>
+    <label style={{display:'flex',gap:10,alignItems:'flex-start'}}><input type="checkbox" checked={acknowledged} disabled={isActing} onChange={event=>setAcknowledged(event.target.checked)} style={{width:18,height:18,flexShrink:0,marginTop:2}}/><span>Conferi o canal, a sessão e as consequências desta ação.</span></label>
+    <div style={{display:'flex',gap:8,justifyContent:'flex-end',flexWrap:'wrap',flexDirection:isMobile?'column':'row'}}><Button style={mobileActionStyle} variant="secondary" disabled={isActing} onClick={onCancelReview}>Voltar à consulta</Button><Button style={mobileActionStyle} disabled={!acknowledged||!allowed(reviewAction)} loading={isActing} onClick={onActionConfirm}>Confirmar ação</Button></div>
+   </>:<>
+    {isLoading?<LoadingState variant="spinner" text="Consultando a sessão, sem iniciar ou reiniciar…"/>:error?<Alert variant="danger" title="Não foi possível consultar">{error}</Alert>:alreadyConnected&&!simulated?<Alert variant="success" title="Sessão e identidade conferidas">Este canal está ativo no SOS Vendas. Isso não comprova envio, recebimento ou a qualidade do atendimento.</Alert>:connection?.requiresConfirmation?<Alert variant="info" title="Confira o número antes de ativar"><strong>{connection.verifiedPhoneNumber}</strong><p>A sessão está pronta no provedor e aguarda sua confirmação de uso no SOS Vendas.</p></Alert>:!simulated?<p style={{margin:0}}>{connection?.message||(isStarting?'O provedor está inicializando. Você pode fechar e consultar novamente depois.':'Confira o estado da sessão para continuar.')}</p>:null}
+    {qrDataUri&&!simulated&&!pollingPaused&&!error&&connection?.success!==false&&<div style={{alignSelf:'center',background:'#fff',padding:16,border:'1px solid var(--border-default)',borderRadius:12,maxWidth:'100%',boxSizing:'border-box'}}><img src={qrDataUri} alt="QR Code da sessão WhatsApp configurada" style={{display:'block',width:'min(240px,100%)',height:'auto',aspectRatio:'1'}}/><p style={{fontSize:12,color:'#334155',marginBottom:0}}>Leia em WhatsApp → Aparelhos conectados. Após a leitura, confira o número nesta tela.</p></div>}
+    {pollingPaused&&<Alert variant="warning" title="Consulta automática pausada">Resolva a pendência indicada e atualize a consulta. Se houver QR Code disponível, uma imagem atual será exibida. Nenhuma sessão foi reiniciada.</Alert>}
+    {operation&&<Alert variant={operation.state==='uncertain'?'warning':'info'} title={operation.state==='uncertain'?'Resultado não confirmado':'Ação em andamento'}>{operation.state==='uncertain'?'Não repetiremos a ação automaticamente. Consulte o estado e reconheça a pendência antes de outra decisão.':'Aguarde a conclusão ou atualize a consulta. Reabrir esta janela não repete o comando.'}</Alert>}
+    {!simulated&&onActionRequest&&<div style={{display:'flex',gap:8,flexWrap:'wrap',flexDirection:isMobile?'column':'row'}}>
+     {connection?.status==='NOT_FOUND'&&<Button style={mobileActionStyle} disabled={!allowed('create')} onClick={()=>onActionRequest('create')}>Criar sessão</Button>}
+     {connection?.status==='NOT_FOUND'&&!connection.canCreate&&<p>O responsável técnico precisa concluir a configuração protegida do webhook antes de criar esta sessão.</p>}
+     {['STOPPED','FAILED'].includes(connection?.status||'')&&<Button style={mobileActionStyle} disabled={!allowed('start')} onClick={()=>onActionRequest('start')}>Iniciar sessão</Button>}
+     {connection?.revision&&connection?.status!=='NOT_FOUND'&&<Button style={mobileActionStyle} variant="secondary" disabled={!allowed('restart')} onClick={()=>onActionRequest('restart')}>Reiniciar sessão</Button>}
+     {connection?.requiresConfirmation&&<Button style={mobileActionStyle} disabled={!allowed('activate')} onClick={()=>onActionRequest('activate')}>Confirmar uso desta sessão</Button>}
+     {operation?.state==='uncertain'&&<Button style={mobileActionStyle} variant="secondary" disabled={!allowed('review')} onClick={()=>onActionRequest('review')}>Revisar resultado não confirmado</Button>}
+    </div>}
+   </>}
+   {isActing&&<p role="status">Aguardando o provedor. Fechar esta janela não cancela uma ação já enviada.</p>}
+   <div style={{display:'flex',gap:8,justifyContent:'flex-end',flexWrap:'wrap',flexDirection:isMobile?'column':'row'}}>{!reviewAction&&onRefresh&&<Button style={mobileActionStyle} variant="secondary" disabled={busy} loading={isRefreshing} onClick={onRefresh}>Atualizar consulta</Button>}<Button style={mobileActionStyle} variant="secondary" onClick={onClose}>Fechar</Button></div>
+  </div>
+ </Dialog>;
 };

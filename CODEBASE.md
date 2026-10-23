@@ -1,8 +1,8 @@
-# CODEBASE.md — SOS Sales V3 (Greenfield Sovereign Architecture)
+# CODEBASE.md — SOS Vendas V3 (Greenfield Sovereign Architecture)
 
-> MCT OS v2.0 | Francisco Rios | MCT LTDA | Chapecó, BR  
+> MCT OS v2.0 | Francisco Rios | 69.553.990 FRANCISCO TAVEIRA RIOS (CNPJ: 69.553.990/0001-91) | MCT LTDA | Chapecó, SC  
 > Filosofia: Poder invisível, simplicidade visível. Truth in Data.  
-> Última atualização: 29 de setembro de 2026 (Meta CAPI v26.0 Business Messaging & CTWA Traversal)
+> Última atualização: 21 de outubro de 2026 (SOS Vendas: Transição de Marca, AbacatePay v2, Resolução @lid WAHA, Arquitetura Modular NFS-e e auditoria da biblioteca de modelos)
 
 ---
 
@@ -112,6 +112,23 @@
 - **Garantia Global Zero-Network:** Interceptor HTTP instalado nos testes de integração do worker bloqueia qualquer tentativa de chamada para `graph.facebook.com` ou redes externas com `FAIL_CLOSED_NETWORK_VIOLATION`. Testes executam exclusivamente contra mock servers locais (`127.0.0.1`).
 - **Códigos Canônicos de Erro:** Allowlist estrita de 19 códigos canônicos (`CAPI_ERROR_CODES`), prevenindo vazamento de stack traces ou payloads externos.
 
+### 3.9 Gateway AbacatePay & Conciliação Transacional de Pagamentos (Migração 064)
+- **Topologia de Pagamentos Híbrida:**
+  - Suporte concomitante para Pix BACEN EMV nativo (`pix_charges`) e cobranças via Gateway AbacatePay para links de checkout transparentes.
+  - **Schema & Migração 064:** Campos de workspace (`abacatepay_api_key`, `abacatepay_webhook_secret`, `abacatepay_enabled`) e campos de rastreabilidade em `pix_charges` (`gateway_provider`, `gateway_charge_id`, `gateway_checkout_url`).
+- **Segurança de Webhook & HMAC Timing-Safe:**
+  - Verificação de assinatura no cabeçalho `AbacatePay-Signature` (`t=timestamp,v1=hash`) via `crypto.timingSafeEqual` com prevenção de replay attacks (janela de tolerância de 300 segundos).
+  - Rotas expostas: `POST /v1/webhooks/abacatepay/:workspaceId` (escopada por tenant) e `POST /v1/webhooks/abacatepay` (resolução dinâmica por metadados de webhook).
+- **Ciclo Transacional de Fechamento (`billing.paid`):**
+  - Implementado em `apps/api/src/services/abacatepay.service.ts`:
+    1. Transição de `pix_charges.status = 'PAID'` e timestamp `paid_at`.
+    2. Transição automática de propostas comerciais associadas (`proposals.status = 'accepted'`).
+    3. Registro de desfecho comercial em `commercial_outcomes`.
+    4. Enriquecimento de dados fiscais via BrasilAPI (quando CPF/CNPJ presente).
+    5. Disparo transacional de confirmação ao cliente via fila `outbound_commands` no WhatsApp.
+- **Gestão no Cockpit Web:**
+  - Painel administrativo em [PixSection.tsx](file:///Users/franciscotaveira.ads/Downloads/FT/CHAT-SALES/apps/web/src/pages/settings/PixSection.tsx) integrado com `api-client.ts` para configuração de credenciais, toggle ativo/inativo e cópia de webhook com 1 clique.
+
 ---
 
 ## 4. Estado de Homologação e Limites Operacionais
@@ -123,8 +140,9 @@
   - Fail-closed entre canais (zero fallback entre WAHA e Meta WABA).
   - Sanitização de erros allowlisted e ausência absoluta de PII telefônica em logs operacionais.
   - Reconciliação governada de timeouts ambíguos via `provider_delivery_events`.
-  - **Produção Ativa (VPS 179.197.72.221 - Chapecó/BR):**
-  - **Absorção de Dados V2 -> V3:** 100% concluída com zero data loss.
+  - **Produção (Migração para Hostinger KVM 4 — 4 vCPUs / 16 GB RAM):**
+    - Antiga VPS `179.197.72.221` descomissionada e destruída. Backups integrais preservados em `emergency_backups/`.
+  - **Absorção de Dados V2 -> V3:** 100% concluída com zero data loss (dump encriptado de 23 MB validado localmente).
     - 30 Workspaces consolidados (incluindo Haven Escovaria, SOS Sales Oficial, Sora Ritual Spa, Geral e Chapecó Matriz).
     - 759 Contatos com normalização E.164 estrita.
     - 851 Conversas Comerciais (`commercial_threads`).
@@ -138,7 +156,7 @@
     - `sos-sales-postgres`: PostgreSQL 16 Alpine com RLS estrito e roles segregadas.
     - `sos-sales-redis`: Redis 7 Alpine com caching e rate limiting.
     - `sos-sales-waha`: WAHA Core 2026.8.1 (Chromium com sessões ativas preservadas, `default` +554988447562 em status `WORKING`).
-    - `sos-sales-caddy`: Reverse proxy TLS automático gerenciando `crm.iaparavendas.tech` e `iaparavendas.tech`.
+    - `sos-sales-caddy`: Reverse proxy TLS automático gerenciando `chat.automatizaprocessos.tech`, `automacao.automatizaprocessos.tech` e `automatizaprocessos.tech`.
 
 ---
 
@@ -164,4 +182,420 @@
   ```bash
   ALLOW_TEST_DB_ADMIN_OPERATIONS=true pnpm ci:gate
   ```
+
+---
+
+## 6. Integração com a Biblioteca Soberana de Workflows (n8n Brain)
+
+A infraestrutura de automações externas da MCT LTDA está centralizada em um diretório local de workflows (fora deste monorepo, path configurado por ambiente/operador):
+
+- **Acervo Auditado:** 13.053 JSONs brutos, 4.715 workflows n8n classificados e traduzidos em PT-BR (`00 - Catalogo/workflows-completo-4715-ptbr.csv`).
+- **Top 256 Homologados:** Seleção prioritária íntegra (`workflows-256-selecionados-ptbr.csv`) com links simbólicos em `01 - Selecionados para revisao/`.
+- **Engenharia Reversa de Órfãos:** 763 blueprints estruturais resgatados de fluxos com nós rompidos do repositório Zie619, minerando 512 prompts de IA e 477 snippets de JavaScript (`blueprints-engenharia-reversa-ptbr.csv`).
+- **Resgate e Sanitização de Quarentena:** 18 workflows que continham credenciais esquecidas de terceiros (tokens Apify, GitLab, Perplexity, Google API e chaves privadas RSA do Meta WhatsApp Flows) foram 100% desinfetados, validados e salvos como JSONs prontos para teste na subpasta `01 - Selecionados para revisao/11 - Resgatados da Quarentena/`.
+- **Fronteira Arquitetural (P0):** Workflows n8n operam como laboratório de apoio, scrapers auxiliares e esteiras de prototipagem rápida. Toda lógica comercial transacional de alta confiabilidade, mensageria CTWA, ingestão de webhooks e outbox assíncrono pertencem estritamente a este monorepo SOS Sales.
+
+---
+
+## 7. Motor de Inteligência Artificial Soberano (Multi-Provider & Anti-Alucinação)
+
+### 7.1 Arquitetura Dual-Engine (`SovereignLlmClient`)
+- **Provedor Padrão:** **NVIDIA NIM** via `https://integrate.api.nvidia.com/v1/chat/completions`.
+  - Modelo Soberano Ativo: `nvidia/nemotron-3-super-120b-a12b` (substituição formal do `meta/llama-3.3-70b-instruct` descontinuado pela Nvidia em 26/08/2026).
+  - Modelos Alternativos Homologados: `nvidia/nemotron-3.5-lightning-30b-a3b` (ultrarrápido), `nvidia/llama-3.1-nemotron-70b-instruct` (factual).
+- **Provedor Alternativo:** **OpenRouter** via `https://openrouter.ai/api/v1/chat/completions`.
+  - Modelos Homologados: `anthropic/claude-3.5-sonnet` (alta precisão), `google/gemini-2.5-flash`, `deepseek/deepseek-chat`.
+  - Cabeçalhos de rastreabilidade obrigatórios: `HTTP-Referer: https://chat.automatizaprocessos.tech` e `X-Title: SOS Vendas Commercial Receptionist`.
+- **Governança de Credenciais por Workspace:**
+  - Colunas `ai_provider`, `ai_model`, `ai_api_key` em `public.workspaces`.
+  - Resolução hierárquica fail-closed: Chave customizada do tenant -> Chave de ambiente do servidor (`NVIDIA_API_KEY` / `OPENROUTER_API_KEY`).
+
+### 7.2 Camadas de Grounding Factual e Protocolo de Ignorância (Truth in Data)
+- O prompt do agente é gerado deterministicamente pelo `buildGroundedSystemPrompt` em 4 camadas imutáveis:
+  1. `<identidade_e_escopo>`: Nome, personalidade comercial e tom.
+  2. `<catalogo_oficial_de_produtos>`: Injeção direta de registros `public.products` (título, descrição, preço em centavos, categoria, badge).
+  3. `<regras_operacionais_e_faq>`: Horários, endereço, formas de pagamento, regras gerais e perguntas frequentes cadastradas no workspace.
+  4. `<protocolo_de_ignorancia_e_transbordo>`: Proibição estrita de suposições ou dados não ancorados. Se a informação solicitada pelo cliente não estiver no contexto, a IA emite a tag canônica `[TRANSBORDO_HUMANO: motivo estruturado]`.
+- O parser `parseAiResponse` extrai o texto limpo para o cliente e detecta automaticamente a intenção de transbordo, gravando `handoff_reason` e `handoff_at` na thread.
+
+### 7.3 Memória do Anúncio Meta (CTWA Hook Memory)
+- Eventos de entrada oriundos de Meta Ads (Click-to-WhatsApp) têm seus dados de anúncio (`headline`, `body`) extraídos em `inbox-processor` e persistidos em `commercial_journeys.ad_headline` e `ad_body`.
+- A camada `<origem_do_lead_anuncio_meta>` injeta o gancho original no contexto do agente, permitindo que a IA receba o lead alinhada com a oferta de anúncio específica que gerou o clique.
+
+### 7.4 Briefing no Cockpit e Simulador Dry-Run
+- **Cockpit Visual:**
+  - Mensagens da IA sinalizadas com badge `🤖 {agentName} (IA)`.
+  - Status `waiting_human` exibe card de briefing executivo com o motivo exato registrado pelo modelo e botão `[Assumir Conversa]`.
+- **Simulador Interativo:**
+  - Endpoint seguro `POST /v1/workspaces/:workspaceId/ai-agent/simulate`.
+  - Playground no frontend (`Configurações > IA`) com métricas ao vivo: latência em ms, produtos catalogados, validação de transbordo e visualização do balão de chat.
+
+---
+
+## 8. PIPELINE SOBERANO DE MÍDIA MULTIMODAL (ÁUDIO, VÍDEO, FOTOS E DOCUMENTOS)
+
+### 8.1 Ingestão e Normalização Agnóstica de Provedores
+- **Normalização WAHA (`WahaWebhookNormalizer`):**
+  - Processa tanto eventos `message` quanto `message.any`.
+  - Resolução de identidades WhatsApp LID (`@lid`) mapeando `_data.Info.SenderAlt` para o telefone real E.164.
+  - Inbound seguro: quando `payload.to` for nulo, resolve deterministicamente via `rawPayload.me.id` ou `me.jid`.
+  - Detecção estrita de `contentType`: áudios de voz PTT (`.oga`, `.opus`, `audio/ogg`), vídeos QuickTime/MP4 (`.qt`, `.mp4`), documentos (`.pdf`, `.docx`) e imagens (`.jpeg`, `.png`, `.webp`).
+
+### 8.2 Proxy de Streaming Seguro e Isolamento de Rede (`/media/proxy`)
+- **Arquitetura de Isolamento:** Os contêineres de engine (WAHA na porta 3000 interna) rodam isolados na rede Docker fechada e exigem chaves mestras (`x-api-key`). O navegador do cliente não tem acesso direto a essas portas internas nem pode injetar cabeçalhos em tags HTML `<audio>`, `<img>` ou `<video>`.
+- **Rota Unificada:** `GET /v1/workspaces/:workspaceId/media/proxy`
+  - Suporta `wahaPath` (para arquivos internos do WAHA) e `mediaId` (para Meta Graph API).
+  - Autenticação via header `Authorization: Bearer` ou query parameter `?token=` (validada pelo `auth.plugin.ts`).
+  - Suporte a cabeçalhos `Range: bytes` para busca/seek instantâneo de áudio e vídeo nos players nativos.
+  - Forwarding fiel de `Content-Type`, `Content-Length`, `Content-Range` e cache imutável `Cache-Control: public, max-age=86400, immutable`.
+- **Cockpit (`MessageBubble.tsx`):**
+  - Reescreve dinamicamente URLs legadas internas (`waha:3000/api/files/...`) para a rota autenticada `/media/proxy`.
+  - Renderização nativa: Player de áudio HTML5 com microfone e controle de reprodução, player de vídeo com controles e aspect ratio contido, card de documento com botão de download seguro e visualizador de imagem responsivo.
+
+---
+
+## 9. AUTENTICAÇÃO SOBERANA & GESTÃO DE EQUIPE MULTI-TENANT (MCT OS v2.0)
+
+### 9.1 Motor Criptográfico Nativo (Scrypt)
+- Implementado em `@sos-sales/auth` (`password-hasher.ts`):
+  - Formato serializado canônico: `scrypt:<salt_hex>:<hash_hex>`.
+  - Salt criptográfico pseudo-randômico de 16 bytes (`crypto.randomBytes`).
+  - Comparação estrita com tempo constante (`crypto.timingSafeEqual`) eliminando timing-attacks.
+  - Zero dependência externa de pacotes compilados (100% biblioteca padrão `node:crypto`).
+
+### 9.2 Endpoints de Autenticação e Multi-Tenancy
+- `POST /v1/auth/login`:
+  - Recebe `{ email, password, workspaceId? }`.
+  - Busca usuário por `LOWER(email)` e valida senha via `verifyPassword`.
+  - Resolve workspaces do usuário via função `SECURITY DEFINER` `getUserWorkspaces(user.id)`.
+  - Emite token JWT de 7 dias com payload assinado (`sub: user.id`, `email`, `role`, `workspace_id`).
+- `POST /v1/auth/switch-workspace`:
+  - Recebe `{ workspaceId }`.
+  - Valida se o usuário autenticado possui vínculo ativo naquele tenant.
+  - Emite novo JWT com escopo atualizado sem exigir reautenticação de senha.
+
+### 9.3 Gestão de Equipe & Acessos por Workspace
+- Rotas governadas sob isolamento RLS estrito:
+  - `GET /v1/workspaces/:workspaceId/members`: Lista membros do tenant ativo.
+  - `POST /v1/workspaces/:workspaceId/members`: Convida/cria membro com papel (`admin`, `manager`, `operator`) e senha inicial criptografada.
+  - `PATCH /v1/workspaces/:workspaceId/members/:memberId`: Altera cargo e/ou redefine senha.
+  - `DELETE /v1/workspaces/:workspaceId/members/:memberId`: Remove membro (com guarda contra exclusão do proprietário ou auto-exclusão).
+- **Cockpit Comercial (`SettingsPage.tsx` -> `TeamSection.tsx`):**
+  - Aba "Equipe & Acessos" com listagem visual de membros, badges de permissão, modal de cadastro com geração e cópia de senha em um clique, edição de perfil e confirmação de remoção.
+
+---
+
+## 10. BLINDAGEM OPERACIONAL SAAS & DISASTER RECOVERY (MCT OS v2.0)
+
+### 10.1 Perímetro de Segurança & WAF (`SecurityShield`)
+- Implementado em `apps/api/src/services/security-shield.ts` e ativado no hook `onRequest`:
+  - **WAF & Anti-Scanner:** Intercepta ferramentas ofensivas automatizadas (`sqlmap`, `nikto`, `masscan`, `dirbuster`, `nmap`) e sondagens de arquivos sensíveis (`/.env`, `/wp-login.php`, `/.git`, `/dump.sql`, path traversal `../`).
+  - **IP Auto-Jail:** Bloqueia imediatamente o IP do atacante por 15 minutos via chave volátil atômica no Redis (`sos:shield:jail:<ip>`), respondendo com `HTTP 403 Forbidden` e `Retry-After: 900`.
+  - **Anti-Brute-Force & Credential Stuffing:** Teto de 10 tentativas de login por minuto por IP e travamento de segurança da conta alvo após 5 falhas consecutivas de senha por 5 minutos.
+  - **Mitigação de Timing Attack / User Enumeration:** Execução de scrypt dummy em e-mails inexistentes para equiparar a latência de resposta a contas existentes.
+  - **Rate Limiting Global:** Cota de 120 requisições por minuto por IP em todos os endpoints `/v1/*` com injeção de cabeçalhos RFC 6585 (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`).
+  - **Cabeçalhos OWASP:** Injetados em todas as respostas pelo Fastify e Caddy (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`, e supressão do header `Server`).
+
+### 10.2 Motor de Backup & Recuperação de Desastres (RTO < 20 min / RPO < 24 h)
+- **Rotina Diária (`scripts/backup-database.sh`):**
+  - Executado diariamente às 03:00 AM via crontab do host.
+  - Executa `pg_dump` transacional do banco `sos_sales_v3` com o superuser `sos_user` (Bypass RLS habilitado).
+  - Compactação máxima `gzip -9` e encriptação simétrica militar AES-256-CBC com derivação PBKDF2 (`openssl`).
+  - Teste de integridade em memória do fluxo descriptografado antes de confirmar a gravação.
+  - Rotação automática retendo os últimos 7 dias em `/opt/sos-sales/backups/daily/`.
+- **Restauração Assistida (`scripts/restore-database.sh`):**
+  - Decodificação, teste de senha e injeção controlada de dump com trava de confirmação contra sobrescrita acidental.
+
+### 10.3 Watchdog de Auto-Cura & Higiene de Recursos
+- **Sentinela (`scripts/healthcheck-watchdog.sh`):**
+  - Executado a cada 5 minutos via crontab do host.
+  - Monitora `https://chat.automatizaprocessos.tech/ready` (validando conectividade de aplicação, banco Postgres e Redis).
+  - Auto-cura: em caso de 3 falhas consecutivas de probe, reinicia o container `chat-sales-api` automaticamente e registra log com timestamp em `/var/log/chat-sales-watchdog.log`.
+  - Alerta de capacidade: emite alerta crítico se o disco ultrapassar 85% de uso.
+- **Higiene de Disco e Logs:**
+  - Limite de logs em `docker-compose.prod.yml` fixado em `max-size: 20m` e `max-file: 3`.
+  - Limpeza semanal de cache de compilação do Docker aos domingos às 04:00 AM (`docker builder prune -f --filter "until=168h"`).
+
+---
+
+## 11. MOTOR DE DISPAROS EM MASSA, IMPORTADOR INTELIGENTE & FECHAMENTO PIX NA IA
+
+### 11.1 Importador de Planilhas & Sanitização E.164 Determinística
+- **Componente:** `BroadcastTemplateDialog.tsx`
+  - Suporte completo a planilhas `.csv`, `.xlsx` e `.xls` processadas client-side via biblioteca `xlsx`.
+  - Auto-detecção de colunas de telefone (`telefone`, `celular`, `phone`, `whatsapp`, `contato`) e nome (`nome`, `name`, `cliente`, `contato`).
+  - Fallback resiliente: caso o cabeçalho seja atípico, realiza varredura celular por expressão regular de dígitos telefônicos.
+  - Sanitizador `sanitizeBrazilianPhoneE164`:
+    - Remove caracteres não numéricos.
+    - Lida com prefixos nacionais (`55`) e discagem com zero (`049...`).
+    - Validação de DDDs válidos brasileiros (11 a 99).
+    - Inserção transparente do 9º dígito em números legados de 8 dígitos (`XX9XXXXXXXX`).
+    - Rejeição e descarte determinístico de números fixos (`+55XX[2-5]...`) e comprimentos inválidos.
+  - Painel de auditoria visual pré-envio exibindo contadores de **Válidos**, **Duplicados** e **Descartados**, com tabela de amostra dos primeiros 10 contatos.
+- **Inserção Segura no Backend:**
+  - `POST /v1/workspaces/:workspaceId/broadcasts` com `audience.type: "IMPORT_LIST"` e lista `importedContacts: Array<{ phoneE164, name? }>`.
+  - Inserção não-destrutiva via repositório `createOrGetContact` com `ON CONFLICT (workspace_id, phone_e164) DO UPDATE`, preservando integridade referencial, histórico de conversas e threads já existentes.
+
+### 11.2 Segmentação de Audiência Dinâmica & Smart Filters (`SMART_FILTER`)
+- **Filtros Nativos SQL sob RLS:**
+  - `NON_BUYERS`: Localiza contatos cadastrados que não possuem jornadas com estágio `won` e categoricamente não possuem cobranças Pix com status `PAID` em `public.pix_charges` (`Truth in Data`).
+  - `PIX_ABANDONED`: Localiza contatos com cobranças Pix expiradas ou pendentes (`status IN ('EXPIRED', 'PENDING')`) que nunca tiveram uma cobrança Pix paga (`status = 'PAID'`), viabilizando réguas automáticas de recuperação de carrinhos e cobranças abandonadas.
+  - `INACTIVE_30_DAYS`: Contatos sem atividade de mensagem (`messages`) ou proposta comercial nos últimos 30 dias.
+  - `CTWA_RESCUE`: Contatos originados de campanhas pagas do Meta Ads (`commercial_journeys.ad_headline IS NOT NULL` ou origem CTWA) que não converteram em vendas pagas.
+- **Endpoint de Contagem ao Vivo:**
+  - `GET /v1/workspaces/:workspaceId/broadcasts/audience-count`:
+  - Aceita query params `type`, `smartFilter`, `stage` e retorna `{ success: true, count: number }` de forma ultra-rápida, alimentando badges dinâmicos no modal antes do operador clicar em disparar.
+
+### 11.3 Fechamento Automático de Ofertas com Pix na IA (`<fechamento_comercial_pix>`)
+- **Camada no Prompt Grounding (`ai-grounding-prompt.builder.ts`):**
+  - Instrução explícita para o modelo: ao reconhecer intenção de compra ou aceitação de oferta ("quero", "manda o pix", "fechado"), responder confirmando o pedido e emitir a tag técnica `[OFFER_PIX: <productId>]`.
+  - O modelo é estritamente proibido de inventar chaves ou códigos Pix no texto (Truth in Data).
+- **Extração e Desacoplamento de Tags (`parseAiResponse`):**
+  - Regex aprimorada `/\[(?:OFFER_PIX|GERAR_PIX):\s*([^\]]+)\]/i` extrai o identificador do produto e higieniza o texto que vai para o WhatsApp do cliente.
+- **Emissão Transacional no Worker (`ai-receptionist.processor.ts`):**
+  - Busca o produto correspondente no catálogo homologado `public.products`.
+  - Chama `createPixCharge` do `@sos-sales/database` passando `workspaceId`, `threadId`, `contactId`, `productId`, `title`, `amountCents` e validade de 30 minutos.
+  - Consulta a chave Pix padrão do workspace (`workspaces.default_pix_key`) e gera o payload oficial BACEN EMV Copia e Cola com cálculo de CRC16-CCITT.
+  - Anexa o snippet formatado com código monoespaçado na mensagem que é enfileirada no Outbox transacional (`commercial_outbox_queue`).
+  - Fallback gracioso com log de auditoria: caso o workspace não possua chave cadastrada, a mensagem conversacional da IA segue normalmente para o cliente sem interromper a thread.
+
+### 11.4 Conciliação Pix em Tempo Real, Recibo Automático no WhatsApp & Cockpit Cashier
+- **Serviço de Notificação Transacional (`pix-notification.ts`):**
+  - Ao liquidar uma cobrança Pix (tanto na conferência manual de caixa quanto no webhook bancário via PSP), a função `enqueuePixConfirmationMessage` localiza a instância do canal e o telefone do contato e insere atomicamente:
+    1. Uma mensagem outbound formatada no WhatsApp (`🎉 *PAGAMENTO CONFIRMADO!* ...`) em `public.messages` com `metadata.source = 'pix_confirmation'` e `chargeId`.
+    2. Um comando no Outbox transacional (`public.outbound_commands`) com status `'pending'` e chave de idempotência `pix-confirm-${charge.id}`.
+- **Cockpit Cashier & Histórico de Cobranças (`PixDrawer.tsx`):**
+  - Navegação entre "Cobranças da Conversa" e "Nova Cobrança" com `SegmentedControl`.
+  - Visualização em tempo real das cobranças geradas para o contato com badges de status (`PENDING`, `PAID`, `EXPIRED`), valor formatado e data/hora.
+  - Ação de Caixa de 1 clique: botão "Confirmar Recebimento (Caixa)" para cobranças pendentes, chamando `POST /v1/workspaces/:workspaceId/pix-charges/:chargeId/confirm-payment`, atualizando o status na interface e disparando o recibo no WhatsApp.
+  - Copiar Chave Copia e Cola e visualizador de QR Code sob demanda.
+- **Identificação Visual na Mensagem (`MessageBubble.tsx`):**
+  - Mensagens com `metadata.source === 'pix_confirmation'` são renderizadas com destaque esmeralda e badge "🎉 Recibo Pix Confirmado".
+  - Mensagens geradas com cobrança Pix exibem badge informativo "⚡ Cobrança Pix Gerada".
+
+### 11.5 Atribuição de Vendas Pix em Campanhas, Funil Comercial & Campeã A/B
+- **Agregação e Atribuição Financeira em Tempo Real (`broadcasts.routes.ts`):**
+  - `GET /v1/workspaces/:workspaceId/broadcasts/campaigns`:
+  - Cruza `broadcast_recipients` com `public.pix_charges` (`WHERE pc.status = 'PAID' AND pc.paid_at >= r.sent_at`), apurando metricas por campanha e por variante:
+    - `pix_sales_count`: Quantidade de vendas Pix convertidas pelo disparo.
+    - `pix_sales_cents`: Faturamento monetário total atribuído à campanha.
+    - `conversionRate`: Taxa de conversão percentual de vendas sobre destinatários alcançados.
+    - `averageTicketCents`: Ticket médio real das conversões.
+- **Determinação de Variante Vencedora A/B por Receita Comercial:**
+  - A variante que obtiver maior receita (`salesCents`) é coroada vencedora com o selo `🏆 Campeã Comercial`.
+  - Em caso de empate de faturamento, o desempate segue determinístico por taxa de conversão (`conversionRate`), respostas (`replyCount`) e aberturas (`readCount`).
+- **Índices de Performance Criados (`035_broadcast_sales_attribution_indexes.sql`):**
+  - `idx_broadcast_recipients_contact_camp`: `(contact_id, campaign_id, sent_at)` sob `sos_sales_v3`.
+  - `idx_pix_charges_contact_paid`: `(contact_id, status, paid_at)` parcial para status `'PAID'`.
+- **Telemetria no Frontend (`CampaignsList.tsx`):**
+  - KPI de topo: "Faturamento Pix" com valor monetário em R$ e badge de volume de vendas.
+  - Funil de Conversão: 6ª etapa "6. Vendas Pix" com percentual de conversão e badge de volume.
+  - Comparativo A/B Lado a Lado: Exibição de Faturamento Pix, Vendas e Taxa por variante com badge `🏆 Campeã Comercial`.
+
+---
+
+## 12. ARQUITETURA META WAME 2026, OTIMIZADOR DE CUSTOS WABA & WYSIWYG WHATSAPP
+
+### 12.1 Arquitetura WAME (WhatsApp Account Model Evolution — Migration 029)
+- **Desacoplamento de Ativos no Meta Business Portfolio:**
+  - Migração de WABA IDs monolíticos para o modelo WAME:
+    - `channel_instances.waac_id`: Identificador do contêiner WhatsApp Assets & Accounts.
+    - `channel_instances.pma_id`: Phone Number Management Asset, desacoplando o número como um ativo portável entre Business Portfolios sem perda de qualidade ou aprovação de templates.
+    - `channel_instances.business_portfolio_id`: Identificador corporativo da organização dona do ativo.
+- **Identidade Privada por BSUID (Business-Scoped User ID) & Usernames:**
+  - Alteração na tabela `public.contacts`: `phone_e164` torna-se `nullable`.
+  - Restrição `chk_contacts_identity` garantindo pelo menos uma âncora de identidade: `phone_e164 IS NOT NULL OR bsuid IS NOT NULL OR username IS NOT NULL`.
+  - Índices parciais únicos por workspace: `uq_contacts_workspace_bsuid` e `uq_contacts_workspace_username`.
+  - No `waba-normalizer.ts` e `inbox-processor.ts`, resolução idempotente com `ON CONFLICT (workspace_id, bsuid)` ou `ON CONFLICT (workspace_id, phone_e164)`.
+- **Janela FEP 7-Day Window (168 Horas — Free Entry Point):**
+  - Campanhas originadas por Click-to-WhatsApp Ads (`ctwa_meta`) recebem isenção integral de tarifas de conversação da Meta por 168 horas completas.
+  - `commercial_journeys.fep_expires_at = clock_timestamp() + INTERVAL '7 days'`.
+  - Visualização no cockpit (`ConversationHeader.tsx`) da data final registrada para a origem do anúncio. O prazo interno de sete dias não comprova isenção tarifária ou elegibilidade Meta.
+- **Deep Linking Soberano `wa.me` (`ChannelsSection.tsx`):**
+  - Geração e cópia de URLs canônicas `https://wa.me/<e164>?text=<pre-filled-intent>` com sanitização de caracteres e acionamento nativo em mobile ou desktop sem exigir cadastro prévio do número na agenda do lead.
+
+### 12.2 Classificação e autoria de templates WABA
+- `CreateTemplateDialog.tsx` separa finalidade transacional legítima de conteúdo de marketing e pede contexto real para conteúdo transacional.
+- O gerador (`templates.routes.ts`) orienta a escolher Marketing quando não houver finalidade operacional/transacional genuína. A categoria e a aprovação finais dependem da Meta; o sistema não garante aprovação.
+- Não usar percentuais fixos de economia, preços por categoria ou “janelas grátis” sem validação da tabela vigente, do país, do tipo de conta e do canal. O identificador legado `UTILITY_TROJAN` não deve ser interpretado como autorização para disfarçar marketing como utilidade.
+
+### 12.3 Pré-visualização WYSIWYG Realista e Mapeamento Automático
+- **Interface Realista do WhatsApp (`BroadcastTemplateDialog.tsx`):**
+  - Card de pré-visualização fiel com simulação do contato "Francisco", bolha verde de mensagem com horário de entrega, tiques duplos e renderização de botões interativos (Quick Reply e Call to Action).
+  - Indicador de economia e badge da categoria do template (Utilidade vs Marketing).
+- **Mapeamento de Variáveis Sem Fricção:**
+  - Auto-detecção de `{{1}}` para o primeiro nome do lead com card verde de auto-mapeamento: `[👤 Nome do Contato (Automático) • Auto 100%]`.
+  - Disparo de broadcast em lote (`broadcasts.routes.ts`) monta ordenadamente os `bodyParameters` da Meta Cloud API com fallback gracioso para o primeiro nome sanitizado.
+- **Cobertura de Testes Automatizados:**
+  - 35/35 testes unitários validados no Vitest (`phone-and-spreadsheet-sanitizer.test.ts`), cobrindo sanitização telefônica brasileira, parsing de planilhas e integridade de variáveis.
+
+---
+
+## 13. HARDENING ANTI-BAN, INTEGRAÇÕES EXTERNAS & COMMAND PALETTE (ITERATION 2.7)
+
+### 13.1 Interceptador Anti-Ban de Opt-Out (`InboxProcessor`)
+- **Conformidade Estrita com LGPD e Políticas Meta WhatsApp:**
+  - Detecção nativa em `apps/worker/src/processors/inbox-processor.ts` de intenções de cancelamento ou saída através de regex normalizado: `\b(sair|pare|parar|stop|cancelar|descadastrar|remover|nao quero|não quero)\b`.
+  - Ao detectar o opt-out:
+    - O contato é imediatamente marcado com `opt_out = true` no banco.
+    - Comandos de saída pendentes ou agendados para este contato no outbox são abortados.
+    - A IA recepcionista e os disparos em lote (`broadcasts`) ignoram o lead estritamente, prevenindo denúncias de spam ou bloqueios de chip/WABA.
+  - Cobertura de testes unitários herméticos em `apps/worker/src/__tests__/opt-out-detection.test.ts`.
+
+### 13.2 Adaptador de Webhook PSP Cakto (`cakto-webhook.routes.ts`)
+- **Baixa Automática e Conciliação Multicanal:**
+  - Endpoint público autenticado `/v1/webhooks/cakto` no Fastify Ingress (`apps/api/src/routes/cakto-webhook.routes.ts`).
+  - Suporte a eventos de status: `purchase_approved`, `pix_generated`, `refund_approved`, `chargeback`.
+  - Tratamento transacional sob RLS com idempotência por `transaction_id`:
+    - Baixa automática de propostas comerciais (`commercial_proposals`) associadas ao lead.
+    - Atualização do estágio na jornada comercial para `WON` e transição do funil.
+    - Notificação em tempo real no WhatsApp com confirmação do pagamento e envio de recibo.
+
+### 13.3 Pipeline de Transcrição Whisper STT (`whisper-transcriber.ts`)
+- **Ingestão Transparente de Áudios de WhatsApp:**
+  - Módulo soberano em `apps/worker/src/services/whisper-transcriber.ts`.
+  - Ao receber mensagem com `mediaType === 'audio'` ou `ptt === true` (áudio de voz do WhatsApp via WAHA ou Meta WABA):
+    - O worker faz o download seguro via SSRF-shield.
+    - Transcreve o áudio para texto em português via OpenAI Whisper API (`model: whisper-1`).
+    - O texto transcrito é injetado no corpo da mensagem da conversa e repassado ao `AiReceptionistProcessor`.
+    - A IA responde contextualizada com o áudio falado pelo lead sem qualquer fricção operacional.
+
+### 13.4 Command Palette Global Soberana (`⌘K` / `Ctrl+K`)
+- **Navegação & Busca Unificada em Tempo Real (`CommandPalette.tsx`):**
+  - Componente de design system em `packages/ui/src/components/CommandPalette/CommandPalette.tsx`.
+  - Atalho global `⌘K` (Mac) e `Ctrl+K` (Linux/Windows) integrado no `AppShell` e `Header.tsx`.
+  - Busca federada no cliente com indexação de:
+    - **Contatos & Conversas Recentes:** Busca por nome, telefone e última mensagem.
+    - **Campanhas de Disparo:** Acesso imediato às métricas e histórico.
+    - **Catálogo de Produtos & Ofertas:** Busca instantânea por título e preço formatado.
+    - **Navegação Rápida:** Troca entre módulos (Cockpit, Broadcasts, Catálogo, Radar, Configurações).
+    - **Filtros Rápidos do Cockpit:** Atalhos para "Aguardando Humano", "Não Lidas" e "Novos Leads".
+  - Testes unitários com renderização e acessibilidade em `packages/ui/src/__tests__/command-palette.test.tsx`.
+
+### 13.5 Onboarding Concierge & Provisionamento 1-Clique de Novas Empresas (`POST /v1/workspaces` & `CreateWorkspaceModal.tsx`)
+- **Endpoint Transacional de Provisionamento (`POST /v1/workspaces`):**
+  - Protegido por autenticação JWT e verificação de privilégio RBAC (`role: 'owner'`).
+  - Execução transacional atômica no PostgreSQL 16:
+    - Criação de organização com slug derivado e saneado.
+    - Criação de workspace com fuso horário `America/Sao_Paulo`, moeda `BRL` e isolamento RLS ativo.
+    - Hashing de senha forte via `hashPassword()` (scrypt nativo com salt criptográfico).
+    - Criação/vínculo do novo usuário proprietário (`role: 'owner'`).
+    - Vínculo automático do operador administrador (Francisco) também como `owner` na nova empresa, permitindo alternância instantânea de contexto no cockpit para suporte operacional concierge.
+- **Interface Visual de Provisionamento (`CreateWorkspaceModal.tsx`):**
+  - Modal integrado ao `AppShell` da interface web, disparado pelo botão `+ Criar Nova Empresa` no seletor de organizações do header e pelo atalho do Command Palette (`⌘K`).
+  - Formulário com campos: Nome da Empresa, Nome do Responsável, E-mail do Administrador e Senha Inicial (com gerador de senha aleatória segura em 1 clique).
+  - Tela de sucesso com:
+    - Bloco de mensagem de boas-vindas pré-formatada para WhatsApp pronta para envio em 1 clique com URL de acesso, login e senha.
+    - Botão de comutação imediata ("Entrar nesta Empresa Agora"), trocando o workspace ativo no `localStorage` e recarregando o cockpit.
+  - Cobertura de testes unitários em `apps/web/src/__tests__/create-workspace-modal.test.tsx`.
+
+### 13.6 Auto-Heal de Sessões WAHA, Resiliência de Layouts no Cockpit & Topologia Dual-Push Git (11 de outubro de 2026)
+- **Auto-Heal e Pré-validação de Sessão WAHA (`channels.routes.ts`):**
+  - Rota `POST /v1/workspaces/:workspaceId/channels/:channelId/sync` aprimorada para verificar o estado da sessão no motor WAHA (`/api/sessions/:session`) antes de chamar a sincronização de conversas.
+  - Se a sessão estiver `STOPPED`, o backend dispara tentativa de inicialização automática (`/api/sessions/start`). Se a sessão demandar pareamento por QR Code (`SCAN_QR_CODE`), o canal é marcado como `pairing` e o backend retorna status amigável, prevenindo exceções brutas `502 Bad Gateway / 422 Unprocessable Entity`.
+  - Mapeamento das instâncias soberanas ativas no PostgreSQL 16:
+    - SOS Sales (`11111111-1111-1111-1111-111111111111`): Sessão `plx-documentos` (`+554988447562`, 216 threads, 7.141 mensagens).
+    - Haven Escovaria (`22222222-2222-2222-2222-222222222222`): Sessão `haven` (`+554988370054`, 671 threads, 9.527 mensagens).
+- **Contenção Estrita de Layout no Cockpit & Design System:**
+  - `ConversationRow` / `ListItem`: `renderWhatsappMarkdown` recebeu opção `{ singleLine: true }` convertendo quebras de linha (`\n`) em espaços contínuos no snippet, com `overflow: hidden` e `text-overflow: ellipsis`, eliminando encavalamento vertical de mensagens sobre contatos vizinhos no Inbox.
+  - `ChannelsSection`: Reestruturação completa do card de canais em layout de 2 linhas (topo: ícone fixo 38x38px com metadados do canal; rodapé: barra de ações com linha divisória sutil e `flex-wrap`), garantindo que até 5 botões de ação não espremam o título do canal.
+  - Seletor Multi-Canal no Inbox (`InboxList.tsx` / `useInbox.ts`): Filtro de canais dinâmico no cabeçalho do Inbox (`Todos os Canais` ou canal específico), eliminando a badge estática `META_WABA` quando conversas de instâncias WAHA estão sendo navegadas.
+- **Topologia de Repositórios Git (Dual-Push Soberano):**
+  - Configuração do controle de versão local com `git remote set-url --add --push origin` para atualizar simultaneamente `https://github.com/franciscotaveira/CHATSALES.git` e `https://github.com/franciscotaveira/SOS-SALES.git`.
+
+### 13.7 Infraestrutura Soberana: Migração Hostinger KVM 4, Ilhas Isoladas e Automação DNS API (20 de outubro de 2026)
+- **Migração Turnkey para Hostinger Cloud KVM 4 (`200.141.17.99` — Campinas/SP):**
+  - Hardware: 4 vCPUs AMD EPYC, 16 GB RAM, 200 GB NVMe, swapfile de 4 GB ativado contra OOM.
+  - Perímetro defensivo UFW: `default deny incoming`, apenas portas 22 (SSH), 80 (HTTP) e 443 (HTTPS) abertas no host. Portas de banco e Redis com zero exposição pública.
+  - Preservação total de dados (Truth in Data):
+    - Base SOS Vendas V3: 16.692 mensagens, 891 threads, 841 contatos, 30 workspaces restaurados com integridade RLS via backup criptografado AES-256.
+    - Base PLX n8n: 148 tabelas restauradas em container dedicado (`plx-n8n-db`).
+    - Base LUMA OS: Inicializada e auditada em container dedicado (`luma-db`).
+- **Arquitetura Definitiva de 3 Ilhas Segregadas com Borda Unificada:**
+  - **Ilha 1 (SOS Vendas V3):** Diretório `/opt/chat-sales-v3/`, rede `sos-sales-network` contendo `chat-sales-web` (Nginx), `chat-sales-api` (Fastify 5), `chat-sales-worker`, `sos-sales-postgres`, `sos-sales-redis` e `sos-sales-waha` (limite 7.5 GB RAM).
+  - **Ilha 2 (PLX Automações):** Diretório `/opt/plx-documentos/`, rede `plx-network` contendo `n8n` (v2.43.8) e `plx-n8n-db` (limite 4.0 GB RAM).
+  - **Ilha 3 (LUMA OS):** Diretório `/opt/luma-os/`, rede `luma-network` contendo `luma-app` (Fastify/Node.js) e `luma-db` (Postgres 16) (limite 2.0 GB RAM).
+  - **Borda Unificada:** Container `sos-sales-caddy` conectado simultaneamente às 3 redes (`sos-sales-network`, `plx-network`, `luma-network`), gerenciando TLS automático Let's Encrypt para todos os domínios.
+- **Domínios Oficiais e Automação via Hostinger DNS API:**
+  - Domínio soberano unificado: **`automatizaprocessos.tech`**.
+  - Registros A e AAAA ativos na API REST da Hostinger (`https://developers.hostinger.com/api/dns/v1/zones/automatizaprocessos.tech`):
+    - `chat.automatizaprocessos.tech` -> A `200.141.17.99`, AAAA `2a02:4780:6e:c5ee::1`
+    - `automacao.automatizaprocessos.tech` -> A `200.141.17.99`, AAAA `2a02:4780:6e:c5ee::1`
+    - `luma.automatizaprocessos.tech` -> A `200.141.17.99`, AAAA `2a02:4780:6e:c5ee::1`
+    - `@` (`automatizaprocessos.tech`) -> A `200.141.17.99`, AAAA `2a02:4780:6e:c5ee::1`
+    - `www.automatizaprocessos.tech` -> CNAME `automatizaprocessos.tech.`
+  - Certificados SSL/TLS emitidos com sucesso e em operação ativa com HTTP/2 (auditados com retorno `HTTP/2 200` em todos os endpoints).
+- **Governança Operacional Anti-Tampering & Ferramental de Migração 1-Click (P0):**
+  - Guardrails e regras invioláveis instalados no host em `/root/SOVEREIGN_VPS_RULES.md`, `/root/README_IA.md`, `/etc/motd`, `/opt/README.md` e no monorepo em `docs/architecture/SOVEREIGN_VPS_OPERATING_MANUAL.md`.
+  - Comandos globais utilitários em `/usr/local/bin/`: `vps-status`, `vps-backup`, `chat-sales-restart`, `plx-restart`, `luma-restart`, `caddy-reload`.
+  - **1-Click Island Migration Protocol (`export-island`):** Ferramenta utilitária no host (`export-island <chat-sales|plx|luma>`) que gera snapshot atômico (dump Postgres + `.env` + compose + auto-installer `setup-new-vps.sh`) para migração instantânea para VPS própria quando qualquer ilha atingir maturidade e breakeven financeiro.
+  - Crontab de produção com backup diário automático (03:00 AM) com criptografia AES-256 e sentinela watchdog a cada 5 minutos.
+
+### 13.8 Transição de Marca, Reposicionamento & Precificação Soberana (SOS Vendas)
+- **Reposicionamento de Marca & Governança Institucional:**
+  - Transição completa da nomenclatura pública e de interfaces de CHAT-SALES para **SOS Vendas** (marca de software comercial e operacional), mantendo razão social oficial `69.553.990 FRANCISCO TAVEIRA RIOS (CNPJ: 69.553.990/0001-91)` / `MCT LTDA`, sediada em Chapecó/SC.
+  - Atualização dos metadados públicos, manifestos web (`apps/web/public/manifest.json`), landing page, logos SVG e copy institucional.
+- **Tabela de Planos Base R$ 1.200,00/ano via AbacatePay:**
+  - **Plano Anual no Pix (10% OFF):** R$ 1.080,00 à vista (equivale a R$ 90,00/mês). Checkout: `https://app.abacatepay.com/pay/bill_kAfpgk4PpKJcqY5KGbbEEGmS`.
+  - **Plano Anual no Cartão de Crédito:** 12× de R$ 100,00 (R$ 1.200,00 total parcelado). Checkout: `https://app.abacatepay.com/pay/bill_Bahszz3UEuXzqqZhGg25HQeX`.
+  - **Plano Semestral no Pix (5% OFF):** R$ 570,00 à vista (equivale a R$ 95,00/mês por 6 meses). Checkout: `https://app.abacatepay.com/pay/bill_dM6P6Pnf1LHTLQbSGMyjYNzs`.
+  - **Plano Semestral no Cartão de Crédito:** 6× de R$ 100,00 (R$ 600,00 total parcelado). Checkout: `https://app.abacatepay.com/pay/bill_GERMqWZAEKDM4Rm16sqJpd51`.
+  - Manifesto canônico salvo em `landing/abacatepay-links.json`.
+- **Gateway AbacatePay v2 & Resiliência Transparente:**
+  - Provisionamento automatizado via `scripts/setup-abacatepay-plans.mjs`; a chave v2 deve ser fornecida por canal seguro no momento da execução e nunca armazenada neste documento.
+  - `apps/api/src/services/abacatepay.service.ts` cria cobrança transparente pelo endpoint v2 `/v2/transparents/create` para chaves v2. O caminho v1 não é tentado como fallback.
+  - Workspace SOS Vendas configurado no banco com chave ativa e webhook sincronizado.
+
+### 13.9 Resolução Dinâmica de JIDs @lid no WAHA e Fusão de Contatos Duplicados
+- **Causa Raiz Identificada:** No motor WAHA (WhatsApp HTTP API) operando com engine `NOWEB` / multi-device moderno, o WhatsApp entrega as mensagens recentes sob o JID interno `@lid` (ex: `271635491872968@lid`) em vez do formato telefônico internacional `@s.whatsapp.net` (`+554991810054`). Isso gerava contatos duplicados e snippets órfãos no inbox.
+- **Implementação do Resolver Dinâmico (`apps/worker/src/processors/inbox-processor.ts`):**
+  - O fluxo de entrada do worker resolve JIDs `@lid` pelo endpoint de sessão `/api/{session}/lids/{lid}` do WAHA antes de criar ou localizar o contato.
+  - A resolução exige um JID telefônico válido e falha fechada se o provedor não retornar telefone; testes verificam endpoint, encoding da sessão e ausência de consulta para JIDs telefônicos comuns.
+- **Higienização e Consolidação no Banco de Produção:**
+  - Mesclagem executada via SQL seguro nas threads oficiais de Suzana Rios (`+554991810054` - 12 mensagens unificadas) e Francisco Taveira (`+554898583228` - 11 mensagens unificadas).
+  - Remoção atômica de contatos espúrios e reindexação de threads no Inbox.
+
+### 13.10 Arquitetura Modular & Emissão de Nota Fiscal (NFS-e) como Módulo Adicional sob Demanda
+- **Diretriz Arquitetural Inviolável (P0):**
+  - O valor base da anuidade do SOS Vendas (R$ 1.200/ano ou R$ 1.080 no Pix) contempla exclusivamente o **Núcleo Comercial Soberano**: Cockpit Web, Integração WhatsApp (QR/WAHA), Funil Kanban, IA Copiloto e Autônoma Supervisionada, Catálogo de Produtos e Cobrança Pix Nativa com baixa automática.
+  - **Emissão Automática de Nota Fiscal (NFS-e):** É formalmente um **Módulo Adicional sob Demanda**, contratado à parte de acordo com a volumetria municipal da empresa.
+- **Racional Técnico e Tributário:**
+  - O Brasil possui mais de 5.500 municípios sem padrão unificado de NFS-e (provedores ABRASF, DSF, Betha, Ginfes, WebISS, etc.), exigindo certificado digital e-CNPJ (A1) e gerando consumo de APIs e servidores tributários por lote emitido.
+  - Embutir a emissão no plano anual encareceria o sistema para micro e pequenas empresas que emitem poucas notas ou que usam o emissor gratuito municipal.
+- **Transparência Contratual na Landing Page & FAQ:**
+  - Seção `#comecar` (Planos): Adicionado aviso de escopo no card de preços destacando itens inclusos vs módulos adicionais.
+  - Seção `#modulos` (Módulos Adicionais sob Demanda): Cards detalhando Emissão Fiscal (NFS-e), Meta WABA Oficial (Disparo em Escala & Campeã A/B) e Conectores ERP Sob Medida (Bling, Tiny, Omie).
+  - Banner de Transparência Fiscal: Deixa claro que a MCT LTDA emite nota fiscal de serviço SaaS pela assinatura do SOS Vendas para a empresa cliente, enquanto a emissão fiscal de notas de venda para clientes finais é coberta pelo módulo adicional sob demanda.
+  - FAQ com respostas completas sobre o funcionamento dos módulos e nota fiscal da assinatura.
+
+### 13.11 Banco de Modelos Canônicos (37 templates atualmente no contrato)
+- **Biblioteca Canônica Centralizada (`packages/contracts/src/template-library.ts`):**
+  - Contagem verificada: 37 itens em 13 segmentos. Os modelos podem ser importados como rascunhos locais; a importação não envia nem garante aprovação na Meta.
+  - O dossiê P0 declara uma biblioteca de 70+ modelos. Essa meta não é atendida pelo contrato atual; ampliar o catálogo requer conteúdo adicional revisado e atualização controlada do manifesto protegido.
+- **Interface do Operador no Cockpit (`apps/web/src/pages/templates/TemplateLibrarySection.tsx` & `TemplatesPage.tsx`):**
+  - Aba nativa **"Biblioteca de Modelos (Prontos)"** com busca textual em tempo real, filtros por nicho/categoria e botão de importação em 1-clique para a conta da empresa.
+- **Exibição na Landing Page (`landing/index.html` & `landing/styles.css`):**
+  - Seção `#modelos` e menu principal atualizados para **"Banco de Modelos"**.
+  - Grid de previews visuais de templates canônicos com balões de conversa WhatsApp (Recuperação de Venda com Pix, Confirmação de Consulta e Reativação B2B) e CTA direto para acesso no Cockpit.
+- **Build e Deploy Contínuo na VPS:**
+  - Código do monorepo atualizado e compilado com sucesso na VPS (`200.141.17.99` / `2a02:4780:6e:c5ee::1`), com containers `chat-sales-web`, `chat-sales-api` e `chat-sales-worker` operando com status *healthy*.
+
+### 13.12 Módulo M02B PLX Contábil (Checklist Recorrente, Reconciliação com Drive e Modo Sombra)
+- **Racional e Objetivo Operacional:**
+  - O Módulo M02B automatiza o acompanhamento mensal de obrigações contábeis e fiscais enviadas pelos clientes do escritório via WhatsApp, eliminando a cobrança manual e identificando faltantes antes do encerramento da competência.
+- **Tabelas de Dados Nativas no PostgreSQL n8n (`plx_n8n`):**
+  - `plx_checklist_regras_v1` (`chkRulesV1Taveira` / `data_table_user_chkrulesv1taveira`): Cadastro de regras por empresa, grupo, departamento, tipo documental, dia de vencimento (`due_day`) e flag `send_enabled`.
+  - `plx_checklist_execucoes_v1` (`chkRunsV1Taveira` / `data_table_user_chkrunsv1taveira`): Registro de checklist materializado por competência (ex: `2026-10`), status de conferência (`PENDING`, `RECEIVED`, `OVERDUE`), contagem de documentos encontrados e data limite (`expected_by`).
+  - `plx_v3_documentos` (`data_table_user_3xiyVdhcSZl6qzP8`): Acervo de 104 documentos reais organizados com `drive_file_id`, `reference_date` e hashes criptográficos SHA-256.
+- **Engine Soberano de Checklist (`/opt/plx-documentos/app/scripts/plx_checklist_engine.py`):**
+  - Implementado em Python nativo no host, conectando de forma resiliente ao PostgreSQL do container `plx-n8n-db`.
+  - Subcomandos operacionais: `seed` (regras canônicas), `materialize` (geração de obrigações), `reconcile` (cruzamento com arquivos do Drive), `report` (geração de parecer de auditoria) e `shadow-run` (ciclo completo).
+- **Governança de Modo Sombra (P0 — Zero Mensagens Externas):**
+  - Regras inicializadas com `send_enabled = false`.
+  - A reconciliação opera em modo leitura e auditoria contábil, gravando relatórios em `/opt/plx-documentos/app/evidence/checklist-report-{competencia}.md` para conferência dos analistas sem disparar mensagens de cobrança nos grupos do WhatsApp do cliente piloto (`120363430175893546@g.us`).
+- **Resultados Auditados da Execução Piloto (Outubro e Setembro de 2026):**
+  - Competência `2026-10`: 4/6 obrigações cumpridas (66.7% conformidade: 11 NF-e, 2 NFS-e, 8 Boletos e 15 Comprovantes vinculados ao Drive). 2/6 obrigações faltantes detectadas com acurácia estrita (FGTS vencido em 07/10 e Extrato Bancário vencido em 05/10).
+  - Competência `2026-09`: 4/6 obrigações cumpridas (25 NF-e, 10 NFS-e, 11 Boletos e 9 Comprovantes vinculados ao Drive; FGTS e Extrato faltantes).
+- **Agendamento Automático em Produção:**
+  - Crontab do host configurado para execução diária do checklist às 07:00 AM (`0 7 * * * python3 /opt/plx-documentos/app/scripts/plx_checklist_engine.py shadow-run >> /var/log/plx-checklist.log 2>&1`).
 

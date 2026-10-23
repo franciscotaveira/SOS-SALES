@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { IconButton } from "@sos-sales/ui";
+import { Button, IconButton } from "@sos-sales/ui";
 import {
   X,
   User,
@@ -8,24 +8,33 @@ import {
   GitCommit,
   StickyNote,
   Award,
+  Edit3,
 } from "lucide-react";
 import type {
   CommercialThreadSummary,
   CommercialProposalSummary,
+  ContactSummary,
 } from "../../../services/api-client";
 import { LeadSummary } from "./LeadSummary";
 import { PixStatus } from "./PixStatus";
 import { OutcomeActions } from "./OutcomeActions";
 import { Notes } from "./Notes";
 import { ProposalsSection } from "./ProposalsSection";
+import { panelFrame } from "../utils/panelFrame";
 import { JourneyTimeline } from "./JourneyTimeline";
 
 interface ContextPanelProps {
   thread: CommercialThreadSummary;
+  contact?: ContactSummary | null;
   onClose?: () => void;
   // Journey & lead
   journeyStage?: string | null;
   estimatedValueCents?: number | null;
+  onEditLead?: () => void;
+  onUpdateStage?: (newStage: string) => Promise<void> | void;
+  customStages?: Record<string, string>;
+  isUpdatingStage?: boolean;
+  stageError?:string|null;
   // Proposals (F3)
   proposals?: CommercialProposalSummary[];
   onCreateProposal?: () => void;
@@ -35,35 +44,43 @@ interface ContextPanelProps {
   ) => Promise<void>;
   onGenerateProposalPix?: (proposal: CommercialProposalSummary) => void;
   proposalError?: string | null;
+  proposalsLoading?:boolean;
+  proposalBusy?:boolean;
+  proposalReview?:boolean;
+  onRefreshProposals?:()=>void;
   // Pix
-  pixStatus?: "paid" | "pending" | "none";
-  pixPaidAt?: string | null;
+  workspaceId?:string;
+  token?:string;
+  pixRefreshKey?:number;
   onGeneratePix?: () => void;
   // Notes
   notes?: string;
-  onSaveNotes?: (notes: string) => void;
+  onSaveNotes?: (notes: string) => Promise<void> | void;
   isSavingNotes?: boolean;
   // Outcome
   onMarkWon?: () => void;
   onMarkLost?: () => void;
   currentOutcome?: "won" | "lost" | null;
   // Action History
-  actionHistory?: Array<{ id: string; actionType: string; actor?: string | null; createdAt: string }>;
   isMobile?: boolean;
 }
 
 export const ContextPanel: FC<ContextPanelProps> = ({
   thread,
+  contact,
   onClose,
   journeyStage,
   estimatedValueCents,
+  onEditLead,
+  onUpdateStage,
+  customStages,
+  isUpdatingStage,stageError,
   proposals = [],
   onCreateProposal,
   onUpdateProposalStatus,
   onGenerateProposalPix,
-  proposalError,
-  pixStatus,
-  pixPaidAt,
+  proposalError,proposalsLoading,proposalBusy,proposalReview,onRefreshProposals,
+  workspaceId,token,pixRefreshKey,
   onGeneratePix,
   notes,
   onSaveNotes,
@@ -71,7 +88,6 @@ export const ContextPanel: FC<ContextPanelProps> = ({
   onMarkWon,
   onMarkLost,
   currentOutcome,
-  actionHistory,
   isMobile = false,
 }) => {
   return (
@@ -81,16 +97,17 @@ export const ContextPanel: FC<ContextPanelProps> = ({
         width: isMobile ? "100%" : "var(--context-panel-w, 360px)",
         minWidth: isMobile ? "100%" : "var(--context-panel-w, 360px)",
         maxWidth: isMobile ? "100%" : "var(--context-panel-w, 360px)",
-        height: "100%",
-        backgroundColor: "var(--bg-canvas)",
-        borderLeft: isMobile ? "none" : "1px solid var(--border-default)",
+        height: isMobile ? "auto" : "100%",
+        minHeight: 0,
+        backgroundColor: "var(--bg-surface-subtle)",
+        ...panelFrame(isMobile),
         display: "flex",
         flexDirection: "column",
         boxSizing: "border-box",
       }}
     >
-      {/* Panel Header */}
-      <div
+      {/* The containing drawer already provides a title and close action. */}
+      {!isMobile && <div
         style={{
           height: "var(--topbar-h, 56px)",
           minHeight: "var(--topbar-h, 56px)",
@@ -98,8 +115,8 @@ export const ContextPanel: FC<ContextPanelProps> = ({
           alignItems: "center",
           justifyContent: "space-between",
           padding: "0 var(--space-4, 16px)",
-          borderBottom: "1px solid var(--border-default)",
-          backgroundColor: "var(--bg-surface)",
+          borderBottom: "2px solid var(--border-strong)",
+          backgroundColor: "var(--bg-surface-elevated)",
           boxSizing: "border-box",
         }}
       >
@@ -122,14 +139,15 @@ export const ContextPanel: FC<ContextPanelProps> = ({
             onClick={onClose}
           />
         )}
-      </div>
+      </div>}
 
       {/* Scrollable Sections as Framed Cards */}
       <div
         style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "var(--space-3, 12px) var(--space-4, 16px)",
+          flex: isMobile ? undefined : 1,
+          minHeight: 0,
+          overflowY: isMobile ? "visible" : "auto",
+          padding: isMobile ? 0 : "var(--space-3, 12px) var(--space-4, 16px)",
           display: "flex",
           flexDirection: "column",
           gap: "12px",
@@ -153,27 +171,27 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              justifyContent: "space-between",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
-            <User size={14} style={{ color: "var(--color-action)" }} />
-            <span
-              style={{
-                fontSize: "var(--font-size-xs, 0.75rem)",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                color: "var(--text-secondary)",
-              }}
-            >
-              Lead & Origem
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <User size={14} style={{ color: "var(--color-action)" }} />
+              <span style={{ fontSize: "var(--font-size-xs, 0.75rem)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-secondary)" }}>Lead & Origem</span>
+            </div>
+            {onEditLead && <Button size="xs" variant="secondary" prefixIcon={<Edit3 size={12}/>} onClick={onEditLead}>Editar ficha</Button>}
           </div>
           <LeadSummary
             thread={thread}
+            contact={contact}
             journeyStage={journeyStage}
             estimatedValueCents={estimatedValueCents}
+            onUpdateStage={onUpdateStage}
+            customStages={customStages}
+            isUpdatingStage={isUpdatingStage}
+            error={stageError}
+            onEditLead={onEditLead}
           />
         </section>
 
@@ -195,7 +213,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -214,10 +232,14 @@ export const ContextPanel: FC<ContextPanelProps> = ({
           </div>
           <ProposalsSection
             proposals={proposals}
-            onCreateProposal={onCreateProposal || (() => {})}
-            onUpdateStatus={onUpdateProposalStatus || (async () => {})}
+            onCreateProposal={onCreateProposal}
+            onUpdateStatus={onUpdateProposalStatus}
             onGeneratePix={onGenerateProposalPix}
             error={proposalError}
+            isLoading={proposalsLoading}
+            busy={proposalBusy}
+            reviewRequired={proposalReview}
+            onRefresh={onRefreshProposals}
           />
         </section>
 
@@ -239,7 +261,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -253,12 +275,14 @@ export const ContextPanel: FC<ContextPanelProps> = ({
                 color: "var(--text-secondary)",
               }}
             >
-              Cobrança Pix Oficial
+              Cobranças Pix
             </span>
           </div>
           <PixStatus
-            status={pixStatus}
-            paidAt={pixPaidAt}
+            workspaceId={workspaceId}
+            token={token}
+            threadId={thread.id}
+            refreshKey={pixRefreshKey}
             onGeneratePix={onGeneratePix}
           />
         </section>
@@ -281,7 +305,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -295,12 +319,15 @@ export const ContextPanel: FC<ContextPanelProps> = ({
                 color: "var(--text-secondary)",
               }}
             >
-              Jornada & Histórico
+              Negociação & Registros
             </span>
           </div>
           <JourneyTimeline
-            currentStage={journeyStage}
-            actionHistory={actionHistory}
+            workspaceId={workspaceId}
+            threadId={thread.id}
+            token={token}
+            customStages={customStages}
+            refreshKey={`${pixRefreshKey}:${journeyStage}:${proposals.map(proposal=>`${proposal.id}:${proposal.stateVersion}`).join(",")}`}
           />
         </section>
 
@@ -322,7 +349,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              borderBottom: "1px solid var(--border-subtle)",
+              borderBottom: "1px solid var(--border-default)",
               paddingBottom: "8px",
             }}
           >
@@ -340,6 +367,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
             </span>
           </div>
           <Notes
+            key={thread.id}
             initialNotes={notes}
             onSaveNotes={onSaveNotes}
             isSaving={isSavingNotes}
@@ -365,7 +393,7 @@ export const ContextPanel: FC<ContextPanelProps> = ({
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
-                borderBottom: "1px solid var(--border-subtle)",
+                borderBottom: "1px solid var(--border-default)",
                 paddingBottom: "8px",
               }}
             >

@@ -5,17 +5,24 @@ export const SegmentedControl: FC<SegmentedControlProps> = ({
   options,
   value,
   onChange,
+  size,
   className = "",
   style,
   "aria-label": ariaLabel = "Filtros de Segmento",
 }) => {
+  const enabled=options.filter(option=>!option.disabled);
+  const selected=enabled.some(option=>option.value===value)?value:enabled[0]?.value;
+  const isCompact = size === "sm" || options.length >= 4;
+
   return (
     <div
       role="radiogroup"
       aria-label={ariaLabel}
+      aria-orientation="horizontal"
       className={`sos-segmented-control ${className}`}
       style={{
-        display: "inline-flex",
+        display: "flex",
+        width: "100%",
         alignItems: "center",
         height: "var(--control-h-sm, 32px)",
         padding: "2px",
@@ -37,30 +44,43 @@ export const SegmentedControl: FC<SegmentedControlProps> = ({
             role="radio"
             aria-checked={isSelected}
             disabled={option.disabled}
+            tabIndex={!option.disabled&&option.value===selected?0:-1}
+            onKeyDown={event=>{
+              if(event.defaultPrevented||event.nativeEvent.isComposing||event.altKey||event.ctrlKey||event.metaKey||!enabled.length)return;
+              const index=enabled.findIndex(item=>item.value===option.value);
+              const target=event.key==="Home"?enabled[0]:event.key==="End"?enabled[enabled.length-1]:["ArrowRight","ArrowDown"].includes(event.key)?enabled[(index+1)%enabled.length]:["ArrowLeft","ArrowUp"].includes(event.key)?enabled[(index-1+enabled.length)%enabled.length]:undefined;
+              if(!target)return;
+              event.preventDefault();
+              const targetIndex=options.findIndex(item=>item.value===target.value);
+              event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button[role="radio"]')[targetIndex]?.focus();
+              if(target.value!==value)onChange(target.value);
+            }}
+            className={`sos-segmented-item ${isSelected ? "sos-segmented-item-selected" : ""}`}
             onClick={() => !option.disabled && onChange(option.value)}
             style={{
               flex: 1,
+              minWidth: 0,
               height: "calc(var(--control-h-sm, 32px) - 6px)",
-              padding: "0 10px",
+              padding: isCompact ? "0 4px" : "0 10px",
               border: "none",
               borderRadius: "calc(var(--radius-md, 8px) - 2px)",
               backgroundColor: isSelected ? "var(--bg-surface, #FFFFFF)" : "transparent",
               color: isSelected ? "var(--text-primary, #0F172A)" : "var(--text-secondary, #475569)",
               boxShadow: isSelected ? "var(--shadow-xs, 0 1px 2px 0 rgba(0, 0, 0, 0.05))" : "none",
-              fontSize: "var(--font-size-sm, 0.875rem)",
+              fontSize: isCompact ? "var(--font-size-xs, 0.75rem)" : "var(--font-size-sm, 0.875rem)",
               fontWeight: 500,
               fontFamily: "var(--font-sans, sans-serif)",
               cursor: option.disabled ? "not-allowed" : "pointer",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: "6px",
+              gap: isCompact ? "4px" : "6px",
               whiteSpace: "nowrap",
               transition: "background-color var(--transition-fast, 150ms ease), color var(--transition-fast, 150ms ease), box-shadow var(--transition-fast, 150ms ease)",
               boxSizing: "border-box",
             }}
           >
-            <span>{option.label}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{option.label}</span>
             {option.badge !== undefined && (
               <span
                 style={{

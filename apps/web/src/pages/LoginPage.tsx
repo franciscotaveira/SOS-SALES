@@ -1,7 +1,14 @@
-import { useState, type FC, type FormEvent } from "react";
+import { useState, useRef, useEffect, type FC, type FormEvent } from "react";
 import { Button, Input, Alert } from "@sos-sales/ui";
-import { MessageSquareText, ArrowRight, KeyRound } from "lucide-react";
+import { MessageSquareText, Mail, ShieldCheck, Lock } from "lucide-react";
 import { apiClient } from "../services/api-client";
+import {
+  isSupabaseConfigured,
+  sendSupabaseOtp,
+  verifySupabaseOtp,
+} from "../services/supabase-auth";
+
+import {userFacingError} from "../utils/user-facing-error";
 
 interface LoginPageProps {
   onLoginSuccess: (token: string) => void;
@@ -9,54 +16,51 @@ interface LoginPageProps {
 }
 
 export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) => {
-  const [email, setEmail] = useState("francisco@mct.br");
-  const [accessKey, setAccessKey] = useState("mothership_master_2026");
-  const [rawToken, setRawToken] = useState("");
-  const [showRawToken, setShowRawToken] = useState(false);
+  const hasSupabase = isSupabaseConfigured();
+
+  // Primary Login State (Email + Password)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  // Alternate Mode State (OTP)
+  const [authMode, setAuthMode] = useState<"password" | "otp">("password");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(initialError || null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
-  const handleLogin = async (e?: FormEvent) => {
-    if (e) e.preventDefault();
-    if (!email.trim()) {
-      setErrorMessage("Informe o e-mail cadastrado.");
-      return;
-    }
+  const [otpEmail,setOtpEmail]=useState("");
+  const passwordEmailField=useRef<HTMLInputElement>(null),otpEmailField=useRef<HTMLInputElement>(null),otpCodeField=useRef<HTMLInputElement>(null),focusedStep=useRef("");
+  useEffect(()=>{
+    const step=authMode==="password"?"password":otpSent?"otp-code":"otp-email";
+    if(isLoading||focusedStep.current===step)return;
+    const field=step==="password"?passwordEmailField.current:step==="otp-code"?otpCodeField.current:otpEmailField.current;
+    if(field){field.focus();focusedStep.current=step;}
+  },[authMode,otpSent,isLoading]);
 
-    setIsLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const res = await apiClient.requestAuthSession({
-        email: email.trim(),
-        accessKey: accessKey.trim() || undefined,
-      });
-
-      if (res.token) {
-        onLoginSuccess(res.token);
-      } else {
-        setErrorMessage("Resposta de autenticação sem token válido.");
-      }
-    } catch (err: unknown) {
-      const msg =
-        (err as { detail?: string; message?: string }).detail ||
-        (err as Error).message ||
-        "Falha ao autenticar no servidor.";
-      setErrorMessage(msg);
-    } finally {
-      setIsLoading(false);
-    }
+  const attempt=useRef(0),locked=useRef(false),mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;attempt.current++;};},[]);
+  async function run(operation:(valid:()=>boolean)=>Promise<void>){
+    if(locked.current)return;const request=++attempt.current;const valid=()=>mounted.current&&request===attempt.current;
+    locked.current=true;setIsLoading(true);setErrorMessage(null);setSuccessNotice(null);
+    try{await operation(valid);}catch(error){if(valid())setErrorMessage(userFacingError(error,"Não foi possível concluir o acesso. Tente novamente."));}
+    finally{if(valid()){locked.current=false;setIsLoading(false);}}
+  }
+  const handlePasswordLogin=async(event:FormEvent)=>{
+    event.preventDefault();if(!email.trim()||!password){setErrorMessage("Informe o e-mail e a senha cadastrados.");return;}
+    await run(async valid=>{const result=await apiClient.loginWithPassword({email:email.trim(),password});if(!valid())return;if(result.token)onLoginSuccess(result.token);else setErrorMessage("A autenticação não retornou uma sessão válida. Tente novamente.");});
   };
-
-  const handleTokenSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!rawToken.trim()) {
-      setErrorMessage("Cole um token de acesso válido.");
-      return;
-    }
-    setErrorMessage(null);
-    onLoginSuccess(rawToken.trim());
+  const handleSendOtp=async(event:FormEvent)=>{
+    event.preventDefault();const requestedEmail=email.trim();if(!requestedEmail){setErrorMessage("Informe o e-mail cadastrado.");return;}
+    await run(async valid=>{const result=await sendSupabaseOtp(requestedEmail);if(!valid())return;if(result.success){setOtpEmail(requestedEmail);setOtpSent(true);setSuccessNotice(`Código de acesso enviado para ${requestedEmail}. Verifique sua caixa de entrada.`);}else setErrorMessage(result.message||"Não foi possível solicitar o código de acesso.");});
   };
+  const handleVerifyOtp=async(event:FormEvent)=>{
+    event.preventDefault();if(!/^\d{6}$/.test(otpCode.trim())){setErrorMessage("Informe o código de 6 dígitos recebido.");return;}
+    await run(async valid=>{const result=await verifySupabaseOtp(otpEmail,otpCode.trim());if(!valid())return;if(result.token)onLoginSuccess(result.token);else setErrorMessage(result.error||"Código inválido ou expirado. Solicite outro código.");});
+  };
+  const resetOtp=()=>{if(locked.current)return;attempt.current++;setOtpSent(false);setOtpCode("");setOtpEmail("");setErrorMessage(null);setSuccessNotice(null);};
 
   return (
     <div
@@ -65,7 +69,7 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) 
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "var(--bg-canvas)",
+        background: "radial-gradient(ellipse at 50% 0%, rgba(0, 128, 105, 0.09) 0%, rgba(37, 99, 235, 0.03) 40%, var(--bg-canvas) 80%)",
         padding: "var(--space-4, 16px)",
         boxSizing: "border-box",
       }}
@@ -73,12 +77,15 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) 
       <div
         style={{
           width: "100%",
-          maxWidth: "400px",
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-default)",
+          maxWidth: "420px",
+          backgroundColor: "rgba(255, 255, 255, 0.95)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          border: "1px solid rgba(226, 232, 240, 0.9)",
           borderRadius: "var(--radius-xl, 16px)",
-          boxShadow: "var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05))",
-          padding: "32px 28px",
+          boxShadow:
+            "0 20px 40px -15px rgba(15, 23, 42, 0.08), 0 1px 3px 0 rgba(15, 23, 42, 0.05)",
+          padding: "36px 30px",
           display: "flex",
           flexDirection: "column",
           gap: "24px",
@@ -86,57 +93,88 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) 
         }}
       >
         {/* Brand Header */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: "8px" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+            gap: "10px",
+          }}
+        >
           <div
             style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "var(--radius-lg, 12px)",
+              width: "52px",
+              height: "52px",
+              borderRadius: "14px",
               backgroundColor: "var(--color-action)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "var(--color-action-fg)",
-              boxShadow: "0 2px 8px rgba(0, 128, 105, 0.3)",
+              color: "#FFFFFF",
+              boxShadow: "0 8px 24px -2px rgba(0, 128, 105, 0.38), 0 0 0 1px rgba(255, 255, 255, 0.25) inset",
             }}
           >
-            <MessageSquareText size={24} />
+            <MessageSquareText size={28} />
           </div>
           <div>
-            <h1 style={{ fontSize: "var(--font-size-xl, 1.25rem)", fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>
-              SOS Sales
+            <h1
+              style={{
+                fontSize: "var(--font-size-xl, 1.25rem)",
+                fontWeight: 600,
+                color: "var(--text-primary)",
+                margin: 0,
+              }}
+            >
+              SOS Vendas
             </h1>
-            <p style={{ fontSize: "var(--font-size-sm, 0.875rem)", color: "var(--text-secondary)", margin: "4px 0 0 0" }}>
-              Acesso à plataforma de atendimento e vendas
+            <p
+              style={{
+                fontSize: "var(--font-size-sm, 0.875rem)",
+                color: "var(--text-secondary)",
+                margin: "4px 0 0 0",
+              }}
+            >
+              Sistema Operacional Comercial para WhatsApp & Pix
             </p>
           </div>
         </div>
 
-        {/* Error Alert */}
+        {/* Notices & Alerts */}
         {errorMessage && (
           <Alert variant="danger" title="Erro no Acesso">
             {errorMessage}
           </Alert>
         )}
+        {successNotice && (
+          <Alert variant="info" title="Código Enviado">
+            {successNotice}
+          </Alert>
+        )}
 
-        {/* Main Form */}
-        {!showRawToken ? (
-          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {/* 1. Sovereign Native Login (Email + Password) — DEFAULT */}
+        {authMode === "password" && (
+          <form onSubmit={handlePasswordLogin} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <Input
+              ref={passwordEmailField}
               label="E-mail"
+              autoComplete="username" disabled={isLoading}
               type="email"
               placeholder="seu.email@empresa.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoFocus
             />
 
             <Input
-              label="Chave de Acesso"
+              label="Senha de Acesso"
+              autoComplete="current-password" disabled={isLoading}
               type="password"
-              placeholder="Digite sua chave..."
-              value={accessKey}
-              onChange={(e) => setAccessKey(e.target.value)}
+              placeholder="Digite sua senha..."
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
             />
 
             <Button
@@ -144,55 +182,117 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess, initialError }) 
               variant="primary"
               type="submit"
               disabled={isLoading}
-              prefixIcon={<ArrowRight size={16} />}
+              prefixIcon={<Lock size={16} />}
               style={{ width: "100%", marginTop: "4px" }}
             >
-              {isLoading ? "Entrando..." : "Entrar"}
+              {isLoading ? "Autenticando..." : "Entrar no SOS Vendas"}
             </Button>
-          </form>
-        ) : (
-          <form onSubmit={handleTokenSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <Input
-              label="Token de Acesso Direto (JWT)"
-              placeholder="Cole o token JWT aqui..."
-              value={rawToken}
-              onChange={(e) => setRawToken(e.target.value)}
-              required
-            />
 
-            <Button
-              size="md"
-              variant="primary"
-              type="submit"
-              prefixIcon={<KeyRound size={16} />}
-              style={{ width: "100%", marginTop: "4px" }}
-            >
-              Acessar com Token
-            </Button>
+            {hasSupabase && (
+              <div style={{ display: "flex", justifyContent: "center", marginTop: "8px" }}>
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={() => {
+                    resetOtp();setPassword("");setAuthMode("otp");
+                    setErrorMessage(null);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    fontSize: "var(--font-size-xs, 0.75rem)",
+                    color: "var(--text-secondary)",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Entrar com código por e-mail (OTP)
+                </button>
+              </div>
+            )}
           </form>
         )}
 
-        {/* Toggle Alternative Access Mode */}
-        <div style={{ display: "flex", justifyContent: "center", borderTop: "1px solid var(--border-default)", paddingTop: "16px" }}>
-          <button
-            type="button"
-            onClick={() => {
-              setShowRawToken(!showRawToken);
-              setErrorMessage(null);
-            }}
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
-              fontSize: "var(--font-size-xs, 0.75rem)",
-              color: "var(--text-secondary)",
-              textDecoration: "underline",
-            }}
-          >
-            {showRawToken ? "Voltar ao login com e-mail e chave" : "Entrar com token manual de desenvolvedor"}
-          </button>
-        </div>
+        {/* 2. Supabase Auth OTP Flow (Optional Alternate) */}
+        {authMode === "otp" && (
+          <>
+            {!otpSent ? (
+              <form onSubmit={handleSendOtp} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <Input
+                  ref={otpEmailField}
+                  label="E-mail Profissional"
+                  autoComplete="email" disabled={isLoading}
+                  type="email"
+                  placeholder="seu.email@empresa.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+
+                <Button
+                  size="md"
+                  variant="primary"
+                  type="submit"
+                  disabled={isLoading}
+                  prefixIcon={<Mail size={16} />}
+                  style={{ width: "100%", marginTop: "4px" }}
+                >
+                  {isLoading ? "Enviando..." : "Receber Código de Acesso"}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOtp} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <p style={{margin:0,fontSize:13,overflowWrap:"anywhere"}}>Código solicitado para {otpEmail}.</p>
+                <Input
+                  ref={otpCodeField}
+                  label="Código de Acesso (6 dígitos)"
+                  autoComplete="one-time-code" inputMode="numeric" maxLength={6} disabled={isLoading}
+                  type="text"
+                  placeholder="123456"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                  required
+                />
+
+                <Button
+                  size="md"
+                  variant="primary"
+                  type="submit"
+                  disabled={isLoading}
+                  prefixIcon={<ShieldCheck size={16} />}
+                  style={{ width: "100%", marginTop: "4px" }}
+                >
+                  {isLoading ? "Validando..." : "Confirmar e Acessar"}
+                </Button>
+              </form>
+            )}
+
+            {otpSent&&<button type="button" disabled={isLoading} onClick={resetOtp}>Alterar e-mail ou solicitar outro código</button>}
+            <button
+              type="button" disabled={isLoading}
+              onClick={() => {
+                resetOtp();setAuthMode("password");
+                setOtpSent(false);
+                setOtpCode("");
+                setErrorMessage(null);
+                setSuccessNotice(null);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                fontSize: "var(--font-size-xs, 0.75rem)",
+                color: "var(--text-secondary)",
+                textDecoration: "underline",
+                textAlign: "center",
+              }}
+            >
+              Voltar ao login com senha
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

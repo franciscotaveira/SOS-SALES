@@ -175,7 +175,7 @@ describe("SOS Sales V3 — ApiClient & Concurrency Suite", () => {
       // Abort during inflight request
       controller.abort();
 
-      await expect(requestPromise).rejects.toThrow("This operation was aborted");
+      await expect(requestPromise).rejects.toHaveProperty("name", "AbortError");
     });
 
     it("should discard stale out-of-order responses under simulated race conditions", async () => {
@@ -357,6 +357,14 @@ describe("SOS Sales V3 — ApiClient & Concurrency Suite", () => {
       harness.unmount();
     });
 
+    it("reports a requested workspace failure to its caller while keeping the existing session error state",async()=>{
+      globalThis.fetch=vi.fn().mockImplementation((url)=>Promise.resolve(new Response(JSON.stringify(String(url).includes('/v1/me')?{user:{id:'SIM-user',email:'sim@example.invalid',activeRole:'owner'},workspaces:[]}:{title:'Forbidden',detail:'SIM acesso indisponível'}),{status:String(url).includes('/v1/me')?200:403,headers:{'Content-Type':'application/json'}})));
+      const harness=renderSessionHook('SIM-token');await harness.waitFor(s=>!s.isLoadingMe&&Boolean(s.user));let failure:unknown;
+      await act(async()=>{await harness.current.selectWorkspace('SIM-created',{throwOnError:true}).catch(error=>{failure=error;});});
+      expect(failure).toBeInstanceOf(ForbiddenError);expect(harness.current.error?.status).toBe(403);expect(harness.current.activeWorkspaceDetails).toBeNull();expect(harness.current.isLoadingWorkspace).toBe(false);
+      await act(async()=>harness.current.selectWorkspace('SIM-default'));expect(harness.current.error?.status).toBe(403);harness.unmount();
+    });
+
     it("Cenário Offline & Retry: Deve montar useSession, capturar falha de rede e recuperar sessão após retry", async () => {
       // 1. Rede offline
       globalThis.fetch = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch (offline)"));
@@ -418,6 +426,22 @@ describe("SOS Sales V3 — ApiClient & Concurrency Suite", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
 
       harness.unmount();
+    });
+
+    it("clears the mounted session identity and workspace when removing the stored workspace fails",async()=>{
+      globalThis.fetch=vi.fn().mockImplementation(url=>Promise.resolve(new Response(JSON.stringify(String(url).includes('/v1/me')?{
+        user:{id:'SIM-storage-user',email:'sim@example.invalid',activeRole:'owner',activeWorkspaceId:'SIM-storage-ws'},
+        workspaces:[{id:'SIM-storage-ws',name:'SIM workspace',role:'owner'}],
+      }:{workspace:{id:'SIM-storage-ws',name:'SIM workspace'},userRole:'owner'}),{status:200,headers:{'Content-Type':'application/json'}})));
+      const harness=renderSessionHook('SIM-storage-token');
+      try{
+        await harness.waitFor(state=>Boolean(state.activeWorkspaceDetails)&&!state.isLoadingWorkspace);
+        expect(harness.current.user).not.toBeNull();expect(harness.current.activeWorkspaceId).toBe('SIM-storage-ws');
+        const remove=vi.spyOn(Storage.prototype,'removeItem').mockImplementation(()=>{throw new Error('SIM storage blocked');});
+        act(()=>{expect(()=>harness.current.logout()).not.toThrow();});
+        expect(remove).toHaveBeenCalledWith('sos_sales_active_workspace_id');expect(harness.current.user).toBeNull();expect(harness.current.workspaces).toEqual([]);expect(harness.current.activeWorkspaceId).toBeNull();expect(harness.current.activeWorkspaceDetails).toBeNull();expect(harness.current.isLoadingMe).toBe(false);expect(harness.current.isLoadingWorkspace).toBe(false);
+        remove.mockRestore();
+      }finally{harness.unmount();}
     });
 
     it("Cenário Concorrência (Logout com resposta atrasada): Deve descartar resposta lenta de /v1/me após logout() via sessionGenerationRef", async () => {
@@ -528,4 +552,44 @@ describe("SOS Sales V3 — ApiClient & Concurrency Suite", () => {
       harness.unmount();
     });
   });
+
+  describe("7. Upload de Mídia (G5)", () => {
+    it("should send binary payload with Content-Type, x-file-name, Authorization, and return media response", async () => {
+      let capturedUrl = "";
+      let capturedHeaders: Record<string, string> = {};
+      let capturedBody: any;
+
+      globalThis.fetch = vi.fn().mockImplementation((url, init) => {
+        capturedUrl = url;
+        capturedHeaders = init.headers;
+        capturedBody = init.body;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              mediaUrl: "https://storage.supabase.co/object/sign/chat-sales-media/ws-1/file.png?token=xyz",
+              expiresInSeconds: 3600,
+              contentType: "image/png",
+              category: "image",
+              sizeBytes: 1024,
+              fileName: "foto.png",
+            }),
+            { status: 201, headers: { "Content-Type": "application/json" } }
+          )
+        );
+      });
+
+      const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "foto.png", { type: "image/png" });
+      const res = await client.uploadMedia("ws-1", file, { token: "user-jwt" });
+
+      expect(capturedUrl).toBe("http://localhost:4400/v1/workspaces/ws-1/media");
+      expect(capturedHeaders["Content-Type"]).toBe("image/png");
+      expect(capturedHeaders["x-file-name"]).toBe("foto.png");
+      expect(capturedHeaders["Authorization"]).toBe("Bearer user-jwt");
+      expect(capturedHeaders["X-Workspace-Id"]).toBe("ws-1");
+      expect(capturedBody).toBe(file);
+      expect(res.mediaUrl).toContain("chat-sales-media");
+      expect(res.category).toBe("image");
+    });
+  });
 });
+

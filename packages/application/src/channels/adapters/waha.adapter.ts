@@ -10,6 +10,7 @@ import {
   detectMediaType,
   isBlockedIp,
   hasAlternativeIpFormat,
+  getInternalAllowedHosts,
 } from "../security/ssrf-guard";
 import { parseRetryAfter } from "./meta-waba.adapter";
 
@@ -80,8 +81,8 @@ export function validateWahaBaseUrl(urlStr: string, allowLocalTest = false): str
     throw new Error(`SSRF_VIOLATION: Access to cloud metadata service '${host}' is strictly blocked.`);
   }
 
-  // Allow explicit Docker internal infrastructure hostname (e.g. "waha", "sos-v3-waha", "chat-sales-waha")
-  const internalAllowed = process.env.INTERNAL_SERVICE_ALLOWLIST?.split(",").map((s) => s.trim().toLowerCase()) || ["waha"];
+  // Allow explicit Docker internal infrastructure hostname (e.g. "waha", "sos-sales-waha", "chat-sales-waha")
+  const internalAllowed = getInternalAllowedHosts();
   if (internalAllowed.includes(host)) {
     return urlStr.replace(/\/$/, "");
   }

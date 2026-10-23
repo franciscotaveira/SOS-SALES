@@ -124,8 +124,8 @@ export async function createCommercialProposal(
   let journeyId = input.journeyId || null;
   if (!journeyId) {
     const jRes = await client.query(
-      `SELECT id FROM public.commercial_journeys WHERE workspace_id = $1 AND thread_id = $2 ORDER BY created_at DESC LIMIT 1;`,
-      [input.workspaceId, input.threadId]
+      `SELECT id FROM public.commercial_journeys WHERE workspace_id = $1 AND (thread_id = $2 OR contact_id = $3) AND status = 'open' ORDER BY created_at DESC LIMIT 1;`,
+      [input.workspaceId, input.threadId, input.contactId]
     );
     if (jRes.rows[0]) {
       journeyId = jRes.rows[0].id;
@@ -161,6 +161,18 @@ export async function createCommercialProposal(
   const row = res.rows[0];
   if (!row) {
     throw new Error("INSERT_FAILED: Falha ao inserir proposta comercial.");
+  }
+
+  // Automatically advance commercial journey to 'proposal' stage and update estimated value
+  if (journeyId) {
+    await client.query(
+      `UPDATE public.commercial_journeys
+       SET stage = 'proposal',
+           estimated_value_cents = GREATEST(estimated_value_cents, $1),
+           updated_at = clock_timestamp()
+       WHERE workspace_id = $2 AND id = $3 AND stage IN ('lead', 'qualified') AND status = 'open';`,
+      [totalCents, input.workspaceId, journeyId]
+    );
   }
 
   return {

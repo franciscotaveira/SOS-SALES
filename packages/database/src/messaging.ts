@@ -24,7 +24,8 @@ export type MessageDeliveryStatus =
   | "sent"
   | "delivered"
   | "read"
-  | "failed";
+  | "failed"
+  | "unknown";
 
 export type CommercialThreadStatus =
   | "active"
@@ -37,6 +38,8 @@ export interface ContactRecord {
   workspace_id: string;
   phone_e164: string;
   name: string | null;
+  opt_out: boolean;
+  metadata: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
 }
@@ -47,6 +50,8 @@ export interface CommercialThreadRecord {
   channel_instance_id: string;
   contact_id: string;
   status: CommercialThreadStatus;
+  handoff_reason?: string | null;
+  handoff_at?: Date | null;
   last_message_at: Date;
   created_at: Date;
   updated_at: Date;
@@ -124,7 +129,7 @@ export async function createOrGetContact(
      DO UPDATE SET 
        name = COALESCE(EXCLUDED.name, public.contacts.name),
        updated_at = now()
-     RETURNING id, workspace_id, phone_e164, name, created_at, updated_at;`,
+     RETURNING id, workspace_id, phone_e164, name, opt_out, metadata, created_at, updated_at;`,
     [params.workspaceId, params.phoneE164, params.name || null]
   );
   return res.rows[0]!;
@@ -135,6 +140,7 @@ export interface ListContactsParams {
   search?: string;
   limit?: number;
   offset?: number;
+  status?: "active" | "inactive" | "all";
 }
 
 /**
@@ -150,26 +156,71 @@ export async function listContacts(
   if (params.search && params.search.trim().length > 0) {
     const pattern = `%${params.search.trim().toLowerCase()}%`;
     const res = await client.query<ContactRecord>(
-      `SELECT id, workspace_id, phone_e164, name, created_at, updated_at
+      `SELECT id, workspace_id, phone_e164, name, opt_out, metadata, created_at, updated_at
        FROM public.contacts
        WHERE workspace_id = $1 
+         AND ($5 = 'all' OR ($5 = 'active' AND opt_out = false) OR ($5 = 'inactive' AND opt_out = true))
          AND (LOWER(COALESCE(name, '')) LIKE $2 OR phone_e164 LIKE $2)
        ORDER BY updated_at DESC
        LIMIT $3 OFFSET $4;`,
-      [params.workspaceId, pattern, limit, offset]
+      [params.workspaceId, pattern, limit, offset, params.status ?? "all"]
     );
     return res.rows;
   }
 
   const res = await client.query<ContactRecord>(
-    `SELECT id, workspace_id, phone_e164, name, created_at, updated_at
+    `SELECT id, workspace_id, phone_e164, name, opt_out, metadata, created_at, updated_at
      FROM public.contacts
      WHERE workspace_id = $1
+       AND ($4 = 'all' OR ($4 = 'active' AND opt_out = false) OR ($4 = 'inactive' AND opt_out = true))
      ORDER BY updated_at DESC
      LIMIT $2 OFFSET $3;`,
-    [params.workspaceId, limit, offset]
+    [params.workspaceId, limit, offset, params.status ?? "all"]
   );
   return res.rows;
+}
+
+/**
+ * Updates a contact's name and/or phone. Returns null when the contact does not exist in the workspace.
+ */
+export async function updateContact(
+  client: Pool | PoolClient,
+  params: {
+    workspaceId: string;
+    contactId: string;
+    name?: string | null;
+    phoneE164?: string;
+    optOut?: boolean;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<ContactRecord | null> {
+  const res = await client.query<ContactRecord>(
+    `UPDATE public.contacts
+     SET name = CASE WHEN $3::boolean THEN $4 ELSE name END,
+         phone_e164 = COALESCE($5, phone_e164),
+         opt_out = CASE WHEN $6::boolean THEN $7 ELSE opt_out END,
+         metadata = CASE WHEN $8::boolean THEN metadata || $9::jsonb ELSE metadata END,
+         updated_at = now()
+     WHERE workspace_id = $1 AND id = $2
+     RETURNING id, workspace_id, phone_e164, name, opt_out, metadata, created_at, updated_at;`,
+    [params.workspaceId, params.contactId, params.name !== undefined, params.name ?? null, params.phoneE164 ?? null,
+      params.optOut !== undefined, params.optOut ?? false, params.metadata !== undefined, JSON.stringify(params.metadata ?? {})]
+  );
+  return res.rows[0] ?? null;
+}
+
+/**
+ * Deletes a contact. Returns false when the contact does not exist in the workspace.
+ */
+export async function deleteContact(
+  client: Pool | PoolClient,
+  params: { workspaceId: string; contactId: string }
+): Promise<boolean> {
+  const res = await client.query(
+    `DELETE FROM public.contacts WHERE workspace_id = $1 AND id = $2;`,
+    [params.workspaceId, params.contactId]
+  );
+  return (res.rowCount ?? 0) > 0;
 }
 
 /**
@@ -267,13 +318,28 @@ export async function listThreadMessages(
   client: Pool | PoolClient,
   params: ListThreadMessagesParams
 ): Promise<MessageRecord[]> {
-  const order = params.ascending ? "ASC" : "DESC";
   const limit = params.limit ?? 50;
+
+  if (params.ascending) {
+    // When ascending is requested (typical chat viewport view), fetch the latest `limit` messages
+    // and sort them chronologically (oldest at top, newest at bottom).
+    const res = await client.query<MessageRecord>(
+      `SELECT * FROM (
+         SELECT * FROM public.messages
+         WHERE workspace_id = $1 AND thread_id = $2
+         ORDER BY created_at DESC
+         LIMIT $3
+       ) sub
+       ORDER BY created_at ASC;`,
+      [params.workspaceId, params.threadId, limit]
+    );
+    return res.rows;
+  }
 
   const res = await client.query<MessageRecord>(
     `SELECT * FROM public.messages
      WHERE workspace_id = $1 AND thread_id = $2
-     ORDER BY created_at ${order}
+     ORDER BY created_at DESC
      LIMIT $3;`,
     [params.workspaceId, params.threadId, limit]
   );
@@ -282,6 +348,7 @@ export async function listThreadMessages(
 }
 
 export interface CommercialThreadWithContactRecord extends CommercialThreadRecord {
+  activity_cursor: string;
   contact_phone: string;
   contact_name: string | null;
   channel_provider: ChannelProvider;
@@ -295,13 +362,21 @@ export interface CommercialThreadWithContactRecord extends CommercialThreadRecor
   next_action_due_at?: Date | null;
   next_action_status?: string | null;
   next_action_assignee_id?: string | null;
+  fep_expires_at?: Date | null;
+  attribution_source?: string | null;
+  journey_stage?: string | null;
 }
 
 export interface ListCommercialThreadsParams {
   workspaceId: string;
-  status?: CommercialThreadStatus;
+  status?: CommercialThreadStatus | "open";
   limit?: number;
   needsAttention?: boolean;
+  threadId?:string;
+  beforeActivityAt?:string;
+  beforeId?:string;
+  search?:string;
+  channelInstanceId?:string;
 }
 
 /**
@@ -315,11 +390,14 @@ export async function listCommercialThreads(
   const limit = params.limit ?? 50;
   const res = await client.query<CommercialThreadWithContactRecord>(
     `SELECT 
+       to_char(COALESCE(t.last_message_at,t.created_at) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS activity_cursor,
        t.id,
        t.workspace_id,
        t.channel_instance_id,
        t.contact_id,
        t.status,
+       t.handoff_reason,
+       t.handoff_at,
        t.last_message_at,
        t.created_at,
        t.updated_at,
@@ -335,7 +413,10 @@ export async function listCommercialThreads(
        nact.title AS next_action_title,
        nact.due_at AS next_action_due_at,
        nact.status AS next_action_status,
-       nact.assignee_user_id AS next_action_assignee_id
+       nact.assignee_user_id AS next_action_assignee_id,
+       j.fep_expires_at,
+       j.attribution_source,
+       j.journey_stage
      FROM public.commercial_threads t
      INNER JOIN public.contacts c 
        ON c.workspace_id = t.workspace_id AND c.id = t.contact_id
@@ -354,18 +435,29 @@ export async function listCommercialThreads(
        WHERE ca.workspace_id = t.workspace_id AND ca.thread_id = t.id AND ca.status = 'open'
        LIMIT 1
      ) nact ON true
+     LEFT JOIN LATERAL (
+       SELECT cj.fep_expires_at, cj.attribution_source, cj.stage as journey_stage
+       FROM public.commercial_journeys cj
+       WHERE cj.workspace_id = t.workspace_id AND cj.thread_id = t.id
+       ORDER BY cj.created_at DESC
+       LIMIT 1
+     ) j ON true
      WHERE t.workspace_id = $1
-       AND ($2::text IS NULL OR t.status = $2)
+       AND ($2::text IS NULL OR ($2='open' AND t.status <> 'closed') OR t.status = $2)
        AND (
          $4::boolean IS NOT TRUE 
          OR (
-           (nact.id IS NOT NULL AND nact.due_at <= now() + interval '24 hours')
-           OR t.status = 'waiting_human'
+           t.status <> 'closed' AND ((nact.id IS NOT NULL AND nact.due_at <= now() + interval '24 hours')
+           OR t.status = 'waiting_human')
          )
        )
-     ORDER BY t.last_message_at DESC
+       AND ($5::timestamptz IS NULL OR (COALESCE(t.last_message_at,t.created_at),t.id)<($5::timestamptz,$6::uuid))
+       AND ($7::text IS NULL OR c.name ILIKE $7 ESCAPE '\\' OR c.phone_e164 ILIKE $7 ESCAPE '\\' OR lm.body ILIKE $7 ESCAPE '\\')
+       AND ($8::uuid IS NULL OR t.channel_instance_id=$8::uuid)
+       AND ($9::uuid IS NULL OR t.id=$9::uuid)
+     ORDER BY COALESCE(t.last_message_at,t.created_at) DESC,t.id DESC
      LIMIT $3;`,
-    [params.workspaceId, params.status ?? null, limit, params.needsAttention ?? false]
+    [params.workspaceId, params.status ?? null, limit, params.needsAttention ?? false,params.beforeActivityAt??null,params.beforeId??null,params.search?.trim()?`%${params.search.trim().replace(/[\\%_]/g,'\\$&')}%`:null,params.channelInstanceId??null,params.threadId??null]
   );
   return res.rows;
 }

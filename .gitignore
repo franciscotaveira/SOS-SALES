@@ -56,3 +56,17 @@ supabase/.temp/
 # Scratch & Prompts
 *PROMPT-UI-FIX.md
 
+# Backups & Temp files
+backups/
+emergency_backups/
+*.backup*
+*.before-*
+._*
+
+docs/construcao-guiada/laboratorio/backups/
+docs/construcao-guiada/evidencias/
+
+# Python caches and local data
+__pycache__/
+*.py[cod]
+scripts/data/

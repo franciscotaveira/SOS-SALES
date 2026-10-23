@@ -7,7 +7,9 @@ import {
 } from "@sos-sales/contracts";
 import {
   lookupChannelIngress,
+  lookupChannelIngressPairing,
   resolveChannelSigningCredential,
+  resolveChannelSigningCredentialPairing,
   withIngressTransaction,
   encryptPayload,
   DatabaseSigningSecretResolver,
@@ -98,6 +100,41 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRoutesOptions> = async (
   }
 
   const signatureService = new SignatureVerificationService(resolver);
+
+  // G2: pairing-scoped secret resolver. Reads credentials only through the pairing-only
+  // security-definer function (WAHA + status='pairing'); never reaches active-channel paths.
+  const pairingResolver: ISigningSecretResolver = {
+    useSigningSecret: async () => null,
+    useWahaWebhookSecret: async (channelInstanceId, workspaceId, fn) => {
+      if (!resolver.useDirectWahaSecret) return null;
+      const creds = await resolveChannelSigningCredentialPairing(
+        channelInstanceId,
+        workspaceId,
+        options.ingressPool
+      );
+      if (!creds?.encryptedPayload || !creds.payloadIv || !creds.payloadAuthTag) return null;
+      return resolver.useDirectWahaSecret(
+        creds.encryptedPayload,
+        creds.payloadIv,
+        creds.payloadAuthTag,
+        fn
+      );
+    },
+  };
+  const pairingSignatureService = new SignatureVerificationService(pairingResolver);
+
+  const isSessionStatusEvent = (rawBody: Buffer): boolean => {
+    try {
+      const parsed: unknown = JSON.parse(rawBody.toString("utf-8"));
+      return (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        (parsed as { event?: unknown }).event === "session.status"
+      );
+    } catch {
+      return false;
+    }
+  };
 
   // Redacted instance URI for RFC 7807 problem details (Never leak raw endpointToken)
   const SANITIZED_INSTANCE_PATH = "/v1/webhooks/whatsapp/[redacted]";
@@ -319,8 +356,15 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRoutesOptions> = async (
         .digest("hex");
 
       // 1. Ingress lookup under sos_ingress_user
-      const channel = await lookupChannelIngress(tokenHash, options.ingressPool);
+      let channel = await lookupChannelIngress(tokenHash, options.ingressPool);
+      let isPairingChannel = false;
       if (!channel || !channel.isActive) {
+        // G2: channels in WAHA QR pairing are is_active=false by schema constraint.
+        // Only a pairing-scoped resolver may find them, and only session.status is accepted below.
+        channel = await lookupChannelIngressPairing(tokenHash, options.ingressPool);
+        isPairingChannel = channel !== null;
+      }
+      if (!channel) {
         return reply.status(404).send({
           type: "https://sos-sales.mct.br/errors/not-found",
           title: "Not Found",
@@ -357,7 +401,8 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRoutesOptions> = async (
       }
 
       // 2. Cryptographic Signature Verification
-      const verification = await signatureService.verify({
+      const verifier = isPairingChannel ? pairingSignatureService : signatureService;
+      const verification = await verifier.verify({
         channelInstanceId: channel.channelInstanceId,
         workspaceId: channel.workspaceId,
         provider: channel.provider as ChannelProvider,
@@ -404,6 +449,18 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRoutesOptions> = async (
           title: "Unauthorized",
           status: 401,
           detail: "Invalid webhook signature",
+          instance: SANITIZED_INSTANCE_PATH,
+          correlationId: request.id,
+        });
+      }
+
+      // G2: a pairing channel is only allowed to deliver authenticated session.status events.
+      if (isPairingChannel && !isSessionStatusEvent(rawBody)) {
+        return reply.status(404).send({
+          type: "https://sos-sales.mct.br/errors/not-found",
+          title: "Not Found",
+          status: 404,
+          detail: "Channel endpoint not found",
           instance: SANITIZED_INSTANCE_PATH,
           correlationId: request.id,
         });

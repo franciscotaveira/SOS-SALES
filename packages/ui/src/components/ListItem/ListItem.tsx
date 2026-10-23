@@ -50,13 +50,14 @@ export const ListItem: FC<ListItemProps> = ({
         borderLeft: selected
           ? "3px solid var(--color-action, #008069)"
           : "3px solid transparent",
-        borderBottom: "1px solid var(--border-default, #E2E8F0)",
+        borderBottom: "1px solid var(--border-default, #CBD5E1)",
         cursor: disabled ? "not-allowed" : onClick ? "pointer" : "default",
         opacity: disabled ? 0.5 : 1,
         transition: "background-color var(--transition-fast, 150ms ease), border-color var(--transition-fast, 150ms ease)",
         boxSizing: "border-box",
         width: "100%",
         gap: "var(--space-3, 12px)",
+        overflow: "hidden",
         ...style,
       }}
     >
@@ -76,6 +77,7 @@ export const ListItem: FC<ListItemProps> = ({
           flexDirection: "column",
           justifyContent: "center",
           gap: "2px",
+          overflow: "hidden",
         }}
       >
         <div

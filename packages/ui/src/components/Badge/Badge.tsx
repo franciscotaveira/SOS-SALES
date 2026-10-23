@@ -80,6 +80,7 @@ export const Badge: FC<BadgeProps> = ({
     >
       {pulseDot && (
         <span
+          className="sos-badge-dot"
           style={{
             width: "6px",
             height: "6px",
